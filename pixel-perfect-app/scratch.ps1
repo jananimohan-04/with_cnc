@@ -1,0 +1,1 @@
+$p = "G:\My Drive\CNC Vault\1234\V1\drawing.dwg"; $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($p)); Write-Host $b64; $url = "cncvault://open?b64path=" + $b64 + "/"; $b64Extract = ($url -split "b64path=")[1].TrimEnd("/"); Write-Host $b64Extract; [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64Extract))
