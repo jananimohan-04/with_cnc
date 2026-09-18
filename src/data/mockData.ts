@@ -188,6 +188,7 @@ export const parts: PartMaster[] = [
 
 export interface BOMItem {
   level: number;
+  projectName?: string;
   partNo: string;
   partName: string;
   material: string;

@@ -11,7 +11,8 @@ import {
   BOMPage,
   RoutingPage,
   WorkInstructionsPage,
-  RevisionsPage
+  RevisionsPage,
+  CNCVaultPage
 } from './pages/engineering/EngineeringPages';
 
 import {
@@ -26,12 +27,14 @@ import {
 } from './pages/production/ProductionPages';
 
 import {
-  EnquiriesPage,
+  SalesPipelinePage,
+  LeadsPage,
   CustomersPage,
   QuotationsPage,
   SalesOrdersPage,
-  DeliveriesPage
 } from './pages/sales/SalesPages';
+
+import { DeliveriesPage } from './pages/operations/OperationsPages';
 
 import {
   RawMaterialsPage, ComponentsPage, StockOverviewPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
@@ -110,11 +113,14 @@ function MainLayout() {
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
             
             {/* Sales */}
-            <Route path="/sales/enquiries" element={<EnquiriesPage />} />
+            <Route path="/sales/pipeline" element={<SalesPipelinePage />} />
+            <Route path="/sales/leads" element={<LeadsPage />} />
             <Route path="/sales/customers" element={<CustomersPage />} />
             <Route path="/sales/quotations" element={<QuotationsPage />} />
             <Route path="/sales/orders" element={<SalesOrdersPage />} />
-            <Route path="/sales/deliveries" element={<DeliveriesPage />} />
+            
+            {/* Operations */}
+            <Route path="/operations/delivery" element={<DeliveriesPage />} />
             
             {/* Engineering */}
             <Route path="/engineering/parts" element={<PartsPage />} />
@@ -123,6 +129,7 @@ function MainLayout() {
             <Route path="/engineering/routing" element={<RoutingPage />} />
             <Route path="/engineering/work-instructions" element={<WorkInstructionsPage />} />
             <Route path="/engineering/revisions" element={<RevisionsPage />} />
+            <Route path="/engineering/cnc-vault" element={<CNCVaultPage />} />
 
             {/* Production */}
             <Route path="/production/planning" element={<ProductionPlanningPage />} />

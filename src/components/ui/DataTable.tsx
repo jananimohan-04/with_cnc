@@ -50,7 +50,7 @@ export function DataTable<T extends Record<string, any>>({
     }
     if (filterValue !== 'all' && filterOptions) {
       result = result.filter((row) =>
-        String(row[filterOptions[0]?.value?.split(':')[0] ?? 'status'] ?? '').toLowerCase() === filterValue.toLowerCase()
+        String(row['status'] || row['Status'] || '').toLowerCase() === filterValue.toLowerCase()
       );
     }
     if (sortKey) {
@@ -77,6 +77,31 @@ export function DataTable<T extends Record<string, any>>({
       setSortKey(key);
       setSortDir('asc');
     }
+  };
+
+  const handleExport = () => {
+    if (filtered.length === 0) return;
+    
+    // Create CSV header
+    const keys = Object.keys(filtered[0]).filter(k => k !== 'id'); // skip raw id if present
+    const csvContent = [
+      keys.join(','),
+      ...filtered.map(row => keys.map(k => {
+        const val = row[k];
+        if (val === null || val === undefined) return '';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      }).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${title ? title.toLowerCase().replace(/\s+/g, '_') : 'export'}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -124,7 +149,7 @@ export function DataTable<T extends Record<string, any>>({
             </select>
           </div>
         )}
-        <button className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
+        <button onClick={handleExport} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
           <Download size={14} />
           EXPORT
         </button>

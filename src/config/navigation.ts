@@ -35,22 +35,23 @@ export const navSections: NavSection[] = [
   {
     label: 'Sales',
     items: [
-      { label: 'Enquiries', icon: FileText, page: 'sales/enquiries' },
-      { label: 'Customers', icon: Users, page: 'sales/customers' },
-      { label: 'Quotations', icon: TrendingUp, page: 'sales/quotations' },
-      { label: 'Sales Orders', icon: ClipboardList, page: 'sales/orders' },
-      { label: 'Delivery Tracking', icon: Package, page: 'sales/deliveries' },
+      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline' },
+      { label: 'All Leads', icon: FileText, page: 'sales/leads' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { label: 'Delivery Tracking', icon: Package, page: 'operations/delivery' },
     ],
   },
   {
     label: 'Engineering',
     items: [
-      { label: 'Part Master', icon: Boxes, page: 'engineering/parts' },
-      { label: 'CAD / Drawings', icon: FileText, page: 'engineering/drawings' },
+      { label: 'Part and Drawings', icon: FileText, page: 'engineering/cnc-vault' },
       { label: 'BOM', icon: ClipboardList, page: 'engineering/bom' },
       { label: 'Routing', icon: Cog, page: 'engineering/routing' },
       { label: 'Work Instructions', icon: FileText, page: 'engineering/work-instructions' },
-      { label: 'Revision Control', icon: ShieldCheck, page: 'engineering/revisions' },
     ],
   },
   {
@@ -146,17 +147,16 @@ export const navSections: NavSection[] = [
 
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Executive Dashboard',
-  'sales/enquiries': 'Sales Enquiries',
+  'sales/pipeline': 'Sales Pipeline',
+  'sales/leads': 'All Leads',
   'sales/customers': 'Customers',
   'sales/quotations': 'Quotations',
   'sales/orders': 'Sales Orders',
-  'sales/deliveries': 'Delivery Tracking',
-  'engineering/parts': 'Part Master',
-  'engineering/drawings': 'CAD / Drawing Management',
+  'operations/delivery': 'Delivery Tracking',
   'engineering/bom': 'Bill of Materials',
   'engineering/routing': 'Process Routing',
   'engineering/work-instructions': 'Work Instructions',
-  'engineering/revisions': 'Revision Control',
+  'engineering/cnc-vault': 'Part and Drawings',
   'production/planning': 'Production Planning',
   'production/work-orders': 'Work Orders',
   'production/job-cards': 'Job Cards',

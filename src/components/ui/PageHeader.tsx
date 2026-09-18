@@ -22,10 +22,17 @@ export function PageHeader({
 }
 
 export function DateSelector() {
+  const today = new Date();
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 6);
+  
+  const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const dateStr = `${formatDate(today)} – ${formatDate(nextWeek)}, ${today.getFullYear()}`;
+
   return (
     <div className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
       <Calendar size={15} className="text-slate-400" />
-      <span className="text-slate-600">Sep 1 – Sep 7, 2026</span>
+      <span className="text-slate-600">{dateStr}</span>
     </div>
   );
 }

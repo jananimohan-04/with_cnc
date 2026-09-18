@@ -1,0 +1,1 @@
+export function CNCVaultPage() { return <div className="w-full h-[calc(100vh-4rem)]"><iframe src="http://localhost:8081/" className="w-full h-full border-0" /></div>; }
