@@ -78,6 +78,7 @@ function PlaceholderPage({ title }: { title: string }) {
 
 function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -100,12 +101,15 @@ function MainLayout() {
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         currentPage={currentPage}
         onNavigate={handleNavigate}
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar 
           currentPage={currentPage}
           onNavigate={handleNavigate}
           onLogout={handleLogout}
+          onMenuClick={() => setMobileMenuOpen(true)}
         />
         <main className="flex-1 overflow-y-auto scrollbar-dark">
           <Routes>

@@ -7,11 +7,15 @@ export function Sidebar({
   onToggle,
   currentPage,
   onNavigate,
+  mobileOpen,
+  onCloseMobile
 }: {
   collapsed: boolean;
   onToggle: () => void;
   currentPage: string;
   onNavigate: (page: string) => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     const initial = new Set<string>();
@@ -29,11 +33,21 @@ export function Sidebar({
   };
 
   return (
-    <aside
-      className={`${
-        collapsed ? 'w-16' : 'w-64'
-      } flex-shrink-0 bg-[#0c1525] text-white flex flex-col transition-all duration-300 ease-in-out h-screen sticky top-0 z-30 shadow-[4px_0_24px_rgba(0,0,0,0.2)]`}
-    >
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
+          onClick={onCloseMobile}
+        />
+      )}
+      <aside
+        className={`${
+          collapsed ? 'w-16' : 'w-64'
+        } ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        } fixed lg:static flex-shrink-0 bg-[#0c1525] text-white flex flex-col transition-transform duration-300 ease-in-out h-screen top-0 left-0 z-50 shadow-[4px_0_24px_rgba(0,0,0,0.2)]`}
+      >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-navy-800 flex-shrink-0 bg-gradient-to-r from-navy-950 to-navy-900">
         <div className="w-8 h-8 rounded bg-gradient-to-br from-brand-400 to-accent-600 flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(99,102,241,0.4)] border border-brand-300/30">
@@ -76,7 +90,10 @@ export function Sidebar({
                     return (
                       <button
                         key={item.page}
-                        onClick={() => onNavigate(item.page)}
+                        onClick={() => {
+                          onNavigate(item.page);
+                          if (onCloseMobile) onCloseMobile();
+                        }}
                         title={collapsed ? item.label : undefined}
                         className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-sm transition-all duration-200 group relative ${
                           active

@@ -17,10 +17,12 @@ export function Topbar({
   currentPage,
   onNavigate,
   onLogout,
+  onMenuClick,
 }: {
   currentPage: string;
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  onMenuClick?: () => void;
 }) {
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -44,7 +46,7 @@ export function Topbar({
     <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-16 flex items-center px-4 lg:px-6 gap-6">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
-        <Menu size={18} className="text-slate-400 lg:hidden flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" />
+        <Menu size={18} className="text-slate-400 lg:hidden flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
         {breadcrumbs.map((bc, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
             {i > 0 && <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />}
