@@ -165,14 +165,16 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
-    const { data: allLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, company, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email');
+    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email');
+    if (leadsErr) console.error("Error fetching leads:", leadsErr);
+    
     const leadMap = new Map();
     const compMap = new Map();
     
     if (allLeads) {
       allLeads.forEach(l => {
         leadMap.set(l.id, l.lead_no || l.enquiry_no);
-        const comp = l.company || l.customer;
+        const comp = l.customer;
         if (comp && !compMap.has(comp)) {
            compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email });
         }
