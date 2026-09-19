@@ -60,7 +60,7 @@ export function SalesPipelinePage() {
   });
 
   const [inwardForm, setInwardForm] = useState<any>({
-    inwardNo: '', category: 'Raw Material', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
+    inwardNo: '', category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
     partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18',
     contacts: [{ person: '', phone: '', email: '' }]
   });
@@ -173,7 +173,7 @@ export function SalesPipelinePage() {
     } else if (card.type === 'order' && toStage === 'Inward') {
       const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       setInwardForm({
-        inwardNo: iNo, category: 'Raw Material', projectName: card.raw.project_name || '', salesOrderRef: card.refNo, referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
+        inwardNo: iNo, category: 'CUSTOMER DC', projectName: card.raw.project_name || '', salesOrderRef: card.refNo, referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
         partName: card.part, partNumber: card.raw.part_number || '', quantity: card.qty?.toString() || '0', price: '', discount: '0', gst: '18',
         contacts: parseContacts(card.raw)
       });
@@ -590,7 +590,12 @@ export function SalesPipelinePage() {
             <FormField label="Inward No." required><input className={inputClass} value={inwardForm.inwardNo} disabled /></FormField>
             <FormField label="Category" required>
               <select className={inputClass} value={inwardForm.category} onChange={e=>setInwardForm({...inwardForm, category: e.target.value})}>
-                <option>Raw Material</option><option>Consumables</option><option>Tools</option>
+                <option>EXPENSES</option>
+                <option>CUSTOMER DC</option>
+                <option>NEW PROJECT</option>
+                <option>NO DC</option>
+                <option>GOODS PURCHASE</option>
+                <option>SERVICE PURCHASE</option>
               </select>
             </FormField>
             <FormField label="Project Name"><input className={inputClass} value={inwardForm.projectName} onChange={e=>setInwardForm({...inwardForm, projectName: e.target.value})} /></FormField>
