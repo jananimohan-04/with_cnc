@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -12,6 +13,121 @@ import { parts } from '@/data/mockData';
 
 export function RawMaterialsPage() {
   const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [viewTarget, setViewTarget] = useState<RawMaterial | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RawMaterial | null>(null);
+  const [materialsData, setMaterialsData] = useState<RawMaterial[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
+
+  const resetForm = () => ({
+    materialCode: `RM-${Math.floor(1000 + Math.random() * 9000)}`,
+    name: '', grade: '', form: '', stockQty: '', uom: 'kg', minStock: '', location: '', status: 'In Stock'
+  });
+  const [formData, setFormData] = useState(resetForm());
+
+  useEffect(() => {
+    async function fetchMaterials() {
+      try {
+        const { data, error } = await supabase.from('cnc_raw_materials').select('*').order('created_at', { ascending: false });
+        if (error) {
+          console.error('Error fetching raw materials:', error);
+          setDbError(true);
+          setMaterialsData(rawMaterials); // Fallback to mock on error
+        } else if (data) {
+          setDbError(false);
+          const formattedData: RawMaterial[] = data.map((d: any) => ({
+            id: d.id,
+            materialCode: d.material_code,
+            name: d.name,
+            grade: d.grade,
+            form: d.form,
+            stockQty: Number(d.stock_qty),
+            uom: d.uom,
+            minStock: Number(d.min_stock),
+            location: d.location,
+            status: d.status,
+          }));
+          setMaterialsData(formattedData.length > 0 ? formattedData : rawMaterials);
+        }
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        setDbError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchMaterials();
+  }, []);
+
+  const handleEditClick = (r: RawMaterial) => {
+    setFormData({
+      materialCode: r.materialCode,
+      name: r.name,
+      grade: r.grade,
+      form: r.form,
+      stockQty: r.stockQty.toString(),
+      uom: r.uom,
+      minStock: r.minStock.toString(),
+      location: r.location,
+      status: r.status
+    });
+    setEditId(r.id);
+    setShowAdd(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.materialCode) return;
+    
+    const qty = Number(formData.stockQty) || 0;
+    const min = Number(formData.minStock) || 0;
+    // Auto-calculate status if not explicitly set correctly, or just use form value
+    const calculatedStatus = qty <= 0 ? 'Out of Stock' : (qty <= min ? 'Low Stock' : 'In Stock');
+
+    const entryData = {
+      material_code: formData.materialCode,
+      name: formData.name,
+      grade: formData.grade,
+      form: formData.form,
+      stock_qty: qty,
+      uom: formData.uom,
+      min_stock: min,
+      location: formData.location,
+      status: editId ? formData.status : calculatedStatus
+    };
+
+    setLoading(true);
+
+    if (editId) {
+      const { error } = await supabase.from('cnc_raw_materials').update(entryData).eq('id', editId);
+      if (!error) {
+        setMaterialsData(prev => prev.map(m => m.id === editId ? { 
+          ...m, materialCode: entryData.material_code, name: entryData.name, grade: entryData.grade, form: entryData.form, stockQty: entryData.stock_qty, uom: entryData.uom, minStock: entryData.min_stock, location: entryData.location, status: entryData.status as any
+        } : m));
+        setShowAdd(false);
+        setEditId(null);
+        setFormData(resetForm());
+      } else {
+        alert("Failed to update.");
+      }
+    } else {
+      const newId = crypto.randomUUID();
+      const insertData = { ...entryData, id: newId };
+      
+      const { error } = await supabase.from('cnc_raw_materials').insert([insertData]);
+      if (!error) {
+        const formatted: RawMaterial = {
+          id: newId, materialCode: insertData.material_code, name: insertData.name, grade: insertData.grade, form: insertData.form, stockQty: insertData.stock_qty, uom: insertData.uom, minStock: insertData.min_stock, location: insertData.location, status: insertData.status as any
+        };
+        setMaterialsData([formatted, ...materialsData]);
+        setShowAdd(false);
+        setFormData(resetForm());
+      } else {
+        alert("Failed to add to database. Check connection or SQL script.");
+      }
+    }
+    setLoading(false);
+  };
 
   const columns: Column<RawMaterial>[] = [
     { key: 'materialCode', label: 'Code', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.materialCode}</span> },
@@ -22,25 +138,88 @@ export function RawMaterialsPage() {
     { key: 'location', label: 'Location', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.location}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'In Stock' ? 'success' : r.status === 'Low Stock' ? 'warning' : 'error'} dot>{r.status}</Badge> },
     {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
+      key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-          <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
+          <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
+          <button onClick={() => handleEditClick(r)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
+          <button onClick={() => setDeleteTarget(r)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
       )
     },
   ];
 
+  const totalMaterials = materialsData.length;
+  const inStock = materialsData.filter(m => m.stockQty > m.minStock).length;
+  const lowStock = materialsData.filter(m => m.stockQty > 0 && m.stockQty <= m.minStock).length;
+  const outOfStock = materialsData.filter(m => m.stockQty <= 0).length;
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Raw Materials" description="Manage raw material inventory and stock levels" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="Raw Materials" description="Manage raw material inventory and stock levels" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Materials" value="142" icon={<Boxes size={20} />} accent="brand" />
-        <StatCard label="In Stock" value="115" icon={<Package size={20} />} accent="success" />
-        <StatCard label="Low Stock" value="24" icon={<AlertTriangle size={20} />} accent="warning" />
-        <StatCard label="Out of Stock" value="3" icon={<AlertTriangle size={20} />} accent="error" />
+        <StatCard label="Total Materials" value={totalMaterials.toString()} icon={<Boxes size={20} />} accent="brand" />
+        <StatCard label="In Stock" value={inStock.toString()} icon={<Package size={20} />} accent="success" />
+        <StatCard label="Low Stock" value={lowStock.toString()} icon={<AlertTriangle size={20} />} accent="warning" />
+        <StatCard label="Out of Stock" value={outOfStock.toString()} icon={<AlertTriangle size={20} />} accent="error" />
       </div>
-      <DataTable data={rawMaterials} columns={columns} searchKeys={['materialCode', 'name', 'grade']} onAdd={() => setShowAdd(true)} addLabel="New Material" filterOptions={[{ label: 'In Stock', value: 'In Stock' }, { label: 'Low Stock', value: 'Low Stock' }, { label: 'Out of Stock', value: 'Out of Stock' }]} />
+      <DataTable data={materialsData} columns={columns} searchKeys={['materialCode', 'name', 'grade']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Material" filterOptions={[{ label: 'In Stock', value: 'In Stock' }, { label: 'Low Stock', value: 'Low Stock' }, { label: 'Out of Stock', value: 'Out of Stock' }]} />
+      
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Material" : "New Raw Material"} subtitle={editId ? "Update material record" : "Add new material to inventory"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Material' : 'Save Material'}</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Material Code" required><input className={inputClass} value={formData.materialCode} onChange={e => setFormData({...formData, materialCode: e.target.value})} /></FormField>
+          <FormField label="Material Name" required><input className={inputClass} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Aluminum 7075" /></FormField>
+          <FormField label="Grade"><input className={inputClass} value={formData.grade} onChange={e => setFormData({...formData, grade: e.target.value})} /></FormField>
+          <FormField label="Form (Shape)"><input className={inputClass} value={formData.form} onChange={e => setFormData({...formData, form: e.target.value})} placeholder="e.g. Round Bar Ø50" /></FormField>
+          <FormField label="Current Stock Quantity" required><input type="number" className={inputClass} value={formData.stockQty} onChange={e => setFormData({...formData, stockQty: e.target.value})} /></FormField>
+          <FormField label="Unit of Measure (UoM)"><input className={inputClass} value={formData.uom} onChange={e => setFormData({...formData, uom: e.target.value})} placeholder="kg, pcs, meters" /></FormField>
+          <FormField label="Minimum Stock Alert"><input type="number" className={inputClass} value={formData.minStock} onChange={e => setFormData({...formData, minStock: e.target.value})} /></FormField>
+          <FormField label="Storage Location"><input className={inputClass} value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Rack A1" /></FormField>
+          {editId && (
+            <FormField label="Status">
+              <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <option>In Stock</option><option>Low Stock</option><option>Out of Stock</option>
+              </select>
+            </FormField>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Material Details" subtitle={viewTarget?.name}>
+        {viewTarget && (
+          <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+            <div><p className="text-slate-500 mb-1">Material Code</p><p className="font-mono text-slate-800">{viewTarget.materialCode}</p></div>
+            <div><p className="text-slate-500 mb-1">Status</p><Badge variant={viewTarget.status === 'In Stock' ? 'success' : viewTarget.status === 'Low Stock' ? 'warning' : 'error'} dot>{viewTarget.status}</Badge></div>
+            <div><p className="text-slate-500 mb-1">Grade</p><p className="font-medium text-slate-800">{viewTarget.grade}</p></div>
+            <div><p className="text-slate-500 mb-1">Form</p><p className="text-slate-800">{viewTarget.form}</p></div>
+            <div><p className="text-slate-500 mb-1">Stock Quantity</p><p className={`font-semibold ${viewTarget.stockQty <= viewTarget.minStock ? 'text-red-600' : 'text-slate-800'}`}>{viewTarget.stockQty} {viewTarget.uom}</p></div>
+            <div><p className="text-slate-500 mb-1">Minimum Stock Level</p><p className="text-slate-800">{viewTarget.minStock} {viewTarget.uom}</p></div>
+            <div><p className="text-slate-500 mb-1">Storage Location</p><p className="text-slate-800">{viewTarget.location}</p></div>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog 
+        open={!!deleteTarget} 
+        onClose={() => setDeleteTarget(null)} 
+        onConfirm={async () => {
+          if (deleteTarget) {
+            setLoading(true);
+            const { error } = await supabase.from('cnc_raw_materials').delete().eq('id', deleteTarget.id);
+            if (!error) {
+              setMaterialsData(prev => prev.filter(m => m.id !== deleteTarget.id));
+            } else {
+              console.error('Failed to delete:', error);
+              alert("Failed to delete. Check connection.");
+            }
+            setLoading(false);
+            setDeleteTarget(null);
+          }
+        }} 
+        title="Delete Material" 
+        message={`Delete ${deleteTarget?.name}? This action cannot be undone.`} 
+        confirmLabel="Delete" 
+        danger 
+      />
     </div>
   );
 }
