@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -209,16 +210,23 @@ function MainLayout() {
   );
 }
 
-function App() {
+function ErpApp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
   }
 
+  return <MainLayout />;
+}
+
+function App() {
   return (
     <BrowserRouter>
-      <MainLayout />
+      <Routes>
+        <Route path="/portal/*" element={<PortalApp />} />
+        <Route path="/*" element={<ErpApp />} />
+      </Routes>
     </BrowserRouter>
   );
 }
