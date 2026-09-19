@@ -10,7 +10,6 @@ import {
   PartsPage,
   DrawingsPage,
   BOMPage,
-  RoutingPage,
   WorkInstructionsPage,
   RevisionsPage,
   CNCVaultPage
@@ -131,7 +130,6 @@ function MainLayout() {
             <Route path="/engineering/parts" element={<PartsPage />} />
             <Route path="/engineering/drawings" element={<DrawingsPage />} />
             <Route path="/engineering/bom" element={<BOMPage />} />
-            <Route path="/engineering/routing" element={<RoutingPage />} />
             <Route path="/engineering/work-instructions" element={<WorkInstructionsPage />} />
             <Route path="/engineering/revisions" element={<RevisionsPage />} />
             <Route path="/engineering/cnc-vault" element={<CNCVaultPage />} />
