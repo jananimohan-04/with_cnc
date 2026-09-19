@@ -50,6 +50,11 @@ export function LeadsPage() {
     }
   }, [viewTarget]);
   const [quotationTarget, setQuotationTarget] = useState<any | null>(null);
+  const [quoteForm, setQuoteForm] = useState<any>({
+      quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: 'Admin',
+      partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18',
+      paymentTerms: '', deliveryTerms: '', remarks: ''
+  });
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
@@ -167,15 +172,18 @@ export function LeadsPage() {
   const handleCreateQuotation = async () => {
     if (!quotationTarget) return;
     setLoading(true);
+
+    const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
+    const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
+    const total = q * p * (1 - d / 100) * (1 + g / 100);
     
-    // Create draft quotation
-    const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const { error: quoteErr } = await supabase.from('cnc_quotations').insert([{
-      id: crypto.randomUUID(), quote_no: qNo, customer: quotationTarget.company, part_name: quotationTarget.partName,
+      id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: quoteForm.partName,
       contact_person: quotationTarget.contactPerson, phone: quotationTarget.phone, email: quotationTarget.email,
-      part_number: quotationTarget.partNo || 'N/A', description: '', unit_price: 0,
-      quantity: quotationTarget.quantity, total_value: 0, valid_till: '', status: 'Draft',
-      salesperson: 'Admin', lead_id: quotationTarget.id
+      part_number: quoteForm.partNumber || 'N/A', description: quoteForm.description, unit_price: p,
+      quantity: q, total_value: total, valid_till: quoteForm.validTill, status: 'Sent',
+      salesperson: quoteForm.salesperson, discount_percent: d, gst_percent: g,
+      payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: quotationTarget.id
     }]);
 
     if (!quoteErr) {
@@ -223,7 +231,15 @@ export function LeadsPage() {
         <div className="flex items-center justify-end gap-1">
           {r.status !== 'Converted' && r.status !== 'Lost' && (
             <>
-              <button onClick={() => setQuotationTarget(r)} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
+              <button onClick={() => {
+                const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+                setQuoteForm({
+                  quoteNo: qNo, customer: r.company, leadNo: r.leadNo, quoteDate: new Date().toISOString().split('T')[0], validTill: r.expectedDate || '', salesperson: 'Admin',
+                  partName: r.partName, partNumber: r.partNo || '', description: '', quantity: r.quantity?.toString() || '0', unitPrice: '', discount: '0', gst: '18',
+                  paymentTerms: '', deliveryTerms: '', remarks: ''
+                });
+                setQuotationTarget(r);
+              }} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
               <button onClick={() => handleMarkLost(r.id)} title="Mark as Lost" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><XCircle size={15} /></button>
             </>
           )}
@@ -280,13 +296,40 @@ export function LeadsPage() {
         </div>
       </Modal>
 
-      <ConfirmDialog 
-        open={!!quotationTarget} 
-        onClose={() => setQuotationTarget(null)} 
-        onConfirm={handleCreateQuotation} 
-        title="Create Quotation?" 
-        message={`This will create a draft quotation for ${quotationTarget?.company} and move this opportunity to the Quotation stage in the Sales Pipeline.`} 
-      />
+      <Modal open={!!quotationTarget} onClose={() => setQuotationTarget(null)} title="CREATE QUOTATION" size="lg" footer={<><Button variant="secondary" onClick={() => setQuotationTarget(null)}>Cancel</Button><Button onClick={handleCreateQuotation}>Create Quotation</Button></>}>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+              <FormField label="Quotation No." required><input className={inputClass} value={quoteForm.quoteNo} disabled /></FormField>
+              <FormField label="Customer" required><input className={inputClass} value={quoteForm.customer} disabled /></FormField>
+              <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
+              <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
+              <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
+              <FormField label="Salesperson"><input className={inputClass} value={quoteForm.salesperson} onChange={e=>setQuoteForm({...quoteForm, salesperson: e.target.value})} /></FormField>
+            </div>
+            
+            <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <FormField label="Part / Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
+              <FormField label="Part Number"><input className={inputClass} value={quoteForm.partNumber} onChange={e=>setQuoteForm({...quoteForm, partNumber: e.target.value})} /></FormField>
+              <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>
+              <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
+              <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
+              <FormField label="Discount %"><input type="number" className={inputClass} value={quoteForm.discount} onChange={e=>setQuoteForm({...quoteForm, discount: e.target.value})} /></FormField>
+              <FormField label="GST %"><input type="number" className={inputClass} value={quoteForm.gst} onChange={e=>setQuoteForm({...quoteForm, gst: e.target.value})} /></FormField>
+              <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-slate-100 font-bold`} value={(() => {
+                const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
+                const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
+                return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+              })()} disabled /></FormField>
+            </div>
+            <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4">Additional Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Payment Terms"><input className={inputClass} value={quoteForm.paymentTerms} onChange={e=>setQuoteForm({...quoteForm, paymentTerms: e.target.value})} /></FormField>
+              <FormField label="Delivery Terms"><input className={inputClass} value={quoteForm.deliveryTerms} onChange={e=>setQuoteForm({...quoteForm, deliveryTerms: e.target.value})} /></FormField>
+              <div className="col-span-2"><FormField label="Notes / Remarks"><textarea className={inputClass} rows={2} value={quoteForm.remarks} onChange={e=>setQuoteForm({...quoteForm, remarks: e.target.value})}></textarea></FormField></div>
+            </div>
+          </div>
+      </Modal>
       
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Lead / Company History" size="lg" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
         {viewTarget && (
