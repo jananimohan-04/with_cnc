@@ -314,7 +314,7 @@ export function SalesPipelinePage() {
     e.dataTransfer.setData('cardId', card.id);
   };
 
-  const handleDrop = (e: React.DragEvent, toStage: Stage) => {
+  const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
     e.preventDefault();
     const cardId = e.dataTransfer.getData('cardId');
     const card = cards.find(c => c.id === cardId);
