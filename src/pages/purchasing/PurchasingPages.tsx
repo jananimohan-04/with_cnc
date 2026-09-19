@@ -1510,12 +1510,258 @@ export function GoodsReceiptPage() {
 }
 
 export function SupplierPerformancePage() {
+  const [loading, setLoading] = useState(true);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
+  const [kpiFilter, setKpiFilter] = useState<string>('All');
+  
+  const [allData, setAllData] = useState<any[]>([]);
+  
+  const [viewTarget, setViewTarget] = useState<any>(null); // For viewing PO details
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    
+    // Fetch Suppliers
+    const { data: supData } = await supabase.from('cnc_suppliers').select('id, name, code').order('name');
+    if (supData) setSuppliers(supData);
+
+    // Fetch POs
+    const { data: poData } = await supabase.from('cnc_purchase_orders').select('*, supplier:cnc_suppliers(name), items:cnc_purchase_order_items(*)');
+    // Fetch GRNs (only Posted)
+    const { data: grnData } = await supabase.from('cnc_goods_receipts').select('id, purchase_order_id, receipt_date, status').eq('status', 'Posted');
+
+    if (poData && grnData) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      
+      const processed = poData.map(po => {
+         let finalReceiptDate = null;
+         if (po.status === 'Received') {
+            const grns = grnData.filter(g => g.purchase_order_id === po.id);
+            if (grns.length > 0) {
+               grns.sort((a,b) => new Date(b.receipt_date).getTime() - new Date(a.receipt_date).getTime());
+               finalReceiptDate = grns[grns.length - 1].receipt_date; // Max date
+            }
+         }
+
+         let condition = '';
+         let delayDays = null;
+
+         if (['Draft', 'Cancelled'].includes(po.status)) {
+            condition = po.status;
+         } else if (po.status === 'Received') {
+            if (finalReceiptDate && po.expected_date) {
+               if (finalReceiptDate <= po.expected_date) {
+                  condition = 'On Time';
+               } else {
+                  condition = 'Delivered Late';
+                  delayDays = Math.ceil((new Date(finalReceiptDate).getTime() - new Date(po.expected_date).getTime()) / (1000 * 60 * 60 * 24));
+               }
+            } else {
+               condition = 'Received (Missing Dates)';
+            }
+         } else if (['Issued', 'Partially Received'].includes(po.status)) {
+            if (po.expected_date && po.expected_date < todayStr) {
+               condition = 'Overdue / Pending Receipt';
+            } else {
+               condition = 'Pending Receipt';
+            }
+         }
+
+         return {
+            ...po,
+            final_receipt_date: finalReceiptDate,
+            condition,
+            delayDays
+         };
+      });
+      
+      setAllData(processed);
+    }
+    setLoading(false);
+  }
+
+  // Derived Data for UI
+  const supplierData = selectedSupplier ? allData.filter(d => d.supplier_id === selectedSupplier) : allData;
+  
+  // Calculate Summaries
+  let totalValue = 0;
+  let openCount = 0;
+  let overdueCount = 0;
+  let evaluableCount = 0;
+  let onTimeCount = 0;
+
+  supplierData.forEach(po => {
+     if (['Issued', 'Partially Received', 'Received'].includes(po.status)) {
+        totalValue += Number(po.grand_total || 0);
+     }
+     if (['Issued', 'Partially Received'].includes(po.status)) openCount++;
+     if (po.condition === 'Overdue / Pending Receipt') overdueCount++;
+     if (po.status === 'Received' && po.expected_date && po.final_receipt_date) {
+        evaluableCount++;
+        if (po.condition === 'On Time') onTimeCount++;
+     }
+  });
+
+  const onTimePercent = evaluableCount > 0 ? Math.round((onTimeCount / evaluableCount) * 100) : null;
+
+  // Apply KPI Filter
+  const displayData = supplierData.filter(po => {
+     if (kpiFilter === 'All') return true;
+     if (kpiFilter === 'Open') return ['Issued', 'Partially Received'].includes(po.status);
+     if (kpiFilter === 'Overdue') return po.condition === 'Overdue / Pending Receipt';
+     if (kpiFilter === 'OnTime') return po.condition === 'On Time';
+     if (kpiFilter === 'Late') return po.condition === 'Delivered Late';
+     return true;
+  });
+
+  const columns: Column<any>[] = [
+    { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.po_number}</span> },
+    { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier?.name}</span> },
+    { key: 'dates', label: 'Dates', render: (r) => (
+       <div className="text-xs text-slate-500">
+         <div>Expected: {r.expected_date || 'N/A'}</div>
+         <div>Final Receipt: {r.final_receipt_date || '-'}</div>
+       </div>
+    )},
+    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">,1{(r.grand_total).toLocaleString()}</span> },
+    { key: 'performance', label: 'Delivery Performance', sortable: true, render: (r) => {
+       if (r.condition === 'On Time') return <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">On Time</span>;
+       if (r.condition === 'Delivered Late') return <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded">Late ({r.delayDays}d)</span>;
+       if (r.condition === 'Overdue / Pending Receipt') return <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded flex items-center gap-1 w-max"><AlertCircle size={12}/> Overdue</span>;
+       if (r.condition === 'Pending Receipt') return <span className="text-xs text-slate-500">Pending</span>;
+       return <span className="text-xs text-slate-400">{r.condition}</span>;
+    }},
+    { key: 'status', label: 'Status', sortable: true, render: (r) => (
+       <Badge variant={r.status === 'Issued' ? 'brand' : r.status === 'Received' ? 'success' : r.status === 'Partially Received' ? 'warning' : 'neutral'} dot>{r.status}</Badge>
+    )},
+    { key: 'actions', label: 'Actions', align: 'center', render: (r) => (
+       <Button variant="secondary" size="sm" onClick={() => setViewTarget(r)} icon={<Eye size={14} />}>View</Button>
+    ) }
+  ];
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Supplier Performance" description="Analytics on supplier delivery, quality, and pricing" />
-      <div className="flex items-center justify-center h-64 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-        <p className="text-slate-500">Supplier performance analytics coming soon.</p>
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+         <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Supplier Performance</h1>
+            <p className="text-slate-500 mt-1">Real-time analytics based on verifiable Purchase Order and GRN history</p>
+         </div>
+         <div className="flex gap-2">
+            <select className={inputClass} value={selectedSupplier} onChange={e => { setSelectedSupplier(e.target.value); setKpiFilter('All'); }}>
+               <option value="">All Suppliers</option>
+               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+            </select>
+         </div>
       </div>
+      
+      {loading ? (
+         <div className="flex justify-center py-12"><Activity className="animate-spin text-brand-500" /></div>
+      ) : allData.length === 0 ? (
+         <div className="text-center p-12 bg-white rounded-xl border border-dashed border-slate-300">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">No Performance History</h3>
+            <p className="text-slate-500">Performance metrics will become available after purchase and receiving transactions are recorded.</p>
+         </div>
+      ) : (
+         <>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <div onClick={() => setKpiFilter('All')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'All' ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>
+                 <StatCard label="Total Purchase Value" value={`,1${totalValue.toLocaleString()}`} icon={<TrendingUp size={20} />} accent="brand" />
+              </div>
+              
+              <div onClick={() => setKpiFilter('Open')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'Open' ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>
+                 <StatCard label="Open Orders" value={openCount.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
+              </div>
+
+              <div onClick={() => setKpiFilter('Overdue')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'Overdue' ? 'ring-2 ring-red-500 rounded-xl' : ''}`}>
+                 <StatCard label="Overdue Pending" value={overdueCount.toString()} icon={<AlertCircle size={20} />} accent="error" />
+              </div>
+
+              <div onClick={() => setKpiFilter('All')} className="cursor-pointer transition-transform hover:scale-105">
+                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <div className="flex justify-between items-start mb-2">
+                       <span className="text-sm font-medium text-slate-500">On-Time Delivery</span>
+                       <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600"><CheckCircle size={20}/></div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-800">
+                       {onTimePercent !== null ? `${onTimePercent}%` : 'N/A'}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 font-medium">
+                       {evaluableCount > 0 ? `${onTimeCount} of ${evaluableCount} completed POs` : 'Insufficient delivery data'}
+                    </div>
+                 </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                 <div className="flex justify-between items-start mb-2">
+                    <span className="text-sm font-medium text-slate-500">Quality / Rejections</span>
+                    <div className="p-2 bg-slate-50 rounded-lg text-slate-400"><Activity size={20}/></div>
+                 </div>
+                 <div className="text-xl font-bold text-slate-700 mt-1">N/A</div>
+                 <div className="text-xs text-slate-500 mt-2 font-medium">QC Module Pending</div>
+              </div>
+            </div>
+            
+            <Card>
+               <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                  <h3 className="font-bold text-slate-800">
+                     {kpiFilter === 'All' ? 'All Transaction History' : 
+                      kpiFilter === 'Open' ? 'Active / Open Orders' :
+                      kpiFilter === 'Overdue' ? 'Overdue Deliveries' :
+                      kpiFilter === 'OnTime' ? 'On-Time Deliveries' :
+                      kpiFilter === 'Late' ? 'Late Deliveries' : ''}
+                  </h3>
+                  {kpiFilter !== 'All' && (
+                     <Button variant="secondary" size="sm" onClick={() => setKpiFilter('All')}>Clear Filter</Button>
+                  )}
+               </div>
+               <DataTable data={displayData} columns={columns} searchKeys={['po_number', 'supplier.name']} />
+            </Card>
+         </>
+      )}
+
+      {/* MINIMAL VIEW MODAL FOR AUDIT */}
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`Performance Drill-down: ${viewTarget?.po_number}`} size="lg" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
+         {viewTarget && (
+            <div className="space-y-4 text-sm">
+               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <div><span className="block text-slate-500">Supplier</span><span className="font-bold">{viewTarget.supplier?.name}</span></div>
+                  <div><span className="block text-slate-500">Status</span><Badge variant="neutral">{viewTarget.status}</Badge></div>
+                  <div><span className="block text-slate-500">Order Date</span><span className="font-medium">{viewTarget.order_date}</span></div>
+                  <div><span className="block text-slate-500">Expected Date</span><span className="font-medium">{viewTarget.expected_date || 'N/A'}</span></div>
+               </div>
+
+               <div className="bg-white p-4 rounded-lg border border-slate-200">
+                  <h4 className="font-bold text-slate-800 mb-2 border-b pb-2">Calculation Logic</h4>
+                  <div className="space-y-2">
+                     <div className="flex justify-between border-b border-dashed border-slate-100 pb-1">
+                        <span className="text-slate-500">Final Receipt Date (Last GRN)</span>
+                        <span className="font-mono text-slate-800 font-medium">{viewTarget.final_receipt_date || 'Not fully received'}</span>
+                     </div>
+                     <div className="flex justify-between border-b border-dashed border-slate-100 pb-1">
+                        <span className="text-slate-500">Calculated Condition</span>
+                        <span className="font-bold text-brand-700">{viewTarget.condition}</span>
+                     </div>
+                     {viewTarget.delayDays !== null && (
+                        <div className="flex justify-between border-b border-dashed border-slate-100 pb-1">
+                           <span className="text-slate-500">Calculated Delay</span>
+                           <span className="font-bold text-orange-600">{viewTarget.delayDays} days</span>
+                        </div>
+                     )}
+                     <div className="flex justify-between pt-1">
+                        <span className="text-slate-500">Grand Total Included in Value</span>
+                        <span className="font-mono text-slate-800 font-bold">,1{Number(viewTarget.grand_total).toLocaleString()}</span>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+      </Modal>
     </div>
   );
 }
