@@ -677,14 +677,14 @@ export function MaterialRequestsPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               <FormField label="Request No" type="text" value={reqForm.requestNo} disabled />
-               <FormField label="Request Date" type="date" value={reqForm.requestDate} disabled />
-               <FormField label="Required Date" type="date" value={reqForm.requiredDate} onChange={e => setReqForm({...reqForm, requiredDate: e.target.value})} />
+               <FormField label="Request No"><input type="text" className={inputClass} value={reqForm.requestNo} disabled /></FormField>
+               <FormField label="Request Date"><input type="date" className={inputClass} value={reqForm.requestDate} disabled /></FormField>
+               <FormField label="Required Date" required><input type="date" className={inputClass} value={reqForm.requiredDate} onChange={e => setReqForm({...reqForm, requiredDate: e.target.value})} /></FormField>
                <div className="space-y-1"><label className="text-xs font-medium text-slate-700">Priority</label><select value={reqForm.priority} onChange={e => setReqForm({...reqForm, priority: e.target.value})} className={inputClass}><option>Normal</option><option>High</option><option>Urgent</option></select></div>
-               <FormField label="Part / Product" type="text" value={reqForm.partName} disabled />
-               <FormField label="Production Qty" type="number" value={reqForm.productionQty.toString()} disabled />
-               <FormField label="Requested By" type="text" value="Admin" disabled />
-               <FormField label="Remarks" type="text" value={reqForm.remarks} onChange={e => setReqForm({...reqForm, remarks: e.target.value})} />
+               <FormField label="Part / Product"><input type="text" className={inputClass} value={reqForm.partName} disabled /></FormField>
+               <FormField label="Production Qty"><input type="number" className={inputClass} value={reqForm.productionQty.toString()} disabled /></FormField>
+               <FormField label="Requested By"><input type="text" className={inputClass} value="Admin" disabled /></FormField>
+               <FormField label="Remarks"><input type="text" className={inputClass} value={reqForm.remarks} onChange={e => setReqForm({...reqForm, remarks: e.target.value})} /></FormField>
             </div>
 
             <div>
