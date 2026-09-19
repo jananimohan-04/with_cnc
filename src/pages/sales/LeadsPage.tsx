@@ -11,16 +11,40 @@ export function LeadsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
   const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
+  const [viewHistory, setViewHistory] = useState<any[]>([]);
 
   useEffect(() => {
     if (viewTarget) {
       const fetchHistory = async () => {
-        const [e, q, o] = await Promise.all([
-           supabase.from('cnc_enquiries').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
+        const { data: enqs } = await supabase.from('cnc_enquiries').select('*').eq('customer', viewTarget.company).order('created_at', { ascending: false });
+        
+        if (enqs) {
+           setViewHistory(enqs.map((d: any) => ({
+              id: d.id,
+              leadNo: d.lead_no || `LD-${d.enquiry_no}`,
+              company: d.customer,
+              contactPerson: d.contact_person || '',
+              phone: d.phone || '',
+              email: d.email || '',
+              city: d.city || '',
+              gst: d.gst || '',
+              enquiringFor: d.enquiring_for || '',
+              partName: d.part_name,
+              partNo: d.part_no,
+              quantity: d.quantity,
+              expectedDate: d.expected_date,
+              status: d.status || 'New',
+              estimatedValue: Number(d.estimated_value),
+              source: d.source || 'Direct',
+              notes: d.notes || ''
+           })));
+        }
+
+        const [q, o] = await Promise.all([
            supabase.from('cnc_quotations').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
            supabase.from('cnc_sales_orders').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company)
         ]);
-        setViewData({ enquiries: e.count || 0, quotes: q.count || 0, orders: o.count || 0 });
+        setViewData({ enquiries: enqs?.length || 0, quotes: q.count || 0, orders: o.count || 0 });
       };
       fetchHistory();
     }
@@ -50,24 +74,30 @@ export function LeadsPage() {
         setDbError(true);
       } else if (data) {
         setDbError(false);
-        setLeadsData(data.map((d: any) => ({
-          id: d.id,
-          leadNo: d.lead_no || `LD-${d.enquiry_no}`,
-          company: d.customer,
-          contactPerson: d.contact_person || '',
-          phone: d.phone || '',
-          email: d.email || '',
-          city: d.city || '',
-          gst: d.gst || '',
-          enquiring_for: d.enquiring_for || '',
-          partName: d.part_name,
-          partNo: d.part_no,
-          quantity: d.quantity,
-          expectedDate: d.expected_date,
-          status: d.status || 'New',
-          estimatedValue: Number(d.estimated_value),
-          source: d.source || 'Direct',
-        })));
+        const groupedMap = new Map();
+        data.forEach((d: any) => {
+          if (!groupedMap.has(d.customer)) {
+            groupedMap.set(d.customer, {
+              id: d.id,
+              leadNo: d.lead_no || `LD-${d.enquiry_no}`,
+              company: d.customer,
+              contactPerson: d.contact_person || '',
+              phone: d.phone || '',
+              email: d.email || '',
+              city: d.city || '',
+              gst: d.gst || '',
+              enquiringFor: d.enquiring_for || '',
+              partName: d.part_name,
+              partNo: d.part_no,
+              quantity: d.quantity,
+              expectedDate: d.expected_date,
+              status: d.status || 'New',
+              estimatedValue: Number(d.estimated_value),
+              source: d.source || 'Direct'
+            });
+          }
+        });
+        setLeadsData(Array.from(groupedMap.values()));
       }
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -302,6 +332,25 @@ export function LeadsPage() {
                 </div>
               </div>
             </div>
+
+            <div className="mt-4">
+               <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">All Enquiries</h5>
+               <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                 {viewHistory.map(h => (
+                    <div key={h.id} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg">
+                       <div>
+                          <p className="font-semibold text-sm text-slate-800">{h.leadNo} - {h.partName}</p>
+                          <p className="text-xs text-slate-500 mt-1">Qty: {h.quantity} | Source: {h.source}</p>
+                       </div>
+                       <div className="flex items-center gap-3">
+                          <Badge variant={statusToVariant(h.status)}>{h.status}</Badge>
+                          <button onClick={() => { setViewTarget(null); handleEditClick(h); }} title="Edit Enquiry" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={16}/></button>
+                       </div>
+                    </div>
+                 ))}
+               </div>
+            </div>
+
           </div>
         )}
       </Modal>
