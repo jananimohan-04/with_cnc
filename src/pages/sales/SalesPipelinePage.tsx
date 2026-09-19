@@ -435,12 +435,27 @@ export function SalesPipelinePage() {
     const cStr = getContactStrings(inwardForm);
 
     const { error } = await supabase.from('cnc_inwards').insert([{
-      id: crypto.randomUUID(), inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
-      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate,
-      party_name: inwardForm.partyName, remarks: inwardForm.remarks, part_name: inwardForm.partName,
-      part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending'
-    }]);
+        id: crypto.randomUUID(), inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
+        contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
+        sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate,
+        party_name: inwardForm.partyName, remarks: inwardForm.remarks, part_name: inwardForm.partName,
+        part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending'
+      }]);
+      
+      if (!error) {
+         // Log stock movement
+         await supabase.from('cnc_stock_movements').insert([{
+            date: inwardForm.inwardDate || new Date().toISOString().split('T')[0],
+            type: 'Receipt',
+            material: inwardForm.partName,
+            qty: q,
+            uom: 'Nos',
+            from: inwardForm.partyName,
+            to: 'Main Warehouse',
+            reference: inwardForm.inwardNo,
+            user: 'Admin'
+         }]);
+      }
     if (error) alert("Error: Make sure to run the SQL script to create the cnc_inwards table and columns.");
     else { await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id); setInwardModalTarget(null); fetchPipeline(); }
   };

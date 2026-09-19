@@ -613,6 +613,21 @@ export function SalesOrdersPage() {
       remarks: deliveryForm.remarks,
       status: 'Pending'
     }]);
+    
+    if (!error) {
+       // Log stock movement
+       await supabase.from('cnc_stock_movements').insert([{
+          date: new Date().toISOString().split('T')[0],
+          type: 'Issue',
+          material: deliveryTarget.partName,
+          qty: Number(deliveryForm.dispatchQty) || deliveryTarget.quantity,
+          uom: 'Nos',
+          from: 'Main Warehouse',
+          to: deliveryTarget.customer,
+          reference: deliveryForm.deliveryNo,
+          user: 'Admin'
+       }]);
+    }
 
     if (!error) {
       alert("Delivery tracking created! You can track it in the Operations > Delivery Tracking page.");
