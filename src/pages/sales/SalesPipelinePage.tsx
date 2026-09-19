@@ -674,7 +674,6 @@ export function SalesPipelinePage() {
           </div>
           <FormField label="City"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
-          <FormField label="Enquiring For"><input className={inputClass} value={newLeadForm.enquiringFor} onChange={e => setNewLeadForm({...newLeadForm, enquiringFor: e.target.value})} /></FormField>
           <FormField label="Source">
             <select className={inputClass} value={newLeadForm.source} onChange={e => setNewLeadForm({...newLeadForm, source: e.target.value})}>
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
