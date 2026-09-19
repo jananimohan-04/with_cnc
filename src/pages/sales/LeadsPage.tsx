@@ -193,6 +193,13 @@ export function LeadsPage() {
   };
 
 
+
+  const handleQuickStatusChange = async (id: string, newStatus: string) => {
+    await supabase.from('cnc_enquiries').update({ status: newStatus }).eq('id', id);
+    setViewHistory(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
+    fetchLeads();
+  };
+
   const handleRevertLost = async (id: string) => {
     setLoading(true);
     await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', id);
@@ -322,7 +329,23 @@ export function LeadsPage() {
                           <span className="text-xs text-slate-500 font-medium">Source: {h.source} | Expected: {h.expectedDate || 'N/A'}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <Badge variant={statusToVariant(h.status)}>{h.status}</Badge>
+                          <select
+  value={h.status}
+  onChange={(e) => handleQuickStatusChange(h.id, e.target.value)}
+  className={`text-xs font-semibold pl-3 pr-7 py-1 rounded-full border outline-none cursor-pointer
+    ${h.status === 'Lost' ? 'bg-red-50 text-red-700 border-red-200' : 
+      h.status === 'Quoted' ? 'bg-purple-50 text-purple-700 border-purple-200' : 
+      h.status === 'Converted' ? 'bg-green-50 text-green-700 border-green-200' : 
+      'bg-slate-50 text-slate-700 border-slate-200'}`}
+>
+  <option value="New">New</option>
+  <option value="Contacted">Contacted</option>
+  <option value="Qualified">Qualified</option>
+  <option value="Under Review">Under Review</option>
+  <option value="Quoted">Quoted</option>
+  <option value="Converted">Converted</option>
+  <option value="Lost">Lost</option>
+</select>
                           <button onClick={() => { setViewTarget(null); handleEditClick(h); }} title="Edit Enquiry" className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded transition-colors"><Edit size={16}/></button>
                         </div>
                       </div>
