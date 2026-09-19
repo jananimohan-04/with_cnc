@@ -33,7 +33,7 @@ export function RawMaterialsPage() {
         if (error) {
           console.error('Error fetching raw materials:', error);
           setDbError(true);
-          setMaterialsData(rawMaterials); // Fallback to mock on error
+          setMaterialsData([]);
         } else if (data) {
           setDbError(false);
           const formattedData: RawMaterial[] = data.map((d: any) => ({
@@ -48,11 +48,12 @@ export function RawMaterialsPage() {
             location: d.location,
             status: d.status,
           }));
-          setMaterialsData(formattedData.length > 0 ? formattedData : rawMaterials);
+          setMaterialsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
         setDbError(true);
+        setMaterialsData([]);
       } finally {
         setLoading(false);
       }
@@ -267,7 +268,7 @@ export function ComponentsPage() {
         if (error) {
           console.error('Error fetching components:', error);
           setDbError(true);
-          setComponentsData(parts);
+          setComponentsData([]);
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -278,11 +279,12 @@ export function ComponentsPage() {
             status: d.status,
             make: 'Make', // Assuming 'Make' by default for parts as they are manufactured
           }));
-          setComponentsData(formattedData.length > 0 ? formattedData : parts);
+          setComponentsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
         setDbError(true);
+        setComponentsData([]);
       } finally {
         setLoading(false);
       }
@@ -395,7 +397,7 @@ export function StockMovementsPage() {
         if (error) {
           console.error('Error fetching movements:', error);
           setDbError(true);
-          setMovementsData(stockMovements); // Fallback to mock
+          setMovementsData([]); // Removed fallback to mock data
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -410,11 +412,12 @@ export function StockMovementsPage() {
             reference: d.reference,
             user: d.user,
           }));
-          setMovementsData(formattedData.length > 0 ? formattedData : stockMovements);
+          setMovementsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
         setDbError(true);
+        setMovementsData([]);
       } finally {
         setLoading(false);
       }
