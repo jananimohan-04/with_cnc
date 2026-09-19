@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Cpu, Plus, FileText, Clock, CheckCircle2, Package, Truck, LogOut, ChevronRight, Eye, AlertCircle } from 'lucide-react';
 
@@ -47,7 +47,7 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
   const handleSave = async () => {
     if (!form.company_name) return;
     setSaving(true);
-    const { error } = await supabase.from('portal_profiles').insert([{
+    const { data: profile, error } = await supabase.from('portal_profiles').insert([{
       auth_user_id: session.user.id,
       email: session.user.email,
       company_name: form.company_name,
@@ -56,8 +56,33 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
       gst: form.gst,
       city: form.city,
       enquiring_for: form.enquiring_for,
-    }]);
+    }]).select().single();
     if (error) { alert('Error: ' + error.message); setSaving(false); return; }
+
+    const leadNo = `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
+    await supabase.from('cnc_enquiries').insert([{
+      id: crypto.randomUUID(),
+      enquiry_no: leadNo,
+      lead_no: leadNo,
+      customer: form.company_name,
+      contact_person: form.contacts.map((c: any) => c.name).join(' | '),
+      phone: form.contacts.map((c: any) => c.phone).join(' | '),
+      email: session.user.email,
+      city: form.city,
+      gst: form.gst,
+      enquiring_for: form.enquiring_for,
+      part_name: form.enquiring_for || 'Company Profile',
+      part_no: 'N/A',
+      quantity: 0,
+      estimated_value: 0,
+      expected_date: new Date().toISOString().split('T')[0],
+      received_date: new Date().toISOString().split('T')[0],
+      source: 'Customer Portal',
+      status: 'New',
+      pipeline_stage: null,
+      portal_profile_id: profile.id
+    }]);
+
     onComplete();
   };
 

@@ -165,7 +165,7 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
-    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email');
+    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
     
     const leadMap = new Map();
@@ -195,7 +195,7 @@ export function SalesPipelinePage() {
     const newCards: KanbanCard[] = [];
 
     // Filter leads for the Enquiry column
-    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status)) || [];
+    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && l.pipeline_stage !== null) || [];
 
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
