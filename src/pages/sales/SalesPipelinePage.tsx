@@ -566,15 +566,16 @@ export function SalesPipelinePage() {
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-    company: '', contactPerson: '', phone: '', email: '', city: '', gst: '', enquiringFor: '', source: 'Direct'
+    company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }]
   });
 
   const saveNewLead = async () => {
     if (!newLeadForm.company) return;
     setLoading(true);
+    const cStr = getContactStrings(newLeadForm);
     const { error } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
-      contact_person: newLeadForm.contactPerson, phone: newLeadForm.phone, email: newLeadForm.email,
+      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
       city: newLeadForm.city, gst: newLeadForm.gst, enquiring_for: newLeadForm.enquiringFor,
       part_name: 'TBD', part_no: 'N/A', quantity: 0, estimated_value: 0, expected_date: new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
       source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
@@ -583,7 +584,7 @@ export function SalesPipelinePage() {
       setShowNewLead(false);
       setNewLeadForm({
         leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', contactPerson: '', phone: '', email: '', city: '', gst: '', enquiringFor: '', source: 'Direct'
+        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }]
       });
       fetchPipeline();
     } else {
@@ -658,9 +659,19 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={newLeadForm.leadNo} disabled /></FormField>
           <FormField label="Company Name" required><input className={inputClass} value={newLeadForm.company} onChange={e => setNewLeadForm({...newLeadForm, company: e.target.value})} placeholder="e.g. Acme Corp" /></FormField>
-          <FormField label="Contact Person"><input className={inputClass} value={newLeadForm.contactPerson} onChange={e => setNewLeadForm({...newLeadForm, contactPerson: e.target.value})} /></FormField>
-          <FormField label="Phone"><input className={inputClass} value={newLeadForm.phone} onChange={e => setNewLeadForm({...newLeadForm, phone: e.target.value})} /></FormField>
-          <FormField label="Email"><input type="email" className={inputClass} value={newLeadForm.email} onChange={e => setNewLeadForm({...newLeadForm, email: e.target.value})} /></FormField>
+          <div className="col-span-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
+              <button onClick={() => setNewLeadForm({...newLeadForm, contacts: [...newLeadForm.contacts, { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+            </div>
+            {newLeadForm.contacts.map((c: any, i: number) => (
+              <div key={i} className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input placeholder="Name" className={inputClass} value={c.person} onChange={e => { const nc = [...newLeadForm.contacts]; nc[i].person = e.target.value; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+                <input placeholder="Phone" className={inputClass} value={c.phone} onChange={e => { const nc = [...newLeadForm.contacts]; nc[i].phone = e.target.value; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+                <input placeholder="Email" className={inputClass} value={c.email} onChange={e => { const nc = [...newLeadForm.contacts]; nc[i].email = e.target.value; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+              </div>
+            ))}
+          </div>
           <FormField label="City"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
           <FormField label="Enquiring For"><input className={inputClass} value={newLeadForm.enquiringFor} onChange={e => setNewLeadForm({...newLeadForm, enquiringFor: e.target.value})} /></FormField>

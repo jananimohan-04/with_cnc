@@ -89,9 +89,9 @@ export function LeadsPage() {
     const entryData = {
       lead_no: formData.leadNo,
       customer: formData.customer,
-      contact_person: formData.contactPerson,
-      phone: formData.phone,
-      email: formData.email,
+      contact_person: formData.contacts.map((c: any) => c.person).join(' | '),
+      phone: formData.contacts.map((c: any) => c.phone).join(' | '),
+      email: formData.contacts.map((c: any) => c.email).join(' | '),
       city: formData.city,
         gst: formData.gst,
         enquiring_for: formData.enquiringFor,
