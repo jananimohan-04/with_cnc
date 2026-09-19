@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useDateRange } from '@/contexts/DateRangeContext';
 import { Calendar, Download, Filter, Bell } from 'lucide-react';
 
 export function PageHeader({
@@ -22,17 +24,56 @@ export function PageHeader({
 }
 
 export function DateSelector() {
-  const today = new Date();
-  const nextWeek = new Date(today);
-  nextWeek.setDate(today.getDate() + 6);
+  const { dateRange, setDateRange } = useDateRange();
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
-  const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const dateStr = `${formatDate(today)} – ${formatDate(nextWeek)}, ${today.getFullYear()}`;
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dropdownRef]);
+
+  const formatDate = (dateString: string) => {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return 'Invalid Date';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const startYear = new Date(dateRange.start).getFullYear();
+  const endYear = new Date(dateRange.end).getFullYear();
+  
+  let dateStr = `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
+  if (!isNaN(endYear)) dateStr += `, ${endYear}`;
 
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
-      <Calendar size={15} className="text-slate-400" />
-      <span className="text-slate-600">{dateStr}</span>
+    <div className="relative inline-block" ref={dropdownRef}>
+      <div onClick={() => setIsOpen(!isOpen)} className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
+        <Calendar size={15} className="text-slate-400" />
+        <span className="text-slate-600 font-medium">{dateStr}</span>
+      </div>
+      
+      {isOpen && (
+        <div className="absolute right-0 mt-2 p-4 bg-white border border-slate-200 shadow-xl rounded-xl z-[100] flex flex-col gap-3 w-72">
+          <h4 className="text-xs font-bold text-slate-500 uppercase">Select Date Range</h4>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-slate-600 font-medium">Start Date</label>
+            <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-slate-600 font-medium">End Date</label>
+            <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500" />
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+             <button onClick={() => setIsOpen(false)} className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200">Cancel</button>
+             <button onClick={() => setIsOpen(false)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-bold hover:bg-brand-700">Apply</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
