@@ -562,7 +562,6 @@ export function SalesPipelinePage() {
                   
                   <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
                     <span className="text-[10px] text-slate-400">{card.date || 'No Date'}</span>
-                    <Badge variant={stage === 'Sales Order' ? 'success' : stage === 'Inward' ? 'warning' : 'neutral'} dot>{card.status}</Badge>
                   </div>
                 </div>
               ))}
