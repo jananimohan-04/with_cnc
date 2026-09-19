@@ -979,7 +979,7 @@ export function LowStockPage() {
   const [prTarget, setPrTarget] = useState<any>(null);
 
   const [prForm, setPrForm] = useState({
-    prNo: `PR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    prNo: 'PR-2026-' + Math.floor(1000 + Math.random() * 9000),
     qty: 0,
     requiredDate: '',
     remarks: ''
@@ -998,7 +998,7 @@ export function LowStockPage() {
       
       const allItems = [
         ...(rmData || []).map((rm:any) => ({ code: rm.material_code, name: rm.name, stockQty: Number(rm.stock_qty || 0), minStock: Number(rm.min_stock || 0), uom: rm.uom, type: 'Raw Material' })),
-        ...(partData || []).map((p:any) => ({ code: p.part_no, name: p.part_name, stockQty: Number(p.stock_qty || 0), minStock: Number(p.min_stock || 5), uom: p.unit, type: 'Component' })) // default min stock 5 for parts if not set
+        ...(partData || []).map((p:any) => ({ code: p.part_no, name: p.part_name, stockQty: Number(p.stock_qty || 0), minStock: Number(p.min_stock || 5), uom: p.unit, type: 'Component' }))
       ];
 
       // Filter low stock
@@ -1034,7 +1034,7 @@ export function LowStockPage() {
   const openPR = (item: any) => {
     setPrTarget(item);
     setPrForm({
-      prNo: `PR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      prNo: 'PR-2026-' + Math.floor(1000 + Math.random() * 9000),
       qty: item.suggestedOrderQty || 0,
       requiredDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       remarks: 'Generated from Low Stock Alert'
@@ -1043,7 +1043,7 @@ export function LowStockPage() {
   };
 
   const handleSavePR = async () => {
-    if (!prTarget || !prForm.qty || !prForm.requiredDate) return alert("Please fill required fields.");
+    if (!prTarget || !prForm.qty || !prForm.requiredDate) return alert('Please fill required fields.');
     
     // Save to cnc_purchase_requisitions
     const { data, error } = await supabase.from('cnc_purchase_requisitions').insert([{
@@ -1055,7 +1055,7 @@ export function LowStockPage() {
       remarks: prForm.remarks
     }]).select();
 
-    if (error) return alert("Error saving PR: " + error.message + "\nDid you run the PR SQL script?");
+    if (error) return alert('Error saving PR: ' + error.message + '\nDid you run the PR SQL script?');
 
     if (data && data.length > 0) {
       const prId = data[0].id;
@@ -1070,7 +1070,7 @@ export function LowStockPage() {
     }
     
     setShowPRModal(false);
-    alert(`Purchase Requisition ${prForm.prNo} generated successfully!`);
+    alert('Purchase Requisition ' + prForm.prNo + ' generated successfully!');
   };
 
   return (
@@ -1127,19 +1127,6 @@ export function LowStockPage() {
           </div>
         )}
       </Modal>
-    </div>
-  );
-}
-
-        columns={[
-          { key: 'materialCode', label: 'Code', render: (r) => <span className="font-mono text-xs">{r.materialCode}</span> },
-          { key: 'name', label: 'Material', render: (r) => <span className="font-medium">{r.name}</span> },
-          { key: 'stockQty', label: 'Current Stock', align: 'right', render: (r) => <span className="font-bold text-red-600">{r.stockQty}</span> },
-          { key: 'minStock', label: 'Min Stock', align: 'right', render: (r) => <span className="text-slate-500">{r.minStock}</span> },
-          { key: 'status', label: 'Status', render: (r) => <Badge variant={r.status === 'Out of Stock' ? 'error' : 'warning'}>{r.status}</Badge> }
-        ]}
-        searchKeys={['name']}
-      />
     </div>
   );
 }
