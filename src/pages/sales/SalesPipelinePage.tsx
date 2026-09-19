@@ -25,6 +25,49 @@ const formatINR = (value: number) => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
 };
 
+const renderRecordData = (title: string, raw: any) => {
+  if (!raw) return null;
+  return (
+    <div className="mb-6">
+      <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase">{title} Details</h4>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+        {Object.entries(raw).map(([key, value]) => {
+          if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts') return null;
+          const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          return (
+            <div key={key}>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
+              <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
+            </div>
+          );
+        })}
+      </div>
+      {raw.items && Array.isArray(raw.items) && (
+        <div className="bg-white rounded-lg border border-slate-200 mt-4">
+          <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Items Breakdown</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
+                <tr><th className="px-4 py-2">Part Name / No</th><th className="px-4 py-2">Qty</th><th className="px-4 py-2">Unit Price</th><th className="px-4 py-2">Total</th></tr>
+              </thead>
+              <tbody>
+                {raw.items.map((item: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3 font-medium text-slate-800">{item.partName} <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span></td>
+                    <td className="px-4 py-3">{item.quantity}</td>
+                    <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
+                    <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export function SalesPipelinePage() {
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
@@ -35,6 +78,7 @@ export function SalesPipelinePage() {
   const [orderModalTarget, setOrderModalTarget] = useState<KanbanCard | null>(null);
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
+  const [viewModalData, setViewModalData] = useState<any>(null);
 
   const resetEnquiryForm = () => ({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -125,6 +169,62 @@ export function SalesPipelinePage() {
       phone: contacts.map((c: any) => c.phone).join(' | '),
       email: contacts.map((c: any) => c.email).join(' | '),
     };
+  };
+
+  const openViewModal = async (card: KanbanCard) => {
+    setViewModalTarget(card);
+    setLoading(true);
+    let aggregated: any = { enquiry: null, quotation: null, order: null, inward: null };
+    try {
+      if (card.type === 'inward') {
+        aggregated.inward = card.raw;
+        if (card.raw.sales_order_ref) {
+           const { data: ord } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', card.raw.sales_order_ref).single();
+           if (ord) {
+             aggregated.order = ord;
+             if (ord.quotation_id) {
+               const { data: qt } = await supabase.from('cnc_quotations').select('*').eq('id', ord.quotation_id).single();
+               if (qt) {
+                 aggregated.quotation = qt;
+                 if (qt.lead_id) {
+                   const { data: enq } = await supabase.from('cnc_enquiries').select('*').eq('id', qt.lead_id).single();
+                   if (enq) aggregated.enquiry = enq;
+                 }
+               }
+             }
+           }
+        }
+      } else if (card.type === 'order') {
+        aggregated.order = card.raw;
+        if (card.raw.quotation_id) {
+           const { data: qt } = await supabase.from('cnc_quotations').select('*').eq('id', card.raw.quotation_id).single();
+           if (qt) {
+             aggregated.quotation = qt;
+             if (qt.lead_id) {
+               const { data: enq } = await supabase.from('cnc_enquiries').select('*').eq('id', qt.lead_id).single();
+               if (enq) aggregated.enquiry = enq;
+             }
+           }
+        }
+      } else if (card.type === 'quotation') {
+        aggregated.quotation = card.raw;
+        if (card.raw.lead_id) {
+           const { data: enq } = await supabase.from('cnc_enquiries').select('*').eq('id', card.raw.lead_id).single();
+           if (enq) aggregated.enquiry = enq;
+        }
+      } else if (card.type === 'lead') {
+        aggregated.enquiry = card.raw;
+      }
+    } catch (e) {
+       console.error("Error fetching lineage", e);
+    }
+    setViewModalData(aggregated);
+    setLoading(false);
+  };
+
+  const closeViewModal = () => {
+    setViewModalTarget(null);
+    setViewModalData(null);
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
@@ -399,7 +499,7 @@ export function SalesPipelinePage() {
               {cards.filter(c => c.stage === stage).map(card => (
                 <div key={card.id} draggable onDragStart={(e) => handleDragStart(e, card)} className="bg-white p-3.5 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing hover:border-brand-300 transition-all group relative">
                   <div className="absolute top-2 right-2 flex gap-1">
-                    <button onClick={() => setViewModalTarget(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
+                    <button onClick={() => openViewModal(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
                     {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="text-slate-300 hover:text-red-500 transition-colors bg-white/80 p-0.5 rounded" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
                   </div>
                   <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
@@ -629,48 +729,16 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Generic View Modal */}
-      <Modal open={!!viewModalTarget} onClose={() => setViewModalTarget(null)} title={`${viewModalTarget?.stage} Details: ${viewModalTarget?.refNo}`} size="lg" footer={<Button variant="secondary" onClick={() => setViewModalTarget(null)}>Close</Button>}>
-        {viewModalTarget && (
-          <div className="flex flex-col gap-6 max-h-[70vh] overflow-y-auto pr-2">
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
-              <div className="col-span-full"><h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-2 uppercase">Record Data</h4></div>
-              {Object.entries(viewModalTarget.raw).map(([key, value]) => {
-                if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts') return null;
-                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                
-                return (
-                  <div key={key}>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
-                    <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {viewModalTarget.raw.items && Array.isArray(viewModalTarget.raw.items) && (
-              <div className="bg-white rounded-lg border border-slate-200">
-                <h4 className="font-bold text-sm text-brand-800 border-b border-slate-200 p-3 bg-slate-50 rounded-t-lg uppercase">Order Items</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
-                      <tr><th className="px-4 py-2">Part Name / No</th><th className="px-4 py-2">Qty</th><th className="px-4 py-2">Unit Price</th><th className="px-4 py-2">Total</th></tr>
-                    </thead>
-                    <tbody>
-                      {viewModalTarget.raw.items.map((item: any, i: number) => (
-                        <tr key={i} className="border-b border-slate-100 last:border-0">
-                          <td className="px-4 py-3 font-medium text-slate-800">{item.partName} <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span></td>
-                          <td className="px-4 py-3">{item.quantity}</td>
-                          <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
-                          <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+      <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalTarget?.refNo}`} size="xl" footer={<Button variant="secondary" onClick={closeViewModal}>Close</Button>}>
+        {viewModalData ? (
+          <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
+             {renderRecordData('Enquiry', viewModalData.enquiry)}
+             {renderRecordData('Quotation', viewModalData.quotation)}
+             {renderRecordData('Sales Order', viewModalData.order)}
+             {renderRecordData('Inward', viewModalData.inward)}
           </div>
+        ) : (
+          <div className="p-8 text-center text-slate-500">Loading historical data...</div>
         )}
       </Modal>
 
