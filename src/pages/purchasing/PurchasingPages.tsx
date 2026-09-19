@@ -275,8 +275,8 @@ export function PurchaseRequisitionsPage() {
     const { data: ptData } = await supabase.from('cnc_parts').select('*');
     if (rmData && ptData) {
       setMaterials([
-        ...rmData.map(r => ({ code: r.material_code, name: r.name, stock: r.stock_qty || 0, min: r.min_stock || 0, uom: r.uom, supplier_id: r.preferred_supplier_id })),
-        ...ptData.map(p => ({ code: p.part_no, name: p.part_name, stock: p.stock_qty || 0, min: p.min_stock || 0, uom: p.unit, supplier_id: p.preferred_supplier_id }))
+        ...rmData.map(r => ({ code: r.material_code, name: r.name, stock: r.stock_qty || 0, min: r.min_stock || 0, uom: r.uom, supplier_id: r.preferred_supplier_id, raw_material_id: r.id })),
+        ...ptData.map(p => ({ code: p.part_no, name: p.part_name, stock: p.stock_qty || 0, min: p.min_stock || 0, uom: p.unit, supplier_id: p.preferred_supplier_id, part_id: p.id }))
       ]);
     }
     const { data: supData } = await supabase.from('cnc_suppliers').select('*').eq('status', 'Active');
@@ -303,6 +303,8 @@ export function PurchaseRequisitionsPage() {
          newItems[index].material_name = mat.name;
          newItems[index].uom = mat.uom;
          newItems[index].preferred_supplier_id = mat.supplier_id || '';
+         newItems[index].raw_material_id = mat.raw_material_id || null;
+         newItems[index].part_id = mat.part_id || null;
       }
     }
     
@@ -422,7 +424,9 @@ export function PurchaseRequisitionsPage() {
     if (pr.items && pr.items.length > 0) {
        const poItems = pr.items.map((i: any) => ({
           purchase_order_id: poId,
-          material_code: i.material_code,
+      raw_material_id: i.raw_material_id || null,
+      part_id: i.part_id || null,
+      material_code: i.material_code,
           material_name: i.material_name,
           quantity: i.qty,
           unit: i.uom,
@@ -690,8 +694,8 @@ export function PurchaseOrdersPage() {
     const { data: ptData } = await supabase.from('cnc_parts').select('*');
     if (rmData && ptData) {
       setMaterials([
-        ...rmData.map(r => ({ code: r.material_code, name: r.name, uom: r.uom })),
-        ...ptData.map(p => ({ code: p.part_no, name: p.part_name, uom: p.unit }))
+        ...rmData.map(r => ({ code: r.material_code, name: r.name, uom: r.uom, raw_material_id: r.id })),
+        ...ptData.map(p => ({ code: p.part_no, name: p.part_name, uom: p.unit, part_id: p.id }))
       ]);
     }
     setLoading(false);
@@ -722,6 +726,8 @@ export function PurchaseOrdersPage() {
       if (mat) {
          newItems[index].material_name = mat.name;
          newItems[index].unit = mat.uom;
+         newItems[index].raw_material_id = mat.raw_material_id || null;
+         newItems[index].part_id = mat.part_id || null;
       }
     }
 
@@ -791,6 +797,8 @@ export function PurchaseOrdersPage() {
     // Insert items
     const itemsToInsert = form.items.map(i => ({
       purchase_order_id: poId,
+      raw_material_id: i.raw_material_id || null,
+      part_id: i.part_id || null,
       material_code: i.material_code,
       material_name: i.material_name,
       quantity: Number(i.quantity),
