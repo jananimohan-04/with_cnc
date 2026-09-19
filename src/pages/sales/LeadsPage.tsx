@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, ArrowRightCircle, XCircle, FileText } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, ArrowRightCircle, XCircle, FileText, RefreshCcw } from 'lucide-react';
 import { PageHeader, DateSelector, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
@@ -10,7 +10,22 @@ export function LeadsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
-  const [convertTarget, setConvertTarget] = useState<any | null>(null);
+  const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
+
+  useEffect(() => {
+    if (viewTarget) {
+      const fetchHistory = async () => {
+        const [e, q, o] = await Promise.all([
+           supabase.from('cnc_enquiries').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
+           supabase.from('cnc_quotations').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
+           supabase.from('cnc_sales_orders').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company)
+        ]);
+        setViewData({ enquiries: e.count || 0, quotes: q.count || 0, orders: o.count || 0 });
+      };
+      fetchHistory();
+    }
+  }, [viewTarget]);
+  const [quotationTarget, setQuotationTarget] = useState<any | null>(null);
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
@@ -119,39 +134,40 @@ export function LeadsPage() {
     setEditId(null);
   };
 
-  const handleConvert = async () => {
-    if (!convertTarget) return;
+  const handleCreateQuotation = async () => {
+    if (!quotationTarget) return;
     setLoading(true);
-    // Create customer
-    const { data: custData, error: custErr } = await supabase.from('cnc_customers').insert([{
-      name: convertTarget.company,
-      contact: convertTarget.contactPerson,
-      phone: convertTarget.phone,
-      email: convertTarget.email,
-      city: convertTarget.city,
-      industry: convertTarget.industry,
-      lead_id: convertTarget.id,
-      status: 'Active',
-      total_orders: 0,
-      total_value: 0,
-      outstanding: 0,
-      rating: 5
-    }]).select();
+    
+    // Create draft quotation
+    const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const { error: quoteErr } = await supabase.from('cnc_quotations').insert([{
+      id: crypto.randomUUID(), quote_no: qNo, customer: quotationTarget.company, part_name: quotationTarget.partName,
+      contact_person: quotationTarget.contactPerson, phone: quotationTarget.phone, email: quotationTarget.email,
+      part_number: quotationTarget.partNo || 'N/A', description: '', unit_price: 0,
+      quantity: quotationTarget.quantity, total_value: 0, valid_till: '', status: 'Draft',
+      salesperson: 'Admin', lead_id: quotationTarget.id
+    }]);
 
-    if (!custErr && custData) {
+    if (!quoteErr) {
       // Update lead
       await supabase.from('cnc_enquiries').update({
-        status: 'Converted',
-        converted_customer_id: custData[0].id,
-        converted_at: new Date().toISOString(),
-        pipeline_stage: 'Qualified' // enters pipeline
-      }).eq('id', convertTarget.id);
+        status: 'Quoted',
+        pipeline_stage: 'Quotation'
+      }).eq('id', quotationTarget.id);
+      setQuotationTarget(null);
+      await fetchLeads();
+    } else {
+      alert("Error: " + quoteErr.message);
+      setLoading(false);
     }
-    await fetchLeads();
-    setConvertTarget(null);
-    setLoading(false);
   };
 
+
+  const handleRevertLost = async (id: string) => {
+    setLoading(true);
+    await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', id);
+    await fetchLeads();
+  };
   const handleMarkLost = async (id: string) => {
     setLoading(true);
     await supabase.from('cnc_enquiries').update({ status: 'Lost', pipeline_stage: null }).eq('id', id);
@@ -170,9 +186,12 @@ export function LeadsPage() {
         <div className="flex items-center justify-end gap-1">
           {r.status !== 'Converted' && r.status !== 'Lost' && (
             <>
-              <button onClick={() => setConvertTarget(r)} title="Convert to Customer" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
+              <button onClick={() => setQuotationTarget(r)} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
               <button onClick={() => handleMarkLost(r.id)} title="Mark as Lost" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><XCircle size={15} /></button>
             </>
+          )}
+          {r.status === 'Lost' && (
+            <button onClick={() => handleRevertLost(r.id)} title="Revert to New" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><RefreshCcw size={15} /></button>
           )}
           <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => handleEditClick(r)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
@@ -225,13 +244,67 @@ export function LeadsPage() {
       </Modal>
 
       <ConfirmDialog 
-        open={!!convertTarget} 
-        onClose={() => setConvertTarget(null)} 
-        onConfirm={handleConvert} 
-        title="Convert to Customer?" 
-        message={`This will create a customer record for ${convertTarget?.company} and move this opportunity to the Sales Pipeline.`} 
-        confirmLabel="Convert to Customer" 
+        open={!!quotationTarget} 
+        onClose={() => setQuotationTarget(null)} 
+        onConfirm={handleCreateQuotation} 
+        title="Create Quotation?" 
+        message={`This will create a draft quotation for ${quotationTarget?.company} and move this opportunity to the Quotation stage in the Sales Pipeline.`} 
       />
+      
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Lead / Company History" size="md" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
+        {viewTarget && (
+          <div className="flex flex-col gap-6">
+            <div>
+              <h4 className="font-bold text-slate-800 text-lg mb-1">{viewTarget.company}</h4>
+              <div className="flex gap-4 text-sm text-slate-600">
+                <span className="flex items-center gap-1"><FileText size={14} /> {viewTarget.leadNo}</span>
+                <span>{viewTarget.city}</span>
+                <span>GST: {viewTarget.gst || 'N/A'}</span>
+              </div>
+            </div>
+            
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">Current Requirement</h5>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-slate-500">Part Name</p>
+                  <p className="font-medium text-slate-800">{viewTarget.partName}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Quantity</p>
+                  <p className="font-medium text-slate-800">{viewTarget.quantity}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Expected Date</p>
+                  <p className="font-medium text-slate-800">{viewTarget.expectedDate || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Status</p>
+                  <Badge variant={statusToVariant(viewTarget.status)}>{viewTarget.status}</Badge>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">Company History</h5>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-blue-700">{viewData.enquiries}</span>
+                  <span className="text-xs text-blue-600 font-medium">Total Enquiries</span>
+                </div>
+                <div className="bg-purple-50 border border-purple-100 p-3 rounded-lg flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-purple-700">{viewData.quotes}</span>
+                  <span className="text-xs text-purple-600 font-medium">Quotations</span>
+                </div>
+                <div className="bg-green-50 border border-green-100 p-3 rounded-lg flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-green-700">{viewData.orders}</span>
+                  <span className="text-xs text-green-600 font-medium">Sales Orders</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
