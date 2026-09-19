@@ -318,24 +318,65 @@ export function ComponentsPage() {
 }
 
 export function StockOverviewPage() {
+  const [rmValue, setRmValue] = useState(0);
+  const [fgValue, setFgValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
+
+  useEffect(() => {
+    async function fetchValuations() {
+      try {
+        const [rmRes, fgRes] = await Promise.all([
+          supabase.from('cnc_raw_materials').select('stock_qty, unit_price'),
+          supabase.from('cnc_parts').select('stock_qty, unit_price')
+        ]);
+
+        if (rmRes.error || fgRes.error) {
+          setDbError(true);
+        } else {
+          setDbError(false);
+          const rmTotal = (rmRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price || 150)), 0);
+          const fgTotal = (fgRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price || 1500)), 0);
+          setRmValue(rmTotal);
+          setFgValue(fgTotal);
+        }
+      } catch (err) {
+        setDbError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchValuations();
+  }, []);
+
+  const formatCurrency = (val: number) => {
+    if (val >= 1000000) return `₹${(val / 1000000).toFixed(1)}M`;
+    if (val >= 1000) return `₹${(val / 1000).toFixed(1)}K`;
+    return `₹${val.toFixed(0)}`;
+  };
+
+  const totalValue = rmValue + fgValue;
+  const rmPercentage = totalValue > 0 ? Math.round((rmValue / totalValue) * 100) : 0;
+  const fgPercentage = totalValue > 0 ? Math.round((fgValue / totalValue) * 100) : 0;
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Stock Overview" description="Complete inventory valuation and levels" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="Stock Overview" description="Complete inventory valuation and levels" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
         <Card className="p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Total Inventory Value</h3>
-          <p className="text-3xl font-bold text-brand-600">₹42.5M</p>
-          <p className="text-sm text-slate-500 mt-2">Up 4.2% from last month</p>
+          <p className="text-3xl font-bold text-brand-600">{formatCurrency(totalValue)}</p>
+          <p className="text-sm text-slate-500 mt-2">Calculated from real-time stock</p>
         </Card>
         <Card className="p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Raw Material Value</h3>
-          <p className="text-3xl font-bold text-accent-600">₹18.2M</p>
-          <p className="text-sm text-slate-500 mt-2">45% of total inventory</p>
+          <p className="text-3xl font-bold text-accent-600">{formatCurrency(rmValue)}</p>
+          <p className="text-sm text-slate-500 mt-2">{rmPercentage}% of total inventory</p>
         </Card>
         <Card className="p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Finished Goods Value</h3>
-          <p className="text-3xl font-bold text-success-600">₹24.3M</p>
-          <p className="text-sm text-slate-500 mt-2">55% of total inventory</p>
+          <p className="text-3xl font-bold text-success-600">{formatCurrency(fgValue)}</p>
+          <p className="text-sm text-slate-500 mt-2">{fgPercentage}% of total inventory</p>
         </Card>
       </div>
     </div>
