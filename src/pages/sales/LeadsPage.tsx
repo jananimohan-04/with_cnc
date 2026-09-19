@@ -281,37 +281,15 @@ export function LeadsPage() {
         message={`This will create a draft quotation for ${quotationTarget?.company} and move this opportunity to the Quotation stage in the Sales Pipeline.`} 
       />
       
-      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Lead / Company History" size="md" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Lead / Company History" size="lg" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
         {viewTarget && (
           <div className="flex flex-col gap-6">
             <div>
-              <h4 className="font-bold text-slate-800 text-lg mb-1">{viewTarget.company}</h4>
+              <h4 className="font-bold text-slate-800 text-xl mb-1">{viewTarget.company}</h4>
               <div className="flex gap-4 text-sm text-slate-600">
                 <span className="flex items-center gap-1"><FileText size={14} /> {viewTarget.leadNo}</span>
                 <span>{viewTarget.city}</span>
                 <span>GST: {viewTarget.gst || 'N/A'}</span>
-              </div>
-            </div>
-            
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-              <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">Current Requirement</h5>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-500">Part Name</p>
-                  <p className="font-medium text-slate-800">{viewTarget.partName}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Quantity</p>
-                  <p className="font-medium text-slate-800">{viewTarget.quantity}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Expected Date</p>
-                  <p className="font-medium text-slate-800">{viewTarget.expectedDate || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Status</p>
-                  <Badge variant={statusToVariant(viewTarget.status)}>{viewTarget.status}</Badge>
-                </div>
               </div>
             </div>
 
@@ -333,19 +311,50 @@ export function LeadsPage() {
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-2">
                <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">All Enquiries</h5>
-               <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+               <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 pb-2">
                  {viewHistory.map(h => (
-                    <div key={h.id} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg">
-                       <div>
-                          <p className="font-semibold text-sm text-slate-800">{h.leadNo} - {h.partName}</p>
-                          <p className="text-xs text-slate-500 mt-1">Qty: {h.quantity} | Source: {h.source}</p>
-                       </div>
-                       <div className="flex items-center gap-3">
+                    <div key={h.id} className="flex flex-col p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors">
+                      <div className="flex justify-between items-start mb-3 border-b border-slate-100 pb-3">
+                        <div>
+                          <h6 className="font-bold text-slate-800 text-base">{h.leadNo} - {h.partName}</h6>
+                          <span className="text-xs text-slate-500 font-medium">Source: {h.source} | Expected: {h.expectedDate || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
                           <Badge variant={statusToVariant(h.status)}>{h.status}</Badge>
-                          <button onClick={() => { setViewTarget(null); handleEditClick(h); }} title="Edit Enquiry" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={16}/></button>
-                       </div>
+                          <button onClick={() => { setViewTarget(null); handleEditClick(h); }} title="Edit Enquiry" className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded transition-colors"><Edit size={16}/></button>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-1">
+                        <div>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Part Number</p>
+                          <p className="font-medium text-slate-700 truncate">{h.partNo || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Quantity</p>
+                          <p className="font-medium text-slate-700">{h.quantity}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Contact Person</p>
+                          <p className="font-medium text-slate-700 truncate">{h.contactPerson ? h.contactPerson.split(' | ')[0] : 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Phone</p>
+                          <p className="font-medium text-slate-700 truncate">{h.phone ? h.phone.split(' | ')[0] : 'N/A'}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Enquiring For</p>
+                          <p className="font-medium text-slate-700 line-clamp-2">{h.enquiringFor || 'N/A'}</p>
+                        </div>
+                        {h.estimatedValue > 0 && (
+                          <div className="col-span-2">
+                            <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Est. Value</p>
+                            <p className="font-medium text-slate-700">₹{h.estimatedValue.toLocaleString()}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                  ))}
                </div>
