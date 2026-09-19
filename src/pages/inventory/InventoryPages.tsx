@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package, MapPin, Building, Layout, Move } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
@@ -455,12 +455,211 @@ export function StockMovementsPage() {
 }
 
 export function WarehousesPage() {
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [viewTarget, setViewTarget] = useState<any>(null);
+  
+  // States for Details View
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [zones, setZones] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+
+  // Forms
+  const [whForm, setWhForm] = useState({ code: '', name: '', type: 'General', description: '', status: 'Active' });
+
+  useEffect(() => {
+    fetchWarehouses();
+  }, []);
+
+  async function fetchWarehouses() {
+    setLoading(true);
+    try {
+      const { data } = await supabase.from('cnc_warehouses').select('*').order('created_at', { ascending: true });
+      if (data) setWarehouses(data);
+    } catch (e) {
+      console.error("Error fetching warehouses", e);
+    }
+    setLoading(false);
+  }
+
+  const handleSaveWH = async () => {
+    if (!whForm.code || !whForm.name) return alert("Code and Name are required");
+    const { error } = await supabase.from('cnc_warehouses').insert([whForm]);
+    if (error) return alert("Error saving warehouse: " + error.message + "\nMake sure you ran the SQL migration script!");
+    setShowAdd(false);
+    fetchWarehouses();
+  };
+
+  const loadWarehouseDetails = async (wh: any) => {
+    setViewTarget(wh);
+    setActiveTab('Overview');
+    
+    // Fetch Zones
+    const { data: zData } = await supabase.from('cnc_warehouse_zones').select('*').eq('warehouse_id', wh.id);
+    setZones(zData || []);
+    
+    // Fetch Locations if zones exist
+    if (zData && zData.length > 0) {
+       const zoneIds = zData.map((z:any) => z.id);
+       const { data: lData } = await supabase.from('cnc_warehouse_locations').select('*').in('zone_id', zoneIds);
+       setLocations(lData || []);
+       
+       if (lData && lData.length > 0) {
+          const locIds = lData.map((l:any) => l.id);
+          
+          // Fetch RM Inventory
+          const { data: rmData } = await supabase.from('cnc_raw_materials').select('*, loc:location_id(*)').in('location_id', locIds);
+          
+          // Fetch Parts Inventory 
+          const { data: pData } = await supabase.from('cnc_parts').select('*, loc:location_id(*)').in('location_id', locIds);
+          
+          const combined = [
+             ...(rmData || []).map((rm:any) => ({ ...rm, item_type: 'Raw Material', code: rm.material_code, title: rm.name, qty: rm.stock_qty, unit: rm.uom })),
+             ...(pData || []).map((p:any) => ({ ...p, item_type: 'Component', code: p.part_no, title: p.part_name, qty: p.stock_qty, unit: p.unit }))
+          ];
+          setInventory(combined);
+       } else {
+          setInventory([]);
+       }
+    } else {
+       setLocations([]);
+       setInventory([]);
+    }
+  };
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Warehouses" description="Manage storage locations and zones" />
-      <div className="flex items-center justify-center h-64 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-        <p className="text-slate-500">Warehouse mapping coming soon.</p>
+      <PageHeader 
+        title="Warehouses" 
+        description="Manage storage locations, zones, and primary inventory placement"
+        actions={<Button onClick={() => setShowAdd(true)}><Plus size={16}/> Add Warehouse</Button>}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+         <StatCard title="Total Warehouses" value={warehouses.length.toString()} icon={<Building size={20} className="text-brand-500"/>} />
+         <StatCard title="Active Warehouses" value={warehouses.filter(w => w.status==='Active').length.toString()} icon={<Layout size={20} className="text-emerald-500"/>} />
       </div>
+
+      <Card>
+        <DataTable 
+          data={warehouses}
+          columns={[
+            { key: 'code', label: 'Warehouse Code', render: (r) => <span className="font-mono text-brand-600 font-medium">{r.code}</span> },
+            { key: 'name', label: 'Warehouse Name', render: (r) => <span className="font-semibold">{r.name}</span> },
+            { key: 'type', label: 'Type' },
+            { key: 'status', label: 'Status', render: (r) => <Badge variant={r.status === 'Active' ? 'success' : 'neutral'}>{r.status}</Badge> },
+            { key: 'actions', label: 'Actions', align: 'right', render: (r) => (
+                <Button variant="secondary" onClick={() => loadWarehouseDetails(r)}><Eye size={14}/> View</Button>
+            ) }
+          ]}
+        />
+      </Card>
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="ADD WAREHOUSE" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSaveWH}>Save Warehouse</Button></>}>
+         <div className="space-y-4">
+            <FormField label="Warehouse Code" required><input className={inputClass} value={whForm.code} onChange={e => setWhForm({...whForm, code: e.target.value})} placeholder="e.g. WH-001" /></FormField>
+            <FormField label="Warehouse Name" required><input className={inputClass} value={whForm.name} onChange={e => setWhForm({...whForm, name: e.target.value})} placeholder="e.g. Main Plant Warehouse" /></FormField>
+            <div className="space-y-1"><label className="text-xs font-medium text-slate-700">Type</label>
+               <select className={inputClass} value={whForm.type} onChange={e => setWhForm({...whForm, type: e.target.value})}>
+                  <option>General</option>
+                  <option>Raw Material</option>
+                  <option>Finished Goods</option>
+                  <option>Quarantine</option>
+               </select>
+            </div>
+            <FormField label="Description"><input className={inputClass} value={whForm.description} onChange={e => setWhForm({...whForm, description: e.target.value})} /></FormField>
+         </div>
+      </Modal>
+
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={viewTarget?.name} subtitle={viewTarget?.code} size="xl">
+         {viewTarget && (
+            <div>
+               <div className="flex gap-4 border-b border-slate-200 mb-4 pb-0">
+                  {['Overview', 'Zones & Locations', 'Inventory'].map(tab => (
+                     <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{tab}</button>
+                  ))}
+               </div>
+
+               {activeTab === 'Overview' && (
+                  <div className="space-y-6">
+                     <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                           <p className="text-xs text-slate-500 font-semibold mb-1">Total Zones</p>
+                           <p className="text-2xl font-bold text-slate-800">{zones.length}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                           <p className="text-xs text-slate-500 font-semibold mb-1">Total Locations</p>
+                           <p className="text-2xl font-bold text-slate-800">{locations.length}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                           <p className="text-xs text-slate-500 font-semibold mb-1">Stored Items</p>
+                           <p className="text-2xl font-bold text-brand-600">{inventory.length}</p>
+                        </div>
+                     </div>
+                     <div>
+                        <p className="text-sm text-slate-600"><strong>Type:</strong> {viewTarget.type}</p>
+                        <p className="text-sm text-slate-600"><strong>Status:</strong> {viewTarget.status}</p>
+                        <p className="text-sm text-slate-600"><strong>Description:</strong> {viewTarget.description || 'N/A'}</p>
+                     </div>
+                  </div>
+               )}
+
+               {activeTab === 'Zones & Locations' && (
+                  <div>
+                     <p className="text-sm text-slate-500 mb-4">View the hierarchical storage layout for this warehouse. Currently supporting primary locations.</p>
+                     <div className="space-y-4">
+                        {zones.length === 0 ? <p className="text-slate-400 text-sm">No zones configured yet.</p> : zones.map(z => {
+                           const zLocs = locations.filter(l => l.zone_id === z.id);
+                           return (
+                              <div key={z.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                                 <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b border-slate-200">
+                                    <div className="flex items-center gap-2">
+                                       <MapPin size={16} className="text-slate-400" />
+                                       <span className="font-bold text-slate-800">{z.name}</span>
+                                       <span className="text-xs font-mono text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">{z.code}</span>
+                                    </div>
+                                 </div>
+                                 <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {zLocs.length === 0 ? <p className="text-xs text-slate-400 col-span-4">No locations in this zone.</p> : zLocs.map(l => (
+                                       <div key={l.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm flex flex-col gap-1">
+                                          <span className="font-mono text-xs text-brand-600 font-semibold">{l.code}</span>
+                                          <span className="text-sm text-slate-700">{l.name}</span>
+                                          <Badge variant={l.status === 'Available' ? 'success' : 'neutral'}>{l.status}</Badge>
+                                       </div>
+                                    ))}
+                                 </div>
+                              </div>
+                           )
+                        })}
+                     </div>
+                  </div>
+               )}
+
+               {activeTab === 'Inventory' && (
+                  <div>
+                     <p className="text-sm text-slate-500 mb-4">Showing all materials that have their Primary Location assigned to this warehouse.</p>
+                     <DataTable 
+                        data={inventory}
+                        columns={[
+                           { key: 'item_type', label: 'Type', render: (r) => <Badge variant={r.item_type === 'Raw Material' ? 'neutral' : 'warning'}>{r.item_type}</Badge> },
+                           { key: 'code', label: 'Item Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
+                           { key: 'title', label: 'Item Name', render: (r) => <span className="font-medium text-slate-800">{r.title}</span> },
+                           { key: 'loc', label: 'Zone / Location', render: (r) => {
+                              const loc = locations.find(l => l.id === r.location_id);
+                              const zone = loc ? zones.find(z => z.id === loc.zone_id) : null;
+                              if (!loc || !zone) return <span className="text-slate-400">-</span>;
+                              return <span className="text-sm"><span className="text-slate-400">{zone.code} / </span><span className="font-semibold text-brand-700">{loc.code}</span></span>;
+                           }},
+                           { key: 'qty', label: 'Total Stock Qty', align: 'right', render: (r) => <span className="font-bold text-slate-800">{r.qty} {r.unit}</span> }
+                        ]}
+                     />
+                  </div>
+               )}
+            </div>
+         )}
+      </Modal>
     </div>
   );
 }
