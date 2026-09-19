@@ -34,7 +34,7 @@ export function SalesPipelinePage() {
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
-  const [orderModalTarget, setOrderModalTarget] = useState<KanbanCard | null>(null);
+  
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
@@ -143,15 +143,7 @@ export function SalesPipelinePage() {
     paymentTerms: '', deliveryTerms: '', remarks: ''
   });
 
-  const [orderForm, setOrderForm] = useState<any>({
-    customer: '', quoteNo: '', leadNo: '',
-    contacts: [{ person: '', phone: '', email: '' }],
-    billingAddress: '', deliveryAddress: '', shippingContact: '', shippingPhone: '',
-    orderNo: '', orderDate: '', deliveryDate: '', paymentTerms: 'Net 30',
-    customerPoNo: '', customerPoDate: '',
-    items: [{ partName: '', partNumber: '', description: '', quantity: 1, unitPrice: 0, discount: 0, gst: 18 }],
-    specialInstructions: '', internalRemarks: ''
-  });
+  
 
   const [inwardForm, setInwardForm] = useState<any>({
     inwardNo: '', category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
@@ -340,27 +332,52 @@ export function SalesPipelinePage() {
     } else if (card.type === 'quotation' && toStage === 'Sales Order') {
       const oNo = `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       
-      // Calculate derived unit price if not natively stored
-      let derivedUnitPrice = card.raw.unit_price;
-      if (!derivedUnitPrice && card.value && card.qty) {
+      const q = Number(card.qty) || 0;
+      let p = Number(card.raw.unit_price) || 0;
+      if (!p && card.value && card.qty) {
         const d = Number(card.raw.discount_percent) || 0;
         const g = Number(card.raw.gst_percent) || 0;
-        derivedUnitPrice = (card.value / (card.qty * (1 - d/100) * (1 + g/100))).toFixed(2);
+        p = Number((card.value / (card.qty * (1 - d/100) * (1 + g/100))).toFixed(2));
       }
+      
+      const item = {
+         id: crypto.randomUUID(),
+         partName: card.part,
+         partNumber: card.raw.part_number || '',
+         description: card.raw.description || '',
+         quantity: q.toString(),
+         unitPrice: p.toString(),
+         discount: (card.raw.discount_percent || 0).toString(),
+         gst: (card.raw.gst_percent || 18).toString()
+      };
+      const totalVal = card.value || 0;
 
-      setOrderForm({
-        customer: card.customer, quoteNo: card.refNo, leadNo: card.raw.lead_no || card.raw.lead_id || '',
-        contacts: parseContacts(card.raw),
-        billingAddress: '', deliveryAddress: '', shippingContact: '', shippingPhone: '',
-        orderNo: oNo, orderDate: new Date().toISOString().split('T')[0], deliveryDate: '', paymentTerms: card.raw.payment_terms || 'Net 30',
-        customerPoNo: '', customerPoDate: '',
-        items: [{
-          partName: card.part, partNumber: card.raw.part_number || card.raw.part_no || '', description: card.raw.description || '',
-          quantity: card.qty || 1, unitPrice: derivedUnitPrice || 0, discount: card.raw.discount_percent || 0, gst: card.raw.gst_percent || 18
-        }],
-        specialInstructions: '', internalRemarks: ''
-      });
-      setOrderModalTarget(card);
+      const { error } = await supabase.from('cnc_sales_orders').insert([{
+        id: crypto.randomUUID(),
+        order_no: oNo, customer: card.customer,
+        contact_person: card.raw.contact_person, phone: card.raw.phone, email: card.raw.email,
+        billing_address: '', delivery_address: '',
+        shipping_contact: '', shipping_phone: '',
+        lead_no: card.raw.lead_no || card.raw.lead_id || '', order_date: new Date().toISOString().split('T')[0],
+        customer_po_no: '', customer_po_date: null,
+        items: [item],
+        
+        part_name: item.partName, part_number: item.partNumber,
+        quantity: q, 
+        total_value: totalVal, 
+        
+        delivery_date: new Date().toISOString().split('T')[0], status: 'Confirmed',
+        payment_terms: card.raw.payment_terms || 'Net 30', special_instructions: '',
+        internal_remarks: '',
+        quotation_id: card.raw.id
+      }]);
+      
+      if (!error) {
+        await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', card.raw.id);
+        fetchPipeline();
+      } else {
+        alert("Error creating sales order: " + error.message);
+      }
     } else if (card.type === 'order' && toStage === 'Inward') {
       const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       setInwardForm({
@@ -407,61 +424,6 @@ export function SalesPipelinePage() {
     else {
       await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', quotationModalTarget.raw.id);
       setQuotationModalTarget(null); fetchPipeline();
-    }
-  };
-
-  const saveOrder = async () => {
-    if (!orderModalTarget) return;
-
-    // Validation
-    if (!orderForm.customer || !orderForm.deliveryAddress || !orderForm.orderNo || !orderForm.orderDate || !orderForm.deliveryDate || !orderForm.paymentTerms) {
-      alert("Please fill all required fields (marked with *).");
-      return;
-    }
-    if (orderForm.items.length === 0) {
-      alert("At least one order item is required."); return;
-    }
-    for (const item of orderForm.items) {
-      if (!item.partName || !item.quantity) { alert("Part Name and Quantity are required for all items."); return; }
-      if (Number(item.quantity) <= 0) { alert("Quantity must be greater than 0."); return; }
-      if (Number(item.unitPrice) < 0) { alert("Price cannot be negative."); return; }
-      if (Number(item.discount) < 0 || Number(item.discount) > 100) { alert("Discount must be between 0 and 100."); return; }
-      if (Number(item.gst) < 0 || Number(item.gst) > 100) { alert("GST must be between 0 and 100."); return; }
-    }
-    if (new Date(orderForm.deliveryDate) < new Date(orderForm.orderDate)) {
-      alert("Delivery Date cannot be earlier than Order Date."); return;
-    }
-
-    const cStr = getContactStrings(orderForm);
-    const totals = calculateOrderTotals();
-
-    const { error } = await supabase.from('cnc_sales_orders').insert([{
-      id: crypto.randomUUID(),
-      order_no: orderForm.orderNo, customer: orderForm.customer,
-      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      billing_address: orderForm.billingAddress, delivery_address: orderForm.deliveryAddress,
-      shipping_contact: orderForm.shippingContact, shipping_phone: orderForm.shippingPhone,
-      lead_no: orderForm.leadNo, order_date: orderForm.orderDate,
-      customer_po_no: orderForm.customerPoNo, customer_po_date: orderForm.customerPoDate || null,
-      items: orderForm.items,
-      
-      // Keep primary part info for compatibility
-      part_name: orderForm.items[0]?.partName, part_number: orderForm.items[0]?.partNumber,
-      quantity: orderForm.items.reduce((acc: number, item: any) => acc + Number(item.quantity), 0), 
-      total_value: totals.grandTotal, 
-      
-      delivery_date: orderForm.deliveryDate, status: 'Confirmed',
-      payment_terms: orderForm.paymentTerms, special_instructions: orderForm.specialInstructions,
-      internal_remarks: orderForm.internalRemarks,
-      quotation_id: orderModalTarget.raw.id
-    }]);
-
-    if (error) {
-      alert("Error: Make sure to run the SQL script to add new Sales Order columns. " + error.message);
-    } else {
-      await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', orderModalTarget.raw.id);
-      setOrderModalTarget(null);
-      fetchPipeline();
     }
   };
 
@@ -776,124 +738,7 @@ export function SalesPipelinePage() {
         </div>
       </Modal>
 
-      {/* NEW SALES ORDER MODAL */}
-      <Modal open={!!orderModalTarget} onClose={() => setOrderModalTarget(null)} title="CREATE SALES ORDER" size="xl" footer={<><Button variant="secondary" onClick={() => setOrderModalTarget(null)}>Cancel</Button><Button onClick={saveOrder}>Create Sales Order</Button></>}>
-        <div className="flex flex-col gap-6 max-h-[75vh] overflow-y-auto pr-2">
-          
-          {/* Section 1: Customer Details */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">1. Customer Details</h4>
-            <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
-              <FormField label="Customer / Company Name *"><input className={`${inputClass} bg-slate-100`} value={orderForm.customer} disabled /></FormField>
-              <div className="col-span-2">
-                <ContactsList form={orderForm} readOnly={true} />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Billing & Delivery */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">2. Billing & Delivery Details</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Billing Address"><textarea className={inputClass} rows={3} value={orderForm.billingAddress} onChange={e=>setOrderForm({...orderForm, billingAddress: e.target.value})}></textarea></FormField>
-              <FormField label="Delivery Address *"><textarea className={inputClass} rows={3} value={orderForm.deliveryAddress} onChange={e=>setOrderForm({...orderForm, deliveryAddress: e.target.value})}></textarea></FormField>
-              <FormField label="Shipping Contact Person"><input className={inputClass} value={orderForm.shippingContact} onChange={e=>setOrderForm({...orderForm, shippingContact: e.target.value})} /></FormField>
-              <FormField label="Shipping Phone"><input className={inputClass} value={orderForm.shippingPhone} onChange={e=>setOrderForm({...orderForm, shippingPhone: e.target.value})} /></FormField>
-            </div>
-          </div>
-
-          {/* Section 3: Order Details */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">3. Order Details</h4>
-            <div className="grid grid-cols-3 gap-4">
-              <FormField label="Sales Order Number *"><input className={`${inputClass} bg-slate-50`} value={orderForm.orderNo} disabled /></FormField>
-              <FormField label="Quotation Number"><input className={`${inputClass} bg-slate-50`} value={orderForm.quoteNo} disabled /></FormField>
-              <FormField label="Lead / Enquiry Number"><input className={`${inputClass} bg-slate-50`} value={orderForm.leadNo} disabled /></FormField>
-              <FormField label="Order Date *"><input type="date" className={inputClass} value={orderForm.orderDate} onChange={e=>setOrderForm({...orderForm, orderDate: e.target.value})} /></FormField>
-              <FormField label="Delivery Date *"><input type="date" className={inputClass} value={orderForm.deliveryDate} onChange={e=>setOrderForm({...orderForm, deliveryDate: e.target.value})} /></FormField>
-              <FormField label="Payment Terms *">
-                <select className={inputClass} value={orderForm.paymentTerms} onChange={e=>setOrderForm({...orderForm, paymentTerms: e.target.value})}>
-                  <option>Advance</option><option>Net 15</option><option>Net 30</option><option>Net 45</option><option>Custom</option>
-                </select>
-              </FormField>
-            </div>
-          </div>
-
-          {/* Section 4: Customer PO Details */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">4. Customer PO Details</h4>
-            <div className="grid grid-cols-3 gap-4">
-              <FormField label="Customer PO Number"><input className={inputClass} value={orderForm.customerPoNo} onChange={e=>setOrderForm({...orderForm, customerPoNo: e.target.value})} /></FormField>
-              <FormField label="Customer PO Date"><input type="date" className={inputClass} value={orderForm.customerPoDate} onChange={e=>setOrderForm({...orderForm, customerPoDate: e.target.value})} /></FormField>
-              <FormField label="Attach Document (Ref)"><input type="file" className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" /></FormField>
-            </div>
-          </div>
-
-          {/* Section 5: Order Items */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">5. Order Items</h4>
-            {orderForm.items.map((item: any, idx: number) => {
-              const { taxable, gstAmt, total } = calculateItemValues(item);
-              return (
-                <div key={idx} className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4 relative">
-                  {orderForm.items.length > 1 && (
-                    <button type="button" onClick={() => {
-                      const newItems = [...orderForm.items]; newItems.splice(idx, 1); setOrderForm({...orderForm, items: newItems});
-                    }} className="absolute top-3 right-3 text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-md transition-colors"><Trash2 size={16} /></button>
-                  )}
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-12 md:col-span-4"><FormField label="Part / Product Name *"><input className={inputClass} value={item.partName} onChange={e=>updateOrderItem(idx, 'partName', e.target.value)} /></FormField></div>
-                    <div className="col-span-12 md:col-span-3"><FormField label="Part Number"><input className={inputClass} value={item.partNumber} onChange={e=>updateOrderItem(idx, 'partNumber', e.target.value)} /></FormField></div>
-                    <div className="col-span-12 md:col-span-5"><FormField label="Description"><input className={inputClass} value={item.description} onChange={e=>updateOrderItem(idx, 'description', e.target.value)} /></FormField></div>
-                    
-                    <div className="col-span-6 md:col-span-2"><FormField label="Quantity *"><input type="number" min="1" className={inputClass} value={item.quantity} onChange={e=>updateOrderItem(idx, 'quantity', e.target.value)} /></FormField></div>
-                    <div className="col-span-6 md:col-span-3"><FormField label="Unit Price ₹"><input type="number" min="0" className={inputClass} value={item.unitPrice} onChange={e=>updateOrderItem(idx, 'unitPrice', e.target.value)} /></FormField></div>
-                    <div className="col-span-6 md:col-span-3"><FormField label="Discount %"><input type="number" min="0" max="100" className={inputClass} value={item.discount} onChange={e=>updateOrderItem(idx, 'discount', e.target.value)} /></FormField></div>
-                    <div className="col-span-6 md:col-span-4"><FormField label="GST %"><input type="number" min="0" max="100" className={inputClass} value={item.gst} onChange={e=>updateOrderItem(idx, 'gst', e.target.value)} /></FormField></div>
-                    
-                    <div className="col-span-12 flex justify-end gap-6 md:gap-12 mt-2 pt-3 border-t border-slate-200">
-                      <div className="text-right"><span className="block text-[10px] uppercase text-slate-500 font-bold mb-1">Taxable</span><div className="text-sm font-medium text-slate-700">{formatINR(taxable)}</div></div>
-                      <div className="text-right"><span className="block text-[10px] uppercase text-slate-500 font-bold mb-1">GST</span><div className="text-sm font-medium text-slate-700">{formatINR(gstAmt)}</div></div>
-                      <div className="text-right"><span className="block text-[10px] uppercase text-brand-600 font-bold mb-1">Total</span><div className="text-sm font-bold text-brand-700">{formatINR(total)}</div></div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            <Button variant="secondary" onClick={() => setOrderForm({...orderForm, items: [...orderForm.items, { partName: '', partNumber: '', description: '', quantity: 1, unitPrice: 0, discount: 0, gst: 18 }]})}>
-              <Plus size={16} className="mr-2" /> Add Item
-            </Button>
-          </div>
-
-          {/* Section 6: Order Summary */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">6. Order Summary</h4>
-            <div className="bg-slate-800 text-white p-5 rounded-lg">
-              {(() => {
-                const totals = calculateOrderTotals();
-                return (
-                  <div className="w-full md:w-1/2 ml-auto">
-                    <div className="flex justify-between py-1 text-sm"><span className="text-slate-300">Subtotal</span><span>{formatINR(totals.subtotal)}</span></div>
-                    <div className="flex justify-between py-1 text-sm"><span className="text-slate-300">Discount</span><span className="text-red-400">-{formatINR(totals.totalDiscount)}</span></div>
-                    <div className="flex justify-between py-1 text-sm border-b border-slate-600 pb-2 mb-2"><span className="text-slate-300">GST</span><span>{formatINR(totals.totalGST)}</span></div>
-                    <div className="flex justify-between py-1 text-lg font-bold"><span className="text-brand-300">Grand Total</span><span>{formatINR(totals.grandTotal)}</span></div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Section 7: Additional Information */}
-          <div>
-            <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-4 uppercase">7. Additional Information</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Special Instructions (Visible to Customer)"><textarea className={inputClass} rows={3} value={orderForm.specialInstructions} onChange={e=>setOrderForm({...orderForm, specialInstructions: e.target.value})}></textarea></FormField>
-              <FormField label="Internal Remarks (Private)"><textarea className={inputClass} rows={3} value={orderForm.internalRemarks} onChange={e=>setOrderForm({...orderForm, internalRemarks: e.target.value})}></textarea></FormField>
-            </div>
-          </div>
-
-        </div>
-      </Modal>
+      
 
       {/* Inward Modal */}
       <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
