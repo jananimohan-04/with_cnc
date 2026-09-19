@@ -466,12 +466,309 @@ export function WarehousesPage() {
 }
 
 export function MaterialRequestsPage() {
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [rawMaterialsList, setRawMaterialsList] = useState<any[]>([]);
+  const [selectedWo, setSelectedWo] = useState('');
+  const [viewTarget, setViewTarget] = useState<any>(null);
+  
+  const resetForm = () => ({
+    requestNo: `MR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    requestDate: new Date().toISOString().split('T')[0],
+    requiredDate: '',
+    priority: 'Normal',
+    remarks: '',
+    partName: '',
+    productionQty: 0,
+    items: [] as any[]
+  });
+  
+  const [reqForm, setReqForm] = useState(resetForm());
+
+  useEffect(() => {
+    fetchRequests();
+    fetchWorkOrders();
+    fetchRawMaterials();
+  }, []);
+
+  async function fetchRequests() {
+    setLoading(true);
+    try {
+       const { data } = await supabase.from('cnc_material_requests').select('*, items:cnc_material_request_items(*)').order('created_at', { ascending: false });
+       if (data) setRequests(data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }
+  
+  async function fetchWorkOrders() {
+    const { data } = await supabase.from('cnc_work_orders').select('*').neq('status', 'Completed');
+    if (data) setWorkOrders(data);
+  }
+
+  async function fetchRawMaterials() {
+    const { data } = await supabase.from('cnc_raw_materials').select('*');
+    if (data) setRawMaterialsList(data);
+  }
+
+  const handleWoChange = async (woId: string) => {
+    setSelectedWo(woId);
+    if (!woId) return;
+    const wo = workOrders.find(w => w.id === woId);
+    if (!wo) return;
+    
+    // Auto load from BOM
+    const { data: bomData } = await supabase.from('cnc_bom').select('*').eq('parent_part_no', wo.part_no);
+    
+    const items = [];
+    if (bomData && bomData.length > 0) {
+       bomData.forEach((bom: any) => {
+          const rm = rawMaterialsList.find(r => (r.name === bom.material || r.material_code === bom.material)) || {};
+          items.push({
+             id: crypto.randomUUID(),
+             materialName: bom.material || '',
+             materialCode: rm.material_code || '',
+             requiredQty: Number(bom.quantity) * Number(wo.quantity),
+             uom: bom.unit || 'Nos',
+             availableStock: rm.stock_qty || 0,
+             requestQty: Number(bom.quantity) * Number(wo.quantity),
+             warehouse: rm.location || 'Main Warehouse',
+             purpose: 'Production',
+             remarks: ''
+          });
+       });
+    }
+
+    setReqForm({
+       ...reqForm,
+       partName: wo.part_name,
+       productionQty: wo.quantity,
+       items
+    });
+  };
+
+  const handleAddItem = () => {
+    setReqForm({
+      ...reqForm,
+      items: [...reqForm.items, { id: crypto.randomUUID(), materialName: '', materialCode: '', requiredQty: 0, uom: 'Nos', availableStock: 0, requestQty: 0, warehouse: 'Main Warehouse', purpose: 'Production', remarks: '' }]
+    });
+  };
+  
+  const updateItem = (id: string, field: string, val: any) => {
+     setReqForm({
+        ...reqForm,
+        items: reqForm.items.map(i => i.id === id ? { ...i, [field]: val } : i)
+     });
+  };
+
+  const handleSave = async () => {
+     const wo = workOrders.find(w => w.id === selectedWo);
+     if (!wo && reqForm.items.length === 0) return alert("Please select a Work Order or add materials manually.");
+     
+     const { data, error } = await supabase.from('cnc_material_requests').insert([{
+        request_no: reqForm.requestNo,
+        request_date: reqForm.requestDate,
+        work_order_id: wo?.id || null,
+        work_order_no: wo?.wo_no || 'MANUAL',
+        part_name: wo?.part_name || reqForm.partName,
+        production_qty: wo?.quantity || reqForm.productionQty,
+        requested_by: 'Admin',
+        required_date: reqForm.requiredDate || reqForm.requestDate,
+        priority: reqForm.priority,
+        remarks: reqForm.remarks,
+        status: 'Pending'
+     }]).select();
+
+     if (error) { alert("Error: Make sure you ran the SQL to create cnc_material_requests! " + error.message); return; }
+     
+     if (data && data.length > 0) {
+        const reqId = data[0].id;
+        const itemsToInsert = reqForm.items.map(i => ({
+           request_id: reqId,
+           material_name: i.materialName,
+           material_code: i.materialCode,
+           required_qty: i.requiredQty,
+           uom: i.uom,
+           request_qty: i.requestQty,
+           warehouse: i.warehouse,
+           purpose: i.purpose,
+           remarks: i.remarks
+        }));
+        await supabase.from('cnc_material_request_items').insert(itemsToInsert);
+     }
+     
+     setShowAdd(false);
+     setReqForm(resetForm());
+     setSelectedWo('');
+     fetchRequests();
+  };
+
+  const handleIssue = async (req: any) => {
+     if (!confirm("Are you sure you want to issue these materials? This will deduct stock and create stock movements.")) return;
+     
+     for (const item of req.items) {
+        // Find RM
+        const { data: rmData } = await supabase.from('cnc_raw_materials').select('*').eq('name', item.material_name).limit(1);
+        if (rmData && rmData.length > 0) {
+           const rm = rmData[0];
+           const newStock = Number(rm.stock_qty || 0) - Number(item.request_qty);
+           await supabase.from('cnc_raw_materials').update({ stock_qty: newStock }).eq('id', rm.id);
+        }
+        
+        // Stock Movement
+        await supabase.from('cnc_stock_movements').insert([{
+           date: new Date().toISOString().split('T')[0],
+           type: 'Issue',
+           material: item.material_name,
+           qty: item.request_qty,
+           uom: item.uom,
+           from: item.warehouse || 'Main Warehouse',
+           to: 'Shop Floor - ' + req.work_order_no,
+           reference: req.request_no,
+           user: 'Admin'
+        }]);
+     }
+     
+     await supabase.from('cnc_material_requests').update({ status: 'Issued' }).eq('id', req.id);
+     fetchRequests();
+  };
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Material Requests" description="Internal requests from production to stores" />
-      <div className="flex items-center justify-center h-64 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-        <p className="text-slate-500">Material requests view coming soon.</p>
-      </div>
+      <PageHeader 
+        title="Material Requests" 
+        description="Manage production material requirements and stores issues" 
+        actions={<Button onClick={() => { setReqForm(resetForm()); setSelectedWo(''); setShowAdd(true); }}><Plus size={16}/> Create Request</Button>}
+      />
+
+      <Card className="mb-6">
+        <DataTable 
+          data={requests}
+          columns={[
+            { key: 'request_no', label: 'Request No', render: (r) => <span className="font-mono text-brand-600 font-medium">{r.request_no}</span> },
+            { key: 'work_order_no', label: 'Work Order', render: (r) => <span className="font-semibold">{r.work_order_no}</span> },
+            { key: 'part_name', label: 'Part/Product' },
+            { key: 'request_date', label: 'Date', render: (r) => new Date(r.request_date).toLocaleDateString() },
+            { key: 'required_date', label: 'Required By', render: (r) => <span className={new Date(r.required_date) < new Date() && r.status === 'Pending' ? 'text-red-500 font-medium' : ''}>{new Date(r.required_date).toLocaleDateString()}</span> },
+            { key: 'priority', label: 'Priority', render: (r) => <Badge variant={r.priority === 'Urgent' ? 'error' : r.priority === 'High' ? 'warning' : 'neutral'}>{r.priority}</Badge> },
+            { key: 'status', label: 'Status', render: (r) => <Badge variant={r.status === 'Pending' ? 'warning' : r.status === 'Issued' ? 'success' : 'neutral'}>{r.status}</Badge> },
+            { key: 'actions', label: 'Actions', align: 'right', render: (r) => (
+                <div className="flex justify-end gap-2">
+                   <Button variant="secondary" onClick={() => setViewTarget(r)}><Eye size={14}/></Button>
+                   {r.status === 'Pending' && <Button variant="primary" onClick={() => handleIssue(r)}>Issue Stock</Button>}
+                </div>
+            ) }
+          ]}
+        />
+      </Card>
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="CREATE MATERIAL REQUEST" size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Submit Request</Button></>}>
+         <div className="space-y-6">
+            <div className="p-4 bg-brand-50 border border-brand-100 rounded-xl mb-4">
+              <label className="block text-xs font-bold text-brand-700 uppercase mb-2">REQUEST FOR (WORK ORDER)</label>
+              <select value={selectedWo} onChange={(e) => handleWoChange(e.target.value)} className={inputClass}>
+                 <option value="">-- Select Work Order --</option>
+                 {workOrders.map(w => (
+                    <option key={w.id} value={w.id}>{w.wo_no} - {w.part_name} (Qty: {w.quantity})</option>
+                 ))}
+              </select>
+              <p className="text-xs text-brand-600 mt-2">Selecting a Work Order automatically loads required materials from its BOM.</p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               <FormField label="Request No" type="text" value={reqForm.requestNo} disabled />
+               <FormField label="Request Date" type="date" value={reqForm.requestDate} disabled />
+               <FormField label="Required Date" type="date" value={reqForm.requiredDate} onChange={e => setReqForm({...reqForm, requiredDate: e.target.value})} />
+               <div className="space-y-1"><label className="text-xs font-medium text-slate-700">Priority</label><select value={reqForm.priority} onChange={e => setReqForm({...reqForm, priority: e.target.value})} className={inputClass}><option>Normal</option><option>High</option><option>Urgent</option></select></div>
+               <FormField label="Part / Product" type="text" value={reqForm.partName} disabled />
+               <FormField label="Production Qty" type="number" value={reqForm.productionQty.toString()} disabled />
+               <FormField label="Requested By" type="text" value="Admin" disabled />
+               <FormField label="Remarks" type="text" value={reqForm.remarks} onChange={e => setReqForm({...reqForm, remarks: e.target.value})} />
+            </div>
+
+            <div>
+               <div className="flex items-center justify-between mb-3">
+                 <h3 className="text-sm font-bold text-slate-800">MATERIALS REQUIRED</h3>
+                 <Button variant="secondary" onClick={handleAddItem}><Plus size={14}/> Add Material</Button>
+               </div>
+               
+               <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+                  <table className="w-full text-left text-sm">
+                     <thead className="bg-slate-100 border-b border-slate-200 text-slate-600">
+                        <tr>
+                           <th className="p-3 font-semibold text-xs">Material / Component</th>
+                           <th className="p-3 font-semibold text-xs">Code</th>
+                           <th className="p-3 font-semibold text-xs text-right">Req Qty</th>
+                           <th className="p-3 font-semibold text-xs text-right">Avail Stock</th>
+                           <th className="p-3 font-semibold text-xs text-right">Request Qty</th>
+                           <th className="p-3 font-semibold text-xs">UOM</th>
+                           <th className="p-3 font-semibold text-xs">Warehouse</th>
+                           <th className="p-3 font-semibold text-xs"></th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        {reqForm.items.length === 0 ? (
+                           <tr><td colSpan={8} className="p-4 text-center text-slate-400">No materials loaded. Select a Work Order or add manually.</td></tr>
+                        ) : reqForm.items.map((item, idx) => (
+                           <tr key={item.id} className="border-b border-slate-100 last:border-0 bg-white">
+                              <td className="p-2"><input type="text" value={item.materialName} onChange={e => updateItem(item.id, 'materialName', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none focus:border-brand-500" placeholder="Material Name"/></td>
+                              <td className="p-2"><input type="text" value={item.materialCode} onChange={e => updateItem(item.id, 'materialCode', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none" placeholder="Code"/></td>
+                              <td className="p-2"><input type="number" value={item.requiredQty} onChange={e => updateItem(item.id, 'requiredQty', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm text-right outline-none bg-slate-50" readOnly={!!selectedWo}/></td>
+                              <td className="p-2 text-right font-semibold text-slate-600">{item.availableStock}</td>
+                              <td className="p-2"><input type="number" value={item.requestQty} onChange={e => updateItem(item.id, 'requestQty', e.target.value)} className={`w-full px-2 py-1 border border-slate-200 rounded text-sm text-right outline-none focus:border-brand-500 ${item.requestQty > item.availableStock ? 'border-red-500 bg-red-50 text-red-600 font-bold' : ''}`} /></td>
+                              <td className="p-2"><input type="text" value={item.uom} onChange={e => updateItem(item.id, 'uom', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none w-16" /></td>
+                              <td className="p-2"><input type="text" value={item.warehouse} onChange={e => updateItem(item.id, 'warehouse', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none" /></td>
+                              <td className="p-2"><button onClick={() => setReqForm({...reqForm, items: reqForm.items.filter(i => i.id !== item.id)})} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14}/></button></td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+      </Modal>
+
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`MATERIAL REQUEST: ${viewTarget?.request_no}`} size="xl">
+         {viewTarget && (
+            <div className="space-y-6">
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div><p className="text-xs text-slate-500 font-medium">Work Order</p><p className="font-bold text-slate-800">{viewTarget.work_order_no}</p></div>
+                  <div><p className="text-xs text-slate-500 font-medium">Part Name</p><p className="font-semibold text-slate-800">{viewTarget.part_name}</p></div>
+                  <div><p className="text-xs text-slate-500 font-medium">Required By</p><p className="font-medium text-slate-800">{new Date(viewTarget.required_date).toLocaleDateString()}</p></div>
+                  <div><p className="text-xs text-slate-500 font-medium">Status</p><Badge variant={viewTarget.status === 'Pending' ? 'warning' : 'success'}>{viewTarget.status}</Badge></div>
+               </div>
+               
+               <div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-3">REQUESTED MATERIALS</h4>
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                     <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                           <tr>
+                              <th className="p-3 font-semibold text-xs">Material / Component</th>
+                              <th className="p-3 font-semibold text-xs">Code</th>
+                              <th className="p-3 font-semibold text-xs text-right">Requested Qty</th>
+                              <th className="p-3 font-semibold text-xs">UOM</th>
+                              <th className="p-3 font-semibold text-xs">Warehouse</th>
+                           </tr>
+                        </thead>
+                        <tbody>
+                           {viewTarget.items?.map((item: any) => (
+                              <tr key={item.id} className="border-b border-slate-100 last:border-0">
+                                 <td className="p-3 font-medium text-slate-800">{item.material_name}</td>
+                                 <td className="p-3 text-slate-600">{item.material_code || '-'}</td>
+                                 <td className="p-3 text-right font-bold text-brand-600">{item.request_qty}</td>
+                                 <td className="p-3 text-slate-600">{item.uom}</td>
+                                 <td className="p-3 text-slate-600">{item.warehouse}</td>
+                              </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+               </div>
+            </div>
+         )}
+      </Modal>
     </div>
   );
 }
