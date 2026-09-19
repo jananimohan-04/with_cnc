@@ -17,7 +17,7 @@ export function LeadsPage() {
 
   const resetForm = () => ({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-    customer: '', contactPerson: '', phone: '', email: '', city: '', industry: 'Aerospace', 
+    customer: '', contacts: [{ person: '', phone: '', email: '' }], city: '', gst: '', enquiringFor: '', 
     partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', source: 'Direct', status: 'New', notes: ''
   });
   const [formData, setFormData] = useState(resetForm());
@@ -43,7 +43,8 @@ export function LeadsPage() {
           phone: d.phone || '',
           email: d.email || '',
           city: d.city || '',
-          industry: d.industry || 'Aerospace',
+          gst: d.gst || '',
+          enquiring_for: d.enquiring_for || '',
           partName: d.part_name,
           partNo: d.part_no,
           quantity: d.quantity,
@@ -65,11 +66,14 @@ export function LeadsPage() {
     setFormData({
       leadNo: r.leadNo,
       customer: r.company,
-      contactPerson: r.contactPerson,
-      phone: r.phone,
-      email: r.email,
-      city: r.city,
-      industry: r.industry,
+      contacts: r.contactPerson ? r.contactPerson.split(' | ').map((p: string, i: number) => ({
+        person: p,
+        phone: (r.phone || '').split(' | ')[i] || '',
+        email: (r.email || '').split(' | ')[i] || ''
+      })) : [{ person: '', phone: '', email: '' }],
+      city: r.city || '',
+      gst: r.gst || '',
+      enquiringFor: r.enquiring_for || '',
       partName: r.partName,
       partNo: r.partNo || '',
       quantity: r.quantity?.toString() || '',
