@@ -93,7 +93,8 @@ export function LeadsPage() {
       phone: formData.phone,
       email: formData.email,
       city: formData.city,
-      industry: formData.industry,
+        gst: formData.gst,
+        enquiring_for: formData.enquiringFor,
       part_name: formData.partName,
       part_no: formData.partNo,
       quantity: Number(formData.quantity) || 0,
@@ -197,11 +198,8 @@ export function LeadsPage() {
           <FormField label="Phone"><input className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></FormField>
           <FormField label="Email"><input type="email" className={inputClass} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></FormField>
           <FormField label="City"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
-          <FormField label="Industry">
-            <select className={inputClass} value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}>
-              <option>Aerospace</option><option>Automotive</option><option>Medical</option><option>Defense</option><option>Other</option>
-            </select>
-          </FormField>
+          <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
+          <FormField label="Enquiring For"><input className={inputClass} value={formData.enquiringFor} onChange={e => setFormData({...formData, enquiringFor: e.target.value})} /></FormField>
           <FormField label="Product / Part Required" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
           <FormField label="Quantity"><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="Source">

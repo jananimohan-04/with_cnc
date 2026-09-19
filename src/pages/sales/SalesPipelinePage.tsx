@@ -566,7 +566,7 @@ export function SalesPipelinePage() {
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-    company: '', contactPerson: '', phone: '', email: '', city: '', industry: 'Aerospace', source: 'Direct'
+    company: '', contactPerson: '', phone: '', email: '', city: '', gst: '', enquiringFor: '', source: 'Direct'
   });
 
   const saveNewLead = async () => {
@@ -575,7 +575,7 @@ export function SalesPipelinePage() {
     const { error } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
       contact_person: newLeadForm.contactPerson, phone: newLeadForm.phone, email: newLeadForm.email,
-      city: newLeadForm.city, industry: newLeadForm.industry,
+      city: newLeadForm.city, gst: newLeadForm.gst, enquiring_for: newLeadForm.enquiringFor,
       part_name: 'TBD', part_no: 'N/A', quantity: 0, estimated_value: 0, expected_date: new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
       source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
     }]);
@@ -583,7 +583,7 @@ export function SalesPipelinePage() {
       setShowNewLead(false);
       setNewLeadForm({
         leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', contactPerson: '', phone: '', email: '', city: '', industry: 'Aerospace', source: 'Direct'
+        company: '', contactPerson: '', phone: '', email: '', city: '', gst: '', enquiringFor: '', source: 'Direct'
       });
       fetchPipeline();
     } else {
@@ -662,11 +662,8 @@ export function SalesPipelinePage() {
           <FormField label="Phone"><input className={inputClass} value={newLeadForm.phone} onChange={e => setNewLeadForm({...newLeadForm, phone: e.target.value})} /></FormField>
           <FormField label="Email"><input type="email" className={inputClass} value={newLeadForm.email} onChange={e => setNewLeadForm({...newLeadForm, email: e.target.value})} /></FormField>
           <FormField label="City"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
-          <FormField label="Industry">
-            <select className={inputClass} value={newLeadForm.industry} onChange={e => setNewLeadForm({...newLeadForm, industry: e.target.value})}>
-              <option>Aerospace</option><option>Automotive</option><option>Medical</option><option>Defense</option><option>Other</option>
-            </select>
-          </FormField>
+          <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
+          <FormField label="Enquiring For"><input className={inputClass} value={newLeadForm.enquiringFor} onChange={e => setNewLeadForm({...newLeadForm, enquiringFor: e.target.value})} /></FormField>
           <FormField label="Source">
             <select className={inputClass} value={newLeadForm.source} onChange={e => setNewLeadForm({...newLeadForm, source: e.target.value})}>
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
