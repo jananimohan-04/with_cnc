@@ -315,7 +315,7 @@ export function SalesPipelinePage() {
     
     if (error) alert("Error: " + error.message);
     else {
-      await supabase.from('cnc_enquiries').update({ pipeline_stage: 'Quotation' }).eq('id', quotationModalTarget.raw.id);
+      await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', quotationModalTarget.raw.id);
       setQuotationModalTarget(null); fetchPipeline();
     }
   };
