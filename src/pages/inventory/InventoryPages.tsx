@@ -973,11 +973,164 @@ export function MaterialRequestsPage() {
 }
 
 export function LowStockPage() {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPRModal, setShowPRModal] = useState(false);
+  const [prTarget, setPrTarget] = useState<any>(null);
+
+  const [prForm, setPrForm] = useState({
+    prNo: `PR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    qty: 0,
+    requiredDate: '',
+    remarks: ''
+  });
+
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  async function fetchAlerts() {
+    setLoading(true);
+    try {
+      // 1. Fetch raw materials and parts
+      const { data: rmData } = await supabase.from('cnc_raw_materials').select('*');
+      const { data: partData } = await supabase.from('cnc_parts').select('*');
+      
+      const allItems = [
+        ...(rmData || []).map((rm:any) => ({ code: rm.material_code, name: rm.name, stockQty: Number(rm.stock_qty || 0), minStock: Number(rm.min_stock || 0), uom: rm.uom, type: 'Raw Material' })),
+        ...(partData || []).map((p:any) => ({ code: p.part_no, name: p.part_name, stockQty: Number(p.stock_qty || 0), minStock: Number(p.min_stock || 5), uom: p.unit, type: 'Component' })) // default min stock 5 for parts if not set
+      ];
+
+      // Filter low stock
+      const lowStockItems = allItems.filter(item => item.stockQty <= item.minStock);
+
+      // 2. Fetch pending material requests to see if production needs these
+      const { data: reqData } = await supabase.from('cnc_material_request_items').select('material_code, material_name, request_qty, cnc_material_requests!inner(status)').eq('cnc_material_requests.status', 'Pending');
+      
+      const enrichedAlerts = lowStockItems.map(item => {
+         // sum pending requests for this material
+         const pendingReqs = (reqData || []).filter((r:any) => r.material_name === item.name || r.material_code === item.code);
+         const totalPendingQty = pendingReqs.reduce((acc: number, curr: any) => acc + Number(curr.request_qty || 0), 0);
+         
+         let suggestedOrderQty = (item.minStock - item.stockQty) + totalPendingQty;
+         if (suggestedOrderQty < 0) suggestedOrderQty = 0;
+         if (suggestedOrderQty === 0 && item.stockQty < item.minStock) suggestedOrderQty = item.minStock;
+
+         return {
+            ...item,
+            pendingReqQty: totalPendingQty,
+            suggestedOrderQty,
+            status: item.stockQty === 0 ? 'Out of Stock' : 'Low Stock'
+         };
+      });
+
+      setAlerts(enrichedAlerts);
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  }
+
+  const openPR = (item: any) => {
+    setPrTarget(item);
+    setPrForm({
+      prNo: `PR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      qty: item.suggestedOrderQty || 0,
+      requiredDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      remarks: 'Generated from Low Stock Alert'
+    });
+    setShowPRModal(true);
+  };
+
+  const handleSavePR = async () => {
+    if (!prTarget || !prForm.qty || !prForm.requiredDate) return alert("Please fill required fields.");
+    
+    // Save to cnc_purchase_requisitions
+    const { data, error } = await supabase.from('cnc_purchase_requisitions').insert([{
+      pr_no: prForm.prNo,
+      pr_date: new Date().toISOString().split('T')[0],
+      requested_by: 'Inventory Manager',
+      department: 'Stores',
+      status: 'Pending',
+      remarks: prForm.remarks
+    }]).select();
+
+    if (error) return alert("Error saving PR: " + error.message + "\nDid you run the PR SQL script?");
+
+    if (data && data.length > 0) {
+      const prId = data[0].id;
+      await supabase.from('cnc_purchase_requisition_items').insert([{
+         pr_id: prId,
+         material_code: prTarget.code,
+         material_name: prTarget.name,
+         qty: prForm.qty,
+         uom: prTarget.uom,
+         required_date: prForm.requiredDate
+      }]);
+    }
+    
+    setShowPRModal(false);
+    alert(`Purchase Requisition ${prForm.prNo} generated successfully!`);
+  };
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Low Stock Alerts" description="Items below minimum stock level" />
-      <DataTable 
-        data={rawMaterials.filter(r => r.status === 'Low Stock' || r.status === 'Out of Stock')}
+      <PageHeader title="Low Stock Alerts" description="Items below minimum stock level and active production shortages" />
+      
+      {loading ? (
+        <div className="p-8 text-center text-slate-500">Scanning inventory levels...</div>
+      ) : (
+        <Card>
+          <DataTable 
+            data={alerts}
+            columns={[
+              { key: 'code', label: 'Item Code', render: (r) => <span className="font-mono text-xs font-semibold">{r.code}</span> },
+              { key: 'name', label: 'Material / Component', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+              { key: 'stockQty', label: 'Current Stock', align: 'right', render: (r) => <span className="font-bold text-red-600">{r.stockQty} <span className="text-xs font-normal text-slate-500">{r.uom}</span></span> },
+              { key: 'minStock', label: 'Min Stock', align: 'right', render: (r) => <span className="text-slate-500">{r.minStock}</span> },
+              { key: 'pendingReqQty', label: 'Pending Prod. Requests', align: 'right', render: (r) => (
+                 r.pendingReqQty > 0 
+                  ? <span className="text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded">{r.pendingReqQty}</span>
+                  : <span className="text-slate-300">-</span>
+              )},
+              { key: 'status', label: 'Status', render: (r) => <Badge variant={r.status === 'Out of Stock' ? 'error' : 'warning'}>{r.status}</Badge> },
+              { key: 'actions', label: 'Action Needed', align: 'right', render: (r) => (
+                 <Button variant="primary" size="sm" onClick={() => openPR(r)}>Create PR</Button>
+              )}
+            ]}
+          />
+        </Card>
+      )}
+
+      <Modal open={showPRModal} onClose={() => setShowPRModal(false)} title="CREATE PURCHASE REQUISITION" subtitle={prTarget?.name} footer={<><Button variant="secondary" onClick={() => setShowPRModal(false)}>Cancel</Button><Button onClick={handleSavePR}>Submit PR</Button></>}>
+        {prTarget && (
+          <div className="space-y-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <h4 className="text-sm font-bold text-amber-800 mb-2">Shortage Analysis</h4>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div><span className="text-amber-700 block">Current Stock</span><span className="font-bold text-amber-900">{prTarget.stockQty} {prTarget.uom}</span></div>
+                <div><span className="text-amber-700 block">Minimum Stock</span><span className="font-bold text-amber-900">{prTarget.minStock} {prTarget.uom}</span></div>
+                <div><span className="text-amber-700 block">Pending Requests</span><span className="font-bold text-amber-900">{prTarget.pendingReqQty} {prTarget.uom}</span></div>
+              </div>
+              <p className="text-xs text-amber-700 mt-3 pt-3 border-t border-amber-200">
+                Suggested Order Qty = (Min Stock - Current Stock) + Pending Requests
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+               <FormField label="PR Number"><input type="text" className={inputClass} value={prForm.prNo} disabled /></FormField>
+               <FormField label="Material"><input type="text" className={inputClass} value={prTarget.name} disabled /></FormField>
+               <FormField label="Order Quantity" required><input type="number" className={inputClass} value={prForm.qty} onChange={e => setPrForm({...prForm, qty: Number(e.target.value)})} /></FormField>
+               <FormField label="Required Date" required><input type="date" className={inputClass} value={prForm.requiredDate} onChange={e => setPrForm({...prForm, requiredDate: e.target.value})} /></FormField>
+               <div className="col-span-2"><FormField label="Remarks"><input type="text" className={inputClass} value={prForm.remarks} onChange={e => setPrForm({...prForm, remarks: e.target.value})} /></FormField></div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
         columns={[
           { key: 'materialCode', label: 'Code', render: (r) => <span className="font-mono text-xs">{r.materialCode}</span> },
           { key: 'name', label: 'Material', render: (r) => <span className="font-medium">{r.name}</span> },
