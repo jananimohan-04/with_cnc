@@ -1081,7 +1081,9 @@ export function LowStockPage() {
       pr_date: new Date().toISOString().split('T')[0],
       requested_by: 'Inventory Manager',
       department: 'Stores',
-      status: 'Pending',
+      status: 'Pending Approval',
+      source_type: 'Low Stock Alert',
+      source_reference: prTarget?.code,
       remarks: prForm.remarks
     }]).select();
 
