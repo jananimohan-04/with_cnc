@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff, Printer, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, ProgressBar, statusToVariant } from '@/components/ui/Card';
@@ -647,33 +647,460 @@ export function PurchaseRequisitionsPage() {
 }
 
 export function PurchaseOrdersPage() {
-  const columns: Column<PurchaseOrder>[] = [
-    { key: 'poNo', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.poNo}</span> },
-    { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier}</span> },
-    { key: 'category', label: 'Category', sortable: true, render: (r) => <span className="text-sm">{r.category}</span> },
-    { key: 'orderDate', label: 'Order Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.orderDate}</span> },
-    { key: 'expectedDate', label: 'Expected By', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.expectedDate}</span> },
-    { key: 'totalValue', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">₹{(r.totalValue / 1000).toFixed(1)}k</span> },
-    { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-        </div>
-      )
-    },
+  const [pos, setPos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [viewTarget, setViewTarget] = useState<any>(null);
+  
+  // Master Data
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+
+  // Form State
+  const resetForm = () => ({
+    id: null,
+    poNo: `PO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    orderDate: new Date().toISOString().split('T')[0],
+    expectedDate: '',
+    supplierId: '',
+    paymentTerms: 'Net 30',
+    billingAddress: '',
+    deliveryAddress: '',
+    notes: '',
+    items: [] as any[]
+  });
+  const [form, setForm] = useState(resetForm());
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    // 1. Fetch POs
+    const { data: poData } = await supabase.from('cnc_purchase_orders').select('*, supplier:cnc_suppliers(name, code, address, gst_number), items:cnc_purchase_order_items(*)').order('created_at', { ascending: false });
+    if (poData) setPos(poData);
+
+    // 2. Fetch Suppliers
+    const { data: supData } = await supabase.from('cnc_suppliers').select('*').eq('status', 'Active');
+    if (supData) setSuppliers(supData);
+
+    // 3. Fetch Materials
+    const { data: rmData } = await supabase.from('cnc_raw_materials').select('*');
+    const { data: ptData } = await supabase.from('cnc_parts').select('*');
+    if (rmData && ptData) {
+      setMaterials([
+        ...rmData.map(r => ({ code: r.material_code, name: r.name, uom: r.uom })),
+        ...ptData.map(p => ({ code: p.part_no, name: p.part_name, uom: p.unit }))
+      ]);
+    }
+    setLoading(false);
+  }
+
+  const handleSupplierChange = (e: any) => {
+    const sId = e.target.value;
+    const s = suppliers.find(sup => sup.id === sId);
+    setForm({
+      ...form, 
+      supplierId: sId,
+      paymentTerms: s?.payment_terms || 'Net 30',
+      billingAddress: 'CNCFORGE Main Office, 123 Industrial Phase, Pune',
+      deliveryAddress: s?.address || 'CNCFORGE Main Warehouse, Pune'
+    });
+  };
+
+  const handleAddItem = () => {
+    setForm({ ...form, items: [...form.items, { material_code: '', material_name: '', quantity: '', unit: 'kg', unit_price: '', tax_amount: '', total_amount: '' }] });
+  };
+
+  const updateItem = (index: number, field: string, value: any) => {
+    const newItems = [...form.items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    
+    if (field === 'material_code') {
+      const mat = materials.find(m => m.code === value);
+      if (mat) {
+         newItems[index].material_name = mat.name;
+         newItems[index].unit = mat.uom;
+      }
+    }
+
+    // Auto calculate totals
+    const qty = Number(newItems[index].quantity) || 0;
+    const price = Number(newItems[index].unit_price) || 0;
+    const taxPercent = Number(newItems[index].tax_amount) || 0; // Using tax_amount field as tax% for UI input simplicity
+    
+    const lineTotalBase = qty * price;
+    const taxAmount = lineTotalBase * (taxPercent / 100);
+    newItems[index].total_amount = lineTotalBase + taxAmount;
+    
+    setForm({ ...form, items: newItems });
+  };
+
+  const calculateTotals = () => {
+    let subtotal = 0;
+    let tax = 0;
+    form.items.forEach(i => {
+       const qty = Number(i.quantity) || 0;
+       const price = Number(i.unit_price) || 0;
+       const taxPercent = Number(i.tax_amount) || 0;
+       const lineBase = qty * price;
+       subtotal += lineBase;
+       tax += lineBase * (taxPercent / 100);
+    });
+    return { subtotal, tax, grandTotal: subtotal + tax };
+  };
+
+  const savePO = async (statusToSave = 'Draft') => {
+    if (!form.supplierId) return alert('Supplier is required');
+    if (!form.items.length) return alert('At least one item is required');
+    if (statusToSave === 'Issued' && !form.expectedDate) return alert('Expected Delivery Date is required to Issue PO');
+
+    const totals = calculateTotals();
+
+    const poRecord = {
+       po_number: form.poNo,
+       supplier_id: form.supplierId,
+       order_date: form.orderDate,
+       expected_date: form.expectedDate || null,
+       status: statusToSave,
+       payment_terms: form.paymentTerms,
+       billing_address: form.billingAddress,
+       delivery_address: form.deliveryAddress,
+       subtotal: totals.subtotal,
+       tax: totals.tax,
+       grand_total: totals.grandTotal,
+       notes: form.notes
+    };
+
+    let poId = form.id;
+
+    if (poId) {
+       // Update existing Draft
+       const { error: updErr } = await supabase.from('cnc_purchase_orders').update(poRecord).eq('id', poId);
+       if (updErr) return alert('Error updating PO: ' + updErr.message);
+       // Delete old items and re-insert
+       await supabase.from('cnc_purchase_order_items').delete().eq('purchase_order_id', poId);
+    } else {
+       // Insert new
+       const { data: insData, error: insErr } = await supabase.from('cnc_purchase_orders').insert([poRecord]).select();
+       if (insErr) return alert('Error creating PO: ' + insErr.message);
+       poId = insData[0].id;
+    }
+
+    // Insert items
+    const itemsToInsert = form.items.map(i => ({
+      purchase_order_id: poId,
+      material_code: i.material_code,
+      material_name: i.material_name,
+      quantity: Number(i.quantity),
+      unit: i.unit,
+      unit_price: Number(i.unit_price),
+      tax_amount: Number(i.tax_amount), // Storing tax % here for simplicity
+      total_amount: Number(i.total_amount)
+    }));
+
+    await supabase.from('cnc_purchase_order_items').insert(itemsToInsert);
+
+    setShowAdd(false);
+    setViewTarget(null);
+    fetchData();
+  };
+
+  const loadPOForEdit = (po: any) => {
+     setForm({
+        id: po.id,
+        poNo: po.po_number,
+        orderDate: po.order_date,
+        expectedDate: po.expected_date || '',
+        supplierId: po.supplier_id,
+        paymentTerms: po.payment_terms || '',
+        billingAddress: po.billing_address || '',
+        deliveryAddress: po.delivery_address || '',
+        notes: po.notes || '',
+        items: po.items.map((i:any) => ({ ...i }))
+     });
+     setShowAdd(true);
+  };
+
+  const handleIssueAction = async (po: any) => {
+     if (!po.expected_date) return alert("Expected delivery date is missing. Please edit the PO first.");
+     if (!confirm("Are you sure you want to issue this PO? It will be marked as Issued.")) return;
+     await supabase.from('cnc_purchase_orders').update({ status: 'Issued' }).eq('id', po.id);
+     fetchData();
+     setViewTarget(null);
+  };
+
+  // Determine if a PO is delayed visually (Calculated dynamically, doesn't change DB status)
+  const isDelayed = (po: any) => {
+     if (['Draft', 'Received', 'Cancelled'].includes(po.status)) return false;
+     if (!po.expected_date) return false;
+     return new Date(po.expected_date) < new Date();
+  };
+
+  const columns: Column<any>[] = [
+    { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.po_number}</span> },
+    { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier?.name}</span> },
+    { key: 'order_date', label: 'Order Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.order_date}</span> },
+    { key: 'expected_date', label: 'Expected By', sortable: true, render: (r) => (
+       <div className="flex items-center gap-1">
+          <span className="text-xs text-slate-500">{r.expected_date || '-'}</span>
+          {isDelayed(r) && <AlertCircle size={12} className="text-red-500" title="Delayed" />}
+       </div>
+    )},
+    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">,1{(r.grand_total).toLocaleString()}</span> },
+    { key: 'status', label: 'Status', sortable: true, render: (r) => (
+       <div className="flex flex-col gap-1 items-start">
+         <Badge variant={r.status === 'Issued' ? 'brand' : r.status === 'Draft' ? 'neutral' : r.status === 'Received' ? 'success' : 'warning'} dot>{r.status}</Badge>
+         {isDelayed(r) && <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1 rounded">DELAYED</span>}
+       </div>
+    )},
+    { key: 'actions', label: 'Actions', align: 'center', render: (r) => (
+       <div className="flex gap-1 justify-center">
+         <Button variant="secondary" size="sm" onClick={() => setViewTarget(r)} icon={<Eye size={14} />}>View</Button>
+         {r.status === 'Draft' && <Button variant="secondary" size="sm" onClick={() => loadPOForEdit(r)} icon={<Edit size={14} />}></Button>}
+       </div>
+    ) }
   ];
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Purchase Orders" description="Manage POs issued to suppliers" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total POs" value="124" icon={<ShoppingCart size={20} />} accent="brand" />
-        <StatCard label="Open Value" value="₹2.4M" icon={<TrendingUp size={20} />} accent="warning" />
-        <StatCard label="Received" value="86" icon={<Package size={20} />} accent="success" />
-        <StatCard label="Delayed" value="3" icon={<Activity size={20} />} accent="error" />
+      <PageHeader 
+         title="Purchase Orders" 
+         description="Manage commercial purchase commitments issued to suppliers" 
+         actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New PO</Button>} 
+      />
+      
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <StatCard label="Total POs" value={pos.length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
+        <StatCard label="Draft" value={pos.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Issued / Sent" value={pos.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={20} />} accent="brand" />
+        <StatCard label="Partially / Fully Rcvd" value={pos.filter(p => ['Partially Received', 'Received'].includes(p.status)).length.toString()} icon={<Package size={20} />} accent="success" />
+        <StatCard label="Delayed" value={pos.filter(p => isDelayed(p)).length.toString()} icon={<Activity size={20} />} accent="error" />
       </div>
-      <DataTable data={purchaseOrders} columns={columns} searchKeys={['poNo', 'supplier']} />
+      
+      <Card>
+         <DataTable data={pos} columns={columns} searchKeys={['po_number', 'supplier.name', 'supplier.code']} />
+      </Card>
+
+      {/* CREATE / EDIT PO MODAL */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={form.id ? "Edit Purchase Order" : "New Purchase Order"} subtitle="Commercial Commitment" size="xl" footer={<>
+         <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
+         <Button variant="secondary" onClick={() => savePO('Draft')}>Save Draft</Button>
+         <Button onClick={() => savePO('Issued')} icon={<Send size={16}/>}>Issue PO</Button>
+      </>}>
+         <div className="space-y-6">
+            <div className="grid grid-cols-3 gap-4">
+               <FormField label="PO Number" required><input className={inputClass} value={form.poNo} disabled /></FormField>
+               <FormField label="Order Date" required><input type="date" className={inputClass} value={form.orderDate} onChange={e => setForm({...form, orderDate: e.target.value})} /></FormField>
+               <FormField label="Expected Delivery Date"><input type="date" className={inputClass} value={form.expectedDate} onChange={e => setForm({...form, expectedDate: e.target.value})} /></FormField>
+               
+               <div className="space-y-1 col-span-2">
+                 <label className="text-xs font-medium text-slate-700">Supplier *</label>
+                 <select className={inputClass} value={form.supplierId} onChange={handleSupplierChange}>
+                    <option value="">-- Select Supplier --</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                 </select>
+               </div>
+               
+               <FormField label="Payment Terms"><input className={inputClass} value={form.paymentTerms} onChange={e => setForm({...form, paymentTerms: e.target.value})} /></FormField>
+               
+               <div className="col-span-3 grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                     <label className="text-xs font-medium text-slate-700">Billing Address</label>
+                     <textarea className={inputClass} rows={2} value={form.billingAddress} onChange={e => setForm({...form, billingAddress: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-xs font-medium text-slate-700">Delivery Address</label>
+                     <textarea className={inputClass} rows={2} value={form.deliveryAddress} onChange={e => setForm({...form, deliveryAddress: e.target.value})} />
+                  </div>
+               </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4">
+               <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-bold text-slate-800">Order Items</h4>
+                  <Button variant="secondary" size="sm" onClick={handleAddItem} icon={<Plus size={14}/>}>Add Item</Button>
+               </div>
+               
+               {form.items.length === 0 ? (
+                  <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">No items added to PO.</div>
+               ) : (
+                  <div className="overflow-x-auto">
+                     <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead>
+                           <tr className="bg-slate-50 border-y border-slate-200">
+                              <th className="p-2 font-semibold text-slate-600">Material</th>
+                              <th className="p-2 font-semibold text-slate-600 w-24">Qty</th>
+                              <th className="p-2 font-semibold text-slate-600 w-16">UoM</th>
+                              <th className="p-2 font-semibold text-slate-600 w-32">Unit Price (,1)</th>
+                              <th className="p-2 font-semibold text-slate-600 w-24">Tax %</th>
+                              <th className="p-2 font-semibold text-slate-600 text-right">Total (,1)</th>
+                              <th className="p-2"></th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                           {form.items.map((item, idx) => (
+                                 <tr key={idx}>
+                                    <td className="p-1">
+                                       <select className={inputClass} value={item.material_code} onChange={e => updateItem(idx, 'material_code', e.target.value)}>
+                                          <option value="">Select...</option>
+                                          {materials.map(m => <option key={m.code} value={m.code}>{m.code} - {m.name}</option>)}
+                                       </select>
+                                    </td>
+                                    <td className="p-1"><input type="number" className={inputClass} value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} /></td>
+                                    <td className="p-1"><input className={inputClass} value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} /></td>
+                                    <td className="p-1"><input type="number" className={inputClass} value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} /></td>
+                                    <td className="p-1"><input type="number" className={inputClass} value={item.tax_amount} onChange={e => updateItem(idx, 'tax_amount', e.target.value)} /></td>
+                                    <td className="p-2 text-right font-mono font-semibold text-slate-800">{item.total_amount ? Number(item.total_amount).toLocaleString() : '-'}</td>
+                                    <td className="p-1 text-center"><button onClick={() => { const ni = [...form.items]; ni.splice(idx, 1); setForm({...form, items: ni}); }} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                 </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+               )}
+               
+               {form.items.length > 0 && (() => {
+                  const totals = calculateTotals();
+                  return (
+                     <div className="flex justify-end mt-4">
+                        <div className="w-64 bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm">
+                           <div className="flex justify-between mb-2"><span className="text-slate-500">Subtotal</span><span className="font-mono">,1{totals.subtotal.toLocaleString()}</span></div>
+                           <div className="flex justify-between mb-2 pb-2 border-b border-slate-200"><span className="text-slate-500">Estimated Tax</span><span className="font-mono">,1{totals.tax.toLocaleString()}</span></div>
+                           <div className="flex justify-between font-bold text-slate-900 text-base"><span>Grand Total</span><span className="font-mono text-brand-700">,1{totals.grandTotal.toLocaleString()}</span></div>
+                        </div>
+                     </div>
+                  );
+               })()}
+            </div>
+         </div>
+      </Modal>
+
+      {/* VIEW / PRINT PO MODAL */}
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`Purchase Order: ${viewTarget?.po_number}`} size="xl" footer={
+         <div className="flex gap-2 w-full justify-between items-center">
+            <div>
+               {viewTarget?.status === 'Issued' && (
+                  <Button variant="success" icon={<Package size={16}/>} onClick={() => alert("Goods Receipt module is pending implementation. Once available, this will map the PO into a new GRN transaction.")}>
+                     Create Goods Receipt
+                  </Button>
+               )}
+               {['Partially Received', 'Received'].includes(viewTarget?.status) && (
+                  <span className="text-sm font-medium text-emerald-600 flex items-center gap-1"><CheckCircle size={16}/> Goods Receiving In Progress / Completed</span>
+               )}
+            </div>
+            <div className="flex gap-2">
+               <Button variant="secondary" onClick={() => window.print()} icon={<Printer size={16}/>}>Print / PDF</Button>
+               {viewTarget?.status === 'Draft' && <Button onClick={() => loadPOForEdit(viewTarget)} icon={<Edit size={16}/>}>Edit PO</Button>}
+               {viewTarget?.status === 'Draft' && <Button variant="brand" onClick={() => handleIssueAction(viewTarget)} icon={<Send size={16}/>}>Issue Purchase Order</Button>}
+               <Button variant="secondary" onClick={() => setViewTarget(null)}>Close</Button>
+            </div>
+         </div>
+      }>
+         {viewTarget && (
+            <div className="space-y-8 bg-white p-4" id="printable-po">
+               {/* Print Header */}
+               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6">
+                  <div>
+                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">PURCHASE ORDER</h1>
+                     <p className="text-slate-500 mt-1 font-mono">{viewTarget.po_number}</p>
+                     {isDelayed(viewTarget) && <Badge variant="error" className="mt-2">DELAYED</Badge>}
+                  </div>
+                  <div className="text-right text-sm">
+                     <p className="font-bold text-slate-800">CNCFORGE MFG LTD.</p>
+                     <p className="text-slate-500">123 Industrial Phase, Pune</p>
+                     <p className="text-slate-500">GSTIN: 27AAAAA0000A1Z5</p>
+                  </div>
+               </div>
+
+               {/* Parties Info */}
+               <div className="grid grid-cols-2 gap-8 text-sm">
+                  <div>
+                     <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Vendor (Supplier)</h3>
+                     <p className="font-bold text-slate-800 text-base">{viewTarget.supplier?.name}</p>
+                     <p className="text-slate-600">{viewTarget.supplier?.address || 'Address not provided'}</p>
+                     <p className="text-slate-600 mt-2"><strong>GSTIN:</strong> {viewTarget.supplier?.gst_number || 'N/A'}</p>
+                  </div>
+                  <div>
+                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">PO Date</span><span className="font-medium text-slate-900">{viewTarget.order_date}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Expected By</span><span className="font-medium text-slate-900">{viewTarget.expected_date || 'TBD'}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Payment Terms</span><span className="font-medium text-slate-900">{viewTarget.payment_terms || 'N/A'}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Status</span><span className="font-medium text-slate-900">{viewTarget.status}</span></div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Addresses */}
+               <div className="grid grid-cols-2 gap-8 text-sm pt-4 border-t border-slate-100">
+                  <div>
+                     <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Delivery Address</h3>
+                     <p className="text-slate-700 whitespace-pre-wrap">{viewTarget.delivery_address}</p>
+                  </div>
+                  <div>
+                     <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Billing Address</h3>
+                     <p className="text-slate-700 whitespace-pre-wrap">{viewTarget.billing_address}</p>
+                  </div>
+               </div>
+
+               {/* Items Table */}
+               <div className="pt-4">
+                  <table className="w-full text-left text-sm">
+                     <thead>
+                        <tr className="border-b-2 border-slate-800 text-slate-800">
+                           <th className="py-2 font-bold w-12">#</th>
+                           <th className="py-2 font-bold">Item & Description</th>
+                           <th className="py-2 font-bold text-center">Ordered Qty</th>
+                           <th className="py-2 font-bold text-center">Pending Qty</th>
+                           <th className="py-2 font-bold text-right">Unit Price</th>
+                           <th className="py-2 font-bold text-right">Tax %</th>
+                           <th className="py-2 font-bold text-right">Total Amount</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-200">
+                        {viewTarget.items?.map((item: any, idx: number) => (
+                           <tr key={idx}>
+                              <td className="py-3 text-slate-500">{idx + 1}</td>
+                              <td className="py-3">
+                                 <p className="font-bold text-slate-800">{item.material_name}</p>
+                                 <p className="text-xs text-slate-500 font-mono">{item.material_code}</p>
+                              </td>
+                              <td className="py-3 text-center font-medium">{item.quantity} {item.unit}</td>
+                              <td className="py-3 text-center text-slate-500">{item.quantity} {item.unit} <span className="text-[10px] block">(0 Received)</span></td>
+                              <td className="py-3 text-right font-mono">,1{Number(item.unit_price).toLocaleString()}</td>
+                              <td className="py-3 text-right text-slate-500">{item.tax_amount}%</td>
+                              <td className="py-3 text-right font-mono font-bold text-slate-900">,1{Number(item.total_amount).toLocaleString()}</td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+               </div>
+
+               {/* Totals */}
+               <div className="flex justify-end pt-4">
+                  <div className="w-72">
+                     <div className="flex justify-between py-1 text-sm text-slate-600"><span>Subtotal</span><span className="font-mono text-slate-900">,1{Number(viewTarget.subtotal).toLocaleString()}</span></div>
+                     <div className="flex justify-between py-1 text-sm text-slate-600 border-b border-slate-200 mb-2 pb-2"><span>Total Tax</span><span className="font-mono text-slate-900">,1{Number(viewTarget.tax).toLocaleString()}</span></div>
+                     <div className="flex justify-between py-2 text-lg font-black text-slate-900"><span>Grand Total</span><span className="font-mono">,1{Number(viewTarget.grand_total).toLocaleString()}</span></div>
+                  </div>
+               </div>
+               
+               {/* Notes */}
+               {viewTarget.notes && (
+                  <div className="pt-8 border-t border-slate-100 text-sm">
+                     <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Terms & Notes</h3>
+                     <p className="text-slate-700 whitespace-pre-wrap">{viewTarget.notes}</p>
+                  </div>
+               )}
+               
+               <div className="mt-16 pt-8 border-t border-slate-100 flex justify-between text-xs text-slate-400 uppercase tracking-widest font-bold">
+                  <div>Authorized Signatory</div>
+                  <div>Supplier Acceptance</div>
+               </div>
+            </div>
+         )}
+      </Modal>
     </div>
   );
 }

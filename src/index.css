@@ -68,3 +68,5 @@
     linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 64px 64px, 64px 64px, 16px 16px, 16px 16px;
 }
+
+@media print { body * { visibility: hidden; } #printable-po, #printable-po * { visibility: visible; } #printable-po { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; } }
