@@ -79,7 +79,8 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {Object.entries(raw).map(([key, value]) => {
             if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no') return null;
-            const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            if (key === 'enquiry_no' || key === 'lead_no') formattedKey = 'Project Name';
             return (
               <div key={key}>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
@@ -160,34 +161,47 @@ export function SalesPipelinePage() {
 
   const fetchPipeline = async () => {
     setLoading(true);
-    const { data: leads } = await supabase.from('cnc_enquiries').select('*').in('status', ['New', 'Contacted', 'Qualified', 'Under Review']);
+    // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
+    const { data: allLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, company, customer, part_name, quantity, estimated_value, expected_date');
+    const leadMap = new Map();
+    if (allLeads) allLeads.forEach(l => leadMap.set(l.id, l.lead_no || l.enquiry_no));
+
     const { data: quotes } = await supabase.from('cnc_quotations').select('*').in('status', ['Sent', 'Under Review', 'Draft', 'Accepted']);
+    const quoteMap = new Map();
+    if (quotes) quotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.quote_no));
+
     const { data: orders } = await supabase.from('cnc_sales_orders').select('*').in('status', ['Draft', 'Confirmed', 'In Production']);
+    const orderMap = new Map();
+    if (orders) orders.forEach(o => orderMap.set(o.order_no, quoteMap.get(o.quotation_id) || o.order_no));
+
     const { data: inwards, error: inwardErr } = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
 
     const newCards: KanbanCard[] = [];
 
-    if (leads) leads.forEach(l => newCards.push({
+    // Filter leads for the Enquiry column
+    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status)) || [];
+
+    activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
-      refNo: l.lead_no || l.enquiry_no, customer: l.company || l.customer, part: l.part_name,
+      refNo: leadMap.get(l.id), customer: l.company || l.customer, part: l.part_name,
       qty: l.quantity, value: l.estimated_value, date: l.expected_date, status: l.status, raw: l
     }));
 
     if (quotes) quotes.forEach(q => newCards.push({
       id: `quote_${q.id}`, stage: 'Quotation', type: 'quotation',
-      refNo: q.quote_no, customer: q.customer || q.customer_name, part: q.part_name,
+      refNo: quoteMap.get(q.id), customer: q.customer || q.customer_name, part: q.part_name,
       qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.quote_date, status: q.status, raw: q
     }));
 
     if (orders) orders.forEach(o => newCards.push({
       id: `order_${o.id}`, stage: 'Sales Order', type: 'order',
-      refNo: o.order_no, customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
+      refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
       qty: o.quantity || (o.items?.[0]?.quantity), value: o.total_value, date: o.delivery_date, status: o.status, raw: o
     }));
 
     if (inwards && !inwardErr) inwards.forEach(i => newCards.push({
       id: `inward_${i.id}`, stage: 'Inward', type: 'inward',
-      refNo: i.inward_no, customer: i.party_name, part: i.part_name,
+      refNo: orderMap.get(i.sales_order_ref) || i.inward_no, customer: i.party_name, part: i.part_name,
       qty: i.quantity, value: i.total_amount, date: i.inward_date, status: i.status, raw: i
     }));
 
