@@ -384,26 +384,69 @@ export function StockOverviewPage() {
 }
 
 export function StockMovementsPage() {
-  const columns: Column<StockMovement>[] = [
+  const [movementsData, setMovementsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
+
+  useEffect(() => {
+    async function fetchMovements() {
+      try {
+        const { data, error } = await supabase.from('cnc_stock_movements').select('*').order('date', { ascending: false });
+        if (error) {
+          console.error('Error fetching movements:', error);
+          setDbError(true);
+          setMovementsData(stockMovements); // Fallback to mock
+        } else if (data) {
+          setDbError(false);
+          const formattedData = data.map((d: any) => ({
+            id: d.id,
+            date: new Date(d.date).toISOString().split('T')[0],
+            type: d.type,
+            material: d.material,
+            qty: Number(d.qty),
+            uom: d.uom,
+            from: d.from,
+            to: d.to,
+            reference: d.reference,
+            user: d.user,
+          }));
+          setMovementsData(formattedData.length > 0 ? formattedData : stockMovements);
+        }
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        setDbError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchMovements();
+  }, []);
+
+  const totalMovements = movementsData.length;
+  const receipts = movementsData.filter(m => m.type === 'Receipt').length;
+  const issues = movementsData.filter(m => m.type === 'Issue').length;
+  const transfers = movementsData.filter(m => m.type === 'Transfer').length;
+
+  const columns: Column<any>[] = [
     { key: 'date', label: 'Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.date}</span> },
     { key: 'type', label: 'Type', sortable: true, render: (r) => <Badge variant={r.type === 'Receipt' ? 'success' : r.type === 'Issue' ? 'warning' : 'info'}>{r.type}</Badge> },
     { key: 'material', label: 'Material', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.material}</span> },
     { key: 'qty', label: 'Qty', sortable: true, align: 'right', render: (r) => <span className={`font-semibold ${r.qty < 0 ? 'text-red-600' : 'text-green-600'}`}>{r.qty > 0 ? '+' : ''}{r.qty} {r.uom}</span> },
-    { key: 'from', label: 'From / To', render: (r) => <div><p className="text-xs text-slate-500">From: {r.from}</p><p className="text-xs text-slate-500">To: {r.to}</p></div> },
-    { key: 'reference', label: 'Reference', render: (r) => <span className="font-mono text-xs">{r.reference}</span> },
-    { key: 'user', label: 'User', render: (r) => <span className="text-sm">{r.user}</span> },
+    { key: 'from', label: 'From / To', render: (r) => <div><p className="text-xs text-slate-500">From: {r.from || '—'}</p><p className="text-xs text-slate-500">To: {r.to || '—'}</p></div> },
+    { key: 'reference', label: 'Reference', render: (r) => <span className="font-mono text-xs">{r.reference || '—'}</span> },
+    { key: 'user', label: 'User', render: (r) => <span className="text-sm">{r.user || '—'}</span> },
   ];
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Stock Movements" description="Track all inward, outward, and transfer movements" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="Stock Movements" description="Track all inward, outward, and transfer movements" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Movements" value="1,248" icon={<ArrowRightLeft size={20} />} accent="brand" />
-        <StatCard label="Receipts" value="482" icon={<ArrowDownToLine size={20} />} accent="success" />
-        <StatCard label="Issues" value="654" icon={<ArrowUpFromLine size={20} />} accent="warning" />
-        <StatCard label="Transfers" value="112" icon={<ArrowRightLeft size={20} />} accent="info" />
+        <StatCard label="Total Movements" value={totalMovements.toString()} icon={<ArrowRightLeft size={20} />} accent="brand" />
+        <StatCard label="Receipts" value={receipts.toString()} icon={<ArrowDownToLine size={20} />} accent="success" />
+        <StatCard label="Issues" value={issues.toString()} icon={<ArrowUpFromLine size={20} />} accent="warning" />
+        <StatCard label="Transfers" value={transfers.toString()} icon={<ArrowRightLeft size={20} />} accent="info" />
       </div>
-      <DataTable data={stockMovements} columns={columns} searchKeys={['material', 'reference', 'type']} filterOptions={[{ label: 'Receipt', value: 'Receipt' }, { label: 'Issue', value: 'Issue' }, { label: 'Transfer', value: 'Transfer' }]} />
+      <DataTable data={movementsData} columns={columns} searchKeys={['material', 'reference', 'type']} filterOptions={[{ label: 'Receipt', value: 'Receipt' }, { label: 'Issue', value: 'Issue' }, { label: 'Transfer', value: 'Transfer' }]} />
     </div>
   );
 }
