@@ -159,12 +159,25 @@ export function SalesPipelinePage() {
     contacts: [{ person: '', phone: '', email: '' }]
   });
 
+  const [knownCompanies, setKnownCompanies] = useState<any[]>([]);
+
   const fetchPipeline = async () => {
     setLoading(true);
     // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
-    const { data: allLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, company, customer, part_name, quantity, estimated_value, expected_date');
+    const { data: allLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, company, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email');
     const leadMap = new Map();
-    if (allLeads) allLeads.forEach(l => leadMap.set(l.id, l.lead_no || l.enquiry_no));
+    const compMap = new Map();
+    
+    if (allLeads) {
+      allLeads.forEach(l => {
+        leadMap.set(l.id, l.lead_no || l.enquiry_no);
+        const comp = l.company || l.customer;
+        if (comp && !compMap.has(comp)) {
+           compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email });
+        }
+      });
+    }
+    setKnownCompanies(Array.from(compMap.values()));
 
     const { data: quotes } = await supabase.from('cnc_quotations').select('*').in('status', ['Sent', 'Under Review', 'Draft', 'Accepted']);
     const quoteMap = new Map();
@@ -222,6 +235,17 @@ export function SalesPipelinePage() {
     const parsed = Array.from({ length: maxLen }).map((_, i) => ({ person: persons[i] || '', phone: phones[i] || '', email: emails[i] || '' }));
     const hasData = parsed.some(c => c.person || c.phone || c.email);
     return hasData ? parsed : [{ person: '', phone: '', email: '' }];
+  };
+
+  const handleCompanyChange = (val: string) => {
+    setEnquiryForm((prev: any) => {
+      const form = { ...prev, company: val };
+      const matched = knownCompanies.find(c => c.company === val);
+      if (matched) {
+        form.contacts = parseContacts(matched);
+      }
+      return form;
+    });
   };
 
   const getContactStrings = (form: any) => {
@@ -589,7 +613,12 @@ export function SalesPipelinePage() {
       <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} /></FormField>
-          <FormField label="Company Name" required><input className={inputClass} value={enquiryForm.company} onChange={e => setEnquiryForm({...enquiryForm, company: e.target.value})} /></FormField>
+          <FormField label="Company Name" required>
+            <input list="companies-list" className={inputClass} value={enquiryForm.company} onChange={e => handleCompanyChange(e.target.value)} placeholder="Type or select company..." />
+            <datalist id="companies-list">
+              {knownCompanies.map((c, i) => <option key={i} value={c.company} />)}
+            </datalist>
+          </FormField>
           
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
              <h4 className="font-semibold text-sm text-slate-800 mb-4">Contact Details</h4>
