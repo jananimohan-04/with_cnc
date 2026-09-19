@@ -563,9 +563,50 @@ export function SalesPipelinePage() {
     </div>
   );
 
+  const [showNewLead, setShowNewLead] = useState(false);
+  const [newLeadForm, setNewLeadForm] = useState({
+    leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+    company: '', contactPerson: '', phone: '', email: '', city: '', industry: 'Aerospace', source: 'Direct'
+  });
+
+  const saveNewLead = async () => {
+    if (!newLeadForm.company) return;
+    setLoading(true);
+    const { error } = await supabase.from('cnc_enquiries').insert([{
+      id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
+      contact_person: newLeadForm.contactPerson, phone: newLeadForm.phone, email: newLeadForm.email,
+      city: newLeadForm.city, industry: newLeadForm.industry,
+      part_name: 'TBD', part_no: 'N/A', quantity: 0, estimated_value: 0, expected_date: new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
+      source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
+    }]);
+    if (!error) {
+      setShowNewLead(false);
+      setNewLeadForm({
+        leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+        company: '', contactPerson: '', phone: '', email: '', city: '', industry: 'Aerospace', source: 'Direct'
+      });
+      fetchPipeline();
+    } else {
+      console.error(error);
+      alert("Failed to save lead: " + error.message);
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full flex flex-col">
-      <PageHeader title="Sales Pipeline" description="Kanban workflow for active opportunities" actions={<DateSelector />} />
+      <PageHeader 
+        title="Sales Pipeline" 
+        description="Kanban workflow for active opportunities" 
+        actions={
+          <div className="flex items-center gap-3">
+            <Button onClick={() => setShowNewLead(true)}>
+              <Plus size={16} className="mr-2" /> New Lead
+            </Button>
+            <DateSelector />
+          </div>
+        } 
+      />
       
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <StatCard label="Total Opportunities" value={cards.length.toString()} icon={<FileText size={20} />} accent="brand" />
@@ -611,6 +652,28 @@ export function SalesPipelinePage() {
           </div>
         ))}
       </div>
+
+      {/* New Lead Modal */}
+      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Lead" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Lead</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Project Name" required><input className={inputClass} value={newLeadForm.leadNo} disabled /></FormField>
+          <FormField label="Company Name" required><input className={inputClass} value={newLeadForm.company} onChange={e => setNewLeadForm({...newLeadForm, company: e.target.value})} placeholder="e.g. Acme Corp" /></FormField>
+          <FormField label="Contact Person"><input className={inputClass} value={newLeadForm.contactPerson} onChange={e => setNewLeadForm({...newLeadForm, contactPerson: e.target.value})} /></FormField>
+          <FormField label="Phone"><input className={inputClass} value={newLeadForm.phone} onChange={e => setNewLeadForm({...newLeadForm, phone: e.target.value})} /></FormField>
+          <FormField label="Email"><input type="email" className={inputClass} value={newLeadForm.email} onChange={e => setNewLeadForm({...newLeadForm, email: e.target.value})} /></FormField>
+          <FormField label="City"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
+          <FormField label="Industry">
+            <select className={inputClass} value={newLeadForm.industry} onChange={e => setNewLeadForm({...newLeadForm, industry: e.target.value})}>
+              <option>Aerospace</option><option>Automotive</option><option>Medical</option><option>Defense</option><option>Other</option>
+            </select>
+          </FormField>
+          <FormField label="Source">
+            <select className={inputClass} value={newLeadForm.source} onChange={e => setNewLeadForm({...newLeadForm, source: e.target.value})}>
+              <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
+            </select>
+          </FormField>
+        </div>
+      </Modal>
 
       {/* Enquiry Modal */}
       <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
