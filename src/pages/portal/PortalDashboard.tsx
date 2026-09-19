@@ -234,7 +234,7 @@ function EnquiryDetail({ enquiry, onClose }: { enquiry: any; onClose: () => void
             <h3 className="text-lg font-bold text-slate-800">{enquiry.lead_no || enquiry.enquiry_no}</h3>
             <p className="text-sm text-slate-500">{enquiry.part_name} &middot; Qty: {enquiry.quantity}</p>
           </div>
-          <span className={px-3 py-1 rounded-full text-xs font-semibold }>{cs.label}</span>
+          <span className={"px-3 py-1 rounded-full text-xs font-semibold " + cs.color}>{cs.label}</span>
         </div>
 
         <div className="p-6">
@@ -256,7 +256,7 @@ function EnquiryDetail({ enquiry, onClose }: { enquiry: any; onClose: () => void
                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-bold text-slate-700">{step.stage}</span>
-                        <span className={px-2 py-0.5 rounded-full text-[10px] font-semibold }>{s.label}</span>
+                        <span className={"px-2 py-0.5 rounded-full text-[10px] font-semibold " + s.color}>{s.label}</span>
                       </div>
                       <p className="text-xs text-slate-400">{step.date ? new Date(step.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</p>
                       {step.stage === 'Quotation' && step.data.total_value && (
@@ -420,7 +420,7 @@ export function PortalDashboard({ session }: { session: any }) {
                         <td className="px-5 py-3 font-medium text-slate-700">{enq.part_name}</td>
                         <td className="px-5 py-3 text-slate-600">{enq.quantity}</td>
                         <td className="px-5 py-3 text-slate-400">{enq.received_date || enq.created_at?.split('T')[0]}</td>
-                        <td className="px-5 py-3"><span className={px-2.5 py-1 rounded-full text-[10px] font-semibold }>{cs.label}</span></td>
+                        <td className="px-5 py-3"><span className={"px-2.5 py-1 rounded-full text-[10px] font-semibold " + cs.color}>{cs.label}</span></td>
                         <td className="px-5 py-3 text-right">
                           <button onClick={() => setSelectedEnquiry(enq)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Details">
                             <Eye size={16} />
