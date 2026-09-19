@@ -194,9 +194,19 @@ export function LeadsPage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} disabled={!!editId} /></FormField>
           <FormField label="Company Name" required><input className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} /></FormField>
-          <FormField label="Contact Person" required><input className={inputClass} value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} /></FormField>
-          <FormField label="Phone"><input className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></FormField>
-          <FormField label="Email"><input type="email" className={inputClass} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></FormField>
+          <div className="col-span-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
+              <button onClick={() => setFormData({...formData, contacts: [...formData.contacts, { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+            </div>
+            {formData.contacts.map((c: any, i: number) => (
+              <div key={i} className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input placeholder="Name" className={inputClass} value={c.person} onChange={e => { const nc = [...formData.contacts]; nc[i].person = e.target.value; setFormData({...formData, contacts: nc}); }} />
+                <input placeholder="Phone" className={inputClass} value={c.phone} onChange={e => { const nc = [...formData.contacts]; nc[i].phone = e.target.value; setFormData({...formData, contacts: nc}); }} />
+                <input placeholder="Email" className={inputClass} value={c.email} onChange={e => { const nc = [...formData.contacts]; nc[i].email = e.target.value; setFormData({...formData, contacts: nc}); }} />
+              </div>
+            ))}
+          </div>
           <FormField label="City"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
           <FormField label="Enquiring For"><input className={inputClass} value={formData.enquiringFor} onChange={e => setFormData({...formData, enquiringFor: e.target.value})} /></FormField>

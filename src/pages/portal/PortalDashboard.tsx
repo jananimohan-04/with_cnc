@@ -39,20 +39,20 @@ function getCustomerStatus(status: string) {
 // ── Profile Setup ──
 function ProfileSetup({ session, onComplete }: { session: any; onComplete: () => void }) {
   const [form, setForm] = useState({
-    company_name: '', contact_name: session.user.user_metadata?.full_name || '', phone: '',
+    company_name: '', contacts: [{ name: session.user.user_metadata?.full_name || '', phone: '' }],
     gst: '', address: '', city: '', state: '', country: 'India', pincode: '', enquiring_for: ''
   });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!form.company_name || !form.contact_name) return;
+    if (!form.company_name) return;
     setSaving(true);
     const { error } = await supabase.from('portal_profiles').insert([{
       auth_user_id: session.user.id,
       email: session.user.email,
       company_name: form.company_name,
-      contact_name: form.contact_name,
-      phone: form.phone,
+      contact_name: form.contacts.map((c: any) => c.name).join(' | '),
+      phone: form.contacts.map((c: any) => c.phone).join(' | '),
       gst: form.gst,
       city: form.city,
       enquiring_for: form.enquiring_for,
@@ -78,13 +78,17 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Company Name *</label>
             <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contact Person *</label>
-            <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone</label>
-            <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+          <div className="col-span-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
+              <button onClick={() => setForm({...form, contacts: [...form.contacts, { name: '', phone: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+            </div>
+            {form.contacts.map((c: any, i: number) => (
+              <div key={i} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input placeholder="Name" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={c.name} onChange={e => { const nc = [...form.contacts]; nc[i].name = e.target.value; setForm({...form, contacts: nc}); }} />
+                <input placeholder="Phone" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={c.phone} onChange={e => { const nc = [...form.contacts]; nc[i].phone = e.target.value; setForm({...form, contacts: nc}); }} />
+              </div>
+            ))}
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">City</label>
