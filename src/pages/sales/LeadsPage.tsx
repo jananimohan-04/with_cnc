@@ -221,11 +221,7 @@ export function LeadsPage() {
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
             </select>
           </FormField>
-          <FormField label="Status">
-            <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-              <option>New</option><option>Contacted</option><option>Qualified</option><option>Converted</option><option>Lost</option>
-            </select>
-          </FormField>
+
         </div>
       </Modal>
 
