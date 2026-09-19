@@ -130,6 +130,7 @@ export function SalesPipelinePage() {
   const resetEnquiryForm = () => ({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
     company: '', partName: '', partNumber: '', quantity: '', expectedDate: '', source: 'Direct',
+    estimatedValue: '', receivedDate: new Date().toISOString().split('T')[0],
     contacts: [{ person: '', phone: '', email: '' }]
   });
   const [enquiryForm, setEnquiryForm] = useState(resetEnquiryForm());
@@ -338,7 +339,7 @@ export function SalesPipelinePage() {
       id: crypto.randomUUID(), lead_no: enquiryForm.leadNo, enquiry_no: enquiryForm.leadNo, customer: enquiryForm.company,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
       part_name: enquiryForm.partName, part_no: enquiryForm.partNumber || 'N/A', quantity: Number(enquiryForm.quantity) || 0,
-      expected_date: enquiryForm.expectedDate || null, received_date: new Date().toISOString().split('T')[0], estimated_value: 0,
+      expected_date: enquiryForm.expectedDate || null, received_date: enquiryForm.receivedDate || new Date().toISOString().split('T')[0], estimated_value: Number(enquiryForm.estimatedValue) || 0,
       source: enquiryForm.source, status: 'New', pipeline_stage: 'Enquiry'
     }]);
     if (!error) { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); fetchPipeline(); } 
@@ -575,11 +576,31 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} /></FormField>
           <FormField label="Company Name" required><input className={inputClass} value={enquiryForm.company} onChange={e => setEnquiryForm({...enquiryForm, company: e.target.value})} /></FormField>
-          <ContactsList form={enquiryForm} setForm={setEnquiryForm} />
+          
+          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
+             <h4 className="font-semibold text-sm text-slate-800 mb-4">Contact Details</h4>
+             <ContactsList form={enquiryForm} setForm={setEnquiryForm} />
+          </div>
+
+          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
+             <h4 className="font-semibold text-sm text-slate-800 mb-4">Enquiry Details</h4>
+          </div>
+          
           <FormField label="Part Name" required><input className={inputClass} value={enquiryForm.partName} onChange={e => setEnquiryForm({...enquiryForm, partName: e.target.value})} /></FormField>
           <FormField label="Part Number"><input className={inputClass} value={enquiryForm.partNumber} onChange={e => setEnquiryForm({...enquiryForm, partNumber: e.target.value})} /></FormField>
           <FormField label="Quantity"><input type="number" className={inputClass} value={enquiryForm.quantity} onChange={e => setEnquiryForm({...enquiryForm, quantity: e.target.value})} /></FormField>
+          <FormField label="Estimated Value (Rs.)"><input type="number" className={inputClass} value={enquiryForm.estimatedValue} onChange={e => setEnquiryForm({...enquiryForm, estimatedValue: e.target.value})} /></FormField>
           <FormField label="Expected Date"><input type="date" className={inputClass} value={enquiryForm.expectedDate} onChange={e => setEnquiryForm({...enquiryForm, expectedDate: e.target.value})} /></FormField>
+          <FormField label="Received Date"><input type="date" className={inputClass} value={enquiryForm.receivedDate} onChange={e => setEnquiryForm({...enquiryForm, receivedDate: e.target.value})} /></FormField>
+          <FormField label="Source">
+            <select className={inputClass} value={enquiryForm.source} onChange={e => setEnquiryForm({...enquiryForm, source: e.target.value})}>
+               <option value="Direct">Direct</option>
+               <option value="Email">Email</option>
+               <option value="Phone">Phone</option>
+               <option value="Website">Website</option>
+               <option value="Referral">Referral</option>
+            </select>
+          </FormField>
         </div>
       </Modal>
 
