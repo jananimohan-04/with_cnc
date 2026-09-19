@@ -40,7 +40,7 @@ function getCustomerStatus(status: string) {
 function ProfileSetup({ session, onComplete }: { session: any; onComplete: () => void }) {
   const [form, setForm] = useState({
     company_name: '', contact_name: session.user.user_metadata?.full_name || '', phone: '',
-    gst: '', address: '', city: '', state: '', country: 'India', pincode: '', industry: 'Aerospace'
+    gst: '', address: '', city: '', state: '', country: 'India', pincode: '', enquiring_for: ''
   });
   const [saving, setSaving] = useState(false);
 
@@ -53,6 +53,9 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
       company_name: form.company_name,
       contact_name: form.contact_name,
       phone: form.phone,
+      gst: form.gst,
+      city: form.city,
+      enquiring_for: form.enquiring_for,
     }]);
     if (error) { alert('Error: ' + error.message); setSaving(false); return; }
     onComplete();
@@ -88,10 +91,12 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
             <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Industry</label>
-            <select className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.industry} onChange={e => setForm({...form, industry: e.target.value})}>
-              <option>Aerospace</option><option>Automotive</option><option>Medical</option><option>Defense</option><option>Energy</option><option>Industrial</option><option>Other</option>
-            </select>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">GST No.</label>
+            <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.gst} onChange={e => setForm({...form, gst: e.target.value})} placeholder="e.g. 29ABCDE1234F1Z5" />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Enquiring For</label>
+            <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.enquiring_for} onChange={e => setForm({...form, enquiring_for: e.target.value})} placeholder="What kind of manufacturing services are you looking for?" />
           </div>
         </div>
         <button onClick={handleSave} disabled={saving} className="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold py-3 rounded-xl hover:shadow-lg hover:shadow-blue-200 transition-all disabled:opacity-50">
