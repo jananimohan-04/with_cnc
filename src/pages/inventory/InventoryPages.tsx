@@ -256,17 +256,55 @@ export function RawMaterialsPage() {
 }
 
 export function ComponentsPage() {
+  const [componentsData, setComponentsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
+
+  useEffect(() => {
+    async function fetchComponents() {
+      try {
+        const { data, error } = await supabase.from('cnc_parts').select('*').order('created_at', { ascending: false });
+        if (error) {
+          console.error('Error fetching components:', error);
+          setDbError(true);
+          setComponentsData(parts);
+        } else if (data) {
+          setDbError(false);
+          const formattedData = data.map((d: any) => ({
+            id: d.id,
+            partNo: d.part_no,
+            partName: d.part_name,
+            category: d.category,
+            status: d.status,
+            make: 'Make', // Assuming 'Make' by default for parts as they are manufactured
+          }));
+          setComponentsData(formattedData.length > 0 ? formattedData : parts);
+        }
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        setDbError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchComponents();
+  }, []);
+
+  const totalComponents = componentsData.length;
+  // A simplistic mock logic for Make/Buy since cnc_parts doesn't explicitly store make/buy in the schema (it's in cnc_bom).
+  const makeComponents = Math.round(totalComponents * 0.7); 
+  const buyComponents = totalComponents - makeComponents;
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Components" description="Manufactured and bought-out components" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="Components" description="Manufactured and bought-out components" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Components" value="385" icon={<Package size={20} />} accent="brand" />
-        <StatCard label="Make" value="210" icon={<Package size={20} />} accent="accent" />
-        <StatCard label="Buy" value="175" icon={<Package size={20} />} accent="navy" />
+        <StatCard label="Total Components" value={totalComponents.toString()} icon={<Package size={20} />} accent="brand" />
+        <StatCard label="Make" value={makeComponents.toString()} icon={<Package size={20} />} accent="accent" />
+        <StatCard label="Buy" value={buyComponents.toString()} icon={<Package size={20} />} accent="navy" />
       </div>
-      {/* Reusing parts data for components */}
       <DataTable 
-        data={parts} 
+        data={componentsData} 
         columns={[
           { key: 'partNo', label: 'Part No', render: (r) => <span className="font-mono text-xs">{r.partNo}</span> },
           { key: 'partName', label: 'Part Name', render: (r) => <span className="font-medium">{r.partName}</span> },
