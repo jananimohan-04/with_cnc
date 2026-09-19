@@ -1106,12 +1106,397 @@ export function PurchaseOrdersPage() {
 }
 
 export function GoodsReceiptPage() {
+  const [grns, setGrns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [viewTarget, setViewTarget] = useState<any>(null);
+  
+  // Master Data
+  const [pos, setPos] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+
+  // Form State
+  const resetForm = () => ({
+    id: null,
+    grnNo: `GRN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    receiptDate: new Date().toISOString().split('T')[0],
+    poId: '',
+    supplierChallan: '',
+    supplierInvoice: '',
+    supplierInvoiceDate: '',
+    warehouseId: '',
+    remarks: '',
+    items: [] as any[]
+  });
+  const [form, setForm] = useState(resetForm());
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    // 1. Fetch GRNs
+    const { data: grnData } = await supabase.from('cnc_goods_receipts').select('*, supplier:cnc_suppliers(name, code), po:cnc_purchase_orders(po_number), items:cnc_goods_receipt_items(*)').order('created_at', { ascending: false });
+    if (grnData) setGrns(grnData);
+
+    // 2. Fetch POs (Only Issued or Partially Received)
+    const { data: poData } = await supabase.from('cnc_purchase_orders').select('*, items:cnc_purchase_order_items(*)').in('status', ['Issued', 'Partially Received']);
+    if (poData) setPos(poData);
+
+    // 3. Fetch Warehouses & Locations
+    const { data: whData } = await supabase.from('cnc_warehouses').select('*');
+    if (whData) setWarehouses(whData);
+    
+    const { data: locData } = await supabase.from('cnc_warehouse_locations').select('*');
+    if (locData) setLocations(locData);
+    
+    setLoading(false);
+  }
+
+  const handlePOSelect = async (e: any) => {
+    const poId = e.target.value;
+    const po = pos.find(p => p.id === poId);
+    
+    if (!po) {
+       setForm({ ...form, poId: '', items: [] });
+       return;
+    }
+
+    // Determine previously received quantities for this PO across all POSTED GRNs
+    const { data: priorGrns } = await supabase.from('cnc_goods_receipt_items')
+      .select('purchase_order_item_id, received_qty, grn:cnc_goods_receipts!inner(status, purchase_order_id)')
+      .eq('grn.purchase_order_id', poId)
+      .eq('grn.status', 'Posted');
+
+    const receivedMap: Record<string, number> = {};
+    if (priorGrns) {
+       priorGrns.forEach((pg: any) => {
+          receivedMap[pg.purchase_order_item_id] = (receivedMap[pg.purchase_order_item_id] || 0) + Number(pg.received_qty);
+       });
+    }
+
+    const items = po.items.map((i: any) => {
+       const previouslyReceived = receivedMap[i.id] || 0;
+       const remaining = Math.max(0, Number(i.quantity) - previouslyReceived);
+       return {
+          purchase_order_item_id: i.id,
+          raw_material_id: i.raw_material_id,
+          part_id: i.part_id,
+          material_code: i.material_code,
+          material_name: i.material_name,
+          ordered_qty: i.quantity,
+          previously_received_qty: previouslyReceived,
+          remaining_qty: remaining,
+          received_qty: remaining > 0 ? remaining : 0, // default to receiving the rest
+          unit: i.unit,
+          location_id: '',
+          condition: 'Accepted'
+       };
+    }).filter((i: any) => i.remaining_qty > 0); // Only show items that still need receiving
+
+    setForm({
+      ...form, 
+      poId: poId,
+      items: items
+    });
+  };
+
+  const updateItem = (index: number, field: string, value: any) => {
+    const newItems = [...form.items];
+    
+    if (field === 'received_qty') {
+       const val = Number(value);
+       if (val > newItems[index].remaining_qty) {
+          alert('Received quantity cannot exceed the pending quantity.');
+          return;
+       }
+    }
+    
+    newItems[index] = { ...newItems[index], [field]: value };
+    setForm({ ...form, items: newItems });
+  };
+
+  const saveGRN = async () => {
+    if (!form.poId) return alert('Purchase Order is required');
+    if (!form.warehouseId) return alert('Warehouse is required');
+    if (!form.items.length) return alert('At least one item is required');
+    
+    const po = pos.find(p => p.id === form.poId);
+
+    const grnRecord = {
+       grn_number: form.grnNo,
+       purchase_order_id: form.poId,
+       supplier_id: po?.supplier_id,
+       receipt_date: form.receiptDate,
+       supplier_challan_no: form.supplierChallan,
+       supplier_invoice_no: form.supplierInvoice,
+       supplier_invoice_date: form.supplierInvoiceDate || null,
+       warehouse_id: form.warehouseId,
+       status: 'Draft',
+       remarks: form.remarks,
+       created_by: 'Current User'
+    };
+
+    let grnId = form.id;
+
+    if (grnId) {
+       // Update existing Draft
+       const { error: updErr } = await supabase.from('cnc_goods_receipts').update(grnRecord).eq('id', grnId);
+       if (updErr) return alert('Error updating GRN: ' + updErr.message);
+       await supabase.from('cnc_goods_receipt_items').delete().eq('goods_receipt_id', grnId);
+    } else {
+       // Insert new
+       const { data: insData, error: insErr } = await supabase.from('cnc_goods_receipts').insert([grnRecord]).select();
+       if (insErr) return alert('Error creating GRN: ' + insErr.message);
+       grnId = insData[0].id;
+    }
+
+    // Insert items
+    const itemsToInsert = form.items.map(i => ({
+      goods_receipt_id: grnId,
+      purchase_order_item_id: i.purchase_order_item_id,
+      raw_material_id: i.raw_material_id || null,
+      part_id: i.part_id || null,
+      material_code: i.material_code,
+      material_name: i.material_name,
+      ordered_qty: i.ordered_qty,
+      received_qty: Number(i.received_qty),
+      unit: i.unit,
+      location_id: i.location_id || null,
+      condition: i.condition
+    }));
+
+    await supabase.from('cnc_goods_receipt_items').insert(itemsToInsert);
+
+    setShowAdd(false);
+    fetchData();
+  };
+
+  const handlePost = async (grn: any) => {
+     if (!confirm("Are you sure you want to POST this GRN? This will permanently update stock quantities and create stock movements. This action is atomic.")) return;
+     
+     try {
+        const { error } = await supabase.rpc('post_goods_receipt', { p_grn_id: grn.id, p_user: 'Current User' });
+        if (error) throw error;
+        alert("GRN Posted successfully! Inventory updated.");
+     } catch (err: any) {
+        alert("Error posting GRN: " + (err.message || "Unknown error"));
+     }
+     
+     fetchData();
+     setViewTarget(null);
+  };
+
+  const columns: Column<any>[] = [
+    { key: 'grn_number', label: 'GRN No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.grn_number}</span> },
+    { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.po?.po_number}</span> },
+    { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier?.name}</span> },
+    { key: 'receipt_date', label: 'Receipt Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.receipt_date}</span> },
+    { key: 'status', label: 'Status', sortable: true, render: (r) => (
+       <Badge variant={r.status === 'Posted' ? 'success' : r.status === 'Draft' ? 'neutral' : 'warning'} dot>{r.status}</Badge>
+    )},
+    { key: 'actions', label: 'Actions', align: 'center', render: (r) => (
+       <div className="flex gap-1 justify-center">
+         <Button variant="secondary" size="sm" onClick={() => setViewTarget(r)} icon={<Eye size={14} />}>View</Button>
+       </div>
+    ) }
+  ];
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Goods Receipt (GRN)" description="Receive materials against Purchase Orders" />
-      <div className="flex items-center justify-center h-64 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-        <p className="text-slate-500">GRN module coming soon.</p>
+      <PageHeader 
+         title="Goods Receipt (GRN)" 
+         description="Record physical material receipts against Supplier Purchase Orders" 
+         actions={<Button onClick={() => { setForm(resetForm()); setShowAdd(true); }} icon={<Plus size={16}/>}>New Goods Receipt</Button>} 
+      />
+      
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Total GRNs" value={grns.length.toString()} icon={<Package size={20} />} accent="brand" />
+        <StatCard label="Draft" value={grns.filter(g => g.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Posted" value={grns.filter(g => g.status === 'Posted').length.toString()} icon={<CheckCircle size={20} />} accent="success" />
+        <StatCard label="This Month" value={grns.filter(g => g.receipt_date.startsWith(new Date().toISOString().substring(0, 7))).length.toString()} icon={<TrendingUp size={20} />} accent="brand" />
       </div>
+      
+      <Card>
+         <DataTable data={grns} columns={columns} searchKeys={['grn_number', 'supplier.name', 'po.po_number']} />
+      </Card>
+
+      {/* CREATE / EDIT GRN MODAL */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="New Goods Receipt" subtitle="Supplier Delivery" size="xl" footer={<>
+         <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
+         <Button onClick={() => saveGRN()} icon={<CheckCircle size={16}/>}>Save Draft</Button>
+      </>}>
+         <div className="space-y-6">
+            <div className="grid grid-cols-3 gap-4">
+               <FormField label="GRN Number" required><input className={inputClass} value={form.grnNo} disabled /></FormField>
+               <FormField label="Receipt Date" required><input type="date" className={inputClass} value={form.receiptDate} onChange={e => setForm({...form, receiptDate: e.target.value})} /></FormField>
+               
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-slate-700">Purchase Order *</label>
+                 <select className={inputClass} value={form.poId} onChange={handlePOSelect}>
+                    <option value="">-- Select PO --</option>
+                    {pos.map(p => <option key={p.id} value={p.id}>{p.po_number}</option>)}
+                 </select>
+               </div>
+               
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-slate-700">Destination Warehouse *</label>
+                 <select className={inputClass} value={form.warehouseId} onChange={e => setForm({...form, warehouseId: e.target.value})}>
+                    <option value="">-- Select Warehouse --</option>
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                 </select>
+               </div>
+
+               <FormField label="Supplier Challan No"><input className={inputClass} value={form.supplierChallan} onChange={e => setForm({...form, supplierChallan: e.target.value})} /></FormField>
+               <FormField label="Supplier Invoice No"><input className={inputClass} value={form.supplierInvoice} onChange={e => setForm({...form, supplierInvoice: e.target.value})} /></FormField>
+               <FormField label="Supplier Invoice Date"><input type="date" className={inputClass} value={form.supplierInvoiceDate} onChange={e => setForm({...form, supplierInvoiceDate: e.target.value})} /></FormField>
+               
+               <div className="col-span-2">
+                 <FormField label="Remarks"><input className={inputClass} value={form.remarks} onChange={e => setForm({...form, remarks: e.target.value})} /></FormField>
+               </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4">
+               <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-bold text-slate-800">Received Items</h4>
+               </div>
+               
+               {form.items.length === 0 ? (
+                  <div className="text-center p-6 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm">Select a Purchase Order to load pending items.</div>
+               ) : (
+                  <div className="overflow-x-auto">
+                     <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead>
+                           <tr className="bg-slate-50 border-y border-slate-200">
+                              <th className="p-2 font-semibold text-slate-600">Material</th>
+                              <th className="p-2 font-semibold text-slate-600">Ordered</th>
+                              <th className="p-2 font-semibold text-slate-600">Pending</th>
+                              <th className="p-2 font-bold text-brand-700 w-32">Received Now *</th>
+                              <th className="p-2 font-semibold text-slate-600">Location</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                           {form.items.map((item, idx) => (
+                                 <tr key={idx}>
+                                    <td className="p-2">
+                                       <span className="block font-medium text-slate-800">{item.material_name}</span>
+                                       <span className="block text-xs text-slate-500 font-mono">{item.material_code}</span>
+                                    </td>
+                                    <td className="p-2">{item.ordered_qty} {item.unit}</td>
+                                    <td className="p-2 text-red-600 font-medium">{item.remaining_qty} {item.unit}</td>
+                                    <td className="p-2">
+                                       <div className="flex items-center gap-1">
+                                          <input type="number" className={inputClass} value={item.received_qty} onChange={e => updateItem(idx, 'received_qty', e.target.value)} max={item.remaining_qty} />
+                                          <span className="text-xs text-slate-500">{item.unit}</span>
+                                       </div>
+                                    </td>
+                                    <td className="p-2">
+                                       <select className={inputClass} value={item.location_id} onChange={e => updateItem(idx, 'location_id', e.target.value)}>
+                                          <option value="">- Bin/Location -</option>
+                                          {locations.map(l => <option key={l.id} value={l.id}>{l.code}</option>)}
+                                       </select>
+                                    </td>
+                                 </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+               )}
+            </div>
+         </div>
+      </Modal>
+
+      {/* VIEW / POST GRN MODAL */}
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`Goods Receipt: ${viewTarget?.grn_number}`} size="xl" footer={
+         <div className="flex gap-2 w-full justify-between items-center">
+            <div>
+               {viewTarget?.status === 'Posted' && (
+                  <span className="text-sm font-medium text-emerald-600 flex items-center gap-1"><CheckCircle size={16}/> Stock Updated</span>
+               )}
+            </div>
+            <div className="flex gap-2">
+               <Button variant="secondary" onClick={() => window.print()} icon={<Printer size={16}/>}>Print / PDF</Button>
+               {viewTarget?.status === 'Draft' && <Button variant="brand" onClick={() => handlePost(viewTarget)} icon={<CheckCircle size={16}/>}>Post to Inventory</Button>}
+               <Button variant="secondary" onClick={() => setViewTarget(null)}>Close</Button>
+            </div>
+         </div>
+      }>
+         {viewTarget && (
+            <div className="space-y-8 bg-white p-4" id="printable-po">
+               {/* Print Header */}
+               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6">
+                  <div>
+                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">GOODS RECEIPT</h1>
+                     <p className="text-slate-500 mt-1 font-mono">{viewTarget.grn_number}</p>
+                  </div>
+                  <div className="text-right text-sm">
+                     <p className="font-bold text-slate-800">CNCFORGE MFG LTD.</p>
+                     <p className="text-slate-500">123 Industrial Phase, Pune</p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-8 text-sm">
+                  <div>
+                     <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Supplier</h3>
+                     <p className="font-bold text-slate-800 text-base">{viewTarget.supplier?.name}</p>
+                     <p className="text-slate-600 mt-1"><strong>PO Ref:</strong> <span className="font-mono">{viewTarget.po?.po_number}</span></p>
+                  </div>
+                  <div>
+                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Receipt Date</span><span className="font-medium text-slate-900">{viewTarget.receipt_date}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Status</span><span className="font-medium text-slate-900">{viewTarget.status}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Challan No</span><span className="font-medium text-slate-900">{viewTarget.supplier_challan_no || '-'}</span></div>
+                        <div><span className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Invoice No</span><span className="font-medium text-slate-900">{viewTarget.supplier_invoice_no || '-'}</span></div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Items Table */}
+               <div className="pt-4">
+                  <table className="w-full text-left text-sm">
+                     <thead>
+                        <tr className="border-b-2 border-slate-800 text-slate-800">
+                           <th className="py-2 font-bold w-12">#</th>
+                           <th className="py-2 font-bold">Material / Code</th>
+                           <th className="py-2 font-bold text-center">Ordered</th>
+                           <th className="py-2 font-bold text-center">Received Now</th>
+                           <th className="py-2 font-bold">Location</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-200">
+                        {viewTarget.items?.map((item: any, idx: number) => {
+                           const loc = locations.find(l => l.id === item.location_id);
+                           return (
+                           <tr key={idx}>
+                              <td className="py-3 text-slate-500">{idx + 1}</td>
+                              <td className="py-3">
+                                 <p className="font-bold text-slate-800">{item.material_name}</p>
+                                 <p className="text-xs text-slate-500 font-mono">{item.material_code}</p>
+                              </td>
+                              <td className="py-3 text-center">{item.ordered_qty} {item.unit}</td>
+                              <td className="py-3 text-center font-bold text-slate-900">{item.received_qty} {item.unit}</td>
+                              <td className="py-3 text-slate-600">{loc ? loc.code : 'Unassigned'}</td>
+                           </tr>
+                           )
+                        })}
+                     </tbody>
+                  </table>
+               </div>
+               
+               {viewTarget.status === 'Posted' && (
+                  <div className="mt-8 bg-emerald-50 text-emerald-800 p-4 rounded-lg border border-emerald-200 text-sm flex gap-3 items-center">
+                     <CheckCircle size={24} />
+                     <div>
+                        <strong>Stock Updated Successfully</strong>
+                        <p className="text-emerald-700 opacity-80 mt-1">This Goods Receipt was permanently posted. Stock movements have been generated and inventory values have been increased.</p>
+                     </div>
+                  </div>
+               )}
+            </div>
+         )}
+      </Modal>
     </div>
   );
 }
