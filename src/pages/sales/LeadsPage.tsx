@@ -50,6 +50,21 @@ export function LeadsPage() {
     }
   }, [viewTarget]);
   const [quotationTarget, setQuotationTarget] = useState<any | null>(null);
+  const [quoteSelectTarget, setQuoteSelectTarget] = useState<any[] | null>(null);
+  const [lostSelectTarget, setLostSelectTarget] = useState<any[] | null>(null);
+  const [revertSelectTarget, setRevertSelectTarget] = useState<any[] | null>(null);
+
+  const openQuoteModal = (enq: any) => {
+    const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    setQuoteForm({
+        quoteNo: qNo, customer: enq.customer || enq.company, leadNo: enq.leadNo || enq.lead_no || `LD-${enq.enquiry_no}`, quoteDate: new Date().toISOString().split('T')[0], validTill: enq.expectedDate || enq.expected_date || '', salesperson: 'Admin',
+        partName: enq.partName || enq.part_name, partNumber: enq.partNo || enq.part_no || '', description: '', quantity: (enq.quantity)?.toString() || '0', unitPrice: '', discount: '0', gst: '18',
+        paymentTerms: '', deliveryTerms: '', remarks: ''
+    });
+    setQuotationTarget({ id: enq.id, contactPerson: enq.contactPerson || enq.contact_person, phone: enq.phone, email: enq.email, company: enq.customer || enq.company });
+    setQuoteSelectTarget(null);
+  };
+
   const [quoteForm, setQuoteForm] = useState<any>({
       quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: 'Admin',
       partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18',
@@ -81,6 +96,7 @@ export function LeadsPage() {
         setDbError(false);
         const groupedMap = new Map();
         data.forEach((d: any) => {
+          const st = d.status || 'New';
           if (!groupedMap.has(d.customer)) {
             groupedMap.set(d.customer, {
               id: d.id,
@@ -96,10 +112,16 @@ export function LeadsPage() {
               partNo: d.part_no,
               quantity: d.quantity,
               expectedDate: d.expected_date,
-              status: d.status || 'New',
+              status: st,
               estimatedValue: Number(d.estimated_value),
-              source: d.source || 'Direct'
+              source: d.source || 'Direct',
+              statusSummary: { [st]: 1 },
+              allEnquiries: [d]
             });
+          } else {
+            const existing = groupedMap.get(d.customer);
+            existing.statusSummary[st] = (existing.statusSummary[st] || 0) + 1;
+            existing.allEnquiries.push(d);
           }
         });
         setLeadsData(Array.from(groupedMap.values()));
@@ -226,32 +248,39 @@ export function LeadsPage() {
     { key: 'partName', label: 'Requirement', render: (r) => <div><p className="text-sm font-medium text-slate-700">{r.partName}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
     { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source}</Badge> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Converted' ? 'success' : r.status === 'Lost' ? 'error' : 'warning'} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'right', render: (r) => (
+    { key: 'actions', label: 'Actions', align: 'right', render: (r) => {
+        const activeEnqs = (r.allEnquiries || []).filter((e: any) => e.status !== 'Converted' && e.status !== 'Lost' && e.status !== 'Quoted');
+        const lostEnqs = (r.allEnquiries || []).filter((e: any) => e.status === 'Lost');
+        const hasActive = activeEnqs.length > 0;
+        const hasLost = lostEnqs.length > 0;
+
+        return (
         <div className="flex items-center justify-end gap-1">
-          {r.status !== 'Converted' && r.status !== 'Lost' && (
+          {hasActive && (
             <>
               <button onClick={() => {
-                const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-                setQuoteForm({
-                  quoteNo: qNo, customer: r.company, leadNo: r.leadNo, quoteDate: new Date().toISOString().split('T')[0], validTill: r.expectedDate || '', salesperson: 'Admin',
-                  partName: r.partName, partNumber: r.partNo || '', description: '', quantity: r.quantity?.toString() || '0', unitPrice: '', discount: '0', gst: '18',
-                  paymentTerms: '', deliveryTerms: '', remarks: ''
-                });
-                setQuotationTarget(r);
+                if (activeEnqs.length === 1) openQuoteModal(activeEnqs[0]);
+                else setQuoteSelectTarget(activeEnqs);
               }} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
-              <button onClick={() => handleMarkLost(r.id)} title="Mark as Lost" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><XCircle size={15} /></button>
+              
+              <button onClick={() => {
+                if (activeEnqs.length === 1) handleMarkLost(activeEnqs[0].id);
+                else setLostSelectTarget(activeEnqs);
+              }} title="Mark as Lost" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><XCircle size={15} /></button>
             </>
           )}
-          {r.status === 'Lost' && (
-            <button onClick={() => handleRevertLost(r.id)} title="Revert to New" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><RefreshCcw size={15} /></button>
+          {hasLost && (
+            <button onClick={() => {
+              if (lostEnqs.length === 1) handleRevertLost(lostEnqs[0].id);
+              else setRevertSelectTarget(lostEnqs);
+            }} title="Revert Lost Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><RefreshCcw size={15} /></button>
           )}
           <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-          <button onClick={() => handleEditClick(r)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
+          <button onClick={() => handleEditClick(r)} title="Edit Latest Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
         </div>
-      )
-    },
-  ];
+      );
+    } }
+    ];
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -426,6 +455,40 @@ export function LeadsPage() {
           </div>
         )}
       </Modal>
+    
+      <Modal open={!!quoteSelectTarget} onClose={() => setQuoteSelectTarget(null)} title="Select Enquiry to Quote" size="sm" footer={<Button variant="secondary" onClick={() => setQuoteSelectTarget(null)}>Cancel</Button>}>
+         <div className="flex flex-col gap-2">
+            {quoteSelectTarget?.map(e => (
+               <div key={e.id} onClick={() => openQuoteModal(e)} className="p-3 border border-slate-200 rounded-lg hover:border-brand-400 hover:bg-brand-50 cursor-pointer transition-colors">
+                  <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
+                  <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
+               </div>
+            ))}
+         </div>
+      </Modal>
+
+      <Modal open={!!lostSelectTarget} onClose={() => setLostSelectTarget(null)} title="Select Enquiry to Mark as Lost" size="sm" footer={<Button variant="secondary" onClick={() => setLostSelectTarget(null)}>Cancel</Button>}>
+         <div className="flex flex-col gap-2">
+            {lostSelectTarget?.map(e => (
+               <div key={e.id} onClick={() => { handleMarkLost(e.id); setLostSelectTarget(null); }} className="p-3 border border-slate-200 rounded-lg hover:border-red-400 hover:bg-red-50 cursor-pointer transition-colors">
+                  <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
+                  <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
+               </div>
+            ))}
+         </div>
+      </Modal>
+
+      <Modal open={!!revertSelectTarget} onClose={() => setRevertSelectTarget(null)} title="Select Enquiry to Revert" size="sm" footer={<Button variant="secondary" onClick={() => setRevertSelectTarget(null)}>Cancel</Button>}>
+         <div className="flex flex-col gap-2">
+            {revertSelectTarget?.map(e => (
+               <div key={e.id} onClick={() => { handleRevertLost(e.id); setRevertSelectTarget(null); }} className="p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors">
+                  <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
+                  <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
+               </div>
+            ))}
+         </div>
+      </Modal>
+
     </div>
   );
 }
