@@ -247,7 +247,13 @@ export function LeadsPage() {
     { key: 'contactPerson', label: 'Contact', render: (r) => <div><p className="text-sm">{r.contactPerson}</p><p className="text-xs text-slate-500">{r.phone}</p></div> },
     { key: 'partName', label: 'Requirement', render: (r) => <div><p className="text-sm font-medium text-slate-700">{r.partName}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
     { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source}</Badge> },
-    { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Converted' ? 'success' : r.status === 'Lost' ? 'error' : 'warning'} dot>{r.status}</Badge> },
+    { key: 'status', label: 'Status Summary', render: (r) => (
+      <div className="flex flex-wrap gap-1 max-w-[150px]">
+        {Object.entries(r.statusSummary || {}).map(([st, count]) => (
+          <Badge key={st} variant={statusToVariant(st)}>{count as React.ReactNode} {st}</Badge>
+        ))}
+      </div>
+    ) },
     { key: 'actions', label: 'Actions', align: 'right', render: (r) => {
         const activeEnqs = (r.allEnquiries || []).filter((e: any) => e.status !== 'Converted' && e.status !== 'Lost' && e.status !== 'Quoted');
         const lostEnqs = (r.allEnquiries || []).filter((e: any) => e.status === 'Lost');
