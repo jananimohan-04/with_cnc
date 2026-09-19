@@ -160,6 +160,7 @@ export function SalesPipelinePage() {
   });
 
   const [knownCompanies, setKnownCompanies] = useState<any[]>([]);
+  const [companySearchFocused, setCompanySearchFocused] = useState(false);
 
   const fetchPipeline = async () => {
     setLoading(true);
@@ -613,15 +614,39 @@ export function SalesPipelinePage() {
       <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} /></FormField>
-          <FormField label="Company Name" required>
-            <input list="companies-list" className={inputClass} value={enquiryForm.company} onChange={e => handleCompanyChange(e.target.value)} placeholder="Type or select company..." />
-            <datalist id="companies-list">
-              {knownCompanies.map((c, i) => <option key={i} value={c.company} />)}
-            </datalist>
-          </FormField>
+          <div className="relative">
+            <FormField label="Company Name" required>
+              <input 
+                className={inputClass} 
+                value={enquiryForm.company} 
+                onChange={e => handleCompanyChange(e.target.value)}
+                onFocus={() => setCompanySearchFocused(true)}
+                onBlur={() => setTimeout(() => setCompanySearchFocused(false), 200)}
+                placeholder="Type or select company..." 
+              />
+              {companySearchFocused && knownCompanies.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-[100%] mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {knownCompanies.filter(c => c.company.toLowerCase().includes(enquiryForm.company.toLowerCase())).map((c, i) => (
+                    <div 
+                      key={i} 
+                      className="px-3 py-2 text-sm text-slate-700 hover:bg-brand-50 cursor-pointer"
+                      onClick={() => {
+                        handleCompanyChange(c.company);
+                        setCompanySearchFocused(false);
+                      }}
+                    >
+                      {c.company}
+                    </div>
+                  ))}
+                  {knownCompanies.filter(c => c.company.toLowerCase().includes(enquiryForm.company.toLowerCase())).length === 0 && (
+                     <div className="px-3 py-2 text-sm text-slate-500 italic">Press enter to add new</div>
+                  )}
+                </div>
+              )}
+            </FormField>
+          </div>
           
-          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-             <h4 className="font-semibold text-sm text-slate-800 mb-4">Contact Details</h4>
+          <div className="col-span-2 mt-2 pt-2">
              <ContactsList form={enquiryForm} setForm={setEnquiryForm} />
           </div>
 
