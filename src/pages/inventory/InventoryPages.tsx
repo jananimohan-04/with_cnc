@@ -222,7 +222,7 @@ export function RawMaterialsPage() {
           <FormField label="Unit of Measure (UoM)"><input className={inputClass} value={formData.uom} onChange={e => setFormData({...formData, uom: e.target.value})} placeholder="kg, pcs, meters" /></FormField>
           <FormField label="Minimum Stock Alert"><input type="number" className={inputClass} value={formData.minStock} onChange={e => setFormData({...formData, minStock: e.target.value})} /></FormField>
           <FormField label="Storage Location"><input className={inputClass} value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Rack A1" /></FormField>
-          {editId && (
+          {editId && ( <>
             <div className="space-y-1">
             <label className="text-xs font-medium text-slate-700">Preferred Supplier</label>
             <select className={inputClass} value={formData.preferred_supplier_id} onChange={e => setFormData({...formData, preferred_supplier_id: e.target.value})}>
@@ -235,6 +235,7 @@ export function RawMaterialsPage() {
                 <option>In Stock</option><option>Low Stock</option><option>Out of Stock</option>
               </select>
             </FormField>
+          </>
           )}
         </div>
       </Modal>
