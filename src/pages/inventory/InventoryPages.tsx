@@ -17,13 +17,22 @@ export function RawMaterialsPage() {
   const [viewTarget, setViewTarget] = useState<RawMaterial | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RawMaterial | null>(null);
   const [materialsData, setMaterialsData] = useState<RawMaterial[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
   const resetForm = () => ({
-    materialCode: `RM-${Math.floor(1000 + Math.random() * 9000)}`,
-    name: '', grade: '', form: '', stockQty: '', uom: 'kg', minStock: '', location: '', status: 'In Stock'
-  });
+      partNo: `P-${Math.floor(1000 + Math.random() * 9000)}`,
+      partName: '',
+      category: 'Aerospace',
+      material: '',
+      weight: '',
+      unit: 'kg',
+      unitPrice: '',
+      stockQty: '',
+      status: 'Active',
+      preferred_supplier_id: ''
+    });
   const [formData, setFormData] = useState(resetForm());
 
   useEffect(() => {
@@ -46,6 +55,7 @@ export function RawMaterialsPage() {
             uom: d.uom,
             minStock: Number(d.min_stock),
             location: d.location,
+              preferred_supplier_id: d.preferred_supplier_id,
             status: d.status,
           }));
           setMaterialsData(formattedData);
@@ -59,6 +69,11 @@ export function RawMaterialsPage() {
       }
     }
     fetchMaterials();
+      async function fetchSuppliers() {
+        const { data } = await supabase.from('cnc_suppliers').select('id, name').eq('status', 'Active');
+        if (data) setSuppliers(data);
+      }
+      fetchSuppliers();
   }, []);
 
   const handleEditClick = (r: RawMaterial) => {
@@ -70,6 +85,7 @@ export function RawMaterialsPage() {
       stockQty: r.stockQty.toString(),
       uom: r.uom,
       minStock: r.minStock.toString(),
+      preferred_supplier_id: (r as any).preferred_supplier_id || '',
       location: r.location,
       status: r.status
     });
@@ -207,7 +223,14 @@ export function RawMaterialsPage() {
           <FormField label="Minimum Stock Alert"><input type="number" className={inputClass} value={formData.minStock} onChange={e => setFormData({...formData, minStock: e.target.value})} /></FormField>
           <FormField label="Storage Location"><input className={inputClass} value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Rack A1" /></FormField>
           {editId && (
-            <FormField label="Status">
+            <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-700">Preferred Supplier</label>
+            <select className={inputClass} value={formData.preferred_supplier_id} onChange={e => setFormData({...formData, preferred_supplier_id: e.target.value})}>
+              <option value="">None</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <FormField label="Status">
               <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
                 <option>In Stock</option><option>Low Stock</option><option>Out of Stock</option>
               </select>
@@ -258,6 +281,7 @@ export function RawMaterialsPage() {
 
 export function ComponentsPage() {
   const [componentsData, setComponentsData] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
@@ -290,6 +314,11 @@ export function ComponentsPage() {
       }
     }
     fetchComponents();
+      async function fetchSuppliers() {
+        const { data } = await supabase.from('cnc_suppliers').select('id, name').eq('status', 'Active');
+        if (data) setSuppliers(data);
+      }
+      fetchSuppliers();
   }, []);
 
   const totalComponents = componentsData.length;
