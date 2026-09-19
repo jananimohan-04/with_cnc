@@ -681,9 +681,9 @@ export function MaterialRequestsPage() {
                <FormField label="Request Date"><input type="date" className={inputClass} value={reqForm.requestDate} disabled /></FormField>
                <FormField label="Required Date" required><input type="date" className={inputClass} value={reqForm.requiredDate} onChange={e => setReqForm({...reqForm, requiredDate: e.target.value})} /></FormField>
                <div className="space-y-1"><label className="text-xs font-medium text-slate-700">Priority</label><select value={reqForm.priority} onChange={e => setReqForm({...reqForm, priority: e.target.value})} className={inputClass}><option>Normal</option><option>High</option><option>Urgent</option></select></div>
-               <FormField label="Part / Product"><input type="text" className={inputClass} value={reqForm.partName} disabled /></FormField>
-               <FormField label="Production Qty"><input type="number" className={inputClass} value={reqForm.productionQty.toString()} disabled /></FormField>
-               <FormField label="Requested By"><input type="text" className={inputClass} value="Admin" disabled /></FormField>
+               <FormField label="Part / Product"><input type="text" className={inputClass} value={reqForm.partName} onChange={e => setReqForm({...reqForm, partName: e.target.value})} /></FormField>
+               <FormField label="Production Qty"><input type="number" className={inputClass} value={reqForm.productionQty.toString()} onChange={e => setReqForm({...reqForm, productionQty: Number(e.target.value)})} /></FormField>
+               <FormField label="Requested By"><input type="text" className={inputClass} defaultValue="Admin" /></FormField>
                <FormField label="Remarks"><input type="text" className={inputClass} value={reqForm.remarks} onChange={e => setReqForm({...reqForm, remarks: e.target.value})} /></FormField>
             </div>
 
