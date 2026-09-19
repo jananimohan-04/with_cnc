@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { FileText, Plus, Archive, Trash2 } from 'lucide-react';
+import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
 
 type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward';
 
@@ -34,6 +34,7 @@ export function SalesPipelinePage() {
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
   const [orderModalTarget, setOrderModalTarget] = useState<KanbanCard | null>(null);
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
+  const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
 
   const resetEnquiryForm = () => ({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -397,8 +398,11 @@ export function SalesPipelinePage() {
             <div className="flex-1 flex flex-col gap-3 overflow-y-auto scrollbar-none">
               {cards.filter(c => c.stage === stage).map(card => (
                 <div key={card.id} draggable onDragStart={(e) => handleDragStart(e, card)} className="bg-white p-3.5 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing hover:border-brand-300 transition-all group relative">
-                  {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 transition-colors" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
-                  <div className="text-[10px] font-mono text-slate-400 mb-1">{card.refNo}</div>
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button onClick={() => setViewModalTarget(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
+                    {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="text-slate-300 hover:text-red-500 transition-colors bg-white/80 p-0.5 rounded" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
                   <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
                   <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
                   
@@ -622,6 +626,52 @@ export function SalesPipelinePage() {
             <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-slate-100 font-bold`} value={calcInwardTotal()} disabled /></FormField>
           </div>
         </div>
+      </Modal>
+
+      {/* Generic View Modal */}
+      <Modal open={!!viewModalTarget} onClose={() => setViewModalTarget(null)} title={`${viewModalTarget?.stage} Details: ${viewModalTarget?.refNo}`} size="lg" footer={<Button variant="secondary" onClick={() => setViewModalTarget(null)}>Close</Button>}>
+        {viewModalTarget && (
+          <div className="flex flex-col gap-6 max-h-[70vh] overflow-y-auto pr-2">
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+              <div className="col-span-full"><h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-2 uppercase">Record Data</h4></div>
+              {Object.entries(viewModalTarget.raw).map(([key, value]) => {
+                if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts') return null;
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                return (
+                  <div key={key}>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
+                    <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {viewModalTarget.raw.items && Array.isArray(viewModalTarget.raw.items) && (
+              <div className="bg-white rounded-lg border border-slate-200">
+                <h4 className="font-bold text-sm text-brand-800 border-b border-slate-200 p-3 bg-slate-50 rounded-t-lg uppercase">Order Items</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
+                      <tr><th className="px-4 py-2">Part Name / No</th><th className="px-4 py-2">Qty</th><th className="px-4 py-2">Unit Price</th><th className="px-4 py-2">Total</th></tr>
+                    </thead>
+                    <tbody>
+                      {viewModalTarget.raw.items.map((item: any, i: number) => (
+                        <tr key={i} className="border-b border-slate-100 last:border-0">
+                          <td className="px-4 py-3 font-medium text-slate-800">{item.partName} <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span></td>
+                          <td className="px-4 py-3">{item.quantity}</td>
+                          <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
+                          <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
 
     </div>
