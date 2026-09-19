@@ -339,7 +339,8 @@ export function PortalDashboard({ session }: { session: any }) {
 
   const loadEnquiries = async (profileId: string) => {
     const { data } = await supabase.from('cnc_enquiries').select('*').eq('portal_profile_id', profileId).order('created_at', { ascending: false });
-    setEnquiries(data || []);
+    // Only show actual enquiries in the portal, hide the initial 'Profile Lead'
+    setEnquiries((data || []).filter(e => e.pipeline_stage !== null));
   };
 
   const handleLogout = async () => {
