@@ -108,7 +108,8 @@ export function RawMaterialsPage() {
         setEditId(null);
         setFormData(resetForm());
       } else {
-        alert("Failed to update.");
+        console.error("Update error:", error);
+        alert(`Failed to update: ${error.message || JSON.stringify(error)}`);
       }
     } else {
       const newId = crypto.randomUUID();
@@ -123,7 +124,8 @@ export function RawMaterialsPage() {
         setShowAdd(false);
         setFormData(resetForm());
       } else {
-        alert("Failed to add to database. Check connection or SQL script.");
+        console.error("Insert error:", error);
+        alert(`Failed to add to database: ${error.message || JSON.stringify(error)}`);
       }
     }
     setLoading(false);
