@@ -131,6 +131,18 @@ export function RawMaterialsPage() {
     setLoading(false);
   };
 
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    // Optimistic UI update
+    setMaterialsData(prev => prev.map(m => m.id === id ? { ...m, status: newStatus as any } : m));
+    
+    // Update DB
+    const { error } = await supabase.from('cnc_raw_materials').update({ status: newStatus }).eq('id', id);
+    if (error) {
+      console.error("Failed to update status", error);
+      alert("Failed to update status.");
+    }
+  };
+
   const columns: Column<RawMaterial>[] = [
     { key: 'materialCode', label: 'Code', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.materialCode}</span> },
     { key: 'name', label: 'Material Name', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.name}</span> },
@@ -138,7 +150,24 @@ export function RawMaterialsPage() {
     { key: 'form', label: 'Form', render: (r) => <span className="text-xs text-slate-500">{r.form}</span> },
     { key: 'stockQty', label: 'Stock', sortable: true, align: 'right', render: (r) => <span className={`font-semibold ${r.stockQty <= r.minStock ? 'text-red-600' : 'text-slate-700'}`}>{r.stockQty} {r.uom}</span> },
     { key: 'location', label: 'Location', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.location}</span> },
-    { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'In Stock' ? 'success' : r.status === 'Low Stock' ? 'warning' : 'error'} dot>{r.status}</Badge> },
+    { 
+      key: 'status', label: 'Status', sortable: true, render: (r) => (
+        <select 
+          value={r.status}
+          onChange={(e) => handleStatusChange(r.id, e.target.value)}
+          className={`text-xs font-medium rounded-full px-3 py-1 focus:ring-0 cursor-pointer outline-none appearance-none text-center ${
+            r.status === 'In Stock' ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100' : 
+            r.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 
+            'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
+          }`}
+          style={{ backgroundImage: 'none' }}
+        >
+          <option value="In Stock" className="bg-white text-slate-800">● In Stock</option>
+          <option value="Low Stock" className="bg-white text-slate-800">● Low Stock</option>
+          <option value="Out of Stock" className="bg-white text-slate-800">● Out of Stock</option>
+        </select>
+      ) 
+    },
     {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
