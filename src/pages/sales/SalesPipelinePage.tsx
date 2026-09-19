@@ -25,48 +25,7 @@ const formatINR = (value: number) => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
 };
 
-const renderRecordData = (title: string, raw: any) => {
-  if (!raw) return null;
-  return (
-    <div className="mb-6">
-      <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase">{title} Details</h4>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
-        {Object.entries(raw).map(([key, value]) => {
-          if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts') return null;
-          const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-          return (
-            <div key={key}>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
-              <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
-            </div>
-          );
-        })}
-      </div>
-      {raw.items && Array.isArray(raw.items) && (
-        <div className="bg-white rounded-lg border border-slate-200 mt-4">
-          <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Items Breakdown</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
-                <tr><th className="px-4 py-2">Part Name / No</th><th className="px-4 py-2">Qty</th><th className="px-4 py-2">Unit Price</th><th className="px-4 py-2">Total</th></tr>
-              </thead>
-              <tbody>
-                {raw.items.map((item: any, i: number) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3 font-medium text-slate-800">{item.partName} <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span></td>
-                    <td className="px-4 py-3">{item.quantity}</td>
-                    <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
-                    <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+// renderRecordData moved inside component for inline edit support
 
 export function SalesPipelinePage() {
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward'];
@@ -79,6 +38,94 @@ export function SalesPipelinePage() {
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
+  const [viewEditMode, setViewEditMode] = useState(false);
+
+  const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
+    const tableMap: any = {
+      'Enquiry': 'cnc_enquiries',
+      'Quotation': 'cnc_quotations',
+      'Sales Order': 'cnc_sales_orders',
+      'Inward': 'cnc_inwards'
+    };
+    const table = tableMap[title];
+    if (!table) return;
+
+    const { error } = await supabase.from(table).update({ [field]: value }).eq('id', id);
+    if (error) {
+       console.error("Failed to update:", error);
+       alert("Failed to update field: " + error.message);
+    } else {
+       setViewModalData((prev: any) => {
+          if (!prev) return prev;
+          const newPrev = { ...prev };
+          const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order', 'Inward': 'inward' };
+          const stateKey = keyMap[title];
+          if (newPrev[stateKey]) {
+             newPrev[stateKey] = { ...newPrev[stateKey], [field]: value };
+          }
+          return newPrev;
+       });
+       fetchPipeline();
+    }
+  };
+
+  const renderRecordData = (title: string, raw: any) => {
+    if (!raw) return null;
+    return (
+      <div className="mb-6">
+        <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase flex justify-between items-center">
+          {title} Details
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+          {Object.entries(raw).map(([key, value]) => {
+            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts') return null;
+            const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            return (
+              <div key={key}>
+                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
+                {viewEditMode && key !== 'created_at' && key !== 'updated_at' ? (
+                   <input 
+                     type="text" 
+                     className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
+                     defaultValue={String(value)}
+                     onBlur={(e) => {
+                       if (e.target.value !== String(value)) {
+                         handleInlineEdit(title, raw.id, key, e.target.value);
+                       }
+                     }}
+                   />
+                ) : (
+                   <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {raw.items && Array.isArray(raw.items) && (
+          <div className="bg-white rounded-lg border border-slate-200 mt-4">
+            <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Items Breakdown</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
+                  <tr><th className="px-4 py-2">Part Name / No</th><th className="px-4 py-2">Qty</th><th className="px-4 py-2">Unit Price</th><th className="px-4 py-2">Total</th></tr>
+                </thead>
+                <tbody>
+                  {raw.items.map((item: any, i: number) => (
+                    <tr key={i} className="border-b border-slate-100 last:border-0">
+                      <td className="px-4 py-3 font-medium text-slate-800">{item.partName} <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span></td>
+                      <td className="px-4 py-3">{item.quantity}</td>
+                      <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
+                      <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const resetEnquiryForm = () => ({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -225,6 +272,7 @@ export function SalesPipelinePage() {
   const closeViewModal = () => {
     setViewModalTarget(null);
     setViewModalData(null);
+    setViewEditMode(false);
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
@@ -729,7 +777,7 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Generic View Modal */}
-      <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalTarget?.refNo}`} size="xl" footer={<Button variant="secondary" onClick={closeViewModal}>Close</Button>}>
+      <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
              {renderRecordData('Enquiry', viewModalData.enquiry)}
