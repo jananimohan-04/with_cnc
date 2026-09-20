@@ -983,7 +983,7 @@ export function SalesPipelinePage() {
                       draggable 
                       onDragStart={(e) => handleDragStart(e, card)}
                         onDragEnd={() => setDraggedCard(null)} 
-                      onClick={() => setViewModalTarget(card)}
+                      onClick={() => openViewModal(card)}
                       className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
                     >
                       <div className="flex justify-between items-start mb-2">
