@@ -118,7 +118,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Enquiry No"><input className={inputClass} value={selectedEnquiry.enquiry_no || 'Pending'} disabled /></FormField>
                 <FormField label="Date"><input className={inputClass} value={selectedEnquiry.received_date?.split('T')[0] || selectedEnquiry.created_at?.split('T')[0] || ''} disabled /></FormField>
-                <FormField label="Customer"><input className={\`\${inputClass} font-semibold text-brand-700\`} value={selectedEnquiry.customer || ''} disabled /></FormField>
+                <FormField label="Customer"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedEnquiry.customer || ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedEnquiry.status || 'New'} disabled /></FormField>
                 <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={selectedEnquiry.part_name || selectedEnquiry.enquiring_for || ''} disabled /></FormField></div>
                 <FormField label="Quantity"><input className={inputClass} value={selectedEnquiry.quantity || ''} disabled /></FormField>
