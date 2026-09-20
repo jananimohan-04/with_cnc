@@ -337,7 +337,7 @@ export function SalesPipelinePage() {
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
-    e.dataTransfer.setData('cardStr', JSON.stringify(card));
+    // e.dataTransfer.setData('cardStr', JSON.stringify(card));
     e.dataTransfer.setData('cardId', card.id);
   };
 
@@ -621,9 +621,9 @@ export function SalesPipelinePage() {
         <StatCard label="Inwards" value={cards.filter(c => c.stage === 'Inward').length.toString()} icon={<FileText size={20} />} accent="warning" />
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin"><div className="flex gap-5 h-full items-start min-w-max px-2">
+      <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin"><div className="flex gap-5 h-full items-stretch min-w-max px-2">
         {columns.map(stage => (
-          <div key={stage} className="w-[340px] flex-shrink-0 bg-slate-50 rounded-2xl p-4 flex flex-col border border-slate-200/60 shadow-sm max-h-full" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage)}>
+          <div key={stage} className="w-[340px] flex-shrink-0 bg-slate-50 rounded-2xl p-4 flex flex-col border border-slate-200/60 shadow-sm min-h-[400px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage)}>
             <div className="flex justify-between items-center mb-3 px-1">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs">{stage}</h3>
