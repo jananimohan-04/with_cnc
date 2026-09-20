@@ -33,6 +33,7 @@ const formatINR = (value: number) => {
 };
 
 // renderRecordData moved inside component for inline edit support
+import { CommentsModal } from './CommentsModal';
 
 export function SalesPipelinePage() {
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
@@ -40,6 +41,9 @@ export function SalesPipelinePage() {
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
@@ -257,6 +261,29 @@ export function SalesPipelinePage() {
       invoicesData.forEach(inv => {
          newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || inv.created_at.split('T')[0], status: inv.status, raw: inv });
       });
+    }
+
+    try {
+      let comms: any[] = [];
+      const { data, error: commErr } = await supabase.from('cnc_pipeline_comments').select('record_id');
+      if (data && !commErr) {
+        comms = data;
+      } else {
+        comms = JSON.parse(localStorage.getItem('cnc_pipeline_comments') || '[]');
+      }
+      
+      const counts: Record<string, number> = {};
+      comms.forEach(c => {
+         counts[c.record_id] = (counts[c.record_id] || 0) + 1;
+      });
+      setCommentCounts(counts);
+    } catch(e) {
+      const comms = JSON.parse(localStorage.getItem('cnc_pipeline_comments') || '[]');
+      const counts: Record<string, number> = {};
+      comms.forEach((c: any) => {
+         counts[c.record_id] = (counts[c.record_id] || 0) + 1;
+      });
+      setCommentCounts(counts);
     }
 
     setCards(newCards);
@@ -1025,7 +1052,13 @@ export function SalesPipelinePage() {
                         </div>
                       </div>
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 0</span>
+                        <span 
+                          className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-10 relative"
+                          onClick={(e) => { e.stopPropagation(); setActiveCommentTarget(card); }}
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
+                          {commentCounts[card.id] || 0}
+                        </span>
                         <span className="text-[10px] font-bold text-brand-600">View details →</span>
                       </div>
                     </div>
@@ -1432,6 +1465,15 @@ export function SalesPipelinePage() {
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
         )}
       </Modal>
+
+      {activeCommentTarget && (
+        <CommentsModal 
+          isOpen={true} 
+          onClose={() => { setActiveCommentTarget(null); fetchPipeline(); }} 
+          recordId={activeCommentTarget.id} 
+          recordTitle={activeCommentTarget.refNo} 
+        />
+      )}
 
     </div>
   );
