@@ -36,6 +36,12 @@ export function SalesPipelinePage() {
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
   
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
+  const [fgModalTarget, setFgModalTarget] = useState<KanbanCard | null>(null);
+  const [fgForm, setFgForm] = useState<any>({});
+  const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
+  const [dcForm, setDcForm] = useState<any>({});
+  const [invoiceModalTarget, setInvoiceModalTarget] = useState<KanbanCard | null>(null);
+  const [invoiceForm, setInvoiceForm] = useState<any>({});
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
   const [viewEditMode, setViewEditMode] = useState(false);
@@ -413,6 +419,36 @@ export function SalesPipelinePage() {
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
+    } else if (card.type === 'inward' && toStage === 'Finished Goods') {
+      setFgForm({
+         woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+         customer: card.customer, partName: card.part, partNo: card.raw.part_number || '',
+         orderQty: card.qty?.toString() || '0', completedQty: card.qty?.toString() || '0',
+         date: new Date().toISOString().split('T')[0]
+      });
+      setFgModalTarget(card);
+    } else if (card.type === 'finished_goods' && toStage === 'DC') {
+      setDcForm({
+         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+         date: new Date().toISOString().split('T')[0], partyName: card.customer,
+         partName: card.part, quantity: card.qty?.toString() || '0', price: '', 
+         poNumber: card.raw.wo_no || card.raw.woNo || '', vehicleNo: '', ewayBill: ''
+      });
+      setDcModalTarget(card);
+    } else if (card.type === 'dc' && toStage === 'Invoice') {
+      setInvoiceForm({
+         invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+         date: new Date().toISOString().split('T')[0], partyName: card.customer,
+         dcNumber: card.refNo, partName: card.part, quantity: card.qty?.toString() || '0', price: '0', 
+         cgst: '9', sgst: '9', igst: '0'
+      });
+      setInvoiceModalTarget(card);
+    } else {
+      if ((card.type === 'inward' && toStage === 'DC') || (card.type === 'inward' && toStage === 'Invoice') || (card.type === 'finished_goods' && toStage === 'Invoice')) {
+         alert(`Please complete ${card.type === 'inward' ? 'Finished Goods entry' : 'the Delivery Challan'} before moving to ${toStage}.`);
+      } else {
+         alert(`Cannot drag ${card.stage} directly to ${toStage}. Please follow the sequence.`);
+      }
     }
   };
 
@@ -485,6 +521,63 @@ export function SalesPipelinePage() {
       }
     if (error) alert("Error: Make sure to run the SQL script to create the cnc_inwards table and columns.");
     else { await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id); setInwardModalTarget(null); fetchPipeline(); }
+  };
+
+  const saveFinishedGoods = async () => {
+    if (!fgModalTarget) return;
+    const q = Number(fgForm.completedQty) || 0;
+    const maxQ = Number(fgForm.orderQty) || 0;
+    if (q > maxQ) {
+       alert(`Quantity cannot exceed the inwarded amount of ${maxQ} pcs.`);
+       return;
+    }
+    const { error } = await supabase.from('cnc_work_orders').insert([{
+       id: crypto.randomUUID(), wo_no: fgForm.woNo, customer: fgForm.customer,
+       part_name: fgForm.partName, completed: q, status: 'Completed',
+       updated_at: fgForm.date + 'T00:00:00Z'
+    }]);
+    if (!error) {
+       await supabase.from('cnc_inwards').update({ status: 'Processed' }).eq('id', fgModalTarget.raw.id);
+       setFgModalTarget(null); fetchPipeline();
+    } else { alert("Error: " + error.message); }
+  };
+
+  const saveDeliveryChallan = async () => {
+    if (!dcModalTarget) return;
+    const q = Number(dcForm.quantity) || 0;
+    const maxQ = Number(dcModalTarget.qty) || 0;
+    if (q > maxQ) {
+       alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
+       return;
+    }
+    const { error } = await supabase.from('cnc_deliveries').insert([{
+       id: crypto.randomUUID(), delivery_no: dcForm.dcNo, party_name: dcForm.partyName,
+       part_name: dcForm.partName, quantity: q, delivery_date: dcForm.date, status: 'Delivered',
+       created_at: new Date().toISOString()
+    }]);
+    if (!error) {
+       await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).eq('id', dcModalTarget.raw.id);
+       setDcModalTarget(null); fetchPipeline();
+    } else { alert("Error: " + error.message); }
+  };
+
+  const saveInvoice = async () => {
+    if (!invoiceModalTarget) return;
+    const q = Number(invoiceForm.quantity) || 0;
+    const p = Number(invoiceForm.price) || 0;
+    const cg = Number(invoiceForm.cgst) || 0;
+    const sg = Number(invoiceForm.sgst) || 0;
+    const ig = Number(invoiceForm.igst) || 0;
+    const amt = q * p * (1 + (cg+sg+ig)/100);
+    const { error } = await supabase.from('cnc_invoices').insert([{
+       id: crypto.randomUUID(), invoice_no: invoiceForm.invoiceNo, customer_name: invoiceForm.partyName,
+       part_name: invoiceForm.partName, quantity: q, amount: amt, invoice_date: invoiceForm.date, status: 'Paid',
+       created_at: new Date().toISOString()
+    }]);
+    if (!error) {
+       await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', invoiceModalTarget.raw.id);
+       setInvoiceModalTarget(null); fetchPipeline();
+    } else { alert("Error: " + error.message); }
   };
 
   const removeFromPipeline = async (card: KanbanCard) => {
