@@ -5,6 +5,7 @@ import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
 import { EnquiryModule } from './EnquiryModule';
+import { QuotationModule } from './QuotationModule';
 
 type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
@@ -29,7 +30,7 @@ const formatINR = (value: number) => {
 // renderRecordData moved inside component for inline edit support
 
 export function SalesPipelinePage() {
-  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list'>('pipeline');
+  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
@@ -809,7 +810,7 @@ export function SalesPipelinePage() {
         ].map(stat => {
            const count = cards.filter(c => c.stage === stat.stage).length;
            return (
-             <div key={stat.title} onClick={() => stat.stage === 'Enquiry' && setActiveView('enquiry_list')} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border ${stat.stage === 'Enquiry' ? 'border-brand-300 cursor-pointer hover:border-brand-500' : 'border-slate-100'} flex items-center justify-between hover:-translate-y-1 transition-transform`}>
+             <div key={stat.title} onClick={() => { if(stat.stage === 'Enquiry') setActiveView('enquiry_list'); else if (stat.stage === 'Quotation') setActiveView('quotation_list'); }} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border ${(stat.stage === 'Enquiry' || stat.stage === 'Quotation') ? 'border-brand-300 cursor-pointer hover:border-brand-500' : 'border-slate-100'} flex items-center justify-between hover:-translate-y-1 transition-transform`}>
                <div>
                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
                  <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
@@ -853,6 +854,10 @@ export function SalesPipelinePage() {
       {activeView === 'enquiry_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
           <EnquiryModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'quotation_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <QuotationModule onBack={() => setActiveView('pipeline')} />
         </div>
       ) : (
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">

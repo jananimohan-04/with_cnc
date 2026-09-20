@@ -1,0 +1,311 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Search, Filter, Calendar, List, Kanban as KanbanIcon, ArrowLeft, ArrowRight, ChevronRight, FileText, CheckCircle2, Clock } from 'lucide-react';
+import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Card';
+import { toast } from 'react-hot-toast';
+
+export function QuotationModule({ onBack }: { onBack: () => void }) {
+  const [quotations, setQuotations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
+  
+  const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
+  
+  // Relationships
+  const [relatedEnquiry, setRelatedEnquiry] = useState<any | null>(null);
+  const [relatedSO, setRelatedSO] = useState<any | null>(null);
+
+  // Modals
+  const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
+  const [soModalOpen, setSoModalOpen] = useState(false);
+  const [soModalTarget, setSoModalTarget] = useState<any>(null); // quote object
+
+  useEffect(() => {
+    fetchQuotations();
+  }, []);
+
+  const fetchQuotations = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('cnc_quotations').select('*').order('created_at', { ascending: false });
+    if (data) setQuotations(data);
+    setLoading(false);
+  };
+
+  const openQuotation = async (quote: any) => {
+    setSelectedQuote(quote);
+    setRelatedEnquiry(null);
+    setRelatedSO(null);
+
+    // Fetch related enquiry
+    if (quote.lead_id) {
+      const { data: enq } = await supabase.from('cnc_enquiries').select('*').eq('id', quote.lead_id).single();
+      if (enq) setRelatedEnquiry(enq);
+    } else if (quote.enquiry_no) {
+      const { data: enq } = await supabase.from('cnc_enquiries').select('*').eq('enquiry_no', quote.enquiry_no).limit(1).single();
+      if (enq) setRelatedEnquiry(enq);
+    }
+
+    // Fetch related Sales Order
+    const { data: so } = await supabase.from('cnc_sales_orders')
+      .select('id, order_no')
+      .or(`quotation_id.eq.${quote.id},quote_no.eq.${quote.quote_no}`)
+      .limit(1)
+      .single();
+    
+    if (so) setRelatedSO(so);
+  };
+
+  const createSalesOrder = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    // Auto-generate SO number
+    const nextSO = `SO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+    
+    const { error } = await supabase.from('cnc_sales_orders').insert({
+      order_no: nextSO,
+      customer: soModalTarget.customer,
+      quote_no: soModalTarget.quote_no,
+      quotation_id: soModalTarget.id,
+      lead_no: soModalTarget.enquiry_no,
+      customer_id: soModalTarget.customer_id,
+      part_name: soModalTarget.part_name || soModalTarget.part_number,
+      quantity: Number(formData.get('quantity')) || soModalTarget.quantity,
+      value: soModalTarget.total_value,
+      total_value: soModalTarget.total_value,
+      order_date: formData.get('order_date'),
+      delivery_date: formData.get('delivery_date'),
+      status: 'Confirmed'
+    });
+
+    if (error) {
+      toast.error('Failed to create Sales Order');
+      console.error(error);
+    } else {
+      toast.success(`Sales Order ${nextSO} created successfully!`);
+      // Update quote status
+      await supabase.from('cnc_quotations').update({ status: 'Accepted' }).eq('id', soModalTarget.id);
+      
+      setSoModalOpen(false);
+      setSoModalTarget(null);
+      // Refresh current quote view
+      openQuotation({...soModalTarget, status: 'Accepted'});
+      fetchQuotations();
+    }
+  };
+
+  const filteredQuotes = quotations.filter(q => 
+    (q.quote_no || '').toLowerCase().includes(search.toLowerCase()) || 
+    (q.customer || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
+      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Quotations</h2>
+            <p className="text-xs text-slate-500">Manage all sent quotations</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search quotations..." 
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 pr-4 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+            <button onClick={() => setViewMode('kanban')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-4">
+        {loading ? (
+          <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
+        ) : (
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                <th className="p-3 font-semibold">Quote No</th>
+                <th className="p-3 font-semibold">Date</th>
+                <th className="p-3 font-semibold">Customer</th>
+                <th className="p-3 font-semibold">Part / Description</th>
+                <th className="p-3 font-semibold">Value</th>
+                <th className="p-3 font-semibold">Status</th>
+                <th className="p-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredQuotes.map(quote => (
+                <tr key={quote.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-3 font-mono text-sm text-slate-800 font-medium">{quote.quote_no || 'Pending'}</td>
+                  <td className="p-3 text-sm text-slate-600">{quote.date ? quote.date.split('T')[0] : (quote.created_at ? quote.created_at.split('T')[0] : '')}</td>
+                  <td className="p-3 font-semibold text-brand-700 text-sm">{quote.customer}</td>
+                  <td className="p-3 text-sm text-slate-700">{quote.part_name || quote.part_number || 'N/A'}</td>
+                  <td className="p-3 text-sm font-medium text-slate-700">₹{quote.total_value?.toLocaleString('en-IN') || '-'}</td>
+                  <td className="p-3">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${quote.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
+                  </td>
+                  <td className="p-3">
+                    <Button variant="secondary" size="sm" onClick={() => openQuotation(quote)}>View Details</Button>
+                  </td>
+                </tr>
+              ))}
+              {filteredQuotes.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-8 text-slate-500">No quotations found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Modal open={!!selectedQuote} onClose={() => setSelectedQuote(null)} title={`Quotation Details: ${selectedQuote?.quote_no || 'Pending'}`} size="3xl" footer={
+        <div className="flex justify-between w-full">
+          <div>
+             {!relatedSO && (
+               <Button onClick={() => { setSoModalTarget(selectedQuote); setSoModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white">Create Sales Order</Button>
+             )}
+          </div>
+          <Button onClick={() => setSelectedQuote(null)}>Close</Button>
+        </div>
+      }>
+        {selectedQuote && (
+          <div className="flex gap-6">
+            <div className="flex-1 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField label="Quotation No"><input className={inputClass} value={selectedQuote.quote_no || 'Pending'} disabled /></FormField>
+                <FormField label="Date"><input className={inputClass} value={selectedQuote.date?.split('T')[0] || selectedQuote.created_at?.split('T')[0] || ''} disabled /></FormField>
+                
+                <div className="col-span-2"><FormField label="Customer"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedQuote.customer || ''} disabled /></FormField></div>
+                
+                <FormField label="Related Enquiry No">
+                  <div className="relative">
+                    <input className={`${inputClass} cursor-pointer text-blue-600 hover:underline`} value={selectedQuote.enquiry_no || relatedEnquiry?.enquiry_no || 'None'} disabled onClick={() => { if(relatedEnquiry) setEnquiryModalOpen(true); }} />
+                    {!relatedEnquiry && selectedQuote.enquiry_no && <div className="text-[10px] text-amber-500 mt-1">Record missing in DB</div>}
+                  </div>
+                </FormField>
+                
+                <FormField label="Validity"><input className={inputClass} value={selectedQuote.valid_till || ''} disabled /></FormField>
+
+                <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={selectedQuote.part_name || selectedQuote.part_number || selectedQuote.description || ''} disabled /></FormField></div>
+                
+                <FormField label="Quantity"><input className={inputClass} value={selectedQuote.quantity || ''} disabled /></FormField>
+                <FormField label="Rate"><input className={inputClass} value={selectedQuote.unit_price || ''} disabled /></FormField>
+                
+                <FormField label="Total Value"><input className={`${inputClass} font-bold`} value={selectedQuote.total_value || ''} disabled /></FormField>
+                <FormField label="Status"><input className={inputClass} value={selectedQuote.status || 'Sent'} disabled /></FormField>
+                
+                <FormField label="Assigned To"><input className={inputClass} value={selectedQuote.salesperson || 'Admin'} disabled /></FormField>
+                <FormField label="Remarks"><textarea className={inputClass} value={selectedQuote.remarks || ''} disabled rows={2}></textarea></FormField>
+              </div>
+            </div>
+
+            {/* Document Flow Section */}
+            <div className="w-64 bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col h-full">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-200 pb-2"><FileText className="w-4 h-4 text-brand-600"/> DOCUMENT FLOW</h3>
+              
+              <div className="flex flex-col space-y-0 relative pl-4">
+                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-slate-200 z-0"></div>
+
+                {relatedEnquiry ? (
+                  <FlowStep active={false} title="ENQUIRY" subtitle={relatedEnquiry.enquiry_no} link onClick={() => setEnquiryModalOpen(true)} isFirst />
+                ) : (
+                  <FlowStep active={false} title="ENQUIRY" subtitle={selectedQuote.enquiry_no || 'Not Created'} isFirst />
+                )}
+                
+                <FlowStep active={true} title="QUOTATION" subtitle={selectedQuote.quote_no || 'Pending'} highlight />
+                
+                {relatedSO ? (
+                  <FlowStep active={false} title="SALES ORDER" subtitle={relatedSO.order_no} link />
+                ) : (
+                  <FlowStep active={false} title="SALES ORDER" subtitle="Not Created" />
+                )}
+                
+                <FlowStep active={false} title="INWARD" subtitle="Not Created" />
+                <FlowStep active={false} title="PRODUCTION" subtitle="Not Created" />
+                <FlowStep active={false} title="FINISHED GOODS" subtitle="Not Created" />
+                <FlowStep active={false} title="DELIVERY CHALLAN" subtitle="Not Created" />
+                <FlowStep active={false} title="INVOICE" subtitle="Not Created" isLast />
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Enquiry Detail Modal from Document Flow */}
+      {relatedEnquiry && (
+        <Modal open={enquiryModalOpen} onClose={() => setEnquiryModalOpen(false)} title={`Enquiry Details: ${relatedEnquiry.enquiry_no}`} size="lg" footer={<Button onClick={() => setEnquiryModalOpen(false)}>Close</Button>}>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Enquiry No"><input className={inputClass} value={relatedEnquiry.enquiry_no} disabled /></FormField>
+            <FormField label="Date"><input className={inputClass} value={relatedEnquiry.received_date?.split('T')[0] || ''} disabled /></FormField>
+            <FormField label="Customer"><input className={`${inputClass} font-semibold`} value={relatedEnquiry.customer || ''} disabled /></FormField>
+            <FormField label="Status"><input className={inputClass} value={relatedEnquiry.status || ''} disabled /></FormField>
+            <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={relatedEnquiry.part_name || relatedEnquiry.enquiring_for || ''} disabled /></FormField></div>
+            <FormField label="Quantity"><input className={inputClass} value={relatedEnquiry.quantity || ''} disabled /></FormField>
+            <FormField label="Estimated Value"><input className={inputClass} value={relatedEnquiry.estimated_value || ''} disabled /></FormField>
+          </div>
+        </Modal>
+      )}
+
+      {/* Create Sales Order Modal */}
+      {soModalTarget && (
+        <Modal open={soModalOpen} onClose={() => setSoModalOpen(false)} title="Create Sales Order from Quotation" size="xl">
+          <form onSubmit={createSalesOrder} className="space-y-4">
+            <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm mb-4">
+              Converting Quotation <strong>{soModalTarget.quote_no}</strong> to a new Sales Order.
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <FormField label="Customer"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.customer} disabled /></FormField>
+              </div>
+              <FormField label="Quotation Ref"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.quote_no} disabled /></FormField>
+              <FormField label="Enquiry Ref"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.enquiry_no || relatedEnquiry?.enquiry_no || ''} disabled /></FormField>
+              
+              <div className="col-span-2">
+                <FormField label="Part / Description"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.part_name || soModalTarget.part_number || ''} disabled /></FormField>
+              </div>
+              
+              <FormField label="Quantity"><input type="number" name="quantity" className={inputClass} defaultValue={soModalTarget.quantity} required /></FormField>
+              <FormField label="Total Value"><input className={`${inputClass} bg-slate-100 font-bold`} value={soModalTarget.total_value || ''} disabled /></FormField>
+              
+              <FormField label="Order Date"><input type="date" name="order_date" className={inputClass} defaultValue={new Date().toISOString().split('T')[0]} required /></FormField>
+              <FormField label="Expected Delivery"><input type="date" name="delivery_date" className={inputClass} required /></FormField>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <Button type="button" variant="secondary" onClick={() => setSoModalOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">Create Sales Order</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+    </div>
+  );
+}
+
+function FlowStep({ active, highlight, title, subtitle, isFirst, isLast, link, onClick }: { active: boolean, highlight?: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean, onClick?: () => void }) {
+  return (
+    <div className="relative z-10 flex items-start gap-3 py-3">
+      <div className={`mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 ${highlight ? 'bg-brand-500 border-brand-500' : (active ? 'bg-white border-brand-400' : 'bg-white border-slate-300')}`}></div>
+      <div>
+        <div className={`font-bold text-[11px] uppercase tracking-wider ${highlight ? 'text-brand-700' : (active ? 'text-slate-600' : 'text-slate-400')}`}>{title}</div>
+        <div onClick={link ? onClick : undefined} className={`text-[10px] font-mono ${link ? 'text-blue-600 underline cursor-pointer hover:text-blue-800' : (highlight ? 'text-slate-700' : 'text-slate-400')}`}>{subtitle}</div>
+      </div>
+    </div>
+  );
+}
