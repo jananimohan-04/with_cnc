@@ -561,7 +561,7 @@ export function SalesPipelinePage() {
        return;
     }
     const { error } = await supabase.from('cnc_deliveries').insert([{
-       id: crypto.randomUUID(), delivery_no: dcForm.dcNo, party_name: dcForm.partyName,
+       id: crypto.randomUUID(), delivery_no: dcForm.dcNo, customer_name: dcForm.partyName,
        part_name: dcForm.partName, quantity: q, delivery_date: dcForm.date, status: 'Delivered',
        created_at: new Date().toISOString()
     }]);
