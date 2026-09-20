@@ -64,9 +64,9 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
             />
           </div>
           <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
-            <button onClick={() => setViewMode('kanban')} className={\`p-1.5 rounded-md transition-colors \${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}\`}><KanbanIcon className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('list')} className={\`p-1.5 rounded-md transition-colors \${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}\`}><List className="w-4 h-4" /></button>
-            <button onClick={() => setViewMode('calendar')} className={\`p-1.5 rounded-md transition-colors \${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}\`}><Calendar className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('kanban')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><KanbanIcon className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}><Calendar className="w-4 h-4" /></button>
           </div>
         </div>
       </div>
@@ -111,7 +111,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={\`Enquiry Details: \${selectedEnquiry?.enquiry_no || 'Pending'}\`} size="2xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
+      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.enquiry_no || 'Pending'}`} size="2xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
         {selectedEnquiry && (
           <div className="flex gap-6">
             <div className="flex-1 space-y-4">
@@ -162,10 +162,10 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
 function FlowStep({ active, title, subtitle, isFirst, isLast, link }: { active: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean }) {
   return (
     <div className="relative z-10 flex items-start gap-3 py-3">
-      <div className={\`mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 \${active ? 'bg-brand-500 border-brand-500' : 'bg-white border-slate-300'}\`}></div>
+      <div className={`mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 ${active ? 'bg-brand-500 border-brand-500' : 'bg-white border-slate-300'}`}></div>
       <div>
-        <div className={\`font-bold text-[11px] uppercase tracking-wider \${active ? 'text-brand-700' : 'text-slate-400'}\`}>{title}</div>
-        <div className={\`text-[10px] font-mono \${link ? 'text-blue-600 underline cursor-pointer hover:text-blue-800' : (active ? 'text-slate-600' : 'text-slate-400')}\`}>{subtitle}</div>
+        <div className={`font-bold text-[11px] uppercase tracking-wider ${active ? 'text-brand-700' : 'text-slate-400'}`}>{title}</div>
+        <div className={`text-[10px] font-mono ${link ? 'text-blue-600 underline cursor-pointer hover:text-blue-800' : (active ? 'text-slate-600' : 'text-slate-400')}`}>{subtitle}</div>
       </div>
     </div>
   );
