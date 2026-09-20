@@ -29,6 +29,7 @@ const formatINR = (value: number) => {
 // renderRecordData moved inside component for inline edit support
 
 export function SalesPipelinePage() {
+  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
