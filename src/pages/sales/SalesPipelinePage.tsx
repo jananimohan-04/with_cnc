@@ -41,9 +41,9 @@ export function SalesPipelinePage() {
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
+  const [customerFilter, setCustomerFilter] = useState<string>('All Customers');
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
@@ -900,10 +900,15 @@ export function SalesPipelinePage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <select className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium">
-            <option>All Customers</option>
-            <option>Alyduco</option>
-            <option>VINMEC</option>
+          <select 
+            className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium"
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+          >
+            <option value="All Customers">All Customers</option>
+            {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
+              <option key={customer} value={customer}>{customer}</option>
+            ))}
           </select>
           <div className="relative">
             <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
@@ -959,7 +964,7 @@ export function SalesPipelinePage() {
             { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700' },
             { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' }
           ].map(stage => {
-            const stageCards = cards.filter(c => c.stage === stage.id);
+            const stageCards = cards.filter(c => c.stage === stage.id && (customerFilter === 'All Customers' || c.customer === customerFilter));
             return (
               <div key={stage.id} 
                 className={`w-[280px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
