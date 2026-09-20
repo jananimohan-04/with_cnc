@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Cpu, Mail, Lock, Eye, EyeOff, ArrowRight, Shield, Zap, Award } from 'lucide-react';
 
 export function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState('r.kumar@cncforge.in');
+  const [email, setEmail] = useState('r.kumar@arguscnc.in');
   const [password, setPassword] = useState('demo1234');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -49,16 +49,16 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               <Cpu size={24} />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">CNC FORGE</h1>
+              <h1 className="text-lg font-bold tracking-tight">ARGUSCNC</h1>
               <p className="text-[11px] text-navy-300 font-medium tracking-widest">ERP SUITE</p>
             </div>
           </div>
 
           <div className="max-w-md">
             <h2 className="text-4xl font-bold leading-tight mb-4">
-              Precision Manufacturing,<br />
+              Creating Future Factories<br />
               <span className="bg-gradient-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
-                Engineered Intelligence
+                Powered by ARGUSCNC™
               </span>
             </h2>
             <p className="text-navy-300 text-sm leading-relaxed mb-8">
@@ -104,14 +104,14 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               <Cpu size={24} className="text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-800 tracking-tight">CNC FORGE</h1>
+              <h1 className="text-lg font-bold text-slate-800 tracking-tight">ARGUSCNC</h1>
               <p className="text-[11px] text-slate-400 font-medium tracking-widest">ERP SUITE</p>
             </div>
           </div>
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-slate-800">Welcome Back</h2>
-            <p className="text-sm text-slate-500 mt-1.5">Sign in to your CNC Forge ERP account</p>
+            <p className="text-sm text-slate-500 mt-1.5">Sign in to your ARGUSCNC ERP account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

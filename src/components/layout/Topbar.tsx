@@ -133,7 +133,7 @@ export function Topbar({
           <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 animate-scale-in overflow-hidden z-50">
             <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
               <p className="text-sm font-bold text-slate-800">Rajesh Kumar</p>
-              <p className="text-xs text-slate-500 mt-0.5">r.kumar@cncforge.in</p>
+              <p className="text-xs text-slate-500 mt-0.5">r.kumar@arguscnc.in</p>
             </div>
             <div className="py-2">
               <button className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-colors font-medium">

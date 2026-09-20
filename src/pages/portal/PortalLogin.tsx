@@ -29,7 +29,7 @@ export function PortalLogin() {
               <Cpu size={24} className="text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">CNCFORGE</h1>
+              <h1 className="text-2xl font-bold tracking-tight">ARGUSCNC</h1>
               <p className="text-xs text-blue-300 tracking-widest uppercase">Customer Portal</p>
             </div>
           </div>
@@ -71,7 +71,7 @@ export function PortalLogin() {
               <Cpu size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">CNCFORGE</h1>
+              <h1 className="text-xl font-bold text-slate-800">ARGUSCNC</h1>
               <p className="text-[10px] text-blue-600 tracking-widest uppercase">Customer Portal</p>
             </div>
           </div>

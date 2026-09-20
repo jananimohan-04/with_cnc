@@ -175,7 +175,7 @@ function NewEnquiryForm({ profile, onClose, onSaved }: { profile: any; onClose: 
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-slate-100">
           <h3 className="text-lg font-bold text-slate-800">Submit New Enquiry</h3>
-          <p className="text-sm text-slate-500">Enquiry will be submitted to CNCForge for review</p>
+          <p className="text-sm text-slate-500">Enquiry will be submitted to arguscnc for review</p>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
@@ -372,7 +372,7 @@ export function PortalDashboard({ session }: { session: any }) {
               <Cpu size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-slate-800">CNCFORGE</h1>
+              <h1 className="text-base font-bold text-slate-800">ARGUSCNC</h1>
               <p className="text-[9px] text-blue-600 tracking-widest uppercase -mt-0.5">Customer Portal</p>
             </div>
           </div>

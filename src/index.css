@@ -7,13 +7,13 @@
     border-color: theme('colors.slate.200');
   }
   body {
-    font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-family: 'Exo 2', 'Montserrat', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     background-color: #f8fafc;
     color: #0f172a;
   }
   ::selection {
-    background-color: #dc2626; /* brand-600 */
+    background-color: #ff6600; /* brand-600 */
     color: white;
   }
 }
@@ -52,10 +52,10 @@
 .bg-grid {
   background-color: #f8fafc;
   background-image: 
-    linear-gradient(to right, rgba(220, 38, 38, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(220, 38, 38, 0.03) 1px, transparent 1px),
-    linear-gradient(to right, rgba(220, 38, 38, 0.015) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(220, 38, 38, 0.015) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 102, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 102, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 102, 0, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 102, 0, 0.015) 1px, transparent 1px);
   background-size: 64px 64px, 64px 64px, 16px 16px, 16px 16px;
 }
 

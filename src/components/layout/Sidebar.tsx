@@ -50,18 +50,16 @@ export function Sidebar({
       >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10">
-        <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-red overflow-hidden border border-brand-500/20">
-          <img src="/cncforge-logo.png" alt="CNCFORGE Logo" className="w-full h-full object-contain p-1" />
-        </div>
-        {!collapsed && (
-          <div className="overflow-hidden flex flex-col justify-center">
-            <h1 className="text-sm font-bold tracking-tight whitespace-nowrap text-white">CNC<span className="text-brand-500">FORGE</span></h1>
-            <p className="text-[9px] text-navy-400 font-bold tracking-[0.2em] whitespace-nowrap opacity-90">ERP SYSTEM</p>
+        {!collapsed ? (
+          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-auto h-8 object-contain" />
+        ) : (
+          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-orange overflow-hidden border border-brand-500/20">
+            <img src="/arguscnc-mark.jpg" alt="ARGUSCNC Mark" className="w-full h-full object-contain p-1" />
           </div>
         )}
       </div>
 
-      {/* Navigation */}
+        {/* Navigation */}
       <nav className="flex-1 overflow-y-auto scrollbar-dark py-4 px-3 space-y-1 relative z-0">
         {navSections.map((section) => {
           const isExpanded = expandedSections.has(section.label);

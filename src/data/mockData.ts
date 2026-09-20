@@ -472,14 +472,14 @@ export interface User {
 }
 
 export const users: User[] = [
-  { id: 'U001', name: 'Rajesh Kumar', email: 'r.kumar@cncforge.in', role: 'Administrator', department: 'IT', phone: '+91 98200 11223', lastLogin: '2026-09-07 08:42', status: 'Active', avatar: 'RK' },
-  { id: 'U002', name: 'Priya Sharma', email: 'p.sharma@cncforge.in', role: 'Production Manager', department: 'Production', phone: '+91 98101 44556', lastLogin: '2026-09-07 07:15', status: 'Active', avatar: 'PS' },
-  { id: 'U003', name: 'Amit Patel', email: 'a.patel@cncforge.in', role: 'CNC Operator', department: 'Shop Floor', phone: '+91 98225 77889', lastLogin: '2026-09-06 16:30', status: 'Active', avatar: 'AP' },
-  { id: 'U004', name: 'Sneha Nair', email: 's.nair@cncforge.in', role: 'Quality Engineer', department: 'Quality', phone: '+91 98300 55667', lastLogin: '2026-09-07 09:00', status: 'Active', avatar: 'SN' },
-  { id: 'U005', name: 'Vikram Singh', email: 'v.singh@cncforge.in', role: 'Sales Manager', department: 'Sales', phone: '+91 98450 88990', lastLogin: '2026-09-06 18:45', status: 'Active', avatar: 'VS' },
-  { id: 'U006', name: 'Deepak Reddy', email: 'd.reddy@cncforge.in', role: 'Purchase Manager', department: 'Purchasing', phone: '+91 98220 33445', lastLogin: '2026-09-07 08:10', status: 'Active', avatar: 'DR' },
-  { id: 'U007', name: 'Karthik Iyer', email: 'k.iyer@cncforge.in', role: 'CNC Operator', department: 'Shop Floor', phone: '+91 98100 99887', lastLogin: '2026-09-05 14:20', status: 'Inactive', avatar: 'KI' },
-  { id: 'U008', name: 'Meera Banerjee', email: 'm.banerjee@cncforge.in', role: 'Engineering Lead', department: 'Engineering', phone: '+91 98330 22110', lastLogin: '2026-09-07 08:55', status: 'Active', avatar: 'MB' },
+  { id: 'U001', name: 'Rajesh Kumar', email: 'r.kumar@arguscnc.in', role: 'Administrator', department: 'IT', phone: '+91 98200 11223', lastLogin: '2026-09-07 08:42', status: 'Active', avatar: 'RK' },
+  { id: 'U002', name: 'Priya Sharma', email: 'p.sharma@arguscnc.in', role: 'Production Manager', department: 'Production', phone: '+91 98101 44556', lastLogin: '2026-09-07 07:15', status: 'Active', avatar: 'PS' },
+  { id: 'U003', name: 'Amit Patel', email: 'a.patel@arguscnc.in', role: 'CNC Operator', department: 'Shop Floor', phone: '+91 98225 77889', lastLogin: '2026-09-06 16:30', status: 'Active', avatar: 'AP' },
+  { id: 'U004', name: 'Sneha Nair', email: 's.nair@arguscnc.in', role: 'Quality Engineer', department: 'Quality', phone: '+91 98300 55667', lastLogin: '2026-09-07 09:00', status: 'Active', avatar: 'SN' },
+  { id: 'U005', name: 'Vikram Singh', email: 'v.singh@arguscnc.in', role: 'Sales Manager', department: 'Sales', phone: '+91 98450 88990', lastLogin: '2026-09-06 18:45', status: 'Active', avatar: 'VS' },
+  { id: 'U006', name: 'Deepak Reddy', email: 'd.reddy@arguscnc.in', role: 'Purchase Manager', department: 'Purchasing', phone: '+91 98220 33445', lastLogin: '2026-09-07 08:10', status: 'Active', avatar: 'DR' },
+  { id: 'U007', name: 'Karthik Iyer', email: 'k.iyer@arguscnc.in', role: 'CNC Operator', department: 'Shop Floor', phone: '+91 98100 99887', lastLogin: '2026-09-05 14:20', status: 'Inactive', avatar: 'KI' },
+  { id: 'U008', name: 'Meera Banerjee', email: 'm.banerjee@arguscnc.in', role: 'Engineering Lead', department: 'Engineering', phone: '+91 98330 22110', lastLogin: '2026-09-07 08:55', status: 'Active', avatar: 'MB' },
 ];
 
 export interface Activity {

@@ -708,8 +708,8 @@ export function PurchaseOrdersPage() {
       ...form, 
       supplierId: sId,
       paymentTerms: s?.payment_terms || 'Net 30',
-      billingAddress: 'CNCFORGE Main Office, 123 Industrial Phase, Pune',
-      deliveryAddress: s?.address || 'CNCFORGE Main Warehouse, Pune'
+      billingAddress: 'ARGUSCNC Main Office, 123 Industrial Phase, Pune',
+      deliveryAddress: s?.address || 'ARGUSCNC Main Warehouse, Pune'
     });
   };
 
@@ -1016,7 +1016,7 @@ export function PurchaseOrdersPage() {
                      {isDelayed(viewTarget) && <Badge variant="error" className="mt-2">DELAYED</Badge>}
                   </div>
                   <div className="text-right text-sm">
-                     <p className="font-bold text-slate-800">CNCFORGE MFG LTD.</p>
+                     <p className="font-bold text-slate-800">ARGUSCNC MFG LTD.</p>
                      <p className="text-slate-500">123 Industrial Phase, Pune</p>
                      <p className="text-slate-500">GSTIN: 27AAAAA0000A1Z5</p>
                   </div>
@@ -1440,7 +1440,7 @@ export function GoodsReceiptPage() {
                      <p className="text-slate-500 mt-1 font-mono">{viewTarget.grn_number}</p>
                   </div>
                   <div className="text-right text-sm">
-                     <p className="font-bold text-slate-800">CNCFORGE MFG LTD.</p>
+                     <p className="font-bold text-slate-800">ARGUSCNC MFG LTD.</p>
                      <p className="text-slate-500">123 Industrial Phase, Pune</p>
                   </div>
                </div>
