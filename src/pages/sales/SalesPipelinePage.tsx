@@ -344,13 +344,14 @@ export function SalesPipelinePage() {
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
     // e.dataTransfer.setData('cardStr', JSON.stringify(card));
-    e.dataTransfer.setData('cardId', card.id);
+    e.dataTransfer.setData('text/plain', String(card.id));
+    e.dataTransfer.setData('cardId', String(card.id));
   };
 
   const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
     e.preventDefault();
-    const cardId = e.dataTransfer.getData('cardId');
-    const card = cards.find(c => c.id === cardId);
+    const cardId = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('cardId') || e.dataTransfer.getData('cardid');
+    const card = cards.find(c => String(c.id) === String(cardId));
     if (!card || card.stage === toStage) return;
 
     if (card.type === 'lead' && toStage === 'Quotation') {
