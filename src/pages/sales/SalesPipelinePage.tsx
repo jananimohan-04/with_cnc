@@ -573,6 +573,17 @@ export function SalesPipelinePage() {
     company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }]
   });
 
+  const [customerList, setCustomerList] = useState<any[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  useEffect(() => {
+    async function fetchCustomers() {
+      const { data } = await supabase.from('cnc_customers').select('*');
+      if (data) setCustomerList(data);
+    }
+    fetchCustomers();
+  }, []);
+
   const saveNewLead = async () => {
     if (!newLeadForm.company) return;
     setLoading(true);
