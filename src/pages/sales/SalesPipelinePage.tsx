@@ -330,7 +330,7 @@ export function SalesPipelinePage() {
   const openViewModal = async (card: KanbanCard) => {
     setViewModalTarget(card);
     setLoading(true);
-    let aggregated: any = { enquiry: null, quotation: null, order: null, inward: null };
+    let aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
     try {
       if (card.type === 'inward') {
         aggregated.inward = card.raw;
@@ -370,6 +370,17 @@ export function SalesPipelinePage() {
         }
       } else if (card.type === 'lead') {
         aggregated.enquiry = card.raw;
+      } else if (card.type === 'finished_goods') {
+        aggregated.finished_goods = card.raw;
+      } else if (card.type === 'dc') {
+        aggregated.dc = card.raw;
+        // Optionally try to fetch order if we had a sales order id
+        if (card.raw.sales_order_no) {
+           const { data: ord } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', card.raw.sales_order_no).single();
+           if (ord) aggregated.order = ord;
+        }
+      } else if (card.type === 'invoice') {
+        aggregated.invoice = card.raw;
       }
     } catch (e) {
        console.error("Error fetching lineage", e);
