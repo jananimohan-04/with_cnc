@@ -853,7 +853,48 @@ export function SalesPipelinePage() {
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Lead" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={newLeadForm.leadNo} disabled /></FormField>
-          <FormField label="Company Name" required><input className={inputClass} value={newLeadForm.company} onChange={e => setNewLeadForm({...newLeadForm, company: e.target.value})} placeholder="e.g. Acme Corp" /></FormField>
+          <div className="relative">
+            <FormField label="Company Name" required>
+              <input 
+                className={inputClass} 
+                value={newLeadForm.company} 
+                onChange={e => {
+                  setNewLeadForm({...newLeadForm, company: e.target.value});
+                  setShowCustomerDropdown(true);
+                }} 
+                onFocus={() => setShowCustomerDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                placeholder="e.g. Acme Corp"
+                autoComplete="off"
+              />
+            </FormField>
+            {showCustomerDropdown && newLeadForm.company && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                {customerList.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())).length > 0 ? (
+                  customerList.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())).map(c => (
+                    <div 
+                      key={c.id} 
+                      className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
+                      onClick={() => {
+                        setNewLeadForm({
+                          ...newLeadForm,
+                          company: c.name,
+                          contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
+                          city: c.city || ''
+                        });
+                        setShowCustomerDropdown(false);
+                      }}
+                    >
+                      <div className="font-semibold text-sm text-slate-800">{c.name}</div>
+                      <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>

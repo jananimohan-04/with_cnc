@@ -80,10 +80,18 @@ export function LeadsPage() {
     partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', source: 'Direct', status: 'New', notes: ''
   });
   const [formData, setFormData] = useState(resetForm());
+  const [customerList, setCustomerList] = useState<any[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   useEffect(() => {
     fetchLeads();
+    fetchCustomers();
   }, []);
+
+  async function fetchCustomers() {
+    const { data } = await supabase.from('cnc_customers').select('*');
+    if (data) setCustomerList(data);
+  }
 
   async function fetchLeads() {
     try {
@@ -304,7 +312,47 @@ export function LeadsPage() {
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} disabled={!!editId} /></FormField>
-          <FormField label="Company Name" required><input className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} /></FormField>
+          <div className="relative">
+            <FormField label="Company Name" required>
+              <input 
+                className={inputClass} 
+                value={formData.customer} 
+                onChange={e => {
+                  setFormData({...formData, customer: e.target.value});
+                  setShowCustomerDropdown(true);
+                }} 
+                onFocus={() => setShowCustomerDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                autoComplete="off"
+              />
+            </FormField>
+            {showCustomerDropdown && formData.customer && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                {customerList.filter(c => c.name.toLowerCase().includes(formData.customer.toLowerCase())).length > 0 ? (
+                  customerList.filter(c => c.name.toLowerCase().includes(formData.customer.toLowerCase())).map(c => (
+                    <div 
+                      key={c.id} 
+                      className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          customer: c.name,
+                          contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
+                          city: c.city || ''
+                        });
+                        setShowCustomerDropdown(false);
+                      }}
+                    >
+                      <div className="font-semibold text-sm text-slate-800">{c.name}</div>
+                      <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
