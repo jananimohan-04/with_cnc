@@ -5,12 +5,12 @@ import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
 
-type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward';
+type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
 type KanbanCard = {
   id: string;
   stage: Stage;
-  type: 'lead' | 'quotation' | 'order' | 'inward';
+  type: 'lead' | 'quotation' | 'order' | 'inward' | 'finished_goods' | 'dc' | 'invoice';
   refNo: string;
   customer: string;
   part: string;
@@ -28,7 +28,7 @@ const formatINR = (value: number) => {
 // renderRecordData moved inside component for inline edit support
 
 export function SalesPipelinePage() {
-  const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward'];
+  const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +45,10 @@ export function SalesPipelinePage() {
       'Enquiry': 'cnc_enquiries',
       'Quotation': 'cnc_quotations',
       'Sales Order': 'cnc_sales_orders',
-      'Inward': 'cnc_inwards'
+      'Inward': 'cnc_inwards',
+      'Finished Goods': 'cnc_work_orders',
+      'DC': 'cnc_deliveries',
+      'Invoice': 'cnc_invoices'
     };
     const table = tableMap[title];
     if (!table) return;
@@ -58,7 +61,7 @@ export function SalesPipelinePage() {
        setViewModalData((prev: any) => {
           if (!prev) return prev;
           const newPrev = { ...prev };
-          const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order', 'Inward': 'inward' };
+          const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order', 'Inward': 'inward', 'Finished Goods': 'finished_goods', 'DC': 'dc', 'Invoice': 'invoice' };
           const stateKey = keyMap[title];
           if (newPrev[stateKey]) {
              newPrev[stateKey] = { ...newPrev[stateKey], [field]: value };
@@ -212,6 +215,30 @@ export function SalesPipelinePage() {
       refNo: orderMap.get(i.sales_order_ref) || i.inward_no, customer: i.party_name, part: i.part_name,
       qty: i.quantity, value: i.total_amount, date: i.inward_date, status: i.status, raw: i
     }));
+
+
+    const { data: fgs } = await supabase.from('cnc_work_orders').select('*').in('status', ['Completed', 'In Progress']);
+    const { data: dcs } = await supabase.from('cnc_deliveries').select('*');
+    let invoicesData = [];
+    try { const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*'); if (!invErr && invs) invoicesData = invs; } catch(e) {}
+
+    if (fgs) {
+      fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
+         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: w.wo_no || w.woNo || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name || w.partName, qty: w.completed, value: 0, date: w.updated_at ? w.updated_at.split('T')[0] : '', status: w.status, raw: w });
+      });
+    }
+
+    if (dcs) {
+      dcs.forEach(d => {
+         newCards.push({ id: d.id, stage: 'DC', type: 'dc', refNo: d.delivery_no || `DC-${d.id.substring(0,4)}`, customer: d.customer_name || d.party_name || 'Customer', part: d.part_name, qty: d.quantity, value: 0, date: d.delivery_date, status: d.status, raw: d });
+      });
+    }
+
+    if (invoicesData && invoicesData.length > 0) {
+      invoicesData.forEach(inv => {
+         newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || inv.created_at.split('T')[0], status: inv.status, raw: inv });
+      });
+    }
 
     setCards(newCards);
     setLoading(false);
@@ -594,9 +621,9 @@ export function SalesPipelinePage() {
         <StatCard label="Inwards" value={cards.filter(c => c.stage === 'Inward').length.toString()} icon={<FileText size={20} />} accent="warning" />
       </div>
 
-      <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
+      <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin"><div className="flex gap-5 h-full items-start min-w-max px-2">
         {columns.map(stage => (
-          <div key={stage} className="flex-1 min-w-[280px] max-w-[320px] bg-slate-100 rounded-xl p-3 flex flex-col border border-slate-200 shadow-sm" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage)}>
+          <div key={stage} className="w-[340px] flex-shrink-0 bg-slate-50 rounded-2xl p-4 flex flex-col border border-slate-200/60 shadow-sm max-h-full" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage)}>
             <div className="flex justify-between items-center mb-3 px-1">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs">{stage}</h3>
@@ -606,7 +633,7 @@ export function SalesPipelinePage() {
             </div>
             <div className="flex-1 flex flex-col gap-3 overflow-y-auto scrollbar-none">
               {cards.filter(c => c.stage === stage).map(card => (
-                <div key={card.id} draggable onDragStart={(e) => handleDragStart(e, card)} className="bg-white p-3.5 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing hover:border-brand-300 transition-all group relative">
+                <div key={card.id} draggable onDragStart={(e) => handleDragStart(e, card)} className="bg-white p-4 rounded-2xl shadow-card border border-slate-200/60 cursor-grab active:cursor-grabbing hover:shadow-card-hover hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 group relative">
                   <div className="absolute top-2 right-2 flex gap-1">
                     <button onClick={() => openViewModal(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
                     {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="text-slate-300 hover:text-red-500 transition-colors bg-white/80 p-0.5 rounded" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
@@ -804,6 +831,9 @@ export function SalesPipelinePage() {
              {renderRecordData('Quotation', viewModalData.quotation)}
              {renderRecordData('Sales Order', viewModalData.order)}
              {renderRecordData('Inward', viewModalData.inward)}
+             {renderRecordData('Finished Goods', viewModalData?.finished_goods)}
+             {renderRecordData('DC', viewModalData?.dc)}
+             {renderRecordData('Invoice', viewModalData?.invoice)}
           </div>
         ) : (
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
@@ -811,5 +841,6 @@ export function SalesPipelinePage() {
       </Modal>
 
     </div>
+  </div>
   );
 }
