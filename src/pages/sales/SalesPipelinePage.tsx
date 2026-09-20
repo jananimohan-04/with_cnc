@@ -808,7 +808,7 @@ export function SalesPipelinePage() {
         ].map(stat => {
            const count = cards.filter(c => c.stage === stat.stage).length;
            return (
-             <div key={stat.title} className="bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center justify-between hover:-translate-y-1 transition-transform">
+             <div key={stat.title} onClick={() => stat.stage === 'Enquiry' && setActiveView('enquiry_list')} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border ${stat.stage === 'Enquiry' ? 'border-brand-300 cursor-pointer hover:border-brand-500' : 'border-slate-100'} flex items-center justify-between hover:-translate-y-1 transition-transform`}>
                <div>
                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
                  <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
@@ -849,6 +849,11 @@ export function SalesPipelinePage() {
       </div>
 
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
+      {activeView === 'enquiry_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <EnquiryModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : (
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
