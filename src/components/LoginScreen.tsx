@@ -44,7 +44,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
         {/* Content overlay */}
         <div className="relative z-10 flex flex-col justify-between p-12 text-white">
-          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-10 object-contain drop-shadow-xl" />
+          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-16 w-auto object-contain drop-shadow-xl rounded" />
 
           <div className="max-w-md">
             <h2 className="text-4xl font-bold leading-tight mb-4">
@@ -92,7 +92,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center mb-8">
-              <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-12 object-contain" />
+              <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-16 w-auto object-contain rounded" />
             </div>
 
           <div className="mb-8">
