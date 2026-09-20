@@ -54,6 +54,7 @@ export function SalesPipelinePage() {
   const [soForm, setSoForm] = useState<any>({});
 
   const [invoiceForm, setInvoiceForm] = useState<any>({});
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
   const [viewEditMode, setViewEditMode] = useState(false);
@@ -262,8 +263,37 @@ export function SalesPipelinePage() {
     setLoading(false);
   };
 
+  const fetchRecentActivities = async () => {
+    const activities: any[] = [];
+    
+    const { data: recentEnq } = await supabase.from('cnc_enquiries').select('enquiry_no, customer, status, created_at').order('created_at', { ascending: false }).limit(3);
+    if (recentEnq) recentEnq.forEach(r => activities.push({ type: 'enquiry', ref: r.enquiry_no, customer: r.customer, action: r.status === 'New' ? 'received' : r.status?.toLowerCase() || 'updated', time: r.created_at, color: 'bg-blue-500' }));
+
+    const { data: recentQuotes } = await supabase.from('cnc_quotations').select('quote_no, customer, status, created_at').order('created_at', { ascending: false }).limit(3);
+    if (recentQuotes) recentQuotes.forEach(r => activities.push({ type: 'quotation', ref: r.quote_no, customer: r.customer, action: r.status === 'Accepted' ? 'accepted' : 'sent', time: r.created_at, color: 'bg-purple-500' }));
+
+    const { data: recentSO } = await supabase.from('cnc_sales_orders').select('order_no, customer, status, created_at').order('created_at', { ascending: false }).limit(3);
+    if (recentSO) recentSO.forEach(r => activities.push({ type: 'sales_order', ref: r.order_no, customer: r.customer, action: 'confirmed', time: r.created_at, color: 'bg-emerald-500' }));
+
+    const { data: recentInw } = await supabase.from('cnc_inwards').select('inward_no, party_name, status, created_at').order('created_at', { ascending: false }).limit(3);
+    if (recentInw) recentInw.forEach(r => activities.push({ type: 'inward', ref: r.inward_no, customer: r.party_name, action: 'received', time: r.created_at, color: 'bg-orange-500' }));
+
+    const { data: recentDC } = await supabase.from('cnc_deliveries').select('delivery_no, customer_name, status, created_at').order('created_at', { ascending: false }).limit(3);
+    if (recentDC) recentDC.forEach(r => activities.push({ type: 'dc', ref: r.delivery_no, customer: r.customer_name, action: 'dispatched', time: r.created_at, color: 'bg-rose-500' }));
+
+    try {
+      const { data: recentInv } = await supabase.from('cnc_invoices').select('invoice_no, customer_name, status, created_at').order('created_at', { ascending: false }).limit(3);
+      if (recentInv) recentInv.forEach(r => activities.push({ type: 'invoice', ref: r.invoice_no, customer: r.customer_name, action: 'generated', time: r.created_at, color: 'bg-indigo-500' }));
+    } catch(e) {}
+
+    // Sort all by time descending and take top 5
+    activities.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    setRecentActivities(activities.slice(0, 5));
+  };
+
   useEffect(() => {
     fetchPipeline();
+    fetchRecentActivities();
   }, []);
 
   const parseContacts = (raw: any) => {
@@ -1018,48 +1048,42 @@ export function SalesPipelinePage() {
             Recent Activities
           </h3>
           <div className="space-y-4">
-            <div className="flex gap-3">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></div>
-              <div>
-                <p className="text-xs text-slate-700"><span className="font-semibold">Sales Order SO-2026-008</span> confirmed for Alyduco</p>
-                <p className="text-[10px] text-slate-500 font-medium mt-0.5">10:30 AM</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <div className="w-2 h-2 rounded-full bg-orange-500 mt-1.5 flex-shrink-0"></div>
-              <div>
-                <p className="text-xs text-slate-700"><span className="font-semibold">Inward entry IN-2026-021</span> received</p>
-                <p className="text-[10px] text-slate-500 font-medium mt-0.5">09:15 AM</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5 flex-shrink-0"></div>
-              <div>
-                <p className="text-xs text-slate-700"><span className="font-semibold">Delivery Challan DC-2026-007</span> dispatched</p>
-                <p className="text-[10px] text-slate-500 font-medium mt-0.5">09:45 AM</p>
-              </div>
-            </div>
+            {recentActivities.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">No recent activities</p>
+            ) : (
+              recentActivities.map((act, i) => (
+                <div key={i} className="flex gap-3">
+                  <div className={`w-2 h-2 rounded-full ${act.color} mt-1.5 flex-shrink-0`}></div>
+                  <div>
+                    <p className="text-xs text-slate-700"><span className="font-semibold">{act.ref || 'Record'}</span> {act.action}{act.customer ? ` for ${act.customer}` : ''}</p>
+                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">{act.time ? new Date(act.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : ''}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
           <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
             <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-            Today's Tasks
+            Pipeline Summary
           </h3>
           <div className="space-y-3">
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" />
-              <span className="text-xs text-slate-700 group-hover:text-slate-900 font-medium">Follow up quotation with QQS</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" />
-              <span className="text-xs text-slate-700 group-hover:text-slate-900 font-medium">Prepare proforma for VINMEC</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" defaultChecked />
-              <span className="text-xs text-slate-400 font-medium line-through">Update finished goods stock</span>
-            </label>
+            {columns.map(col => {
+              const count = cards.filter(c => c.stage === col).length;
+              return (
+                <div key={col} className="flex items-center justify-between">
+                  <span className="text-xs text-slate-600 font-medium">{col}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(100, (count / Math.max(1, cards.length)) * 100)}%` }}></div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-700 w-6 text-right">{count}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1070,9 +1094,9 @@ export function SalesPipelinePage() {
           </h3>
           <div className="grid grid-cols-2 gap-2 relative z-10">
             <button onClick={() => setShowNewLead(true)} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Enquiry</button>
-            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Quotation</button>
-            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Sales Order</button>
-            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Inward</button>
+            <button onClick={() => setActiveView('quotation_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Quotation</button>
+            <button onClick={() => setActiveView('sales_order_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Sales Order</button>
+            <button onClick={() => setActiveView('inward_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Inward</button>
           </div>
           
           <div className="mt-6 pt-4 border-t border-slate-100 relative z-10 flex items-center justify-between">
