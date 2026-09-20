@@ -32,9 +32,9 @@ export function Modal({
 
   const sizes: Record<string, string> = {
     sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
+    md: 'max-w-xl',
+    lg: 'max-w-3xl',
+    xl: 'max-w-5xl',
   };
 
   return (
