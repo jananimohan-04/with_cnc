@@ -357,6 +357,8 @@ export function SalesPipelinePage() {
       return;
     }
     if (card.stage === toStage) return;
+    
+    try {
 
     if (card.type === 'lead' && toStage === 'Quotation') {
       const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -454,6 +456,9 @@ export function SalesPipelinePage() {
       } else {
          alert(`Cannot drag ${card.stage} directly to ${toStage}. Please follow the sequence.`);
       }
+    }
+    } catch(err: any) {
+      alert("Runtime Error in handleDrop: " + err.message);
     }
   };
 
@@ -1197,6 +1202,62 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Generic View Modal */}
+
+      {/* Finished Goods Modal */}
+      <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
+          <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
+          <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} disabled /></FormField>
+          <FormField label="Part Name"><input className={inputClass} value={fgForm.partName || ''} disabled /></FormField>
+          <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
+          <FormField label="Quantity to Process" required><input type="number" className={inputClass} value={fgForm.completedQty || ''} onChange={e=>setFgForm({...fgForm, completedQty: e.target.value})} /></FormField>
+        </div>
+      </Modal>
+
+      {/* Delivery Challan Modal */}
+      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button variant="secondary" onClick={() => setDcModalTarget(null)}>Cancel</Button><Button onClick={saveDeliveryChallan}>Save</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} disabled /></FormField>
+          <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
+          <FormField label="Party Name" required><input className={inputClass} value={dcForm.partyName || ''} disabled /></FormField>
+          <FormField label="PO / WO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
+          <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
+          <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
+          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Part Details</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <FormField label="Part Name" required><input className={inputClass} value={dcForm.partName || ''} disabled /></FormField>
+              <FormField label="Quantity" required><input type="number" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
+              <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Invoice Modal */}
+      <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Billing System" size="lg" footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
+          <FormField label="Invoice No" required><input className={inputClass} value={invoiceForm.invoiceNo || ''} disabled /></FormField>
+          <FormField label="Party Name" required><input className={inputClass} value={invoiceForm.partyName || ''} disabled /></FormField>
+          <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} disabled /></FormField>
+          <FormField label="Date" required><input type="date" className={inputClass} value={invoiceForm.date || ''} onChange={e=>setInvoiceForm({...invoiceForm, date: e.target.value})} /></FormField>
+          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Item Details</h4>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="col-span-2"><FormField label="Item Name" required><input className={inputClass} value={invoiceForm.partName || ''} disabled /></FormField></div>
+              <FormField label="Qty" required><input type="number" className={inputClass} value={invoiceForm.quantity || ''} onChange={e=>setInvoiceForm({...invoiceForm, quantity: e.target.value})} /></FormField>
+              <FormField label="Unit Price" required><input type="number" className={inputClass} value={invoiceForm.price || ''} onChange={e=>setInvoiceForm({...invoiceForm, price: e.target.value})} /></FormField>
+              <FormField label="CGST (%)"><input type="number" className={inputClass} value={invoiceForm.cgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, cgst: e.target.value})} /></FormField>
+              <FormField label="SGST (%)"><input type="number" className={inputClass} value={invoiceForm.sgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, sgst: e.target.value})} /></FormField>
+              <FormField label="IGST (%)"><input type="number" className={inputClass} value={invoiceForm.igst || ''} onChange={e=>setInvoiceForm({...invoiceForm, igst: e.target.value})} /></FormField>
+              <FormField label="Total Amount"><input type="text" className={`${inputClass} bg-slate-100 font-bold`} value={((Number(invoiceForm.quantity)||0) * (Number(invoiceForm.price)||0) * (1 + ((Number(invoiceForm.cgst)||0) + (Number(invoiceForm.sgst)||0) + (Number(invoiceForm.igst)||0))/100)).toFixed(2)} disabled /></FormField>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
