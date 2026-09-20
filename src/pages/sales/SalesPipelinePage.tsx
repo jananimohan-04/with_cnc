@@ -42,6 +42,9 @@ export function SalesPipelinePage() {
   const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
   const [dcForm, setDcForm] = useState<any>({});
   const [invoiceModalTarget, setInvoiceModalTarget] = useState<KanbanCard | null>(null);
+  const [soModalTarget, setSoModalTarget] = useState<KanbanCard | null>(null);
+  const [soForm, setSoForm] = useState<any>({});
+
   const [invoiceForm, setInvoiceForm] = useState<any>({});
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
@@ -572,6 +575,48 @@ export function SalesPipelinePage() {
     } else { alert("Error: " + error.message); }
   };
 
+    const saveStandaloneSalesOrder = async () => {
+    if (!soModalTarget) return;
+    const q = Number(soForm.quantity) || 0;
+    const p = Number(soForm.price) || 0;
+    const item = {
+       id: crypto.randomUUID(),
+       partName: soForm.partName,
+       partNumber: soForm.partNumber || '',
+       description: '',
+       quantity: q.toString(),
+       unitPrice: p.toString(),
+       discount: '0',
+       gst: soForm.gst || '18'
+    };
+    const totalVal = q * p * (1 + Number(soForm.gst||18)/100);
+
+    const { error } = await supabase.from('cnc_sales_orders').insert([{
+      id: crypto.randomUUID(),
+      order_no: soForm.orderNo, customer: soForm.customer,
+      contact_person: '', phone: '', email: '',
+      billing_address: '', delivery_address: '',
+      shipping_contact: '', shipping_phone: '',
+      lead_no: '', order_date: soForm.orderDate,
+      customer_po_no: '', customer_po_date: null,
+      items: [item],
+      part_name: item.partName, part_number: item.partNumber,
+      quantity: q, 
+      total_value: totalVal, 
+      delivery_date: soForm.deliveryDate || soForm.orderDate, status: 'Confirmed',
+      payment_terms: 'Net 30', special_instructions: '',
+      internal_remarks: '',
+      quotation_id: null
+    }]);
+    
+    if (!error) {
+      fetchPipeline();
+      setSoModalTarget(null);
+    } else {
+      alert("Error creating sales order: " + error.message);
+    }
+  };
+  
   const saveInvoice = async () => {
     if (!invoiceModalTarget) return;
     const q = Number(invoiceForm.quantity) || 0;
@@ -832,7 +877,37 @@ export function SalesPipelinePage() {
                 <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
                   onClick={() => {
                     if (stage.id === 'Enquiry') setShowNewLead(true);
-                    else alert('Please create this record from the previous stage or respective module.');
+                    else if (stage.id === 'Quotation') {
+                      setQuoteForm({
+                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: 'Admin', contacts: [], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18', paymentTerms: '', deliveryTerms: '', remarks: ''
+                      });
+                      setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                    } else if (stage.id === 'Sales Order') {
+                      setSoForm({
+                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], partName: '', partNumber: '', quantity: '', price: '', gst: '18'
+                      });
+                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                    } else if (stage.id === 'Inward') {
+                      setInwardForm({
+                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', contacts: []
+                      });
+                      setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                    } else if (stage.id === 'Finished Goods') {
+                      setFgForm({
+                         woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', partNo: '', orderQty: '999999', completedQty: '', date: new Date().toISOString().split('T')[0]
+                      });
+                      setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                    } else if (stage.id === 'DC') {
+                      setDcForm({
+                         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, date: new Date().toISOString().split('T')[0], partyName: '', partName: '', quantity: '', price: '', poNumber: '', vehicleNo: '', ewayBill: ''
+                      });
+                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                    } else if (stage.id === 'Invoice') {
+                      setInvoiceForm({
+                         invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, date: new Date().toISOString().split('T')[0], partyName: '', dcNumber: '', partName: '', quantity: '', price: '', cgst: '9', sgst: '9', igst: '0'
+                      });
+                      setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                    }
                   }}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -1209,8 +1284,8 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
-          <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} disabled /></FormField>
-          <FormField label="Part Name"><input className={inputClass} value={fgForm.partName || ''} disabled /></FormField>
+          <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} onChange={e=>setFgForm({...fgForm, customer: e.target.value})} /></FormField>
+          <FormField label="Part Name"><input className={inputClass} value={fgForm.partName || ''} onChange={e=>setFgForm({...fgForm, partName: e.target.value})} /></FormField>
           <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
           <FormField label="Quantity to Process" required><input type="number" className={inputClass} value={fgForm.completedQty || ''} onChange={e=>setFgForm({...fgForm, completedQty: e.target.value})} /></FormField>
         </div>
@@ -1219,16 +1294,16 @@ export function SalesPipelinePage() {
       {/* Delivery Challan Modal */}
       <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button variant="secondary" onClick={() => setDcModalTarget(null)}>Cancel</Button><Button onClick={saveDeliveryChallan}>Save</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} disabled /></FormField>
+          <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
-          <FormField label="Party Name" required><input className={inputClass} value={dcForm.partyName || ''} disabled /></FormField>
+          <FormField label="Party Name" required><input className={inputClass} value={dcForm.partyName || ''} onChange={e=>setDcForm({...dcForm, partyName: e.target.value})} /></FormField>
           <FormField label="PO / WO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
           <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
           <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
             <h4 className="font-semibold text-sm text-slate-800 mb-3">Part Details</h4>
             <div className="grid grid-cols-3 gap-4">
-              <FormField label="Part Name" required><input className={inputClass} value={dcForm.partName || ''} disabled /></FormField>
+              <FormField label="Part Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
               <FormField label="Quantity" required><input type="number" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
               <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
             </div>
@@ -1240,14 +1315,14 @@ export function SalesPipelinePage() {
       <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Billing System" size="lg" footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
-          <FormField label="Invoice No" required><input className={inputClass} value={invoiceForm.invoiceNo || ''} disabled /></FormField>
-          <FormField label="Party Name" required><input className={inputClass} value={invoiceForm.partyName || ''} disabled /></FormField>
-          <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} disabled /></FormField>
+          <FormField label="Invoice No" required><input className={inputClass} value={invoiceForm.invoiceNo || ''} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNo: e.target.value})} /></FormField>
+          <FormField label="Party Name" required><input className={inputClass} value={invoiceForm.partyName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partyName: e.target.value})} /></FormField>
+          <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} onChange={e=>setInvoiceForm({...invoiceForm, dcNumber: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={invoiceForm.date || ''} onChange={e=>setInvoiceForm({...invoiceForm, date: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
             <h4 className="font-semibold text-sm text-slate-800 mb-3">Item Details</h4>
             <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-2"><FormField label="Item Name" required><input className={inputClass} value={invoiceForm.partName || ''} disabled /></FormField></div>
+              <div className="col-span-2"><FormField label="Item Name" required><input className={inputClass} value={invoiceForm.partName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partName: e.target.value})} /></FormField></div>
               <FormField label="Qty" required><input type="number" className={inputClass} value={invoiceForm.quantity || ''} onChange={e=>setInvoiceForm({...invoiceForm, quantity: e.target.value})} /></FormField>
               <FormField label="Unit Price" required><input type="number" className={inputClass} value={invoiceForm.price || ''} onChange={e=>setInvoiceForm({...invoiceForm, price: e.target.value})} /></FormField>
               <FormField label="CGST (%)"><input type="number" className={inputClass} value={invoiceForm.cgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, cgst: e.target.value})} /></FormField>
@@ -1259,7 +1334,22 @@ export function SalesPipelinePage() {
         </div>
       </Modal>
 
-      <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
+      
+      {/* Sales Order Modal */}
+      <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="lg" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Order No" required><input className={inputClass} value={soForm.orderNo || ''} onChange={e=>setSoForm({...soForm, orderNo: e.target.value})} /></FormField>
+          <FormField label="Customer" required><input className={inputClass} value={soForm.customer || ''} onChange={e=>setSoForm({...soForm, customer: e.target.value})} /></FormField>
+          <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+          <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+          <FormField label="Part Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>
+          <FormField label="Part Number"><input className={inputClass} value={soForm.partNumber || ''} onChange={e=>setSoForm({...soForm, partNumber: e.target.value})} /></FormField>
+          <FormField label="Quantity" required><input type="number" className={inputClass} value={soForm.quantity || ''} onChange={e=>setSoForm({...soForm, quantity: e.target.value})} /></FormField>
+          <FormField label="Unit Price" required><input type="number" className={inputClass} value={soForm.price || ''} onChange={e=>setSoForm({...soForm, price: e.target.value})} /></FormField>
+          <FormField label="GST (%)"><input type="number" className={inputClass} value={soForm.gst || ''} onChange={e=>setSoForm({...soForm, gst: e.target.value})} /></FormField>
+        </div>
+      </Modal>
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
              {renderRecordData('Enquiry', viewModalData.enquiry)}
