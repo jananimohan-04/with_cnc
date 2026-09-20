@@ -3,7 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { Search, Filter, Calendar, List, Kanban as KanbanIcon, ArrowLeft, ArrowRight, ChevronRight, FileText, CheckCircle2, Clock } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
-import { toast } from 'react-hot-toast';
 
 export function QuotationModule({ onBack }: { onBack: () => void }) {
   const [quotations, setQuotations] = useState<any[]>([]);
@@ -81,10 +80,10 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
     });
 
     if (error) {
-      toast.error('Failed to create Sales Order');
+      alert('Failed to create Sales Order');
       console.error(error);
     } else {
-      toast.success(`Sales Order ${nextSO} created successfully!`);
+      alert(`Sales Order ${nextSO} created successfully!`);
       // Update quote status
       await supabase.from('cnc_quotations').update({ status: 'Accepted' }).eq('id', soModalTarget.id);
       
