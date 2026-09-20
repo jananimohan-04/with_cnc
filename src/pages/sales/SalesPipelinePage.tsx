@@ -687,8 +687,8 @@ export function SalesPipelinePage() {
       </div>
 
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin pb-4 relative">
-        <div className="flex gap-4 min-h-[500px] h-full absolute top-0 left-0 bottom-0 items-stretch">
+      <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
+        <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
             { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' },
             { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700' },
@@ -701,7 +701,7 @@ export function SalesPipelinePage() {
             const stageCards = cards.filter(c => c.stage === stage.id);
             return (
               <div key={stage.id} 
-                className={`w-[340px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm`}
+                className={`w-[280px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
                 onDragOver={(e) => e.preventDefault()} 
                 onDrop={(e) => handleDrop(e, stage.id as Stage)}
               >
@@ -723,7 +723,7 @@ export function SalesPipelinePage() {
                   Add {stage.title === 'DELIVERY CHALLAN' ? 'Delivery Challan' : stage.title === 'FINISHED GOODS' ? 'Finished Good' : stage.id}
                 </button>
 
-                <div className="flex-1 overflow-y-auto scrollbar-none space-y-3 pb-2 px-1">
+                <div className="flex-1 overflow-y-auto scrollbar-thin space-y-3 pb-2 pr-1">
                   {stageCards.map(card => (
                     <div 
                       key={card.id} 
