@@ -879,32 +879,60 @@ export function SalesPipelinePage() {
                 autoComplete="off"
               />
             </FormField>
-            {showCustomerDropdown && newLeadForm.company && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
-                {customerList.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())).length > 0 ? (
-                  customerList.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())).map(c => (
-                    <div 
-                      key={c.id} 
-                      className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
-                      onClick={() => {
-                        setNewLeadForm({
-                          ...newLeadForm,
-                          company: c.name,
-                          contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
-                          city: c.city || ''
-                        });
-                        setShowCustomerDropdown(false);
-                      }}
-                    >
-                      <div className="font-semibold text-sm text-slate-800">{c.name}</div>
-                      <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
-                )}
-              </div>
-            )}
+            {(() => {
+              const compMap = new Map();
+              const combined: any[] = [];
+              customerList.forEach(c => {
+                const k = c.name?.toLowerCase();
+                if (k && !compMap.has(k)) {
+                  compMap.set(k, true);
+                  combined.push({ id: c.id, name: c.name, contact: c.contact, phone: c.phone, email: c.email, city: c.city });
+                }
+              });
+              // Use cards which contains all pipeline leads!
+              cards.forEach(card => {
+                const k = card.customer?.toLowerCase();
+                if (k && !compMap.has(k)) {
+                  compMap.set(k, true);
+                  // parse contacts from card.raw
+                  const p = (card.raw.contact_person || '').split(' | ')[0] || '';
+                  const ph = (card.raw.phone || '').split(' | ')[0] || '';
+                  const em = (card.raw.email || '').split(' | ')[0] || '';
+                  combined.push({ id: card.id, name: card.customer, contact: p, phone: ph, email: em, city: card.raw.city || '' });
+                }
+              });
+              const matches = newLeadForm.company ? combined.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())) : [];
+              
+              if (!showCustomerDropdown || !newLeadForm.company) return null;
+              
+              return (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                  {matches.length > 0 ? (
+                    matches.map(c => (
+                      <div 
+                        key={c.id} 
+                        className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); 
+                          setNewLeadForm({
+                            ...newLeadForm,
+                            company: c.name,
+                            contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
+                            city: c.city || ''
+                          });
+                          setShowCustomerDropdown(false);
+                        }}
+                      >
+                        <div className="font-semibold text-sm text-slate-800">{c.name}</div>
+                        <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
