@@ -598,106 +598,255 @@ export function SalesPipelinePage() {
     }
   };
 
+
   return (
-    <div className="p-4 lg:p-6 bg-slate-50 min-h-full flex flex-col">
-      <PageHeader 
-        title="Sales Pipeline" 
-        description="Kanban workflow for active opportunities" 
-        actions={
-          <div className="flex items-center gap-3">
-            <Button onClick={() => setShowNewLead(true)}>
-              <Plus size={16} className="mr-2" /> New Lead
-            </Button>
-            <DateSelector />
-          </div>
-        } 
-      />
+    <div className="p-4 lg:p-6 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
       
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatCard label="Total Opportunities" value={cards.length.toString()} icon={<FileText size={20} />} accent="brand" />
-        <StatCard label="Enquiries" value={cards.filter(c => c.stage === 'Enquiry').length.toString()} icon={<FileText size={20} />} accent="neutral" />
-        <StatCard label="Quotations" value={cards.filter(c => c.stage === 'Quotation').length.toString()} icon={<FileText size={20} />} accent="accent" />
-        <StatCard label="Sales Orders" value={cards.filter(c => c.stage === 'Sales Order').length.toString()} icon={<FileText size={20} />} accent="success" />
-        <StatCard label="Inwards" value={cards.filter(c => c.stage === 'Inward').length.toString()} icon={<FileText size={20} />} accent="warning" />
+      {/* 1. Page Header */}
+      <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800 tracking-tight">Simple ERP</h1>
+          <p className="text-xs text-slate-500 font-medium mt-1">From Enquiry to Invoice – All in One Place</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="relative hidden md:block">
+            <input type="text" placeholder="Search by customer, part, document no..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 bg-slate-50" />
+            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+          <button onClick={() => setShowNewLead(true)} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+            New <svg className="w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+          <div className="h-8 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+          <button className="relative text-slate-500 hover:text-slate-700 transition-colors hidden sm:block">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">3</span>
+          </button>
+          <div className="flex items-center gap-3 pl-2 cursor-pointer hover:bg-slate-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-slate-100 hidden sm:flex">
+            <div className="w-8 h-8 rounded-full bg-navy-800 text-white flex items-center justify-center text-xs font-bold shadow-sm">SS</div>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-semibold text-slate-800 leading-none">Socrates S.</p>
+              <p className="text-[10px] font-medium text-slate-500 mt-1">CEO</p>
+            </div>
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin"><div className="flex gap-5 h-full items-stretch min-w-max px-2">
-        {columns.map(stage => (
-          <div key={stage} className="w-[340px] flex-shrink-0 bg-slate-50 rounded-2xl p-4 flex flex-col border border-slate-200/60 shadow-sm min-h-[400px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage)}>
-            <div className="flex justify-between items-center mb-3 px-1">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs">{stage}</h3>
-                {stage === 'Enquiry' && <button onClick={() => setEnquiryModalOpen(true)} className="bg-brand-100 text-brand-700 p-1 rounded hover:bg-brand-200 transition-colors" title="Add New Enquiry"><Plus size={14} /></button>}
-              </div>
-              <Badge variant="neutral">{cards.filter(c => c.stage === stage).length}</Badge>
-            </div>
-            <div className="flex-1 flex flex-col gap-3 overflow-y-auto scrollbar-none">
-              {cards.filter(c => c.stage === stage).map(card => (
-                <div key={card.id} draggable onDragStart={(e) => handleDragStart(e, card)} className="bg-white p-4 rounded-2xl shadow-card border border-slate-200/60 cursor-grab active:cursor-grabbing hover:shadow-card-hover hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 group relative">
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <button onClick={() => openViewModal(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
-                    {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="text-slate-300 hover:text-red-500 transition-colors bg-white/80 p-0.5 rounded" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
+      {/* 2. Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+        {[
+          { title: 'Total Enquiries', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Enquiry' },
+          { title: 'Quotations', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'purple', stage: 'Quotation' },
+          { title: 'Sales Orders', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'emerald', stage: 'Sales Order' },
+          { title: 'Inward', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', color: 'orange', stage: 'Inward' },
+          { title: 'Finished Goods', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', color: 'teal', stage: 'Finished Goods' },
+          { title: 'Delivery Challans', icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', color: 'rose', stage: 'DC' },
+          { title: 'Invoices', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Invoice' }
+        ].map(stat => {
+           const count = cards.filter(c => c.stage === stat.stage).length;
+           return (
+             <div key={stat.title} className="bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center justify-between hover:-translate-y-1 transition-transform">
+               <div>
+                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
+                 <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
+               </div>
+               <div className={`w-10 h-10 rounded-full bg-${stat.color}-50 flex items-center justify-center text-${stat.color}-500`}>
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
+               </div>
+             </div>
+           );
+        })}
+      </div>
+
+      {/* 3. Tabs & Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <div className="flex p-1 bg-white rounded-lg shadow-sm border border-slate-200">
+          <button className="px-4 py-1.5 text-sm font-semibold rounded-md bg-brand-600 text-white shadow-sm transition-all">Kanban Board</button>
+          <button className="px-4 py-1.5 text-sm font-medium rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">List View</button>
+          <button className="px-4 py-1.5 text-sm font-medium rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">Calendar</button>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-3">
+          <select className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium">
+            <option>All Customers</option>
+            <option>Alyduco</option>
+            <option>VINMEC</option>
+          </select>
+          <div className="relative">
+            <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
+            <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+          </button>
+          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Kanban Pipeline (Horizontal Scroll) */}
+      <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin pb-4 relative">
+        <div className="flex gap-4 min-h-[500px] h-full absolute top-0 left-0 bottom-0 items-stretch">
+          {[
+            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' },
+            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700' },
+            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700' },
+            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700' },
+            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700' },
+            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700' },
+            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' }
+          ].map(stage => {
+            const stageCards = cards.filter(c => c.stage === stage.id);
+            return (
+              <div key={stage.id} 
+                className={`w-[340px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm`}
+                onDragOver={(e) => e.preventDefault()} 
+                onDrop={(e) => handleDrop(e, stage.id as Stage)}
+              >
+                <div className="flex justify-between items-start mb-3 px-1">
+                  <div>
+                    <h3 className={`font-bold text-sm tracking-wide ${stage.text}`}>{stage.title}</h3>
+                    <p className="text-[10px] text-slate-500 font-medium">{stage.desc}</p>
                   </div>
-                                      {card.type === 'finished_goods' ? (
-                      <>
-                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
-                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
-                        <div className="text-xs text-slate-600 mb-2 line-clamp-1">{card.part}</div>
-                        <div className="text-[10px] font-medium text-brand-600 mb-3 bg-brand-50 inline-block px-1.5 py-0.5 rounded">Category: Finished Goods</div>
-                        <div className="flex justify-between text-xs mb-3 text-slate-500">
-                          <span>Qty: <span className="font-medium text-slate-700">{card.qty}</span></span>
-                        </div>
-                      </>
-                    ) : card.type === 'dc' ? (
-                      <>
-                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
-                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
-                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
-                        <div className="flex justify-between text-xs mb-3 text-slate-500">
-                          <span>Qty: <span className="font-medium text-slate-700">{card.qty} {card.raw.unit || 'NOS'}</span></span>
-                        </div>
-                        <div className="flex justify-between text-xs mb-3 text-slate-500">
-                          <span>PO: <span className="font-medium text-brand-600">{card.raw.order_no || '-'}</span></span>
-                          <span>Rs. {Number(card.raw.total_amount || 0).toLocaleString('en-IN')}</span>
-                        </div>
-                      </>
-                    ) : card.type === 'invoice' ? (
-                      <>
-                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
-                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
-                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
-                        <div className="flex justify-between text-xs mb-1 text-slate-500">
-                          <span>DC: <span className="font-medium text-slate-700">{card.raw.dc_number || '-'}</span></span>
-                        </div>
-                        <div className="flex justify-between text-xs mb-3 text-slate-500">
-                          <span>PO: <span className="font-medium text-brand-600">{card.raw.po_number || '-'}</span></span>
-                          <span>Qty: <span className="font-medium text-slate-700">{card.qty} {card.raw.unit || 'NOS'}</span></span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-800 mb-3 text-right">
-                          Rs. {Number(card.value || 0).toLocaleString('en-IN')}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
-                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
-                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
-                        <div className="flex justify-between text-xs mb-3 text-slate-500">
-                          <span>Qty: <span className="font-medium text-slate-700">{card.qty}</span></span>
-                          {card.type !== 'inward' && <span>Val: <span className="font-medium text-brand-600">Rs. {((Number(card.value)||0)/1000).toFixed(1)}k</span></span>}
-                          {card.type === 'inward' && <span>Ref: <span className="font-medium text-brand-600">{card.raw.sales_order_ref}</span></span>}
-                        </div>
-                      </>
-                    )}
-                  
-                  <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-                    <span className="text-[10px] text-slate-400">{card.date || 'No Date'}</span>
-                  </div>
+                  <span className={`bg-white ${stage.text} text-xs font-bold px-2 py-0.5 rounded-full shadow-sm border ${stage.border}`}>{stageCards.length}</span>
                 </div>
-              ))}
+                
+                <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
+                  onClick={() => {
+                    if (stage.id === 'Enquiry') setShowNewLead(true);
+                    else alert('Please create this record from the previous stage or respective module.');
+                  }}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                  Add {stage.title === 'DELIVERY CHALLAN' ? 'Delivery Challan' : stage.title === 'FINISHED GOODS' ? 'Finished Good' : stage.id}
+                </button>
+
+                <div className="flex-1 overflow-y-auto scrollbar-none space-y-3 pb-2 px-1">
+                  {stageCards.map(card => (
+                    <div 
+                      key={card.id} 
+                      draggable 
+                      onDragStart={(e) => handleDragStart(e, card)} 
+                      onClick={() => setViewModalTarget(card)}
+                      className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[11px] font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{card.refNo}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">{card.date || 'No Date'}</span>
+                      </div>
+                      
+                      <h4 className="font-bold text-[13px] text-slate-800 mb-0.5 line-clamp-1">{card.customer}</h4>
+                      <p className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</p>
+                      
+                      <div className="flex justify-between items-end">
+                        <div>
+                          {card.value > 0 ? (
+                             <p className="text-sm font-bold text-slate-800">₹{Number(card.value).toLocaleString('en-IN')}</p>
+                          ) : (
+                             <p className="text-xs font-medium text-slate-600">{card.qty} pcs</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${stage.bg} ${stage.text} border ${stage.border}`}>
+                            {card.status || stage.id}
+                          </span>
+                          <div className="flex -space-x-1">
+                            <div className="w-5 h-5 rounded-full bg-slate-200 border border-white flex items-center justify-center text-[8px] font-bold text-slate-600" title="Assigned User">
+                              {card.raw?.contact_person ? card.raw.contact_person.substring(0, 2).toUpperCase() : 'AD'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> {Math.floor(Math.random() * 3)}</span>
+                        <span className="text-[10px] font-bold text-brand-600">View details →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 5. Bottom Section */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            Recent Activities
+          </h3>
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <p className="text-xs text-slate-700"><span className="font-semibold">Sales Order SO-2026-008</span> confirmed for Alyduco</p>
+                <p className="text-[10px] text-slate-500 font-medium mt-0.5">10:30 AM</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-2 h-2 rounded-full bg-orange-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <p className="text-xs text-slate-700"><span className="font-semibold">Inward entry IN-2026-021</span> received</p>
+                <p className="text-[10px] text-slate-500 font-medium mt-0.5">09:15 AM</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <p className="text-xs text-slate-700"><span className="font-semibold">Delivery Challan DC-2026-007</span> dispatched</p>
+                <p className="text-[10px] text-slate-500 font-medium mt-0.5">09:45 AM</p>
+              </div>
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+            Today's Tasks
+          </h3>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" />
+              <span className="text-xs text-slate-700 group-hover:text-slate-900 font-medium">Follow up quotation with QQS</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" />
+              <span className="text-xs text-slate-700 group-hover:text-slate-900 font-medium">Prepare proforma for VINMEC</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer" defaultChecked />
+              <span className="text-xs text-slate-400 font-medium line-through">Update finished goods stock</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 relative overflow-hidden">
+          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 relative z-10">
+            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            Quick Links
+          </h3>
+          <div className="grid grid-cols-2 gap-2 relative z-10">
+            <button onClick={() => setShowNewLead(true)} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Enquiry</button>
+            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Quotation</button>
+            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Sales Order</button>
+            <button className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Inward</button>
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-slate-100 relative z-10 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ARGUSCNC™</p>
+              <p className="text-xs font-bold text-slate-800">Manufacturing Made Simple</p>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 shadow-sm border border-brand-100">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* New Lead Modal */}
@@ -883,6 +1032,5 @@ export function SalesPipelinePage() {
       </Modal>
 
     </div>
-  </div>
   );
 }
