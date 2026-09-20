@@ -570,7 +570,8 @@ export function SalesPipelinePage() {
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-    company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }]
+    company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
+    partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
   });
 
   const [customerList, setCustomerList] = useState<any[]>([]);
@@ -592,14 +593,14 @@ export function SalesPipelinePage() {
       id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
       city: newLeadForm.city, gst: newLeadForm.gst, enquiring_for: newLeadForm.enquiringFor,
-      part_name: 'TBD', part_no: 'N/A', quantity: 0, estimated_value: 0, expected_date: new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
+      part_name: newLeadForm.partName || 'TBD', part_no: newLeadForm.partNo || 'N/A', quantity: Number(newLeadForm.quantity) || 0, estimated_value: Number(newLeadForm.estimatedValue) || 0, expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
       source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
     }]);
     if (!error) {
       setShowNewLead(false);
       setNewLeadForm({
         leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }]
+        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
       });
       fetchPipeline();
     } else {
@@ -949,6 +950,8 @@ export function SalesPipelinePage() {
           </div>
           <FormField label="Address"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
+          <FormField label="Product / Part Required" required><input className={inputClass} value={newLeadForm.partName} onChange={e => setNewLeadForm({...newLeadForm, partName: e.target.value})} /></FormField>
+          <FormField label="Quantity"><input type="number" className={inputClass} value={newLeadForm.quantity} onChange={e => setNewLeadForm({...newLeadForm, quantity: e.target.value})} /></FormField>
           <FormField label="Source">
             <select className={inputClass} value={newLeadForm.source} onChange={e => setNewLeadForm({...newLeadForm, source: e.target.value})}>
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
