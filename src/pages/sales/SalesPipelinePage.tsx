@@ -4,6 +4,7 @@ import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
+import { EnquiryModule } from './EnquiryModule';
 
 type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
