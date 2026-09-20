@@ -49,9 +49,9 @@ export function Sidebar({
         } fixed lg:static flex-shrink-0 bg-navy-950 text-white flex flex-col transition-all duration-300 ease-in-out h-screen top-0 left-0 z-50 shadow-[4px_0_24px_rgba(0,0,0,0.15)]`}
       >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10">
+      <div className="flex items-center gap-3 px-4 h-24 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10">
         {!collapsed ? (
-          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-auto h-12 object-contain rounded-sm" />
+          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-full h-16 object-contain rounded-sm" />
         ) : (
           <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-orange overflow-hidden border border-brand-500/20">
             <img src="/arguscnc-mark.jpg" alt="ARGUSCNC Mark" className="w-full h-full object-contain p-1" />
