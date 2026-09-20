@@ -146,7 +146,7 @@ export function SuppliersPage() {
            <h4 className="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2">Address</h4>
            <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2"><FormField label="Street Address"><input className={inputClass} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} /></FormField></div>
-              <FormField label="City"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
+              <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
               <FormField label="State"><input className={inputClass} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} /></FormField>
               <FormField label="Country"><input className={inputClass} value={formData.country} onChange={e => setFormData({...formData, country: e.target.value})} /></FormField>
               <FormField label="Pincode"><input className={inputClass} value={formData.pincode} onChange={e => setFormData({...formData, pincode: e.target.value})} /></FormField>

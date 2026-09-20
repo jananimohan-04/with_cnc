@@ -171,7 +171,7 @@ export function CustomersPage() {
           <FormField label="Contact Person" required><input className={inputClass} value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} placeholder="Full name" /></FormField>
           <FormField label="Email" required><input type="email" className={inputClass} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@company.com" /></FormField>
           <FormField label="Phone"><input className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+91 ..." /></FormField>
-          <FormField label="City"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="City" /></FormField>
+          <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="Address" /></FormField>
           <FormField label="GST Number"><input className={inputClass} value={formData.gstNumber} onChange={e => setFormData({...formData, gstNumber: e.target.value})} placeholder="22AAAAA0000A1Z5" /></FormField>
           <FormField label="Payment Terms">
             <select className={inputClass} value={formData.paymentTerms} onChange={e => setFormData({...formData, paymentTerms: e.target.value})}>
@@ -194,7 +194,7 @@ export function CustomersPage() {
             <div><p className="text-slate-500 mb-1">Industry</p><Badge variant="neutral">{viewTarget.industry}</Badge></div>
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
             <div><p className="text-slate-500 mb-1">Contact</p><p className="font-medium text-slate-800">{viewTarget.contact}</p></div>
-            <div><p className="text-slate-500 mb-1">City</p><p className="font-medium text-slate-800">{viewTarget.city}</p></div>
+            <div><p className="text-slate-500 mb-1">Address</p><p className="font-medium text-slate-800">{viewTarget.city}</p></div>
             <div><p className="text-slate-500 mb-1">Total Orders</p><p className="text-slate-800">{viewTarget.totalOrders}</p></div>
             <div><p className="text-slate-500 mb-1">Total Value</p><p className="font-semibold text-slate-800">₹{viewTarget.totalValue.toLocaleString('en-IN')}</p></div>
             <div><p className="text-slate-500 mb-1">Outstanding</p><p className={viewTarget.outstanding > 0 ? 'text-orange-600 font-medium' : 'text-slate-800'}>₹{viewTarget.outstanding.toLocaleString('en-IN')}</p></div>
