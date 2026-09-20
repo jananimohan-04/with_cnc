@@ -638,15 +638,57 @@ export function SalesPipelinePage() {
                     <button onClick={() => openViewModal(card)} className="text-slate-300 hover:text-brand-500 transition-colors bg-white/80 p-0.5 rounded" title="View Details"><Eye size={14} /></button>
                     {card.type === 'lead' && <button onClick={() => removeFromPipeline(card)} className="text-slate-300 hover:text-red-500 transition-colors bg-white/80 p-0.5 rounded" title="Rollback / Remove from Pipeline"><Archive size={14} /></button>}
                   </div>
-                  <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
-                  <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
-                  <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
-                  
-                  <div className="flex justify-between text-xs mb-3 text-slate-500">
-                    <span>Qty: <span className="font-medium text-slate-700">{card.qty}</span></span>
-                    {card.type !== 'inward' && <span>Val: <span className="font-medium text-brand-600">Rs. {((Number(card.value)||0)/1000).toFixed(1)}k</span></span>}
-                    {card.type === 'inward' && <span>Ref: <span className="font-medium text-brand-600">{card.raw.sales_order_ref}</span></span>}
-                  </div>
+                                      {card.type === 'finished_goods' ? (
+                      <>
+                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
+                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
+                        <div className="text-xs text-slate-600 mb-2 line-clamp-1">{card.part}</div>
+                        <div className="text-[10px] font-medium text-brand-600 mb-3 bg-brand-50 inline-block px-1.5 py-0.5 rounded">Category: Finished Goods</div>
+                        <div className="flex justify-between text-xs mb-3 text-slate-500">
+                          <span>Qty: <span className="font-medium text-slate-700">{card.qty}</span></span>
+                        </div>
+                      </>
+                    ) : card.type === 'dc' ? (
+                      <>
+                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
+                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
+                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
+                        <div className="flex justify-between text-xs mb-3 text-slate-500">
+                          <span>Qty: <span className="font-medium text-slate-700">{card.qty} {card.raw.unit || 'NOS'}</span></span>
+                        </div>
+                        <div className="flex justify-between text-xs mb-3 text-slate-500">
+                          <span>PO: <span className="font-medium text-brand-600">{card.raw.order_no || '-'}</span></span>
+                          <span>Rs. {Number(card.raw.total_amount || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                      </>
+                    ) : card.type === 'invoice' ? (
+                      <>
+                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
+                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
+                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
+                        <div className="flex justify-between text-xs mb-1 text-slate-500">
+                          <span>DC: <span className="font-medium text-slate-700">{card.raw.dc_number || '-'}</span></span>
+                        </div>
+                        <div className="flex justify-between text-xs mb-3 text-slate-500">
+                          <span>PO: <span className="font-medium text-brand-600">{card.raw.po_number || '-'}</span></span>
+                          <span>Qty: <span className="font-medium text-slate-700">{card.qty} {card.raw.unit || 'NOS'}</span></span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-800 mb-3 text-right">
+                          Rs. {Number(card.value || 0).toLocaleString('en-IN')}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[10px] font-mono text-slate-400 mb-1 pr-12">{card.refNo}</div>
+                        <div className="font-semibold text-sm text-slate-800 mb-0.5 pr-4 line-clamp-1">{card.customer}</div>
+                        <div className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</div>
+                        <div className="flex justify-between text-xs mb-3 text-slate-500">
+                          <span>Qty: <span className="font-medium text-slate-700">{card.qty}</span></span>
+                          {card.type !== 'inward' && <span>Val: <span className="font-medium text-brand-600">Rs. {((Number(card.value)||0)/1000).toFixed(1)}k</span></span>}
+                          {card.type === 'inward' && <span>Ref: <span className="font-medium text-brand-600">{card.raw.sales_order_ref}</span></span>}
+                        </div>
+                      </>
+                    )}
                   
                   <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
                     <span className="text-[10px] text-slate-400">{card.date || 'No Date'}</span>
