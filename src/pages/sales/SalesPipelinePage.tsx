@@ -6,6 +6,11 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
+import { SalesOrderModule } from './SalesOrderModule';
+import { InwardModule } from './InwardModule';
+import { FinishedGoodsModule } from './FinishedGoodsModule';
+import { DeliveryChallanModule } from './DeliveryChallanModule';
+import { InvoiceModule } from './InvoiceModule';
 
 type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
@@ -30,7 +35,7 @@ const formatINR = (value: number) => {
 // renderRecordData moved inside component for inline edit support
 
 export function SalesPipelinePage() {
-  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list'>('pipeline');
+  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
@@ -810,7 +815,15 @@ export function SalesPipelinePage() {
         ].map(stat => {
            const count = cards.filter(c => c.stage === stat.stage).length;
            return (
-             <div key={stat.title} onClick={() => { if(stat.stage === 'Enquiry') setActiveView('enquiry_list'); else if (stat.stage === 'Quotation') setActiveView('quotation_list'); }} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border ${(stat.stage === 'Enquiry' || stat.stage === 'Quotation') ? 'border-brand-300 cursor-pointer hover:border-brand-500' : 'border-slate-100'} flex items-center justify-between hover:-translate-y-1 transition-transform`}>
+             <div key={stat.title} onClick={() => { 
+               if (stat.stage === 'Enquiry') setActiveView('enquiry_list'); 
+               else if (stat.stage === 'Quotation') setActiveView('quotation_list'); 
+               else if (stat.stage === 'Sales Order') setActiveView('sales_order_list'); 
+               else if (stat.stage === 'Inward') setActiveView('inward_list'); 
+               else if (stat.stage === 'Finished Goods') setActiveView('fg_list'); 
+               else if (stat.stage === 'DC') setActiveView('dc_list'); 
+               else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
+             }} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-brand-300 cursor-pointer hover:border-brand-500 flex items-center justify-between hover:-translate-y-1 transition-transform`}>
                <div>
                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
                  <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
@@ -858,6 +871,26 @@ export function SalesPipelinePage() {
       ) : activeView === 'quotation_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
           <QuotationModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'sales_order_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <SalesOrderModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'inward_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <InwardModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'fg_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'dc_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} />
+        </div>
+      ) : activeView === 'invoice_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <InvoiceModule onBack={() => setActiveView('pipeline')} />
         </div>
       ) : (
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
