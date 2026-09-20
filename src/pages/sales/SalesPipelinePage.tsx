@@ -30,6 +30,7 @@ const formatINR = (value: number) => {
 export function SalesPipelinePage() {
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
+  const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
@@ -343,16 +344,19 @@ export function SalesPipelinePage() {
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
-    // e.dataTransfer.setData('cardStr', JSON.stringify(card));
     e.dataTransfer.setData('text/plain', String(card.id));
-    e.dataTransfer.setData('cardId', String(card.id));
+    setDraggedCard(card);
   };
 
   const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
     e.preventDefault();
-    const cardId = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('cardId') || e.dataTransfer.getData('cardid');
-    const card = cards.find(c => String(c.id) === String(cardId));
-    if (!card || card.stage === toStage) return;
+    const cardId = e.dataTransfer.getData('text/plain');
+    let card = draggedCard || cards.find(c => String(c.id) === String(cardId));
+    if (!card) {
+      alert("Error: Could not identify the dragged card. Please try again.");
+      return;
+    }
+    if (card.stage === toStage) return;
 
     if (card.type === 'lead' && toStage === 'Quotation') {
       const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -834,7 +838,8 @@ export function SalesPipelinePage() {
                     <div 
                       key={card.id} 
                       draggable 
-                      onDragStart={(e) => handleDragStart(e, card)} 
+                      onDragStart={(e) => handleDragStart(e, card)}
+                        onDragEnd={() => setDraggedCard(null)} 
                       onClick={() => setViewModalTarget(card)}
                       className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
                     >
