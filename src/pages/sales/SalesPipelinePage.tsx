@@ -173,8 +173,8 @@ export function SalesPipelinePage() {
             >
               <UploadCloud size={24} className="text-slate-400 mb-2" />
               <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-              <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF</span>
-              <input type="file" id={`inline-upload-${raw.id}`} className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={async (e) => {
+              <span className="text-xs text-slate-500 mt-1">All formats supported (CAD, 3D, PDF, Images)</span>
+              <input type="file" id={`inline-upload-${raw.id}`} className="hidden" multiple accept="*" onChange={async (e) => {
                  if (e.target.files && e.target.files.length > 0) {
                     const file = e.target.files[0];
                     const key = raw.part_name || raw.id;
@@ -1360,8 +1360,8 @@ export function SalesPipelinePage() {
                 >
                   <UploadCloud size={24} className="text-slate-400 mb-2" />
                   <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-                  <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
-                  <input type="file" id="lead-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={(e) => {
+                  <span className="text-xs text-slate-500 mt-1">All formats supported (CAD, 3D, PDF, Images)</span>
+                  <input type="file" id="lead-upload" className="hidden" multiple accept="*" onChange={(e) => {
                     if (e.target.files) {
                       setNewLeadForm({...newLeadForm, files: [...newLeadForm.files, ...Array.from(e.target.files)]});
                     }
@@ -1461,8 +1461,8 @@ export function SalesPipelinePage() {
                 >
                   <UploadCloud size={24} className="text-slate-400 mb-2" />
                   <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-                  <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
-                  <input type="file" id="enquiry-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={(e) => {
+                  <span className="text-xs text-slate-500 mt-1">All formats supported (CAD, 3D, PDF, Images)</span>
+                  <input type="file" id="enquiry-upload" className="hidden" multiple accept="*" onChange={(e) => {
                     if (e.target.files) {
                       setEnquiryForm({...enquiryForm, files: [...enquiryForm.files, ...Array.from(e.target.files)]});
                     }
