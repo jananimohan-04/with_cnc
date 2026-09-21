@@ -3,6 +3,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
 import { ProductionOrderDetails } from './ProductionOrderDetails';
+import { getMockImage } from '@/lib/mockStorage';
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[], refresh: () => void }) {
   const [selectedWO, setSelectedWO] = useState<any | null>(null);
@@ -10,6 +11,21 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [mockImages, setMockImages] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadImages = async () => {
+      const loaded: Record<string, string> = {};
+      for (const wo of workOrders) {
+        if (wo.part_name) {
+          const u = await getMockImage(wo.part_name);
+          if (u) loaded[wo.part_name] = u;
+        }
+      }
+      setMockImages(loaded);
+    };
+    if (workOrders.length > 0) loadImages();
+  }, [workOrders]);
 
   const filteredOrders = useMemo(() => {
     return workOrders.filter(w => {
@@ -31,8 +47,8 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       sortable: true, 
       render: (r) => (
         <div className="flex items-center gap-3">
-          {r.image_url || r.drawing_url ? (
-            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
           ) : (
             <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
               <ImageIcon size={14} />

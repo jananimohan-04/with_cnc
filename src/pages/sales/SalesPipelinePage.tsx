@@ -4,6 +4,7 @@ import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { FileText, Plus, Archive, Trash2, Eye, UploadCloud } from 'lucide-react';
+import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
 import { SalesOrderModule } from './SalesOrderModule';
@@ -157,10 +158,10 @@ export function SalesPipelinePage() {
             </div>
           </div>
         )}
-        {(raw.image_url || mockImages[raw.id]) && (
+        {(raw.image_url || mockImages[raw.part_name || raw.id]) && (
            <div className="mt-4">
              <h4 className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Attached Files</h4>
-             <img src={mockImages[raw.id] || raw.image_url} alt="Attachment" className="h-24 w-auto object-contain rounded border border-slate-200 bg-white" />
+             <img src={mockImages[raw.part_name || raw.id] || raw.image_url} alt="Attachment" className="h-24 w-auto object-contain rounded border border-slate-200 bg-white" />
            </div>
         )}
         {viewEditMode && (
@@ -176,8 +177,9 @@ export function SalesPipelinePage() {
               <input type="file" id={`inline-upload-${raw.id}`} className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={async (e) => {
                  if (e.target.files && e.target.files.length > 0) {
                     const file = e.target.files[0];
-                    const objectUrl = URL.createObjectURL(file);
-                    setMockImages(prev => ({ ...prev, [raw.id]: objectUrl }));
+                    const key = raw.part_name || raw.id;
+                    const objectUrl = await setMockImage(key, file);
+                    setMockImages(prev => ({ ...prev, [key]: objectUrl }));
                     alert(`Successfully uploaded ${file.name}!`);
                  }
               }} />
@@ -448,6 +450,21 @@ export function SalesPipelinePage() {
        console.error("Error fetching lineage", e);
     }
     setViewModalData(aggregated);
+    
+    // Load mock images for all records in the pipeline history
+    const loaded: Record<string, string> = {};
+    for (const k of Object.keys(aggregated)) {
+      const rec = aggregated[k];
+      if (rec) {
+        const key = rec.part_name || rec.id;
+        if (key) {
+          const u = await getMockImage(key);
+          if (u) loaded[key] = u;
+        }
+      }
+    }
+    setMockImages(prev => ({ ...prev, ...loaded }));
+    
     setLoading(false);
   };
 

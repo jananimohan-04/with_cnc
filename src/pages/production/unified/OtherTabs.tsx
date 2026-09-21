@@ -1,8 +1,9 @@
-import React, { Component } from 'react';
+import React, { Component, useState, useEffect } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card';
 import { Printer, Image as ImageIcon } from 'lucide-react';
 import { BarChart, DonutChart } from '@/components/ui/Charts';
+import { getMockImage } from '@/lib/mockStorage';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
   const columns: Column<any>[] = [
@@ -23,6 +24,21 @@ export function JobCardTab({ workOrders }: { workOrders: any[] }) {
 
 export function WIPTab({ workOrders }: { workOrders: any[] }) {
   const wipOrders = workOrders.filter(w => w.status === 'In Progress');
+  const [mockImages, setMockImages] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadImages = async () => {
+      const loaded: Record<string, string> = {};
+      for (const wo of wipOrders) {
+        if (wo.part_name) {
+          const u = await getMockImage(wo.part_name);
+          if (u) loaded[wo.part_name] = u;
+        }
+      }
+      setMockImages(loaded);
+    };
+    if (wipOrders.length > 0) loadImages();
+  }, [wipOrders]);
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
@@ -32,8 +48,8 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
       sortable: true,
       render: (r) => (
         <div className="flex items-center gap-3">
-          {r.image_url || r.drawing_url ? (
-            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
           ) : (
             <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
               <ImageIcon size={14} />
@@ -65,6 +81,21 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
 
 export function CompletedTab({ workOrders }: { workOrders: any[] }) {
   const completedOrders = workOrders.filter(w => w.status === 'Completed');
+  const [mockImages, setMockImages] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadImages = async () => {
+      const loaded: Record<string, string> = {};
+      for (const wo of completedOrders) {
+        if (wo.part_name) {
+          const u = await getMockImage(wo.part_name);
+          if (u) loaded[wo.part_name] = u;
+        }
+      }
+      setMockImages(loaded);
+    };
+    if (completedOrders.length > 0) loadImages();
+  }, [completedOrders]);
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
@@ -74,8 +105,8 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
       sortable: true,
       render: (r) => (
         <div className="flex items-center gap-3">
-          {r.image_url || r.drawing_url ? (
-            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
           ) : (
             <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
               <ImageIcon size={14} />
