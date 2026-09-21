@@ -38,7 +38,7 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
       setMockImages(loaded);
     };
     if (wipOrders.length > 0) loadImages();
-  }, [wipOrders]);
+  }, [workOrders]);
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
@@ -95,7 +95,7 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
       setMockImages(loaded);
     };
     if (completedOrders.length > 0) loadImages();
-  }, [completedOrders]);
+  }, [workOrders]);
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
