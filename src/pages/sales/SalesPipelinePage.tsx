@@ -110,7 +110,7 @@ export function SalesPipelinePage() {
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {Object.entries(raw).map(([key, value]) => {
-            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
+            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             if (key === 'lead_no') formattedKey = 'Project Name';
             return (
@@ -174,9 +174,10 @@ export function SalesPipelinePage() {
               <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF</span>
               <input type="file" id={`inline-upload-${raw.id}`} className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={async (e) => {
                  if (e.target.files && e.target.files.length > 0) {
-                    const mockImageUrl = 'https://images.unsplash.com/photo-1530983821035-7c156f452097?auto=format&fit=crop&q=80&w=200';
-                    await handleInlineEdit(title, raw.id, 'image_url', mockImageUrl);
-                    alert(`Successfully uploaded ${e.target.files.length} file(s)!`);
+                    const file = e.target.files[0];
+                    const objectUrl = URL.createObjectURL(file);
+                    await handleInlineEdit(title, raw.id, 'image_url', objectUrl);
+                    alert(`Successfully uploaded ${file.name}!`);
                  }
               }} />
             </div>
