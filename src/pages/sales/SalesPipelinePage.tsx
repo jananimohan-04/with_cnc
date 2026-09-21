@@ -153,6 +153,32 @@ export function SalesPipelinePage() {
             </div>
           </div>
         )}
+        {raw.image_url && (
+           <div className="mt-4">
+             <h4 className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Attached Files</h4>
+             <img src={raw.image_url} alt="Attachment" className="h-24 w-auto object-contain rounded border border-slate-200 bg-white" />
+           </div>
+        )}
+        {viewEditMode && (
+          <div className="mt-4">
+            <h4 className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Attach Drawings / PDF / Images</h4>
+            <div 
+              className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer bg-white" 
+              onClick={() => document.getElementById(`inline-upload-${raw.id}`)?.click()}
+            >
+              <UploadCloud size={24} className="text-slate-400 mb-2" />
+              <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
+              <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF</span>
+              <input type="file" id={`inline-upload-${raw.id}`} className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={async (e) => {
+                 if (e.target.files && e.target.files.length > 0) {
+                    const mockImageUrl = 'https://images.unsplash.com/photo-1530983821035-7c156f452097?auto=format&fit=crop&q=80&w=200';
+                    await handleInlineEdit(title, raw.id, 'image_url', mockImageUrl);
+                    alert(`Successfully uploaded ${e.target.files.length} file(s)!`);
+                 }
+              }} />
+            </div>
+          </div>
+        )}
       </div>
     );
   };
