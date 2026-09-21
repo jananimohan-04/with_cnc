@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card';
-import { Printer } from 'lucide-react';
+import { Printer, Image as ImageIcon } from 'lucide-react';
 import { BarChart, DonutChart } from '@/components/ui/Charts';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
@@ -26,7 +26,23 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
-    { key: 'customer', label: 'Project', sortable: true },
+    { 
+      key: 'customer', 
+      label: 'Project', 
+      sortable: true,
+      render: (r) => (
+        <div className="flex items-center gap-3">
+          {r.image_url || r.drawing_url ? (
+            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          ) : (
+            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={14} />
+            </div>
+          )}
+          <span className="font-medium text-slate-700">{r.customer}</span>
+        </div>
+      ) 
+    },
     { key: 'part_name', label: 'Part' },
     { key: 'quantity', label: 'Target Qty' },
     { key: 'completed', label: 'Completed', render: (r) => <span className="font-bold text-green-600">{r.completed}</span> },
@@ -52,7 +68,23 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
   
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true },
-    { key: 'customer', label: 'Project', sortable: true },
+    { 
+      key: 'customer', 
+      label: 'Project', 
+      sortable: true,
+      render: (r) => (
+        <div className="flex items-center gap-3">
+          {r.image_url || r.drawing_url ? (
+            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          ) : (
+            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={14} />
+            </div>
+          )}
+          <span className="font-medium text-slate-700">{r.customer}</span>
+        </div>
+      ) 
+    },
     { key: 'part_name', label: 'Part' },
     { key: 'quantity', label: 'Target Qty' },
     { key: 'completed', label: 'Produced Qty', render: (r) => <span className="font-bold text-green-600">{r.completed}</span> },

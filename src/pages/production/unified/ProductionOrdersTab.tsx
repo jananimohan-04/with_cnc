@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
-import { Eye, Edit, MoreVertical } from 'lucide-react';
+import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
 import { ProductionOrderDetails } from './ProductionOrderDetails';
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[], refresh: () => void }) {
@@ -25,7 +25,23 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.wo_no}</span> },
-    { key: 'customer', label: 'Project', sortable: true, render: (r) => <span className="text-sm font-medium text-slate-700">{r.customer}</span> },
+    { 
+      key: 'customer', 
+      label: 'Project', 
+      sortable: true, 
+      render: (r) => (
+        <div className="flex items-center gap-3">
+          {r.image_url || r.drawing_url ? (
+            <img src={r.image_url || r.drawing_url} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+          ) : (
+            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={14} />
+            </div>
+          )}
+          <span className="text-sm font-medium text-slate-700">{r.customer}</span>
+        </div>
+      ) 
+    },
     { key: 'part_name', label: 'Part Name', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.part_name}</span> },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right', render: (r) => <span className="text-sm text-slate-700">{r.quantity}</span> },
     { key: 'start_date', label: 'Planned Start', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.start_date}</span> },
