@@ -161,7 +161,8 @@ export function SalesPipelinePage() {
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
     company: '', partName: '', partNumber: '', quantity: '', expectedDate: '', source: 'Direct',
     estimatedValue: '', receivedDate: new Date().toISOString().split('T')[0],
-    contacts: [{ person: '', phone: '', email: '' }]
+    contacts: [{ person: '', phone: '', email: '' }],
+    files: [] as File[]
   });
   const [enquiryForm, setEnquiryForm] = useState(resetEnquiryForm());
 
@@ -799,7 +800,7 @@ export function SalesPipelinePage() {
   const [newLeadForm, setNewLeadForm] = useState({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
     company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
-    partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
+    partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: [] as File[]
   });
 
   const [customerList, setCustomerList] = useState<any[]>([]);
@@ -828,7 +829,7 @@ export function SalesPipelinePage() {
       setShowNewLead(false);
       setNewLeadForm({
         leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
+        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
       });
       fetchPipeline();
     } else {
@@ -1262,14 +1263,40 @@ export function SalesPipelinePage() {
           </FormField>
           <div className="col-span-2 mt-2">
             <FormField label="Attach Drawings / PDF / Images">
-              <div 
-                className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
-                onClick={() => document.getElementById('lead-upload')?.click()}
-              >
-                <UploadCloud size={24} className="text-slate-400 mb-2" />
-                <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-                <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
-                <input type="file" id="lead-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" />
+              <div>
+                <div 
+                  className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
+                  onClick={() => document.getElementById('lead-upload')?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (e.dataTransfer.files) {
+                      setNewLeadForm({...newLeadForm, files: [...newLeadForm.files, ...Array.from(e.dataTransfer.files)]});
+                    }
+                  }}
+                >
+                  <UploadCloud size={24} className="text-slate-400 mb-2" />
+                  <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
+                  <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
+                  <input type="file" id="lead-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={(e) => {
+                    if (e.target.files) {
+                      setNewLeadForm({...newLeadForm, files: [...newLeadForm.files, ...Array.from(e.target.files)]});
+                    }
+                  }} />
+                </div>
+                {newLeadForm.files.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {newLeadForm.files.map((f: File, i: number) => (
+                      <div key={i} className="flex items-center justify-between p-2 border border-slate-200 rounded text-sm bg-white">
+                        <span className="truncate">{f.name}</span>
+                        <button className="text-red-500 hover:text-red-700 px-2" onClick={(e) => {
+                          e.stopPropagation();
+                          setNewLeadForm({...newLeadForm, files: newLeadForm.files.filter((_, idx) => idx !== i)});
+                        }}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </FormField>
           </div>
@@ -1337,14 +1364,40 @@ export function SalesPipelinePage() {
           </FormField>
           <div className="col-span-2 mt-2">
             <FormField label="Attach Drawings / PDF / Images">
-              <div 
-                className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
-                onClick={() => document.getElementById('enquiry-upload')?.click()}
-              >
-                <UploadCloud size={24} className="text-slate-400 mb-2" />
-                <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-                <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
-                <input type="file" id="enquiry-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" />
+              <div>
+                <div 
+                  className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
+                  onClick={() => document.getElementById('enquiry-upload')?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (e.dataTransfer.files) {
+                      setEnquiryForm({...enquiryForm, files: [...enquiryForm.files, ...Array.from(e.dataTransfer.files)]});
+                    }
+                  }}
+                >
+                  <UploadCloud size={24} className="text-slate-400 mb-2" />
+                  <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
+                  <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
+                  <input type="file" id="enquiry-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" onChange={(e) => {
+                    if (e.target.files) {
+                      setEnquiryForm({...enquiryForm, files: [...enquiryForm.files, ...Array.from(e.target.files)]});
+                    }
+                  }} />
+                </div>
+                {enquiryForm.files.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {enquiryForm.files.map((f: File, i: number) => (
+                      <div key={i} className="flex items-center justify-between p-2 border border-slate-200 rounded text-sm bg-white">
+                        <span className="truncate">{f.name}</span>
+                        <button className="text-red-500 hover:text-red-700 px-2" onClick={(e) => {
+                          e.stopPropagation();
+                          setEnquiryForm({...enquiryForm, files: enquiryForm.files.filter((_, idx) => idx !== i)});
+                        }}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </FormField>
           </div>
