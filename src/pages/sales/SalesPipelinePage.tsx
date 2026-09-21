@@ -395,6 +395,10 @@ export function SalesPipelinePage() {
     setViewModalTarget(card);
     setLoading(true);
     let aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
+      const parseItems = (rawObj: any, field: string) => {
+        if (!rawObj || !rawObj[field]) return;
+        try { const parsed = JSON.parse(rawObj[field]); if (Array.isArray(parsed)) rawObj.items = parsed; } catch(e) {}
+      };
     try {
       if (card.type === 'inward') {
         aggregated.inward = card.raw;
@@ -449,7 +453,9 @@ export function SalesPipelinePage() {
     } catch (e) {
        console.error("Error fetching lineage", e);
     }
-    setViewModalData(aggregated);
+    if (aggregated.enquiry) parseItems(aggregated.enquiry, 'enquiring_for');
+      if (aggregated.quotation) parseItems(aggregated.quotation, 'description');
+      setViewModalData(aggregated);
     
     // Load mock images for all records in the pipeline history
     const loaded: Record<string, string> = {};
@@ -531,7 +537,7 @@ export function SalesPipelinePage() {
         shipping_contact: '', shipping_phone: '',
         lead_no: card.raw.lead_no || card.raw.lead_id || '', order_date: new Date().toISOString().split('T')[0],
         customer_po_no: '', customer_po_date: null,
-        items: [item],
+        items: finalItems,
         
         part_name: item.partName, part_number: item.partNumber,
         quantity: q, 
@@ -727,7 +733,7 @@ export function SalesPipelinePage() {
       shipping_contact: '', shipping_phone: '',
       lead_no: '', order_date: soForm.orderDate,
       customer_po_no: '', customer_po_date: null,
-      items: [item],
+      items: finalItems,
       part_name: item.partName, part_number: item.partNumber,
       quantity: q, 
       total_value: totalVal, 
