@@ -848,7 +848,7 @@ export function SalesPipelinePage() {
   const [newLeadForm, setNewLeadForm] = useState({
     leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
     company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
-    partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: [] as File[]
+    items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: [] as File[]
   });
 
   const [customerList, setCustomerList] = useState<any[]>([]);
