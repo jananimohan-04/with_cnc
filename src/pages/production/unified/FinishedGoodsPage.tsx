@@ -6,6 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Package, Search, Eye, Edit, Filter, Plus, Download, ChevronLeft, ChevronRight, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { getMockImage } from '@/lib/mockStorage';
 
 export function FinishedGoodsPage() {
   const [records, setRecords] = useState<any[]>([]);
@@ -51,7 +52,8 @@ export function FinishedGoodsPage() {
     
     if (woData) {
       // Map and enrich with stock
-      const enriched = woData.map((wo: any) => {
+      const enriched = await Promise.all(woData.map(async (wo: any) => {
+        const mockImg = await getMockImage(wo.part_name);
         const part = partsData?.find(p => p.part_no === wo.part_no);
         const orderedQty = Number(wo.quantity) || 0;
         const completedQty = Number(wo.completed) || 0;
@@ -63,9 +65,10 @@ export function FinishedGoodsPage() {
           orderedQty,
           completedQty,
           pendingQty,
-          fgStock
+          fgStock,
+          imgUrl: wo.image_url || wo.drawing_url || mockImg
         };
-      });
+      }));
 
       // Only show records in the table that actually have finished goods or are fully completed
       const finalRecords = enriched.filter((w: any) => w.completedQty > 0 || w.status === 'Completed' || w.status === 'Ready' || w.status === 'Quality Hold');
@@ -174,8 +177,12 @@ export function FinishedGoodsPage() {
       label: 'Part No', 
       render: (r) => (
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-            <Package size={16} className="text-slate-400" />
+          <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-slate-200">
+            {r.imgUrl ? (
+              <img src={r.imgUrl} alt="Part" className="w-full h-full object-cover" />
+            ) : (
+              <Package size={16} className="text-slate-400" />
+            )}
           </div>
           <span className="font-semibold text-slate-700 whitespace-nowrap">{r.part_no || 'N/A'}</span>
         </div>
