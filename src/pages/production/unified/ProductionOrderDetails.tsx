@@ -74,11 +74,16 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
     }
   };
 
-  const handleEdit = async () => {
+    const handleEdit = async () => {
     const newQty = window.prompt(`Edit Target Quantity for ${order.wo_no}:`, order.quantity);
     if (newQty && !isNaN(Number(newQty))) {
-      await supabase.from('cnc_work_orders').update({ quantity: Number(newQty) }).eq('id', order.id);
-      refresh();
+      const { error } = await supabase.from('cnc_work_orders').update({ quantity: Number(newQty) }).eq('id', order.id);
+      if (error) {
+        alert("Failed to update quantity: " + error.message);
+      } else {
+        alert("Quantity updated successfully!");
+        refresh();
+      }
     }
   };
 
@@ -89,12 +94,23 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
   return (
 
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          Production Details <Badge variant="neutral">{order.wo_no}</Badge>
-        </h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-      </div>
+
+
+          <Card className="p-4">
+            <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Production Actions</h4>
+            <div className="flex flex-col gap-2">
+              {order.status !== 'Completed' && (
+                <Button variant="primary" className="w-full gap-2 justify-center" onClick={handleStart}>
+                  <Play size={16} /> Start Production
+                </Button>
+              )}
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1 gap-2" onClick={handleEdit}><Edit size={16} /> Edit</Button>
+                <Button variant="secondary" className="flex-1 gap-2" onClick={handlePrint}><Printer size={16} /> Print Job Card</Button>
+              </div>
+            </div>
+          </Card>
+      
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Project Details & Actions */}
@@ -124,22 +140,6 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
                 </div>
               </Card>
             )}
-
-
-          <Card className="p-4">
-            <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Production Actions</h4>
-            <div className="flex flex-col gap-2">
-              {order.status !== 'Completed' && (
-                <Button variant="primary" className="w-full gap-2 justify-center" onClick={handleStart}>
-                  <Play size={16} /> Start Production
-                </Button>
-              )}
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1 gap-2" onClick={handleEdit}><Edit size={16} /> Edit</Button>
-                <Button variant="secondary" className="flex-1 gap-2" onClick={handlePrint}><Printer size={16} /> Print Job Card</Button>
-              </div>
-            </div>
-          </Card>
         </div>
 
         {/* Middle Column: Routing & WIP */}
