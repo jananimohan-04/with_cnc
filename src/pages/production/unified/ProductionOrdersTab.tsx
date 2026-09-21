@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
-import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
+import { Eye, Edit, Image as ImageIcon } from 'lucide-react';
 import { ProductionOrderDetails } from './ProductionOrderDetails';
 import { getMockImage } from '@/lib/mockStorage';
 import { supabase } from '@/lib/supabase';
@@ -115,7 +115,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         <div className="flex items-center justify-center gap-1">
           <button onClick={() => setSelectedWO(r)} title="View Details" className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => setSelectedWO(r)} title="Edit Order" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
-          <button onClick={() => alert("More options menu would appear here")} title="More Options" className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><MoreVertical size={15} /></button>
         </div>
       ) 
     }
