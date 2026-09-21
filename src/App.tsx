@@ -19,12 +19,12 @@ import {
   ProductionPlanningPage,
   WorkOrdersPage,
   JobCardsPage,
-  MachineSchedulingPage,
   CNCOperationsPage,
   ShopFloorPage,
   ProductionTrackingPage
 } from './pages/production/ProductionPages';
 import { FinishedGoodsPage } from './pages/production/unified/FinishedGoodsPage';
+import { SchedulingPage } from './pages/production/unified/SchedulingPage';
 
 import {
   SalesPipelinePage,
@@ -138,7 +138,7 @@ function MainLayout() {
             <Route path="/production/planning" element={<ProductionPlanningPage />} />
             <Route path="/production/work-orders" element={<WorkOrdersPage />} />
             <Route path="/production/job-cards" element={<JobCardsPage />} />
-            <Route path="/production/scheduling" element={<MachineSchedulingPage />} />
+            <Route path="/production/scheduling" element={<SchedulingPage />} />
             <Route path="/production/cnc-operations" element={<CNCOperationsPage />} />
             <Route path="/production/shop-floor" element={<ShopFloorPage />} />
             <Route path="/production/tracking" element={<ProductionTrackingPage />} />
