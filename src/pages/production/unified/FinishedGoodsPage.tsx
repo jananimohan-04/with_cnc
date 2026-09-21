@@ -67,11 +67,13 @@ export function FinishedGoodsPage() {
         };
       });
 
-      setRecords(enriched);
+      // Only show records in the table that actually have finished goods or are fully completed
+      const finalRecords = enriched.filter((w: any) => w.completedQty > 0 || w.status === 'Completed' || w.status === 'Ready' || w.status === 'Quality Hold');
+      setRecords(finalRecords);
 
-      const activeItems = new Set(enriched.map(e => e.part_no)).size;
-      const totalComp = enriched.reduce((sum, e) => sum + e.completedQty, 0);
-      const totalPend = enriched.reduce((sum, e) => sum + e.pendingQty, 0);
+      const activeItems = new Set(finalRecords.map((e: any) => e.part_no)).size;
+      const totalComp = finalRecords.reduce((sum: any, e: any) => sum + e.completedQty, 0);
+      const totalPend = finalRecords.reduce((sum: any, e: any) => sum + e.pendingQty, 0);
       const totalStock = partsData ? partsData.reduce((sum, p) => sum + (Number(p.stock_qty)||0), 0) : 0;
 
       setStats({
