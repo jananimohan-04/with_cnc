@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { FileText, Plus, Archive, Trash2, Eye, UploadCloud } from 'lucide-react';
+import {  FileText, Plus, Archive, Trash2, Eye, UploadCloud , Edit2 } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
@@ -380,6 +380,24 @@ export function SalesPipelinePage() {
       }
       return form;
     });
+  };
+
+    const handleDeleteCard = async (e: React.MouseEvent, card: KanbanCard) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete this ${card.type}?`)) return;
+    let table = '';
+    if (card.type === 'lead') table = 'cnc_enquiries';
+    if (card.type === 'quotation') table = 'cnc_quotations';
+    if (card.type === 'order') table = 'cnc_sales_orders';
+    if (card.type === 'inward') table = 'cnc_inwards';
+    
+    if (table) {
+      setLoading(true);
+      const { error } = await supabase.from(table).delete().eq('id', card.raw.id);
+      if (error) alert("Error deleting: " + error.message);
+      else fetchPipeline();
+      setLoading(false);
+    }
   };
 
   const getContactStrings = (form: any) => {
