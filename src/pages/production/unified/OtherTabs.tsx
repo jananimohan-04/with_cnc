@@ -1,3 +1,4 @@
+import React, { Component } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card';
 import { Printer } from 'lucide-react';
@@ -65,7 +66,32 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
   );
 }
 
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div className="p-4 text-red-500 font-mono text-sm">{this.state.error?.toString()}</div>;
+    }
+    return this.props.children;
+  }
+}
+
 export function ReportsTab({ workOrders }: { workOrders: any[] }) {
+  return (
+    <ErrorBoundary>
+      <ReportsTabContent workOrders={workOrders} />
+    </ErrorBoundary>
+  );
+}
+
+function ReportsTabContent({ workOrders }: { workOrders: any[] }) {
   // Simple aggregations for report
   const statusCounts = workOrders.reduce((acc, curr) => {
     const stat = curr.status || 'Unknown';
@@ -74,7 +100,7 @@ export function ReportsTab({ workOrders }: { workOrders: any[] }) {
   }, {});
 
   const donutData = Object.keys(statusCounts).map(k => ({
-    name: k,
+    label: k, // fixed name to label
     value: statusCounts[k],
     color: k === 'Completed' ? '#10b981' : k === 'In Progress' ? '#f59e0b' : '#3b82f6'
   }));
@@ -93,7 +119,7 @@ export function ReportsTab({ workOrders }: { workOrders: any[] }) {
   }, {});
   
   const barData = Object.keys(monthCounts).map(k => ({
-    name: k,
+    label: k, // fixed name to label for safety
     value: monthCounts[k]
   }));
 
@@ -101,7 +127,7 @@ export function ReportsTab({ workOrders }: { workOrders: any[] }) {
     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
       <Card className="p-4">
         <h4 className="font-semibold text-slate-800 mb-4">Orders by Status</h4>
-        <DonutChart data={donutData} height={250} />
+        <DonutChart data={donutData} size={250} />
       </Card>
       
       <Card className="p-4">
