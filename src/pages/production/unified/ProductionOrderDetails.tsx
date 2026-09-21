@@ -54,9 +54,24 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
     { name: 'Day 4', target: qty, actual: comp },
   ];
 
-  const handleStart = async () => {
-    await supabase.from('cnc_work_orders').update({ status: 'In Progress' }).eq('id', order.id);
-    refresh();
+    const handleStart = async () => {
+    const { error } = await supabase.from('cnc_work_orders').update({ status: 'In Progress' }).eq('id', order.id);
+    if (error) {
+      alert("Failed to start production: " + error.message);
+    } else {
+      alert("Status updated to 'In Progress' successfully!");
+      refresh();
+    }
+  };
+
+  const handleComplete = async () => {
+    const { error } = await supabase.from('cnc_work_orders').update({ status: 'Completed', completed: order.quantity }).eq('id', order.id);
+    if (error) {
+      alert("Failed to complete production: " + error.message);
+    } else {
+      alert("Production marked as Completed!");
+      refresh();
+    }
   };
 
 
@@ -99,9 +114,14 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Production Actions</h4>
             <div className="flex flex-col gap-2">
-              {order.status !== 'Completed' && (
+              {order.status === 'Planned' && (
                 <Button variant="primary" className="w-full gap-2 justify-center" onClick={handleStart}>
                   <Play size={16} /> Start Production
+                </Button>
+              )}
+              {order.status === 'In Progress' && (
+                <Button variant="success" className="w-full gap-2 justify-center bg-green-600 text-white hover:bg-green-700" onClick={handleComplete}>
+                  <CheckCircle size={16} /> Complete Production
                 </Button>
               )}
               <div className="flex gap-2">
