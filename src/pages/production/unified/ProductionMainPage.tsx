@@ -22,18 +22,58 @@ export function ProductionMainPage() {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [showNewWO, setShowNewWO] = useState(false);
 
-  const fetchWorkOrders = async () => {
+  // New Order Form State
+  const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [selectedSO, setSelectedSO] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    startDate: '',
+    endDate: ''
+  });
+
+  const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('cnc_work_orders').select('*').order('created_at', { ascending: false });
-    if (data) {
-      setWorkOrders(data);
-    }
+    const [woRes, soRes] = await Promise.all([
+      supabase.from('cnc_work_orders').select('*').order('created_at', { ascending: false }),
+      supabase.from('cnc_sales_orders').select('*').order('created_at', { ascending: false })
+    ]);
+    if (woRes.data) setWorkOrders(woRes.data);
+    if (soRes.data) setSalesOrders(soRes.data);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchWorkOrders();
+    fetchData();
   }, []);
+
+  const handleSOChange = (e: any) => {
+    const so = salesOrders.find(s => s.id === e.target.value);
+    setSelectedSO(so || null);
+  };
+
+  const handleCreateOrder = async () => {
+    if (!selectedSO) return;
+    const woNo = `WO-${new Date().getFullYear().toString().slice(-2)}${new Date().getMonth()+1}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+    
+    await supabase.from('cnc_work_orders').insert([{
+      wo_no: woNo,
+      sales_order: selectedSO.order_no,
+      customer: selectedSO.customer,
+      part_name: selectedSO.part_name,
+      part_no: selectedSO.part_no,
+      quantity: selectedSO.quantity,
+      completed: 0,
+      rejected: 0,
+      start_date: formData.startDate,
+      due_date: formData.endDate,
+      status: 'Planned',
+      priority: 'Normal'
+    }]);
+    
+    setShowNewWO(false);
+    setSelectedSO(null);
+    setFormData({ startDate: '', endDate: '' });
+    fetchData();
+  };
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-full">
@@ -73,7 +113,7 @@ export function ProductionMainPage() {
 
       {/* Dynamic Tab Content */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
-        {activeTab === 'Production Orders' && <ProductionOrdersTab workOrders={workOrders} refresh={fetchWorkOrders} />}
+        {activeTab === 'Production Orders' && <ProductionOrdersTab workOrders={workOrders} refresh={fetchData} />}
         {activeTab === 'Part Routing' && <PartRoutingTab />}
         {activeTab === 'Live Production' && <LiveProductionTab workOrders={workOrders} />}
         {activeTab === 'Job Card' && <JobCardTab workOrders={workOrders} />}
@@ -85,27 +125,32 @@ export function ProductionMainPage() {
       <Modal open={showNewWO} onClose={() => setShowNewWO(false)} title="New Production Order" subtitle="Create production from Sales Order" footer={
         <>
           <Button variant="secondary" onClick={() => setShowNewWO(false)}>Cancel</Button>
-          <Button variant="primary" onClick={() => setShowNewWO(false)}>Create Order</Button>
+          <Button variant="primary" onClick={handleCreateOrder} disabled={!selectedSO}>Create Order</Button>
         </>
       }>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Link Sales Order" required>
-            <select className={inputClass}><option>Select Sales Order...</option></select>
+            <select className={inputClass} onChange={handleSOChange} value={selectedSO?.id || ''}>
+              <option value="">Select Sales Order...</option>
+              {salesOrders.map(so => (
+                <option key={so.id} value={so.id}>{so.order_no} - {so.customer}</option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Customer">
-            <input className={inputClass} readOnly placeholder="Auto-filled" />
+            <input className={inputClass} readOnly placeholder="Auto-filled" value={selectedSO?.customer || ''} />
           </FormField>
           <FormField label="Part Name">
-            <input className={inputClass} readOnly placeholder="Auto-filled" />
+            <input className={inputClass} readOnly placeholder="Auto-filled" value={selectedSO?.part_name || ''} />
           </FormField>
           <FormField label="Target Quantity">
-            <input className={inputClass} readOnly placeholder="Auto-filled" />
+            <input className={inputClass} readOnly placeholder="Auto-filled" value={selectedSO?.quantity || ''} />
           </FormField>
           <FormField label="Planned Start Date" required>
-            <input type="date" className={inputClass} />
+            <input type="date" className={inputClass} value={formData.startDate} onChange={(e) => setFormData({...formData, startDate: e.target.value})} />
           </FormField>
           <FormField label="Planned End Date" required>
-            <input type="date" className={inputClass} />
+            <input type="date" className={inputClass} value={formData.endDate} onChange={(e) => setFormData({...formData, endDate: e.target.value})} />
           </FormField>
         </div>
       </Modal>
