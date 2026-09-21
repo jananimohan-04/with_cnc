@@ -65,7 +65,7 @@ function AppShell() {
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-slate-950 text-slate-300 shadow-md">
+      <header className="sticky top-0 z-50 bg-[#293033] text-slate-300 shadow-md border-b border-[#333d48]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             {/* Logo and Primary Nav */}
@@ -77,7 +77,7 @@ function AppShell() {
                   <Link
                     key={item.label}
                     to={item.path}
-                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors [&.active]:bg-indigo-600 [&.active]:text-white"
+                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-[#333d48] hover:text-white transition-colors [&.active]:bg-[#ff6600] [&.active]:text-white"
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     {item.label}

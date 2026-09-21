@@ -1,3 +1,4 @@
+export { ProductionMainPage as ProductionPlanningPage } from './unified/ProductionMainPage';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Plus, Eye, Edit, Trash2, Cog, ClipboardList, Gauge, Package, Activity, TrendingUp, Calendar } from 'lucide-react';
@@ -9,7 +10,7 @@ import { BarChart, ChartCard, GaugeChart } from '@/components/ui/Charts';
 import { workOrders, jobCards, machines, productionTrend } from '@/data/mockData';
 import type { WorkOrder, JobCard, Machine } from '@/data/mockData';
 
-export function ProductionPlanningPage() {
+export function OldProductionPlanningPage() {
   const [woData, setWoData] = useState<WorkOrder[]>([]);
   const [machineStats, setMachineStats] = useState<{label: string, val: number}[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);

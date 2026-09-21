@@ -1,0 +1,107 @@
+import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
+import { Printer } from 'lucide-react';
+
+export function JobCardTab({ workOrders }: { workOrders: any[] }) {
+  const columns: Column<any>[] = [
+    { key: 'wo_no', label: 'WO No', sortable: true },
+    { key: 'part_name', label: 'Part Name', sortable: true },
+    { key: 'quantity', label: 'Target Qty', sortable: true },
+    { key: 'start_date', label: 'Start Date' },
+    { key: 'status', label: 'Status', render: (r) => <Badge variant={statusToVariant(r.status)}>{r.status}</Badge> },
+    { key: 'actions', label: 'Actions', render: () => <button className="text-brand-600 flex items-center gap-1 text-sm font-medium"><Printer size={14}/> Print Job Card</button> }
+  ];
+
+  return (
+    <div className="p-4">
+      <DataTable data={workOrders} columns={columns} searchKeys={['wo_no', 'part_name']} />
+    </div>
+  );
+}
+
+export function WIPTab({ workOrders }: { workOrders: any[] }) {
+  const wipOrders = workOrders.filter(w => w.status === 'In Progress');
+  
+  const columns: Column<any>[] = [
+    { key: 'wo_no', label: 'WO No', sortable: true },
+    { key: 'customer', label: 'Project', sortable: true },
+    { key: 'part_name', label: 'Part' },
+    { key: 'quantity', label: 'Target Qty' },
+    { key: 'completed', label: 'Completed', render: (r) => <span className="font-bold text-green-600">{r.completed}</span> },
+    { 
+      key: 'progress', 
+      label: 'Progress', 
+      render: (r) => {
+        const pct = r.quantity > 0 ? Math.round((r.completed / r.quantity) * 100) : 0;
+        return <ProgressBar value={pct} color="brand" height="h-2" />
+      }
+    }
+  ];
+
+  return (
+    <div className="p-4">
+      <DataTable data={wipOrders} columns={columns} searchKeys={['wo_no', 'customer', 'part_name']} />
+    </div>
+  );
+}
+
+export function CompletedTab({ workOrders }: { workOrders: any[] }) {
+  const completedOrders = workOrders.filter(w => w.status === 'Completed');
+  
+  const columns: Column<any>[] = [
+    { key: 'wo_no', label: 'WO No', sortable: true },
+    { key: 'customer', label: 'Project', sortable: true },
+    { key: 'part_name', label: 'Part' },
+    { key: 'quantity', label: 'Target Qty' },
+    { key: 'completed', label: 'Produced Qty', render: (r) => <span className="font-bold text-green-600">{r.completed}</span> },
+    { key: 'updated_at', label: 'Completed Date', render: (r) => <span>{new Date(r.updated_at || r.created_at).toLocaleDateString()}</span> }
+  ];
+
+  return (
+    <div className="p-4">
+      <DataTable data={completedOrders} columns={columns} searchKeys={['wo_no', 'customer', 'part_name']} />
+    </div>
+  );
+}
+
+import { Card } from '@/components/ui/Card';
+import { BarChart, DonutChart } from '@/components/ui/Charts';
+
+export function ReportsTab({ workOrders }: { workOrders: any[] }) {
+  // Simple aggregations for report
+  const statusCounts = workOrders.reduce((acc, curr) => {
+    acc[curr.status] = (acc[curr.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const donutData = Object.keys(statusCounts).map(k => ({
+    name: k,
+    value: statusCounts[k],
+    color: k === 'Completed' ? '#10b981' : k === 'In Progress' ? '#f59e0b' : '#3b82f6'
+  }));
+
+  const monthCounts = workOrders.reduce((acc, curr) => {
+    const month = new Date(curr.created_at).toLocaleString('default', { month: 'short' });
+    acc[month] = (acc[month] || 0) + 1;
+    return acc;
+  }, {});
+  
+  const barData = Object.keys(monthCounts).map(k => ({
+    name: k,
+    value: monthCounts[k]
+  }));
+
+  return (
+    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Card className="p-4">
+        <h4 className="font-semibold text-slate-800 mb-4">Orders by Status</h4>
+        <DonutChart data={donutData} height={250} />
+      </Card>
+      
+      <Card className="p-4">
+        <h4 className="font-semibold text-slate-800 mb-4">Orders Created by Month</h4>
+        <BarChart data={barData} height={250} />
+      </Card>
+    </div>
+  );
+}
