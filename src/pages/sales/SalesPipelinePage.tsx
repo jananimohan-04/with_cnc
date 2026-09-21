@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { StatCard, Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { FileText, Plus, Archive, Trash2, Eye } from 'lucide-react';
+import { FileText, Plus, Archive, Trash2, Eye, UploadCloud } from 'lucide-react';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
 import { SalesOrderModule } from './SalesOrderModule';
@@ -1260,6 +1260,19 @@ export function SalesPipelinePage() {
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
             </select>
           </FormField>
+          <div className="col-span-2 mt-2">
+            <FormField label="Attach Drawings / PDF / Images">
+              <div 
+                className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
+                onClick={() => document.getElementById('lead-upload')?.click()}
+              >
+                <UploadCloud size={24} className="text-slate-400 mb-2" />
+                <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
+                <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
+                <input type="file" id="lead-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" />
+              </div>
+            </FormField>
+          </div>
         </div>
       </Modal>
 
@@ -1322,6 +1335,19 @@ export function SalesPipelinePage() {
                <option value="Referral">Referral</option>
             </select>
           </FormField>
+          <div className="col-span-2 mt-2">
+            <FormField label="Attach Drawings / PDF / Images">
+              <div 
+                className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
+                onClick={() => document.getElementById('enquiry-upload')?.click()}
+              >
+                <UploadCloud size={24} className="text-slate-400 mb-2" />
+                <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
+                <span className="text-xs text-slate-500 mt-1">SVG, PNG, JPG or PDF (max. 10MB)</span>
+                <input type="file" id="enquiry-upload" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.svg" />
+              </div>
+            </FormField>
+          </div>
         </div>
       </Modal>
 
