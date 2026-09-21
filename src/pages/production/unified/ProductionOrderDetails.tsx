@@ -7,6 +7,7 @@ import { getMockImage } from '@/lib/mockStorage';
 
 export function ProductionOrderDetails({ order, onClose, refresh }: { order: any, onClose: () => void, refresh: () => void }) {
   const [routing, setRouting] = useState<any[]>([]);
+  const [drawingUrl, setDrawingUrl] = useState<string | null>(order.image_url || order.drawing_url || null);
   const [materials, setMaterials] = useState<any[]>([]);
   
   useEffect(() => {
@@ -20,7 +21,16 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
       if (matData) setMaterials(matData);
     }
     loadDetails();
+
+    const loadImg = async () => {
+      if (!drawingUrl && order.part_name) {
+        const url = await getMockImage(order.part_name);
+        if (url) setDrawingUrl(url);
+      }
+    };
+    loadImg();
   }, [order]);
+
 
   const qty = Number(order.quantity) || 0;
   const comp = Number(order.completed) || 0;
@@ -99,10 +109,22 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
               <div className="text-slate-500">Target Qty</div><div className="font-bold text-slate-800">{qty} Nos</div>
               <div className="text-slate-500">Dates</div><div className="text-slate-800">{order.start_date} to {order.due_date}</div>
             </div>
-            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2">
-              <Button variant="secondary" className="flex-1 gap-2" onClick={handleViewDrawing}><FileText size={16} /> View Drawing</Button>
-            </div>
+
           </Card>
+            {drawingUrl && (
+              <Card className="p-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-3 border-b border-slate-100 pb-2 flex justify-between items-center">
+                  Part Drawing
+                  <button onClick={handleViewDrawing} className="text-brand-600 text-xs hover:underline flex items-center gap-1">
+                    View Full
+                  </button>
+                </h4>
+                <div className="rounded border border-slate-200 bg-slate-50 overflow-hidden cursor-pointer hover:border-brand-300 transition-colors flex items-center justify-center p-2" onClick={handleViewDrawing} title="Click to view full size">
+                  <img src={drawingUrl} alt="Drawing" className="w-full h-auto max-h-48 object-contain bg-white" />
+                </div>
+              </Card>
+            )}
+
 
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Production Actions</h4>
