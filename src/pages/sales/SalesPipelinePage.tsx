@@ -112,7 +112,7 @@ export function SalesPipelinePage() {
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {Object.entries(raw).map(([key, value]) => {
-            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
+            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             if (key === 'lead_no') formattedKey = 'Project Name';
             return (
