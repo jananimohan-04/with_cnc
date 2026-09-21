@@ -15,6 +15,12 @@ export function FinishedGoodsPage() {
   const [projectFilter, setProjectFilter] = useState('All Projects');
   const [customerFilter, setCustomerFilter] = useState('All Customers');
   const [statusFilter, setStatusFilter] = useState('All');
+
+  const [filterOptions, setFilterOptions] = useState({
+    projects: [] as string[],
+    customers: [] as string[]
+  });
+
   
   // Modals state
 
@@ -75,6 +81,11 @@ export function FinishedGoodsPage() {
       setRecords(finalRecords);
 
       const activeItems = new Set(finalRecords.map((e: any) => e.part_no)).size;
+      
+      setFilterOptions({
+        projects: Array.from(new Set(enriched.map((r: any) => r.sales_order).filter(Boolean))) as string[],
+        customers: Array.from(new Set(enriched.map((r: any) => r.customer).filter(Boolean))) as string[]
+      });
       const totalComp = finalRecords.reduce((sum: any, e: any) => sum + e.completedQty, 0);
       const totalPend = finalRecords.reduce((sum: any, e: any) => sum + e.pendingQty, 0);
       const totalStock = partsData ? partsData.reduce((sum, p) => sum + (Number(p.stock_qty)||0), 0) : 0;
@@ -347,7 +358,7 @@ export function FinishedGoodsPage() {
               onChange={e => setProjectFilter(e.target.value)}
             >
               <option value="All Projects">All Projects</option>
-              {Array.from(new Set(records.map(r => r.sales_order).filter(Boolean))).map(p => (
+              {filterOptions.projects.map(p => (
                 <option key={p as string} value={p as string}>{p as string}</option>
               ))}
             </select>
@@ -360,7 +371,7 @@ export function FinishedGoodsPage() {
               onChange={e => setCustomerFilter(e.target.value)}
             >
               <option value="All Customers">All Customers</option>
-              {Array.from(new Set(records.map(r => r.customer).filter(Boolean))).map(c => (
+              {filterOptions.customers.map(c => (
                 <option key={c as string} value={c as string}>{c as string}</option>
               ))}
             </select>
