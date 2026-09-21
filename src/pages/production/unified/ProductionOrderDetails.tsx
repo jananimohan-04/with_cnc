@@ -1,5 +1,5 @@
 import { Card, Badge, Button } from '@/components/ui/Card';
-import { X, Play, Edit, Printer, FileText } from 'lucide-react';
+import { X, Play, Edit, Printer, FileText, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useState, useEffect } from 'react';
 import { DonutChart, BarChart } from '@/components/ui/Charts';
