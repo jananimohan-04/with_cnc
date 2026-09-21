@@ -65,6 +65,7 @@ export function SalesPipelinePage() {
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
   const [viewEditMode, setViewEditMode] = useState(false);
+  const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
     const tableMap: any = {
@@ -156,10 +157,10 @@ export function SalesPipelinePage() {
             </div>
           </div>
         )}
-        {raw.image_url && (
+        {(raw.image_url || mockImages[raw.id]) && (
            <div className="mt-4">
              <h4 className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Attached Files</h4>
-             <img src={raw.image_url} alt="Attachment" className="h-24 w-auto object-contain rounded border border-slate-200 bg-white" />
+             <img src={mockImages[raw.id] || raw.image_url} alt="Attachment" className="h-24 w-auto object-contain rounded border border-slate-200 bg-white" />
            </div>
         )}
         {viewEditMode && (
@@ -176,7 +177,7 @@ export function SalesPipelinePage() {
                  if (e.target.files && e.target.files.length > 0) {
                     const file = e.target.files[0];
                     const objectUrl = URL.createObjectURL(file);
-                    await handleInlineEdit(title, raw.id, 'image_url', objectUrl);
+                    setMockImages(prev => ({ ...prev, [raw.id]: objectUrl }));
                     alert(`Successfully uploaded ${file.name}!`);
                  }
               }} />
