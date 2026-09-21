@@ -872,11 +872,21 @@ export function SalesPipelinePage() {
     if (!newLeadForm.company) return;
     setLoading(true);
     const cStr = getContactStrings(newLeadForm);
+    
+    const itemsToSave = (newLeadForm.items && newLeadForm.items.length > 0 && newLeadForm.items[0].partName) 
+      ? newLeadForm.items 
+      : [{ partName: newLeadForm.partName || 'TBD', quantity: newLeadForm.quantity || '0' }];
+      
+    const firstItem = itemsToSave[0];
+    const multiplePartsString = itemsToSave.length > 1 ? `Multiple Parts (${itemsToSave.length})` : firstItem.partName;
+    const totalQty = itemsToSave.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+    
     const { error } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      city: newLeadForm.city, gst: newLeadForm.gst, enquiring_for: newLeadForm.enquiringFor,
-      part_name: newLeadForm.partName || 'TBD', part_no: newLeadForm.partNo || 'N/A', quantity: Number(newLeadForm.quantity) || 0, estimated_value: Number(newLeadForm.estimatedValue) || 0, expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
+      city: newLeadForm.city, gst: newLeadForm.gst, 
+      enquiring_for: JSON.stringify(itemsToSave),
+      part_name: multiplePartsString, part_no: newLeadForm.partNo || 'N/A', quantity: totalQty, estimated_value: Number(newLeadForm.estimatedValue) || 0, expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
       source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
     }]);
     if (!error) {
