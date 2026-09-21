@@ -545,6 +545,19 @@ export function SalesPipelinePage() {
          discount: (card.raw.discount_percent || 0).toString(),
          gst: (card.raw.gst_percent || 18).toString()
       };
+      
+      let itemsArr: any[] = [];
+      try { itemsArr = JSON.parse(card.raw.description); } catch(e) {}
+      let finalItems = [];
+      if (itemsArr && Array.isArray(itemsArr) && itemsArr.length > 0) {
+        finalItems = itemsArr.map(i => ({
+          id: crypto.randomUUID(), partName: i.partName, partNumber: i.partNumber || '', description: '',
+          quantity: i.quantity?.toString() || '0', unitPrice: p.toString(), discount: (card.raw.discount_percent || 0).toString(), gst: (card.raw.gst_percent || 18).toString()
+        }));
+      } else {
+        finalItems = [item];
+      }
+      
       const totalVal = card.value || 0;
 
       const { error } = await supabase.from('cnc_sales_orders').insert([{
@@ -741,6 +754,7 @@ export function SalesPipelinePage() {
        discount: '0',
        gst: soForm.gst || '18'
     };
+    const finalItems = [item];
     const totalVal = q * p * (1 + Number(soForm.gst||18)/100);
 
     const { error } = await supabase.from('cnc_sales_orders').insert([{
