@@ -10,7 +10,8 @@ export function SchedulingPage() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
   const [machines, setMachines] = useState<any[]>([]);
-  const [operators, setOperators] = useState<any[]>([{ id: 'OP-1', name: 'Ramesh', role: 'VMC Operator', status: 'Available' }, { id: 'OP-2', name: 'Kumar', role: 'VMC Operator', status: 'Available' }, { id: 'OP-3', name: 'Sathish', role: 'Lathe Operator', status: 'Available' }, { id: 'OP-4', name: 'Murugan', role: 'Lathe Operator', status: 'On Break' }, { id: 'OP-5', name: 'Ravi', role: 'Grinding Operator', status: 'Available' }]);
+  const [operators, setOperators] = useState<any[]>([]);
+  const [isNewOperator, setIsNewOperator] = useState(false);
   const [jobs, setJobs] = useState<any[]>([]);
   
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -124,7 +125,13 @@ export function SchedulingPage() {
       if (jobsRes.error) throw jobsRes.error;
 
       setMachines(machinesRes.data || []);
-      setJobs(jobsRes.data || []);
+      const jobsData = jobsRes.data || [];
+      setJobs(jobsData);
+      
+      // Derive unique operators from existing jobs
+      const uniqueOps = Array.from(new Set(jobsData.map((j: any) => j.operator).filter(Boolean)));
+      setOperators(uniqueOps.map((op: any, i) => ({ id: `OP-${i}`, name: op, role: 'Operator', status: 'Available' })));
+      
       const woRes = await supabase.from('cnc_work_orders').select('*').neq('status', 'Completed');
       if (woRes.data) setWorkOrders(woRes.data);
       setDbError(false);
@@ -546,12 +553,34 @@ export function SchedulingPage() {
               </select>
             </FormField>
             <FormField label="Operator">
-              <select className={inputClass} value={newJobForm.operator} onChange={e => setNewJobForm({...newJobForm, operator: e.target.value})}>
-                <option value="">-- Select Operator --</option>
-                {operators.map(o => (
-                  <option key={o.id} value={o.name}>{o.name} ({o.role})</option>
-                ))}
-              </select>
+              {isNewOperator ? (
+                <div className="flex items-center gap-2">
+                  <input 
+                    autoFocus
+                    type="text" 
+                    className={inputClass} 
+                    placeholder="Enter new operator name" 
+                    value={newJobForm.operator} 
+                    onChange={e => setNewJobForm({...newJobForm, operator: e.target.value})} 
+                  />
+                  <button type="button" className="text-xs font-medium text-slate-500 hover:text-slate-800 shrink-0 px-2 py-1 bg-slate-100 rounded" onClick={() => { setIsNewOperator(false); setNewJobForm({...newJobForm, operator: ''}); }}>Cancel</button>
+                </div>
+              ) : (
+                <select className={inputClass} value={newJobForm.operator} onChange={e => {
+                  if (e.target.value === 'ADD_NEW') {
+                    setIsNewOperator(true);
+                    setNewJobForm({...newJobForm, operator: ''});
+                  } else {
+                    setNewJobForm({...newJobForm, operator: e.target.value});
+                  }
+                }}>
+                  <option value="">-- Select Operator --</option>
+                  {operators.map(o => (
+                    <option key={o.id} value={o.name}>{o.name}</option>
+                  ))}
+                  <option value="ADD_NEW" className="font-bold text-brand-600 bg-brand-50">+ Add New Operator...</option>
+                </select>
+              )}
             </FormField>
             <FormField label="Start Date" required><input type="date" className={inputClass} value={newJobForm.date} onChange={e => setNewJobForm({...newJobForm, date: e.target.value})} /></FormField>
             <FormField label="Start Time" required><input type="time" className={inputClass} value={newJobForm.startTime} onChange={e => setNewJobForm({...newJobForm, startTime: e.target.value})} /></FormField>
