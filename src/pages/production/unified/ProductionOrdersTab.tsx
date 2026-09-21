@@ -4,10 +4,23 @@ import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
 import { ProductionOrderDetails } from './ProductionOrderDetails';
 import { getMockImage } from '@/lib/mockStorage';
+import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[], refresh: () => void }) {
   const [selectedWO, setSelectedWO] = useState<any | null>(null);
+
+  const handleStatusChange = async (order: any, newStatus: string) => {
+    if (order.status === newStatus) return;
+    try {
+      const { error } = await supabase.from('cnc_work_orders').update({ status: newStatus }).eq('id', order.id);
+      if (error) throw error;
+      refresh();
+    } catch (err: any) {
+      alert("Failed to update status: " + err.message);
+    }
+  };
+
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,7 +91,22 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         );
       }
     },
-    { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> },
+    { key: 'status', label: 'Status', sortable: true, render: (r) => (
+        <div className="relative inline-block w-full text-center">
+          <select 
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            value={r.status}
+            onChange={(e) => handleStatusChange(r, e.target.value)}
+          >
+            <option value="Planning">Planning</option>
+            <option value="Planned">Planned</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Dispatched">Dispatched</option>
+          </select>
+          <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge>
+        </div>
+      ) },
     { 
       key: 'actions', 
       label: 'Actions', 

@@ -4,6 +4,7 @@ import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card'
 import { Printer, Image as ImageIcon } from 'lucide-react';
 import { BarChart, DonutChart } from '@/components/ui/Charts';
 import { getMockImage } from '@/lib/mockStorage';
+import { supabase } from '@/lib/supabase';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
   const columns: Column<any>[] = [
