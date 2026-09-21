@@ -241,7 +241,7 @@ export function SalesPipelinePage() {
     const quoteMap = new Map();
     if (quotes) quotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.quote_no));
 
-    const { data: orders } = await supabase.from('cnc_sales_orders').select('*').in('status', ['Draft', 'Confirmed', 'In Production']);
+    const { data: orders } = await supabase.from('cnc_sales_orders').select('*').in('status', ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production']);
     const orderMap = new Map();
     if (orders) orders.forEach(o => orderMap.set(o.order_no, quoteMap.get(o.quotation_id) || o.order_no));
 
