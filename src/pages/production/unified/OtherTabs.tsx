@@ -1,6 +1,7 @@
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
+import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card';
 import { Printer } from 'lucide-react';
+import { BarChart, DonutChart } from '@/components/ui/Charts';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
   const columns: Column<any>[] = [
@@ -64,13 +65,11 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
   );
 }
 
-import { Card } from '@/components/ui/Card';
-import { BarChart, DonutChart } from '@/components/ui/Charts';
-
 export function ReportsTab({ workOrders }: { workOrders: any[] }) {
   // Simple aggregations for report
   const statusCounts = workOrders.reduce((acc, curr) => {
-    acc[curr.status] = (acc[curr.status] || 0) + 1;
+    const stat = curr.status || 'Unknown';
+    acc[stat] = (acc[stat] || 0) + 1;
     return acc;
   }, {});
 
@@ -81,7 +80,14 @@ export function ReportsTab({ workOrders }: { workOrders: any[] }) {
   }));
 
   const monthCounts = workOrders.reduce((acc, curr) => {
-    const month = new Date(curr.created_at).toLocaleString('default', { month: 'short' });
+    let month = 'Unknown';
+    if (curr.created_at) {
+      try {
+        month = new Date(curr.created_at).toLocaleString('default', { month: 'short' });
+      } catch (e) {
+        month = 'Invalid';
+      }
+    }
     acc[month] = (acc[month] || 0) + 1;
     return acc;
   }, {});
