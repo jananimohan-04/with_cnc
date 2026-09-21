@@ -48,10 +48,10 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       render: (r) => (
         <div className="flex items-center gap-3">
           {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
-            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-12 h-12 rounded border border-slate-200 object-cover bg-white" />
           ) : (
-            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
-              <ImageIcon size={14} />
+            <div className="w-12 h-12 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={20} />
             </div>
           )}
           <span className="text-sm font-medium text-slate-700">{r.customer}</span>

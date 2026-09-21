@@ -12,7 +12,7 @@ export function JobCardTab({ workOrders }: { workOrders: any[] }) {
     { key: 'quantity', label: 'Target Qty', sortable: true },
     { key: 'start_date', label: 'Start Date' },
     { key: 'status', label: 'Status', render: (r) => <Badge variant={statusToVariant(r.status)}>{r.status}</Badge> },
-    { key: 'actions', label: 'Actions', render: () => <button className="text-brand-600 flex items-center gap-1 text-sm font-medium"><Printer size={14}/> Print Job Card</button> }
+    { key: 'actions', label: 'Actions', render: () => <button className="text-brand-600 flex items-center gap-1 text-sm font-medium"><Printer size={20}/> Print Job Card</button> }
   ];
 
   return (
@@ -49,10 +49,10 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
       render: (r) => (
         <div className="flex items-center gap-3">
           {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
-            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-12 h-12 rounded border border-slate-200 object-cover bg-white" />
           ) : (
-            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
-              <ImageIcon size={14} />
+            <div className="w-12 h-12 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={20} />
             </div>
           )}
           <span className="font-medium text-slate-700">{r.customer}</span>
@@ -106,10 +106,10 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
       render: (r) => (
         <div className="flex items-center gap-3">
           {r.image_url || r.drawing_url || mockImages[r.part_name] ? (
-            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-8 h-8 rounded border border-slate-200 object-cover bg-white" />
+            <img src={r.image_url || r.drawing_url || mockImages[r.part_name]} alt="Part" className="w-12 h-12 rounded border border-slate-200 object-cover bg-white" />
           ) : (
-            <div className="w-8 h-8 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
-              <ImageIcon size={14} />
+            <div className="w-12 h-12 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+              <ImageIcon size={20} />
             </div>
           )}
           <span className="font-medium text-slate-700">{r.customer}</span>
