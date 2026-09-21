@@ -52,15 +52,15 @@ export function ProductionMainPage() {
 
   const handleCreateOrder = async () => {
     if (!selectedSO) return;
-    const woNo = `WO-${new Date().getFullYear().toString().slice(-2)}${new Date().getMonth()+1}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+    const woNo = `WO-${new Date().getFullYear().toString().slice(-2)}${String(new Date().getMonth()+1).padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
     
-    await supabase.from('cnc_work_orders').insert([{
+    const { error } = await supabase.from('cnc_work_orders').insert([{
       wo_no: woNo,
       sales_order: selectedSO.order_no,
       customer: selectedSO.customer,
       part_name: selectedSO.part_name,
-      part_no: selectedSO.part_no,
-      quantity: selectedSO.quantity,
+      part_no: selectedSO.part_number || selectedSO.part_no || 'N/A',
+      quantity: selectedSO.quantity || 0,
       completed: 0,
       rejected: 0,
       start_date: formData.startDate,
@@ -69,6 +69,12 @@ export function ProductionMainPage() {
       priority: 'Normal'
     }]);
     
+    if (error) {
+      console.error(error);
+      alert('Failed to create order: ' + error.message);
+      return;
+    }
+
     setShowNewWO(false);
     setSelectedSO(null);
     setFormData({ startDate: '', endDate: '' });
