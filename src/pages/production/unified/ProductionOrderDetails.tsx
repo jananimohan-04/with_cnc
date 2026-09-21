@@ -3,6 +3,7 @@ import { X, Play, Edit, Printer, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useState, useEffect } from 'react';
 import { DonutChart, BarChart } from '@/components/ui/Charts';
+import { getMockImage } from '@/lib/mockStorage';
 
 export function ProductionOrderDetails({ order, onClose, refresh }: { order: any, onClose: () => void, refresh: () => void }) {
   const [routing, setRouting] = useState<any[]>([]);
@@ -48,7 +49,35 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
     refresh();
   };
 
+
+  const handleViewDrawing = async () => {
+    const url = order.image_url || order.drawing_url;
+    if (url) {
+      window.open(url, '_blank');
+      return;
+    }
+    const mockUrl = await getMockImage(order.part_name);
+    if (mockUrl) {
+      window.open(mockUrl, '_blank');
+    } else {
+      alert("No drawing or image is attached to this part.");
+    }
+  };
+
+  const handleEdit = async () => {
+    const newQty = window.prompt(`Edit Target Quantity for ${order.wo_no}:`, order.quantity);
+    if (newQty && !isNaN(Number(newQty))) {
+      await supabase.from('cnc_work_orders').update({ quantity: Number(newQty) }).eq('id', order.id);
+      refresh();
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
+
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -71,7 +100,7 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
               <div className="text-slate-500">Dates</div><div className="text-slate-800">{order.start_date} to {order.due_date}</div>
             </div>
             <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2">
-              <Button variant="secondary" className="flex-1 gap-2"><FileText size={16} /> View Drawing</Button>
+              <Button variant="secondary" className="flex-1 gap-2" onClick={handleViewDrawing}><FileText size={16} /> View Drawing</Button>
             </div>
           </Card>
 
@@ -84,8 +113,8 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
                 </Button>
               )}
               <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1 gap-2"><Edit size={16} /> Edit</Button>
-                <Button variant="secondary" className="flex-1 gap-2"><Printer size={16} /> Print Job Card</Button>
+                <Button variant="secondary" className="flex-1 gap-2" onClick={handleEdit}><Edit size={16} /> Edit</Button>
+                <Button variant="secondary" className="flex-1 gap-2" onClick={handlePrint}><Printer size={16} /> Print Job Card</Button>
               </div>
             </div>
           </Card>
