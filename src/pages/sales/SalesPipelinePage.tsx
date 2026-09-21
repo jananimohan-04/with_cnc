@@ -1165,7 +1165,17 @@ export function SalesPipelinePage() {
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
                           {commentCounts[card.id] || 0}
                         </span>
-                        <span className="text-[10px] font-bold text-brand-600">View details →</span>
+                        <div className="flex items-center gap-3 z-20 relative">
+                          <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
+                            <Eye size={14} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={(e) => handleDeleteCard(e, card)} className="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
