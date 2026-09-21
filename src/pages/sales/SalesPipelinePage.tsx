@@ -1260,8 +1260,6 @@ export function SalesPipelinePage() {
                     combined.push({ id: k, name: c.company, contact: p, phone: ph, email: em, city: '' });
                   }
                 });
-                }
-              });
               const matches = newLeadForm.company ? combined.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())) : [];
               
               if (!showCustomerDropdown || !newLeadForm.company) return null;
