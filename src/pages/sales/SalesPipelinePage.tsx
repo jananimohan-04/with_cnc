@@ -1396,7 +1396,7 @@ export function SalesPipelinePage() {
           </div>
           
           <FormField label="Part Name" required><input className={inputClass} value={enquiryForm.partName} onChange={e => setEnquiryForm({...enquiryForm, partName: e.target.value})} /></FormField>
-          <FormField label="Part Number"><input className={inputClass} value={enquiryForm.partNumber} onChange={e => setEnquiryForm({...enquiryForm, partNumber: e.target.value})} /></FormField>
+          
           <FormField label="Quantity"><input type="number" className={inputClass} value={enquiryForm.quantity} onChange={e => setEnquiryForm({...enquiryForm, quantity: e.target.value})} /></FormField>
           <FormField label="Estimated Value (Rs.)"><input type="number" className={inputClass} value={enquiryForm.estimatedValue} onChange={e => setEnquiryForm({...enquiryForm, estimatedValue: e.target.value})} /></FormField>
           <FormField label="Expected Date"><input type="date" className={inputClass} value={enquiryForm.expectedDate} onChange={e => setEnquiryForm({...enquiryForm, expectedDate: e.target.value})} /></FormField>
@@ -1467,7 +1467,7 @@ export function SalesPipelinePage() {
           <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
           <div className="grid grid-cols-3 gap-4">
             <FormField label="Part / Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
-            <FormField label="Part Number"><input className={inputClass} value={quoteForm.partNumber} onChange={e=>setQuoteForm({...quoteForm, partNumber: e.target.value})} /></FormField>
+            
             <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>
             <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
             <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
@@ -1517,7 +1517,7 @@ export function SalesPipelinePage() {
           <h4 className="font-semibold text-sm text-slate-800">Part Details</h4>
           <div className="grid grid-cols-3 gap-4">
             <FormField label="Part Name" required><input className={inputClass} value={inwardForm.partName} onChange={e=>setInwardForm({...inwardForm, partName: e.target.value})} /></FormField>
-            <FormField label="Part Number"><input className={inputClass} value={inwardForm.partNumber} onChange={e=>setInwardForm({...inwardForm, partNumber: e.target.value})} /></FormField>
+            
             <FormField label="Quantity" required><input type="number" className={inputClass} value={inwardForm.quantity} onChange={e=>setInwardForm({...inwardForm, quantity: e.target.value})} /></FormField>
             <FormField label="Price" required><input type="number" className={inputClass} value={inwardForm.price} onChange={e=>setInwardForm({...inwardForm, price: e.target.value})} /></FormField>
             <FormField label="Discount %"><input type="number" className={inputClass} value={inwardForm.discount} onChange={e=>setInwardForm({...inwardForm, discount: e.target.value})} /></FormField>
@@ -1593,7 +1593,7 @@ export function SalesPipelinePage() {
           <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
           <FormField label="Part Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>
-          <FormField label="Part Number"><input className={inputClass} value={soForm.partNumber || ''} onChange={e=>setSoForm({...soForm, partNumber: e.target.value})} /></FormField>
+          
           <FormField label="Quantity" required><input type="number" className={inputClass} value={soForm.quantity || ''} onChange={e=>setSoForm({...soForm, quantity: e.target.value})} /></FormField>
           <FormField label="Unit Price" required><input type="number" className={inputClass} value={soForm.price || ''} onChange={e=>setSoForm({...soForm, price: e.target.value})} /></FormField>
           <FormField label="GST (%)"><input type="number" className={inputClass} value={soForm.gst || ''} onChange={e=>setSoForm({...soForm, gst: e.target.value})} /></FormField>
