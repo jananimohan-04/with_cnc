@@ -1157,7 +1157,7 @@ export function SalesPipelinePage() {
                           </div>
                         </div>
                       </div>
-                      <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
                         <span 
                           className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-10 relative"
                           onClick={(e) => { e.stopPropagation(); setActiveCommentTarget(card); }}
