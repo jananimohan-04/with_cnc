@@ -12,19 +12,19 @@ import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 
-type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
+export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
-type KanbanCard = {
+export interface KanbanCard {
   id: string;
   stage: Stage;
-  type: 'lead' | 'quotation' | 'order' | 'inward' | 'finished_goods' | 'dc' | 'invoice';
+  type: string;
   refNo: string;
   customer: string;
   part: string;
-  qty: number;
+  qty: string | number;
   value: number;
   date: string;
-  status: string;
+  status?: string;
   raw: any;
 };
 
@@ -34,6 +34,8 @@ const formatINR = (value: number) => {
 
 // renderRecordData moved inside component for inline edit support
 import { CommentsModal } from './CommentsModal';
+import { PipelineListView } from './PipelineListView';
+import { PipelineCalendarView } from './PipelineCalendarView';
 
 export function SalesPipelinePage() {
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
@@ -41,6 +43,7 @@ export function SalesPipelinePage() {
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string>('All Customers');
@@ -894,9 +897,15 @@ export function SalesPipelinePage() {
       {/* 3. Tabs & Filters */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
         <div className="flex p-1 bg-white rounded-lg shadow-sm border border-slate-200">
-          <button className="px-4 py-1.5 text-sm font-semibold rounded-md bg-brand-600 text-white shadow-sm transition-all">Kanban Board</button>
-          <button className="px-4 py-1.5 text-sm font-medium rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">List View</button>
-          <button className="px-4 py-1.5 text-sm font-medium rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">Calendar</button>
+          <button 
+            onClick={() => setPipelineViewMode('kanban')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Kanban Board</button>
+          <button 
+            onClick={() => setPipelineViewMode('list')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
+          <button 
+            onClick={() => setPipelineViewMode('calendar')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
@@ -952,6 +961,14 @@ export function SalesPipelinePage() {
         <div className="flex-1 h-full min-h-[500px] mb-4">
           <InvoiceModule onBack={() => setActiveView('pipeline')} />
         </div>
+      ) : pipelineViewMode === 'list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <PipelineListView cards={cards} onView={openViewModal} />
+        </div>
+      ) : pipelineViewMode === 'calendar' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <PipelineCalendarView cards={cards} onView={openViewModal} />
+        </div>
       ) : (
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
@@ -986,32 +1003,32 @@ export function SalesPipelinePage() {
                       setQuoteForm({
                         quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: 'Admin', contacts: [], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18', paymentTerms: '', deliveryTerms: '', remarks: ''
                       });
-                      setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                      setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Sales Order') {
                       setSoForm({
                         orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], partName: '', partNumber: '', quantity: '', price: '', gst: '18'
                       });
-                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Inward') {
                       setInwardForm({
-                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', contacts: []
+                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: ''
                       });
-                      setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, raw: {} });
+                      setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Finished Goods') {
                       setFgForm({
-                         woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', partNo: '', orderQty: '999999', completedQty: '', date: new Date().toISOString().split('T')[0]
+                        woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', quantity: '', date: new Date().toISOString().split('T')[0]
                       });
-                      setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                      setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'DC') {
                       setDcForm({
-                         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, date: new Date().toISOString().split('T')[0], partyName: '', partName: '', quantity: '', price: '', poNumber: '', vehicleNo: '', ewayBill: ''
+                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', poNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: ''
                       });
-                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Invoice') {
                       setInvoiceForm({
-                         invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, date: new Date().toISOString().split('T')[0], partyName: '', dcNumber: '', partName: '', quantity: '', price: '', cgst: '9', sgst: '9', igst: '0'
+                        invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', amount: ''
                       });
-                      setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 999999, raw: {} });
+                      setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     }
                   }}
                 >
