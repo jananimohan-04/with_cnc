@@ -114,7 +114,7 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Production Actions</h4>
             <div className="flex flex-col gap-2">
-              {order.status === 'Planned' && (
+              {['Planned', 'Planning'].includes(order.status) && (
                 <Button variant="primary" className="w-full gap-2 justify-center" onClick={handleStart}>
                   <Play size={16} /> Start Production
                 </Button>
