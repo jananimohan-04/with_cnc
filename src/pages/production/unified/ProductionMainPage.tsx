@@ -55,6 +55,7 @@ export function ProductionMainPage() {
     const woNo = `WO-${new Date().getFullYear().toString().slice(-2)}${String(new Date().getMonth()+1).padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
     
     const { error } = await supabase.from('cnc_work_orders').insert([{
+      id: crypto.randomUUID(),
       wo_no: woNo,
       sales_order: selectedSO.order_no,
       customer: selectedSO.customer,
