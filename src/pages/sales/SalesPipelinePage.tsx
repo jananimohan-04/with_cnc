@@ -265,7 +265,7 @@ export function SalesPipelinePage() {
     }));
 
     if (orders) orders.forEach(o => newCards.push({
-      id: `order_${o.id}`, stage: 'Sales Order', type: 'order',
+      id: `order_${o.id}`, stage: o.status === 'Waiting for Parts' ? 'Unavailability Parts' : 'Sales Order', type: 'order',
       refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
       qty: o.quantity || (o.items?.[0]?.quantity), value: o.total_value, date: o.delivery_date, status: o.status, raw: o
     }));
@@ -586,6 +586,12 @@ export function SalesPipelinePage() {
       } else {
         alert("Error creating sales order: " + error.message);
       }
+    } else if (card.type === 'order' && toStage === 'Unavailability Parts') {
+      const { error } = await supabase.from('cnc_sales_orders').update({ status: 'Waiting for Parts' }).eq('id', card.raw.id);
+      if (!error) fetchPipeline();
+    } else if (card.type === 'order' && toStage === 'Sales Order' && card.stage === 'Unavailability Parts') {
+      const { error } = await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('id', card.raw.id);
+      if (!error) fetchPipeline();
     } else if (card.type === 'order' && toStage === 'Inward') {
       const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       setInwardForm({
