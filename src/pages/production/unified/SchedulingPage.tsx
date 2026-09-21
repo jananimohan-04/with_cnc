@@ -246,7 +246,7 @@ export function SchedulingPage() {
           </div>
 
           <Button variant="secondary" className="bg-white" onClick={() => setCurrentDate(new Date())}>Today</Button>
-          <Button variant="primary" className="bg-blue-600 hover:bg-blue-700 text-white"><Plus size={18} /> Add Job</Button>
+          <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={() => setShowAddJob(true)}><Plus size={18} /> Add Job</Button>
         </div>
       </div>
 
