@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
