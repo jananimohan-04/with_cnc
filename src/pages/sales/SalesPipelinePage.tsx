@@ -79,12 +79,16 @@ export function SalesPipelinePage() {
     const table = tableMap[title];
     if (!table) return;
 
-    const { error } = await supabase.from(table).update({ [field]: value }).eq('id', id);
-    if (error) {
-       console.error("Failed to update:", error);
-       alert("Failed to update field: " + error.message);
-    } else {
-       setViewModalData((prev: any) => {
+    if (field !== 'image_url') {
+      const { error } = await supabase.from(table).update({ [field]: value }).eq('id', id);
+      if (error) {
+         console.error("Failed to update:", error);
+         alert("Failed to update field: " + error.message);
+         return;
+      }
+    }
+
+    setViewModalData((prev: any) => {
           if (!prev) return prev;
           const newPrev = { ...prev };
           const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order', 'Inward': 'inward', 'Finished Goods': 'finished_goods', 'DC': 'dc', 'Invoice': 'invoice' };
@@ -95,7 +99,6 @@ export function SalesPipelinePage() {
           return newPrev;
        });
        fetchPipeline();
-    }
   };
 
   const renderRecordData = (title: string, raw: any) => {
