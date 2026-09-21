@@ -77,7 +77,12 @@ class ErrorBoundary extends Component {
   }
   render() {
     if (this.state.hasError) {
-      return <div className="p-4 text-red-500 font-mono text-sm">{this.state.error?.toString()}</div>;
+      return (
+        <div className="p-4 text-red-500 font-mono text-sm overflow-auto max-h-[400px]">
+          <div className="font-bold">{this.state.error?.toString()}</div>
+          <pre className="mt-2 text-xs">{this.state.error?.stack}</pre>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -132,7 +137,11 @@ function ReportsTabContent({ workOrders }: { workOrders: any[] }) {
       
       <Card className="p-4">
         <h4 className="font-semibold text-slate-800 mb-4">Orders Created by Month</h4>
-        <BarChart data={barData} height={250} />
+        <BarChart 
+          data={barData} 
+          height={250} 
+          series={[{ key: 'value', label: 'Orders', color: '#4f46e5' }]} 
+        />
       </Card>
     </div>
   );

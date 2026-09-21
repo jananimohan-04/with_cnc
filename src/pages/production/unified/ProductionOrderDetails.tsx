@@ -152,7 +152,14 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
           
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Target vs Actual</h4>
-            <BarChart data={targetVsActual} height={200} />
+            <BarChart 
+              data={targetVsActual} 
+              height={200} 
+              series={[
+                { key: 'target', label: 'Target', color: '#94a3b8' },
+                { key: 'actual', label: 'Actual', color: '#10b981' }
+              ]} 
+            />
           </Card>
         </div>
       </div>
