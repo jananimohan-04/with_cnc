@@ -22,9 +22,9 @@ import {
   MachineSchedulingPage,
   CNCOperationsPage,
   ShopFloorPage,
-  ProductionTrackingPage,
-  FinishedGoodsPage
+  ProductionTrackingPage
 } from './pages/production/ProductionPages';
+import { FinishedGoodsPage } from './pages/production/unified/FinishedGoodsPage';
 
 import {
   SalesPipelinePage,
