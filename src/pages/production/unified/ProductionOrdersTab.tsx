@@ -4,6 +4,7 @@ import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { Eye, Edit, MoreVertical, Image as ImageIcon } from 'lucide-react';
 import { ProductionOrderDetails } from './ProductionOrderDetails';
 import { getMockImage } from '@/lib/mockStorage';
+import { Modal } from '@/components/ui/Modal';
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[], refresh: () => void }) {
   const [selectedWO, setSelectedWO] = useState<any | null>(null);
@@ -84,9 +85,9 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       align: 'center', 
       render: (r) => (
         <div className="flex items-center justify-center gap-1">
-          <button onClick={() => setSelectedWO(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-          <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
-          <button className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><MoreVertical size={15} /></button>
+          <button onClick={() => setSelectedWO(r)} title="View Details" className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
+          <button onClick={() => setSelectedWO(r)} title="Edit Order" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
+          <button onClick={() => alert("More options menu would appear here")} title="More Options" className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><MoreVertical size={15} /></button>
         </div>
       ) 
     }
@@ -110,11 +111,11 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       </div>
 
       {/* Details Section */}
-      {selectedWO && (
-        <div className="border-t border-slate-200 bg-slate-50/50 p-6">
+      <Modal open={!!selectedWO} onClose={() => setSelectedWO(null)} title={selectedWO ? `Production Details: ${selectedWO.wo_no}` : ''} size="xl">
+        {selectedWO && (
           <ProductionOrderDetails order={selectedWO} onClose={() => setSelectedWO(null)} refresh={refresh} />
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
