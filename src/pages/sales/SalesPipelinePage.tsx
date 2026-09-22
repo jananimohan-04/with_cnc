@@ -103,6 +103,48 @@ export function SalesPipelinePage() {
        fetchPipeline();
   };
 
+  const handleItemAction = async (order: any, itemIndex: number, action: 'inward' | 'unavailable') => {
+    if (!window.confirm(`Are you sure you want to mark this part as ${action}?`)) return;
+    setLoading(true);
+    
+    const updatedItems = [...order.items];
+    updatedItems[itemIndex].status = action === 'inward' ? 'Inwarded' : 'Unavailable';
+    
+    let newOrderStatus = order.status;
+    if (action === 'unavailable') {
+        newOrderStatus = 'Waiting for Parts';
+    } else {
+        const allInwarded = updatedItems.every(i => i.status === 'Inwarded');
+        if (allInwarded) newOrderStatus = 'Confirmed';
+    }
+    
+    if (action === 'inward') {
+        const item = updatedItems[itemIndex];
+        const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        await supabase.from('cnc_inwards').insert([{
+          id: crypto.randomUUID(), inward_no: iNo, category: 'CUSTOMER DC', 
+          project_name: order.project_name || order.lead_no || '', 
+          sales_order_ref: order.order_no, reference_no: '', 
+          inward_date: new Date().toISOString().split('T')[0], 
+          party_name: order.customer || order.customer_name || '', remarks: 'Auto-generated from part-wise action',
+          part_name: item.partName || '-', part_number: item.partNumber || '', 
+          quantity: Number(item.quantity) || 0, total_amount: 0, status: 'Received'
+        }]);
+    }
+    
+    const { error } = await supabase.from('cnc_sales_orders').update({
+        items: updatedItems,
+        status: newOrderStatus
+    }).eq('id', order.id);
+    
+    if (error) alert("Error updating item: " + error.message);
+    else {
+        fetchPipeline();
+        setViewModalTarget(null);
+    }
+    setLoading(false);
+  };
+
   const renderRecordData = (title: string, raw: any) => {
     if (!raw) return null;
     return (
