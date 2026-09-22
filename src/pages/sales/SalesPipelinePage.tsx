@@ -145,7 +145,7 @@ export function SalesPipelinePage() {
     setLoading(false);
   };
 
-  const renderRecordData = (title: string, raw: any) => {
+  const renderRecordData = (title: string, raw: any, showItems: boolean = true) => {
     if (!raw) return null;
     return (
       <div className="mb-6">
@@ -178,7 +178,7 @@ export function SalesPipelinePage() {
             );
           })}
         </div>
-        {raw.items && Array.isArray(raw.items) && (
+        {showItems && raw.items && Array.isArray(raw.items) && (
           <div className="bg-white rounded-lg border border-slate-200 mt-4">
             <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Items Breakdown</h4>
             <div className="overflow-x-auto">
@@ -1771,9 +1771,9 @@ export function SalesPipelinePage() {
              {renderRecordData('DC', viewModalData?.dc)}
              {renderRecordData('Finished Goods', viewModalData?.finished_goods)}
              {renderRecordData('Inward', viewModalData.inward)}
-             {renderRecordData('Sales Order', viewModalData.order)}
-             {renderRecordData('Quotation', viewModalData.quotation)}
-             {renderRecordData('Enquiry', viewModalData.enquiry)}
+             {renderRecordData('Sales Order', viewModalData.order, true)}
+             {renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)}
+             {renderRecordData('Enquiry', viewModalData.enquiry, !viewModalData.quotation && !viewModalData.order)}
           </div>
         ) : (
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
