@@ -397,23 +397,32 @@ export function FinishedGoodsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Status</label>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
             <select 
-              className="w-full h-9 rounded-lg border border-slate-200 text-sm px-3 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              className="w-full text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
             >
-              <option value="All">All Statuses</option>
+              <option value="Active Only">Active (In Stock)</option>
+              <option value="All">All Statuses (History)</option>
               <option value="In Production">In Production</option>
               <option value="Completed">Completed</option>
               <option value="Processing">Processing</option>
               <option value="Not Started">Not Started</option>
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="primary" className="h-9 flex-1 bg-brand-500 hover:bg-brand-600 text-white">Search</Button>
-            <Button variant="secondary" className="h-9 flex-1 bg-white" onClick={() => {
-              setSearchTerm(''); setProjectFilter('All Projects'); setCustomerFilter('All Customers'); setStatusFilter('All');
+          <div className="col-span-12 md:col-span-2">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Month</label>
+            <input
+              type="month"
+              className="w-full text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+            />
+          </div>
+          <div className="col-span-12 md:col-span-1 flex items-end">
+            <Button variant="secondary" className="h-9 w-full bg-white text-xs font-bold" onClick={() => {
+              setSearchTerm(''); setProjectFilter('All Projects'); setCustomerFilter('All Customers'); setStatusFilter('Active Only'); setMonthFilter('');
             }}>Clear</Button>
           </div>
         </div>
