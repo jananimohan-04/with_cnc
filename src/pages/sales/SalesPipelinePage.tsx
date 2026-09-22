@@ -350,7 +350,7 @@ export function SalesPipelinePage() {
 
     if (fgs) {
       fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
-         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: w.wo_no || w.woNo || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name || w.partName, qty: w.completed, value: 0, date: w.updated_at ? w.updated_at.split('T')[0] : '', status: w.status, raw: w });
+         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: w.sales_order || w.wo_no || w.woNo || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name || w.partName, qty: w.completed, value: 0, date: w.updated_at ? w.updated_at.split('T')[0] : '', status: w.status, raw: w });
       });
     }
 
