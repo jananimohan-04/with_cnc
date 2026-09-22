@@ -14,7 +14,8 @@ export function FinishedGoodsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('All Projects');
   const [customerFilter, setCustomerFilter] = useState('All Customers');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('Active Only');
+  const [monthFilter, setMonthFilter] = useState('');
 
   const [filterOptions, setFilterOptions] = useState({
     projects: [] as string[],
@@ -188,8 +189,11 @@ export function FinishedGoodsPage() {
                           (r.part_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesProject = projectFilter === 'All Projects' || r.sales_order === projectFilter;
     const matchesCustomer = customerFilter === 'All Customers' || r.customer === customerFilter;
-    const matchesStatus = statusFilter === 'All' || r.status === statusFilter;
-    return matchesSearch && matchesProject && matchesCustomer && matchesStatus;
+    const matchesStatus = statusFilter === 'All' ? true : 
+                          statusFilter === 'Active Only' ? (r.status !== 'Dispatched' && r.status !== 'Delivered') : 
+                          r.status === statusFilter;
+    const matchesMonth = monthFilter === '' ? true : (r.created_at && r.created_at.startsWith(monthFilter));
+    return matchesSearch && matchesProject && matchesCustomer && matchesStatus && matchesMonth;
   });
 
   const columns: Column<any>[] = [
