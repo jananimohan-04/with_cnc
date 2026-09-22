@@ -562,7 +562,7 @@ export function SalesPipelinePage() {
       setQuoteForm({
         quoteNo: qNo, customer: card.customer, leadNo: card.refNo, quoteDate: new Date().toISOString().split('T')[0], validTill: card.date || '', salesperson: 'Admin',
         contacts: parseContacts(card.raw),
-        partName: card.part, partNumber: card.raw.part_no !== 'N/A' ? (card.raw.part_no || '') : '', description: '', quantity: card.qty?.toString() || '', unitPrice: '', discount: '0', gst: '18',
+        partName: card.part, partNumber: card.raw.part_no !== 'N/A' ? (card.raw.part_no || '') : '', description: card.raw.enquiring_for || '', quantity: card.qty?.toString() || '', unitPrice: '', discount: '0', gst: '18',
         paymentTerms: '', deliveryTerms: '', remarks: ''
       });
       setQuotationModalTarget(card);
