@@ -1743,13 +1743,13 @@ export function SalesPipelinePage() {
 <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
-             {renderRecordData('Enquiry', viewModalData.enquiry)}
-             {renderRecordData('Quotation', viewModalData.quotation)}
-             {renderRecordData('Sales Order', viewModalData.order)}
-             {renderRecordData('Inward', viewModalData.inward)}
-             {renderRecordData('Finished Goods', viewModalData?.finished_goods)}
-             {renderRecordData('DC', viewModalData?.dc)}
              {renderRecordData('Invoice', viewModalData?.invoice)}
+             {renderRecordData('DC', viewModalData?.dc)}
+             {renderRecordData('Finished Goods', viewModalData?.finished_goods)}
+             {renderRecordData('Inward', viewModalData.inward)}
+             {renderRecordData('Sales Order', viewModalData.order)}
+             {renderRecordData('Quotation', viewModalData.quotation)}
+             {renderRecordData('Enquiry', viewModalData.enquiry)}
           </div>
         ) : (
           <div className="p-8 text-center text-slate-500">Loading historical data...</div>
