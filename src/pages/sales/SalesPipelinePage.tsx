@@ -784,7 +784,7 @@ export function SalesPipelinePage() {
     const { error } = await supabase.from('cnc_work_orders').insert([{
        id: crypto.randomUUID(), wo_no: fgForm.woNo, customer: fgForm.customer,
        part_name: fgForm.partName, completed: q, status: 'Completed',
-       updated_at: fgForm.date + 'T00:00:00Z'
+       created_at: fgForm.date + 'T00:00:00Z'
     }]);
     if (!error) {
        await supabase.from('cnc_inwards').update({ status: 'Processed' }).eq('id', fgModalTarget.raw.id);
