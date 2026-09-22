@@ -783,7 +783,8 @@ export function SalesPipelinePage() {
     }
     const { error } = await supabase.from('cnc_work_orders').insert([{
        id: crypto.randomUUID(), wo_no: fgForm.woNo, customer: fgForm.customer,
-       part_name: fgForm.partName, completed: q, status: 'Completed',
+       part_name: fgForm.partName, part_no: fgForm.partNo || 'N/A', completed: q, status: 'Completed',
+       sales_order: fgModalTarget.raw.sales_order_ref || '', quantity: maxQ, start_date: fgForm.date, due_date: fgForm.date, priority: 'Normal', drawing_revision: '0', description: '',
        created_at: fgForm.date + 'T00:00:00Z'
     }]);
     if (!error) {
