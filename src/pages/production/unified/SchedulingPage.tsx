@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, Badge } from '@/components/ui/Card';
-import { Calendar, ChevronLeft, ChevronRight, Search, Filter, Plus, User, Settings2, Clock, GripVertical, AlertTriangle } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, GripVertical, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 
@@ -21,6 +20,7 @@ export function SchedulingPage() {
   const [selectedJob, setSelectedJob] = useState<any>(null);
   
   const [showAddJob, setShowAddJob] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [newJobForm, setNewJobForm] = useState({
     workOrder: '', partName: '', partNo: '', customer: '', qty: '', 
@@ -70,15 +70,26 @@ export function SchedulingPage() {
 
   const handleAddJobSubmit = async () => {
     if (!newJobForm.workOrder || !newJobForm.machine || !newJobForm.date) return alert('Please fill required fields');
-    
+    if (saving) return;
+
     // Create new job card
     const d = new Date(newJobForm.date + 'T' + newJobForm.startTime);
-    
+
+    // Next operation number for this work order (10, 20, 30...)
+    const existingOps = jobs
+      .filter(j => j.work_order === newJobForm.workOrder)
+      .map(j => Number(j.op_no))
+      .filter(n => Number.isFinite(n));
+    const nextOpNo = existingOps.length > 0 ? Math.max(...existingOps) + 10 : 10;
+
+    setSaving(true);
     const { error } = await supabase.from('cnc_job_cards').insert([{
       id: crypto.randomUUID(),
       job_no: `JC-${Math.floor(1000 + Math.random() * 9000)}`,
       work_order: newJobForm.workOrder,
       part_name: newJobForm.partName,
+      op_no: nextOpNo,
+      operation: 'Machining',
       machine: newJobForm.machine,
       operator: newJobForm.operator,
       qty_planned: Number(newJobForm.qty),
@@ -87,8 +98,10 @@ export function SchedulingPage() {
       cycle_time: Number(newJobForm.cycleTime),
       setup_time: 30,
       status: 'Planned',
+      // cnc_job_cards has no schedule-start column, so the scheduled start is stored in created_at
       created_at: d.toISOString()
     }]);
+    setSaving(false);
 
     if (error) {
       alert('Error saving job: ' + error.message);
@@ -104,7 +117,7 @@ export function SchedulingPage() {
   const getSlots = () => {
     if (view === 'Day') return [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]; // hourly
     if (view === 'Week') return [8, 10, 12, 14, 16]; // 2-hourly
-    return [0]; // daily
+    return [8]; // daily (dropped jobs start at 8 AM so they stay visible in Day/Week views)
   };
   
   const activeSlots = getSlots();
@@ -132,7 +145,8 @@ export function SchedulingPage() {
       const uniqueOps = Array.from(new Set(jobsData.map((j: any) => j.operator).filter(Boolean)));
       setOperators(uniqueOps.map((op: any, i) => ({ id: `OP-${i}`, name: op, role: 'Operator', status: 'Available' })));
       
-      const woRes = await supabase.from('cnc_work_orders').select('*').neq('status', 'Completed');
+      const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched")');
+      if (woRes.error) console.error('Failed to load work orders:', woRes.error);
       if (woRes.data) setWorkOrders(woRes.data);
       setDbError(false);
     } catch (err) {
@@ -192,7 +206,9 @@ export function SchedulingPage() {
     setJobs(updatedJobs);
     setDraggedJob(null);
 
-    // Persist to Supabase
+    // Persist to Supabase.
+    // NOTE: cnc_job_cards has no schedule-start column (and we must not add one), so the job's
+    // scheduled start time is kept in created_at. Rescheduling therefore has to overwrite it.
     try {
       const { error } = await supabase.from('cnc_job_cards').update({
         machine: machineCode,
@@ -231,6 +247,8 @@ export function SchedulingPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          {dbError && <Badge variant="error">Failed to load schedule</Badge>}
+          {loading && <Badge variant="neutral">Syncing...</Badge>}
           <div className="flex bg-white rounded-lg border border-slate-200 p-1">
             {['Day', 'Week', 'Month'].map(v => (
               <button 
@@ -303,11 +321,11 @@ export function SchedulingPage() {
                     </div>
                     
                     {/* Time Slots for the Machine */}
-                    {activeDates.map((date, dayIdx) => (
+                    {activeDates.map((date) => (
                       <div key={date.toISOString()} className={`flex-1 flex ${view === 'Month' ? 'min-w-[60px]' : view === 'Day' ? 'min-w-[1000px]' : 'min-w-[200px]'} border-r border-slate-100 last:border-r-0 relative`}>
                         {activeSlots.map((hour, slotIdx) => (
-                          <div 
-                            key={hour} 
+                          <div
+                            key={hour}
                             className={`flex-1 border-r border-slate-50 border-dashed last:border-r-0 transition-colors hover:bg-blue-50/50 min-h-[50px] ${view==='Month' ? 'p-1' : ''}`}
                             onDragOver={handleDragOver}
                             onDrop={(e) => handleDrop(e, machine.code, date, hour)}
@@ -402,9 +420,9 @@ export function SchedulingPage() {
                     </div>
                     
                     {/* Time Slots for Operator */}
-                    {activeDates.map((date, dayIdx) => (
+                    {activeDates.map((date) => (
                       <div key={date.toISOString()} className={`flex-1 flex ${view === 'Month' ? 'min-w-[60px]' : view === 'Day' ? 'min-w-[1000px]' : 'min-w-[200px]'} border-r border-slate-100 last:border-r-0 relative`}>
-                        {activeSlots.map((hour, slotIdx) => (
+                        {activeSlots.map((hour) => (
                           <div key={hour} className="flex-1 border-r border-slate-50 border-dashed last:border-r-0 bg-slate-50/30 min-h-[50px]">
                           </div>
                         ))}
@@ -470,7 +488,7 @@ export function SchedulingPage() {
                   
                   <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm">
                     <span className="text-slate-500">Customer</span>
-                    <span className="font-medium text-slate-800">: {selectedJob.customer || 'Unknown'}</span>
+                    <span className="font-medium text-slate-800">: {selectedJob.customer || workOrders.find(w => w.wo_no === selectedJob.work_order)?.customer || 'Unknown'}</span>
                     
                     <span className="text-slate-500">Quantity</span>
                     <span className="font-medium text-slate-800">: {selectedJob.qty_planned} Nos</span>
@@ -521,7 +539,7 @@ export function SchedulingPage() {
       <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Schedule New Job" size="lg" footer={
         <>
           <Button variant="secondary" onClick={() => setShowAddJob(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleAddJobSubmit}>Schedule Job</Button>
+          <Button variant="primary" onClick={handleAddJobSubmit} disabled={saving}>{saving ? 'Scheduling...' : 'Schedule Job'}</Button>
         </>
       }>
         <div className="space-y-4">

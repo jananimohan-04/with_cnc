@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, DateSelector, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, StatCard, statusToVariant } from '@/components/ui/Card';
-import { FileText, Eye, Edit, Truck } from 'lucide-react';
+import { Truck } from 'lucide-react';
 
 export function DeliveriesPage() {
   const [deliveries, setDeliveries] = useState<any[]>([]);
@@ -25,7 +25,7 @@ export function DeliveriesPage() {
             orderNo: d.sales_order_no,
             customer: d.customer_name,
             partName: d.part_name,
-            quantity: d.quantity,
+            quantity: d.dispatch_qty ?? d.quantity,
             dispatchDate: d.delivery_date, // use delivery_date as placeholder
             expectedDelivery: d.delivery_date,
             carrier: d.transport,
@@ -64,9 +64,9 @@ export function DeliveriesPage() {
         <StatCard label="Total Shipments" value={deliveries.length.toString()} icon={<Truck size={20} />} accent="brand" />
         <StatCard label="In Transit" value={deliveries.filter(d => d.status === 'In Transit').length.toString()} icon={<Truck size={20} />} accent="accent" />
         <StatCard label="Delivered" value={deliveries.filter(d => d.status === 'Delivered').length.toString()} icon={<Truck size={20} />} accent="success" />
-        <StatCard label="Delayed" value={deliveries.filter(d => d.status === 'Delayed').length.toString()} icon={<Truck size={20} />} accent="error" />
+        <StatCard label="Failed" value={deliveries.filter(d => d.status === 'Failed').length.toString()} icon={<Truck size={20} />} accent="error" />
       </div>
-      <DataTable data={deliveries} columns={columns} searchKeys={['deliveryNo', 'orderNo', 'customer', 'partName', 'trackingNo']} filterOptions={[{ label: 'Pending', value: 'Pending' }, { label: 'Dispatched', value: 'Dispatched' }, { label: 'In Transit', value: 'In Transit' }, { label: 'Delivered', value: 'Delivered' }, { label: 'Delayed', value: 'Delayed' }]} />
+      <DataTable data={deliveries} columns={columns} searchKeys={['deliveryNo', 'orderNo', 'customer', 'partName', 'trackingNo']} filterOptions={[{ label: 'Pending', value: 'Pending' }, { label: 'Scheduled', value: 'Scheduled' }, { label: 'In Transit', value: 'In Transit' }, { label: 'Delivered', value: 'Delivered' }, { label: 'Billed', value: 'Billed' }, { label: 'Failed', value: 'Failed' }]} />
     </div>
   );
 }

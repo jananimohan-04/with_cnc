@@ -1,20 +1,16 @@
 import { useState } from 'react';
-import { Cpu, Mail, Lock, Eye, EyeOff, ArrowRight, Shield, Zap, Award } from 'lucide-react';
+import { Shield, Zap, Award } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
-export function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState('r.kumar@arguscnc.in');
-  const [password, setPassword] = useState('demo1234');
-  const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(true);
+export function LoginScreen() {
+  const { signInWithGoogle, errorMessage } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Redirects to Google; on return AuthProvider checks the account against the ERP user list.
+  const handleGoogle = async () => {
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onLogin();
-    }, 800);
+    await signInWithGoogle();
+    setLoading(false);
   };
 
   return (
@@ -87,96 +83,47 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         </div>
       </div>
 
-      {/* Right — Login Form */}
+      {/* Right — Google sign-in */}
       <div className="flex-1 flex items-center justify-center bg-slate-50 px-6 py-12">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center mb-8">
-              <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-24 w-auto object-contain rounded-md" />
-            </div>
+            <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="h-24 w-auto object-contain rounded-md" />
+          </div>
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-slate-800">Welcome Back</h2>
             <p className="text-sm text-slate-500 mt-1.5">Sign in to your ARGUSCNC ERP account</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email or Username</label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-                  placeholder="you@company.com"
-                  required
-                />
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:border-brand-400 hover:shadow-lg hover:shadow-brand-100 rounded-lg px-4 py-3 text-sm font-semibold text-slate-700 transition-all active:scale-[0.98] disabled:opacity-70"
+          >
+            {loading ? (
+              <span className="w-5 h-5 border-2 border-slate-300 border-t-brand-600 rounded-full animate-spin" />
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+            )}
+            <span>Continue with Google</span>
+          </button>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-                  placeholder="Enter your password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500/20"
-                />
-                <span className="text-xs text-slate-600">Remember me</span>
-              </label>
-              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors">
-                Forgot password?
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-lg shadow-brand-600/20 transition-all active:scale-[0.98] disabled:opacity-70"
-            >
-              {loading ? (
-                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" style={{ borderWidth: '2px' }} />
-              ) : (
-                <>
-                  Sign In
-                  <ArrowRight size={16} />
-                </>
-              )}
-            </button>
-          </form>
+          {errorMessage && (
+            <p className="mt-4 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{errorMessage}</p>
+          )}
 
           <div className="mt-8 pt-6 border-t border-slate-200">
             <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
               <Shield size={12} />
-              <span>Protected by enterprise-grade security</span>
+              <span>Access is limited to accounts registered by your administrator</span>
             </div>
-            <p className="text-center text-xs text-slate-400 mt-3">
-              Demo credentials are pre-filled. Just click <span className="font-semibold text-slate-600">Sign In</span>.
-            </p>
           </div>
         </div>
       </div>

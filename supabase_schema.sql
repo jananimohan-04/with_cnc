@@ -34,9 +34,6 @@ ON CONFLICT (id) DO NOTHING;
 -- Set up Row Level Security (RLS)
 ALTER TABLE public.cnc_customers ENABLE ROW LEVEL SECURITY;
 
--- Create a policy that allows all authenticated and anon users to read (for this demo)
-CREATE POLICY "Enable read access for all users" ON public.cnc_customers FOR SELECT USING (true);
-CREATE POLICY "Enable insert access for all users" ON public.cnc_customers FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable update access for all users" ON public.cnc_customers FOR UPDATE USING (true);
-CREATE POLICY "Enable delete access for all users" ON public.cnc_customers FOR DELETE USING (true);
-
+-- Access policies are defined in supabase/migrations/20260923000000_multi_company_auth.sql
+-- (per-company isolation). Do not add USING (true) policies here: they would expose every
+-- company's customers to everyone, including the anonymous key.

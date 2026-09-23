@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
-import { StatCard, Badge, Button } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import {  FileText, Plus, Archive, Trash2, Eye, UploadCloud , Edit2 } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud , Edit2 } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
+import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
 import { SalesOrderModule } from './SalesOrderModule';
@@ -13,7 +13,7 @@ import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 
-export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
+export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Unavailability Parts' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
 export interface KanbanCard {
   id: string;
@@ -38,12 +38,46 @@ import { CommentsModal } from './CommentsModal';
 import { PipelineListView } from './PipelineListView';
 import { PipelineCalendarView } from './PipelineCalendarView';
 
+// Defined at module level so inputs keep focus between keystrokes
+const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?: any, readOnly?: boolean }) => (
+  <div className="border-t border-slate-100 pt-4 mt-2 mb-4 col-span-full">
+    <div className="flex justify-between items-center mb-4">
+      <h4 className="font-semibold text-sm text-slate-800">Contact Details</h4>
+      {!readOnly && setForm && (
+        <button type="button" onClick={() => setForm({...form, contacts: [...(form.contacts || []), { person: '', phone: '', email: '' }]})} className="flex items-center gap-1 text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded hover:bg-brand-200 transition-colors">
+          <Plus size={14} /> Add Contact
+        </button>
+      )}
+    </div>
+    {(form.contacts || []).map((contact: any, idx: number) => (
+      <div key={idx} className="grid grid-cols-3 gap-4 mb-4 p-3 bg-slate-50 rounded border border-slate-100 relative">
+        {!readOnly && setForm && (form.contacts || []).length > 1 && (
+          <button type="button" onClick={() => {
+            const newContacts = [...form.contacts]; newContacts.splice(idx, 1); setForm({...form, contacts: newContacts});
+          }} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-200 text-xs shadow-sm z-10 transition-colors">&times;</button>
+        )}
+        <FormField label="Contact Person"><input className={inputClass} value={contact.person} readOnly={readOnly} disabled={readOnly} onChange={e => {
+          if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx] = { ...nc[idx], person: e.target.value }; setForm({...form, contacts: nc}); }
+        }} placeholder="Name" /></FormField>
+        <FormField label="Phone"><input className={inputClass} value={contact.phone} readOnly={readOnly} disabled={readOnly} onChange={e => {
+          if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx] = { ...nc[idx], phone: e.target.value }; setForm({...form, contacts: nc}); }
+        }} placeholder="Phone" /></FormField>
+        <FormField label="Email"><input type="email" className={inputClass} value={contact.email} readOnly={readOnly} disabled={readOnly} onChange={e => {
+          if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx] = { ...nc[idx], email: e.target.value }; setForm({...form, contacts: nc}); }
+        }} placeholder="Email" /></FormField>
+      </div>
+    ))}
+  </div>
+);
+
 export function SalesPipelinePage() {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || '';
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
@@ -107,29 +141,35 @@ export function SalesPipelinePage() {
     if (!window.confirm(`Are you sure you want to mark this part as ${action}?`)) return;
     setLoading(true);
     
-    const updatedItems = [...order.items];
-    updatedItems[itemIndex].status = action === 'inward' ? 'Inwarded' : 'Unavailable';
+    const updatedItems = (order.items || []).map((it: any, idx: number) =>
+      idx === itemIndex ? { ...it, status: action === 'inward' ? 'Inwarded' : 'Unavailable' } : it
+    );
     
     let newOrderStatus = order.status;
     if (action === 'unavailable') {
         newOrderStatus = 'Waiting for Parts';
     } else {
-        const allInwarded = updatedItems.every(i => i.status === 'Inwarded');
+        const allInwarded = updatedItems.every((i: any) => i.status === 'Inwarded');
         if (allInwarded) newOrderStatus = 'Confirmed';
     }
     
     if (action === 'inward') {
         const item = updatedItems[itemIndex];
         const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-        await supabase.from('cnc_inwards').insert([{
-          id: crypto.randomUUID(), inward_no: iNo, category: 'CUSTOMER DC', 
-          project_name: order.project_name || order.lead_no || '', 
-          sales_order_ref: order.order_no, reference_no: '', 
-          inward_date: new Date().toISOString().split('T')[0], 
-          party_name: order.customer || order.customer_name || '', remarks: 'Auto-generated from part-wise action',
-          part_name: item.partName || '-', part_number: item.partNumber || '', 
+        const { error: inwErr } = await supabase.from('cnc_inwards').insert([{
+          id: crypto.randomUUID(), inward_no: iNo, category: 'CUSTOMER DC',
+          project_name: order.lead_no || '',
+          sales_order_ref: order.order_no, reference_no: '',
+          inward_date: new Date().toISOString().split('T')[0],
+          party_name: order.customer || '', remarks: 'Auto-generated from part-wise action',
+          part_name: item.partName || '-', part_number: item.partNumber || '',
           quantity: Number(item.quantity) || 0, total_amount: 0, status: 'Received'
         }]);
+        if (inwErr) {
+          alert("Error creating inward: " + inwErr.message);
+          setLoading(false);
+          return;
+        }
     }
     
     const { error } = await supabase.from('cnc_sales_orders').update({
@@ -285,6 +325,7 @@ export function SalesPipelinePage() {
 
   const fetchPipeline = async () => {
     setLoading(true);
+    try {
     // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
     const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
@@ -303,13 +344,19 @@ export function SalesPipelinePage() {
     }
     setKnownCompanies(Array.from(compMap.values()));
 
-    const { data: quotes } = await supabase.from('cnc_quotations').select('*').in('status', ['Sent', 'Under Review', 'Draft', 'Accepted']);
+    // Load all quotes / orders for the reference maps (converted quotes and inwarded orders are still
+    // needed to resolve project numbers downstream); only the active ones become cards.
+    const { data: allQuotes, error: quotesErr } = await supabase.from('cnc_quotations').select('*');
+    if (quotesErr) console.error("Error fetching quotations:", quotesErr);
     const quoteMap = new Map();
-    if (quotes) quotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.quote_no));
+    if (allQuotes) allQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.quote_no));
+    const quotes = allQuotes?.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
 
-    const { data: orders } = await supabase.from('cnc_sales_orders').select('*').in('status', ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production']);
+    const { data: allOrders, error: ordersErr } = await supabase.from('cnc_sales_orders').select('*');
+    if (ordersErr) console.error("Error fetching sales orders:", ordersErr);
     const orderMap = new Map();
-    if (orders) orders.forEach(o => orderMap.set(o.order_no, quoteMap.get(o.quotation_id) || o.order_no));
+    if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, quoteMap.get(o.quotation_id) || o.lead_no || o.order_no));
+    const orders = allOrders?.filter(o => ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status));
 
     const { data: inwards, error: inwardErr } = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
 
@@ -320,7 +367,7 @@ export function SalesPipelinePage() {
 
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
-      refNo: leadMap.get(l.id), customer: l.company || l.customer, part: l.part_name,
+      refNo: leadMap.get(l.id), customer: l.customer, part: l.part_name,
       qty: l.quantity, value: l.estimated_value, date: l.expected_date, status: l.status, raw: l
     }));
 
@@ -333,7 +380,7 @@ export function SalesPipelinePage() {
     if (orders) orders.forEach(o => newCards.push({
       id: `order_${o.id}`, stage: o.status === 'Waiting for Parts' ? 'Unavailability Parts' : 'Sales Order', type: 'order',
       refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
-      qty: o.quantity || (o.items?.[0]?.quantity), value: o.total_value, date: o.delivery_date, status: o.status, raw: o
+      qty: o.quantity || (o.items?.[0]?.quantity), value: Number(o.total_value ?? o.value) || 0, date: o.delivery_date, status: o.status, raw: o
     }));
 
     if (inwards && !inwardErr) inwards.forEach(i => newCards.push({
@@ -345,12 +392,14 @@ export function SalesPipelinePage() {
 
     const { data: fgs } = await supabase.from('cnc_work_orders').select('*').in('status', ['Completed', 'In Progress']);
     const { data: dcs } = await supabase.from('cnc_deliveries').select('*');
-    let invoicesData = [];
-    try { const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*'); if (!invErr && invs) invoicesData = invs; } catch(e) {}
+    let invoicesData: any[] = [];
+    const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*');
+    if (invErr) console.error("Error fetching invoices:", invErr);
+    else if (invs) invoicesData = invs;
 
     if (fgs) {
       fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
-         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: w.sales_order || w.wo_no || w.woNo || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name || w.partName, qty: w.completed, value: 0, date: w.updated_at ? w.updated_at.split('T')[0] : '', status: w.status, raw: w });
+         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: orderMap.get(w.sales_order) || w.sales_order || w.wo_no || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name, qty: w.completed, value: 0, date: w.created_at ? w.created_at.split('T')[0] : '', status: w.status, raw: w });
       });
     }
 
@@ -362,7 +411,7 @@ export function SalesPipelinePage() {
 
     if (invoicesData && invoicesData.length > 0) {
       invoicesData.forEach(inv => {
-         newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || inv.created_at.split('T')[0], status: inv.status, raw: inv });
+         newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
     }
 
@@ -380,7 +429,7 @@ export function SalesPipelinePage() {
          counts[c.record_id] = (counts[c.record_id] || 0) + 1;
       });
       setCommentCounts(counts);
-    } catch(e) {
+    } catch {
       const comms = JSON.parse(localStorage.getItem('cnc_pipeline_comments') || '[]');
       const counts: Record<string, number> = {};
       comms.forEach((c: any) => {
@@ -390,7 +439,11 @@ export function SalesPipelinePage() {
     }
 
     setCards(newCards);
-    setLoading(false);
+    } catch (err) {
+      console.error("Error loading pipeline:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchRecentActivities = async () => {
@@ -400,7 +453,7 @@ export function SalesPipelinePage() {
     if (recentEnq) recentEnq.forEach(r => activities.push({ type: 'enquiry', ref: r.enquiry_no, customer: r.customer, action: r.status === 'New' ? 'received' : r.status?.toLowerCase() || 'updated', time: r.created_at, color: 'bg-blue-500' }));
 
     const { data: recentQuotes } = await supabase.from('cnc_quotations').select('quote_no, customer, status, created_at').order('created_at', { ascending: false }).limit(3);
-    if (recentQuotes) recentQuotes.forEach(r => activities.push({ type: 'quotation', ref: r.quote_no, customer: r.customer, action: r.status === 'Accepted' ? 'accepted' : 'sent', time: r.created_at, color: 'bg-purple-500' }));
+    if (recentQuotes) recentQuotes.forEach(r => activities.push({ type: 'quotation', ref: r.quote_no, customer: r.customer, action: (r.status === 'Converted' || r.status === 'Accepted') ? 'accepted' : 'sent', time: r.created_at, color: 'bg-purple-500' }));
 
     const { data: recentSO } = await supabase.from('cnc_sales_orders').select('order_no, customer, status, created_at').order('created_at', { ascending: false }).limit(3);
     if (recentSO) recentSO.forEach(r => activities.push({ type: 'sales_order', ref: r.order_no, customer: r.customer, action: 'confirmed', time: r.created_at, color: 'bg-emerald-500' }));
@@ -414,7 +467,7 @@ export function SalesPipelinePage() {
     try {
       const { data: recentInv } = await supabase.from('cnc_invoices').select('invoice_no, customer_name, status, created_at').order('created_at', { ascending: false }).limit(3);
       if (recentInv) recentInv.forEach(r => activities.push({ type: 'invoice', ref: r.invoice_no, customer: r.customer_name, action: 'generated', time: r.created_at, color: 'bg-indigo-500' }));
-    } catch(e) {}
+    } catch (err) { console.error("Error fetching recent invoices:", err); }
 
     // Sort all by time descending and take top 5
     activities.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
@@ -456,7 +509,10 @@ export function SalesPipelinePage() {
     if (card.type === 'quotation') table = 'cnc_quotations';
     if (card.type === 'order') table = 'cnc_sales_orders';
     if (card.type === 'inward') table = 'cnc_inwards';
-    
+    if (card.type === 'finished_goods') table = 'cnc_work_orders';
+    if (card.type === 'dc') table = 'cnc_deliveries';
+    if (card.type === 'invoice') table = 'cnc_invoices';
+
     if (table) {
       setLoading(true);
       const { error } = await supabase.from(table).delete().eq('id', card.raw.id);
@@ -478,10 +534,10 @@ export function SalesPipelinePage() {
   const openViewModal = async (card: KanbanCard) => {
     setViewModalTarget(card);
     setLoading(true);
-    let aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
+    const aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
       const parseItems = (rawObj: any, field: string) => {
         if (!rawObj || !rawObj[field]) return;
-        try { const parsed = JSON.parse(rawObj[field]); if (Array.isArray(parsed)) rawObj.items = parsed; } catch(e) {}
+        try { const parsed = JSON.parse(rawObj[field]); if (Array.isArray(parsed)) rawObj.items = parsed; } catch { /* not JSON */ }
       };
     try {
       if (card.type === 'inward') {
@@ -572,7 +628,7 @@ export function SalesPipelinePage() {
   const handleDrop = async (e: React.DragEvent, toStage: Stage) => {
     e.preventDefault();
     const cardId = e.dataTransfer.getData('text/plain');
-    let card = draggedCard || cards.find(c => String(c.id) === String(cardId));
+    const card = draggedCard || cards.find(c => String(c.id) === String(cardId));
     if (!card) {
       alert("Error: Could not identify the dragged card. Please try again.");
       return;
@@ -583,10 +639,41 @@ export function SalesPipelinePage() {
 
     if (card.type === 'lead' && toStage === 'Quotation') {
       const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+      // Parse individual parts from the lead's enquiring_for JSON
+      let parsedParts: any[] = [];
+      try {
+        const raw = card.raw.enquiring_for;
+        if (raw) {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (Array.isArray(parsed)) parsedParts = parsed;
+        }
+      } catch { /* not valid JSON */ }
+      
+      // Build items array with individual pricing fields per part
+      const quoteItems = parsedParts.length > 0 
+        ? parsedParts.map((p: any) => ({
+            id: crypto.randomUUID(),
+            partName: p.partName || p.part_name || '',
+            partNumber: p.partNumber || p.part_number || '',
+            quantity: (p.quantity || p.qty || '0').toString(),
+            unitPrice: '',
+            discount: '0',
+            gst: '18'
+          }))
+        : [{
+            id: crypto.randomUUID(),
+            partName: card.part || '',
+            partNumber: card.raw.part_no !== 'N/A' ? (card.raw.part_no || '') : '',
+            quantity: card.qty?.toString() || '',
+            unitPrice: '',
+            discount: '0',
+            gst: '18'
+          }];
+
       setQuoteForm({
-        quoteNo: qNo, customer: card.customer, leadNo: card.refNo, quoteDate: new Date().toISOString().split('T')[0], validTill: card.date || '', salesperson: 'Admin',
+        quoteNo: qNo, customer: card.customer, leadNo: card.refNo, quoteDate: new Date().toISOString().split('T')[0], validTill: card.date || '', salesperson: userName,
         contacts: parseContacts(card.raw),
-        partName: card.part, partNumber: card.raw.part_no !== 'N/A' ? (card.raw.part_no || '') : '', description: card.raw.enquiring_for || '', quantity: card.qty?.toString() || '', unitPrice: '', discount: '0', gst: '18',
+        items: quoteItems,
         paymentTerms: '', deliveryTerms: '', remarks: ''
       });
       setQuotationModalTarget(card);
@@ -598,7 +685,7 @@ export function SalesPipelinePage() {
       if (!p && card.value && card.qty) {
         const d = Number(card.raw.discount_percent) || 0;
         const g = Number(card.raw.gst_percent) || 0;
-        p = Number((card.value / (card.qty * (1 - d/100) * (1 + g/100))).toFixed(2));
+        p = Number((card.value / (q * (1 - d/100) * (1 + g/100))).toFixed(2));
       }
       
       const item = {
@@ -613,7 +700,7 @@ export function SalesPipelinePage() {
       };
       
       let itemsArr: any[] = [];
-      try { itemsArr = JSON.parse(card.raw.description); } catch(e) {}
+      try { itemsArr = JSON.parse(card.raw.description); } catch { /* plain-text description */ }
       let finalItems = [];
       if (itemsArr && Array.isArray(itemsArr) && itemsArr.length > 0) {
         finalItems = itemsArr.map(i => ({
@@ -628,17 +715,17 @@ export function SalesPipelinePage() {
 
       const { error } = await supabase.from('cnc_sales_orders').insert([{
         id: crypto.randomUUID(),
-        order_no: oNo, customer: card.customer,
+        order_no: oNo, customer: card.customer, customer_id: card.raw.customer_id || null, quote_no: card.raw.quote_no || '',
         contact_person: card.raw.contact_person, phone: card.raw.phone, email: card.raw.email,
         billing_address: '', delivery_address: '',
         shipping_contact: '', shipping_phone: '',
-        lead_no: card.raw.lead_no || card.raw.lead_id || '', order_date: new Date().toISOString().split('T')[0],
+        lead_no: card.refNo || '', order_date: new Date().toISOString().split('T')[0],
         customer_po_no: '', customer_po_date: null,
         items: finalItems,
-        
-        part_name: item.partName, part_number: item.partNumber,
-        quantity: q, 
-        total_value: totalVal, 
+
+        part_name: item.partName, part_number: item.partNumber, part_no: item.partNumber,
+        quantity: q, delivered: 0,
+        value: totalVal, total_value: totalVal,
         
         delivery_date: new Date().toISOString().split('T')[0], status: 'Confirmed',
         payment_terms: card.raw.payment_terms || 'Net 30', special_instructions: '',
@@ -661,7 +748,7 @@ export function SalesPipelinePage() {
     } else if (card.type === 'order' && toStage === 'Inward') {
       const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       setInwardForm({
-        inwardNo: iNo, category: 'CUSTOMER DC', projectName: card.raw.project_name || '', salesOrderRef: card.refNo, referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
+        inwardNo: iNo, category: 'CUSTOMER DC', projectName: card.refNo || '', salesOrderRef: card.raw.order_no || '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
         partName: card.part, partNumber: card.raw.part_number || '', quantity: card.qty?.toString() || '0', price: '', discount: '0', gst: '18',
         contacts: parseContacts(card.raw)
       });
@@ -678,8 +765,8 @@ export function SalesPipelinePage() {
       setDcForm({
          dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
          date: new Date().toISOString().split('T')[0], partyName: card.customer,
-         partName: card.part, quantity: card.qty?.toString() || '0', price: '', 
-         poNumber: card.raw.wo_no || card.raw.woNo || '', vehicleNo: '', ewayBill: ''
+         partName: card.part, quantity: card.qty?.toString() || '0', price: '',
+         poNumber: card.raw.sales_order || card.raw.wo_no || '', vehicleNo: '', ewayBill: ''
       });
       setDcModalTarget(card);
     } else if (card.type === 'dc' && toStage === 'Invoice') {
@@ -719,23 +806,43 @@ export function SalesPipelinePage() {
 
   const saveQuotation = async () => {
     if (!quotationModalTarget) return;
-    const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
-    const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
-    const total = q * p * (1 - d / 100) * (1 + g / 100);
     const cStr = getContactStrings(quoteForm);
+    const leadId = quotationModalTarget.raw?.id || null;
+    if (!quoteForm.customer) { alert("Please enter the customer."); return; }
+
+    // Use multi-part items if available, fallback to single-part legacy fields
+    const items = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
+      partName: quoteForm.partName || '', partNumber: quoteForm.partNumber || '',
+      quantity: quoteForm.quantity || '0', unitPrice: quoteForm.unitPrice || '0',
+      discount: quoteForm.discount || '0', gst: quoteForm.gst || '18'
+    }];
+
+    const totalQty = items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0);
+    const totalValue = items.reduce((sum: number, i: any) => {
+      const q = Number(i.quantity) || 0; const p = Number(i.unitPrice) || 0;
+      const d = Number(i.discount) || 0; const g = Number(i.gst) || 0;
+      return sum + (q * p * (1 - d / 100) * (1 + g / 100));
+    }, 0);
+    
+    const firstItem = items[0];
+    const partNameStr = items.length > 1 ? `Multiple Parts (${items.length})` : (firstItem.partName || 'TBD');
 
     const { error } = await supabase.from('cnc_quotations').insert([{
-      id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: quoteForm.partName,
+      id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: partNameStr,
+      enquiry_no: quotationModalTarget.raw?.enquiry_no || quotationModalTarget.raw?.lead_no || null,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      part_number: quoteForm.partNumber, description: quoteForm.description, unit_price: p,
-      quantity: q, total_value: total, valid_till: quoteForm.validTill, status: 'Sent',
-      salesperson: quoteForm.salesperson, discount_percent: d, gst_percent: g,
-      payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: quotationModalTarget.raw.id
+      part_number: firstItem.partNumber || '', description: JSON.stringify(items), unit_price: Number(firstItem.unitPrice) || 0,
+      quantity: totalQty, total_value: totalValue, date: quoteForm.quoteDate || null, valid_till: quoteForm.validTill || null, status: 'Sent',
+      salesperson: quoteForm.salesperson, discount_percent: Number(firstItem.discount) || 0, gst_percent: Number(firstItem.gst) || 18,
+      payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: leadId
     }]);
-    
+
     if (error) alert("Error: " + error.message);
     else {
-      await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', quotationModalTarget.raw.id);
+      if (leadId) {
+        const { error: enqErr } = await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', leadId);
+        if (enqErr) console.error("Failed to update enquiry status:", enqErr);
+      }
       setQuotationModalTarget(null); fetchPipeline();
     }
   };
@@ -750,7 +857,7 @@ export function SalesPipelinePage() {
     const { error } = await supabase.from('cnc_inwards').insert([{
         id: crypto.randomUUID(), inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
         contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-        sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate,
+        sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate || null,
         party_name: inwardForm.partyName, remarks: inwardForm.remarks, part_name: inwardForm.partName,
         part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending'
       }]);
@@ -766,29 +873,43 @@ export function SalesPipelinePage() {
             from: inwardForm.partyName,
             to: 'Main Warehouse',
             reference: inwardForm.inwardNo,
-            user: 'Admin'
+            user: userName
          }]);
       }
-    if (error) alert("Error: Make sure to run the SQL script to create the cnc_inwards table and columns.");
-    else { await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id); setInwardModalTarget(null); fetchPipeline(); }
+    if (error) alert("Error creating inward: " + error.message);
+    else {
+      if (inwardModalTarget.raw?.id) {
+        const { error: soErr } = await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id);
+        if (soErr) console.error("Failed to update sales order status:", soErr);
+      }
+      setInwardModalTarget(null); fetchPipeline();
+    }
   };
 
   const saveFinishedGoods = async () => {
     if (!fgModalTarget) return;
     const q = Number(fgForm.completedQty) || 0;
     const maxQ = Number(fgForm.orderQty) || 0;
+    if (q <= 0) {
+       alert("Please enter the quantity to process.");
+       return;
+    }
     if (q > maxQ) {
        alert(`Quantity cannot exceed the inwarded amount of ${maxQ} pcs.`);
        return;
     }
+    const fgDate = fgForm.date || new Date().toISOString().split('T')[0];
     const { error } = await supabase.from('cnc_work_orders').insert([{
        id: crypto.randomUUID(), wo_no: fgForm.woNo, customer: fgForm.customer,
        part_name: fgForm.partName, part_no: fgForm.partNo || 'N/A', completed: q, status: 'Completed',
-       sales_order: fgModalTarget.raw.sales_order_ref || '', quantity: maxQ, start_date: fgForm.date, due_date: fgForm.date, priority: 'Normal', drawing_revision: '0', description: '',
-       created_at: fgForm.date + 'T00:00:00Z'
+       sales_order: fgModalTarget.raw?.sales_order_ref || '', quantity: maxQ, start_date: fgDate, due_date: fgDate, priority: 'Normal', drawing_revision: '0', description: '',
+       created_at: fgDate + 'T00:00:00Z'
     }]);
     if (!error) {
-       await supabase.from('cnc_inwards').update({ status: 'Processed' }).eq('id', fgModalTarget.raw.id);
+       if (fgModalTarget.raw?.id) {
+         const { error: inwErr } = await supabase.from('cnc_inwards').update({ status: 'Processed' }).eq('id', fgModalTarget.raw.id);
+         if (inwErr) console.error("Failed to update inward status:", inwErr);
+       }
        setFgModalTarget(null); fetchPipeline();
     } else { alert("Error: " + error.message); }
   };
@@ -796,19 +917,44 @@ export function SalesPipelinePage() {
   const saveDeliveryChallan = async () => {
     if (!dcModalTarget) return;
     const q = Number(dcForm.quantity) || 0;
-    const maxQ = Number(dcModalTarget.qty) || 0;
-    if (q > maxQ) {
-       alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
+    const fromWorkOrder = !!dcModalTarget.raw?.id;
+    if (q <= 0) {
+       alert("Please enter the dispatch quantity.");
        return;
+    }
+    if (fromWorkOrder) {
+      const maxQ = Number(dcModalTarget.qty) || 0;
+      if (q > maxQ) {
+         alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
+         return;
+      }
+    }
+    // Resolve the real sales order (work orders store the SO order_no in `sales_order`)
+    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || dcForm.poNumber || '';
+    let so: any = null;
+    if (soNo) {
+      const { data: soRow, error: soErr } = await supabase.from('cnc_sales_orders').select('id, customer_id, quantity, delivered').eq('order_no', soNo).maybeSingle();
+      if (soErr) console.error("Failed to look up sales order:", soErr);
+      so = soRow;
     }
     const { error } = await supabase.from('cnc_deliveries').insert([{
        id: crypto.randomUUID(), delivery_no: dcForm.dcNo, customer_name: dcForm.partyName,
-       customer_id: crypto.randomUUID(), sales_order_id: crypto.randomUUID(), sales_order_no: dcForm.poNumber || 'N/A',
-       part_name: dcForm.partName, quantity: q, delivery_date: dcForm.date, status: 'Delivered',
+       customer_id: so?.customer_id || null, sales_order_id: so?.id || null, sales_order_no: soNo || null,
+       part_name: dcForm.partName, quantity: q, dispatch_qty: q, delivery_date: dcForm.date || null,
+       vehicle_no: dcForm.vehicleNo || '', status: 'Pending',
        created_at: new Date().toISOString()
     }]);
     if (!error) {
-       await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).eq('id', dcModalTarget.raw.id);
+       if (fromWorkOrder) {
+         const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).eq('id', dcModalTarget.raw.id);
+         if (woErr) console.error("Failed to update work order status:", woErr);
+       }
+       if (so) {
+         const delivered = (Number(so.delivered) || 0) + q;
+         const status = delivered >= (Number(so.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
+         const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
+         if (soUpdErr) console.error("Failed to update sales order delivery:", soUpdErr);
+       }
        setDcModalTarget(null); fetchPipeline();
     } else { alert("Error: " + error.message); }
   };
@@ -836,13 +982,13 @@ export function SalesPipelinePage() {
       contact_person: '', phone: '', email: '',
       billing_address: '', delivery_address: '',
       shipping_contact: '', shipping_phone: '',
-      lead_no: '', order_date: soForm.orderDate,
+      lead_no: '', order_date: soForm.orderDate || null,
       customer_po_no: '', customer_po_date: null,
       items: finalItems,
-      part_name: item.partName, part_number: item.partNumber,
-      quantity: q, 
-      total_value: totalVal, 
-      delivery_date: soForm.deliveryDate || soForm.orderDate, status: 'Confirmed',
+      part_name: item.partName, part_number: item.partNumber, part_no: item.partNumber,
+      quantity: q, delivered: 0,
+      value: totalVal, total_value: totalVal,
+      delivery_date: soForm.deliveryDate || soForm.orderDate || null, status: 'Confirmed',
       payment_terms: 'Net 30', special_instructions: '',
       internal_remarks: '',
       quotation_id: null
@@ -866,25 +1012,41 @@ export function SalesPipelinePage() {
     const amt = q * p * (1 + (cg+sg+ig)/100);
     const { error } = await supabase.from('cnc_invoices').insert([{
        id: crypto.randomUUID(), invoice_no: invoiceForm.invoiceNo, customer_name: invoiceForm.partyName,
-       part_name: invoiceForm.partName, quantity: q, amount: amt, invoice_date: invoiceForm.date, status: 'Paid',
+       part_name: invoiceForm.partName, quantity: q, amount: amt, invoice_date: invoiceForm.date || null, status: 'Sent',
        created_at: new Date().toISOString()
     }]);
     if (!error) {
-       await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', invoiceModalTarget.raw.id);
+       if (invoiceModalTarget.raw?.id) {
+         const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', invoiceModalTarget.raw.id);
+         if (dcErr) console.error("Failed to update delivery status:", dcErr);
+       }
        setInvoiceModalTarget(null); fetchPipeline();
     } else { alert("Error: " + error.message); }
   };
 
-  const removeFromPipeline = async (card: KanbanCard) => {
-    if (confirm("Are you sure you want to roll back this Enquiry to 'Lost'? It will be removed from the pipeline but saved in All Leads.")) {
-      setLoading(true); await supabase.from('cnc_enquiries').update({ status: 'Lost' }).eq('id', card.raw.id); fetchPipeline();
-    }
-  };
-
   const calcQuoteTotal = () => {
+    if (quoteForm.items && Array.isArray(quoteForm.items)) {
+      return quoteForm.items.reduce((total: number, item: any) => {
+        const q = Number(item.quantity) || 0; const p = Number(item.unitPrice) || 0;
+        const d = Number(item.discount) || 0; const g = Number(item.gst) || 0;
+        return total + (q * p * (1 - d / 100) * (1 + g / 100));
+      }, 0).toFixed(2);
+    }
     const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
     const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
     return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+  };
+
+  const calcItemTotal = (item: any) => {
+    const q = Number(item.quantity) || 0; const p = Number(item.unitPrice) || 0;
+    const d = Number(item.discount) || 0; const g = Number(item.gst) || 0;
+    return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+  };
+
+  const updateQuoteItem = (index: number, field: string, value: string) => {
+    const newItems = [...(quoteForm.items || [])];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setQuoteForm({ ...quoteForm, items: newItems });
   };
 
   const calcInwardTotal = () => {
@@ -892,68 +1054,6 @@ export function SalesPipelinePage() {
     const d = Number(inwardForm.discount) || 0; const g = Number(inwardForm.gst) || 0;
     return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
   };
-
-  const calculateItemValues = (item: any) => {
-    const q = Number(item.quantity) || 0;
-    const p = Number(item.unitPrice) || 0;
-    const d = Number(item.discount) || 0;
-    const g = Number(item.gst) || 0;
-    const base = q * p;
-    const taxable = base * (1 - d / 100);
-    const gstAmt = taxable * (g / 100);
-    const total = taxable + gstAmt;
-    return { taxable, gstAmt, total };
-  };
-
-  const calculateOrderTotals = () => {
-    let subtotal = 0; let totalDiscount = 0; let totalGST = 0; let grandTotal = 0;
-    (orderForm.items || []).forEach((item: any) => {
-      const q = Number(item.quantity) || 0; const p = Number(item.unitPrice) || 0;
-      const d = Number(item.discount) || 0; const g = Number(item.gst) || 0;
-      const base = q * p; const discountAmt = base * (d / 100);
-      const taxable = base - discountAmt; const gstAmt = taxable * (g / 100);
-      const total = taxable + gstAmt;
-      subtotal += base; totalDiscount += discountAmt; totalGST += gstAmt; grandTotal += total;
-    });
-    return { subtotal, totalDiscount, totalGST, grandTotal };
-  };
-
-  const updateOrderItem = (idx: number, field: string, value: any) => {
-    const newItems = [...orderForm.items];
-    newItems[idx][field] = value;
-    setOrderForm({...orderForm, items: newItems});
-  };
-
-  const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?: any, readOnly?: boolean }) => (
-    <div className="border-t border-slate-100 pt-4 mt-2 mb-4 col-span-full">
-      <div className="flex justify-between items-center mb-4">
-        <h4 className="font-semibold text-sm text-slate-800">Contact Details</h4>
-        {!readOnly && setForm && (
-          <button type="button" onClick={() => setForm({...form, contacts: [...(form.contacts || []), { person: '', phone: '', email: '' }]})} className="flex items-center gap-1 text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded hover:bg-brand-200 transition-colors">
-            <Plus size={14} /> Add Contact
-          </button>
-        )}
-      </div>
-      {(form.contacts || []).map((contact: any, idx: number) => (
-        <div key={idx} className="grid grid-cols-3 gap-4 mb-4 p-3 bg-slate-50 rounded border border-slate-100 relative">
-          {!readOnly && setForm && (form.contacts || []).length > 1 && (
-            <button type="button" onClick={() => {
-              const newContacts = [...form.contacts]; newContacts.splice(idx, 1); setForm({...form, contacts: newContacts});
-            }} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-200 text-xs shadow-sm z-10 transition-colors">&times;</button>
-          )}
-          <FormField label="Contact Person"><input className={inputClass} value={contact.person} readOnly={readOnly} disabled={readOnly} onChange={e => {
-            if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx].person = e.target.value; setForm({...form, contacts: nc}); }
-          }} placeholder="Name" /></FormField>
-          <FormField label="Phone"><input className={inputClass} value={contact.phone} readOnly={readOnly} disabled={readOnly} onChange={e => {
-            if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx].phone = e.target.value; setForm({...form, contacts: nc}); }
-          }} placeholder="Phone" /></FormField>
-          <FormField label="Email"><input type="email" className={inputClass} value={contact.email} readOnly={readOnly} disabled={readOnly} onChange={e => {
-            if(!readOnly && setForm) { const nc = [...form.contacts]; nc[idx].email = e.target.value; setForm({...form, contacts: nc}); }
-          }} placeholder="Email" /></FormField>
-        </div>
-      ))}
-    </div>
-  );
 
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState({
@@ -998,7 +1098,8 @@ export function SalesPipelinePage() {
       setShowNewLead(false);
       setNewLeadForm({
         leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
+        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
+        items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
       });
       fetchPipeline();
     } else {
@@ -1172,7 +1273,7 @@ export function SalesPipelinePage() {
                     if (stage.id === 'Enquiry') setShowNewLead(true);
                     else if (stage.id === 'Quotation') {
                       setQuoteForm({
-                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: 'Admin', contacts: [], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18', paymentTerms: '', deliveryTerms: '', remarks: ''
+                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18', paymentTerms: '', deliveryTerms: '', remarks: ''
                       });
                       setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Sales Order') {
@@ -1182,22 +1283,24 @@ export function SalesPipelinePage() {
                       setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Inward') {
                       setInwardForm({
-                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: ''
+                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
+                        partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18',
+                        contacts: [{ person: '', phone: '', email: '' }]
                       });
                       setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Finished Goods') {
                       setFgForm({
-                        woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', quantity: '', date: new Date().toISOString().split('T')[0]
+                        woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', partNo: '', orderQty: '', completedQty: '', date: new Date().toISOString().split('T')[0]
                       });
                       setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'DC') {
                       setDcForm({
-                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', poNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: ''
+                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', poNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', vehicleNo: '', ewayBill: ''
                       });
                       setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Invoice') {
                       setInvoiceForm({
-                        invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', amount: ''
+                        invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '9', sgst: '9', igst: '0'
                       });
                       setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     }
@@ -1441,14 +1544,14 @@ export function SalesPipelinePage() {
                     <div className="flex-1">
                       <input className={inputClass} placeholder="Part Name" value={item.partName} onChange={e => {
                         const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx].partName = e.target.value;
+                        newItems[idx] = { ...newItems[idx], partName: e.target.value };
                         setNewLeadForm({...newLeadForm, items: newItems, partName: newItems[0].partName});
                       }} />
                     </div>
                     <div className="w-32">
                       <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
                         const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx].quantity = e.target.value;
+                        newItems[idx] = { ...newItems[idx], quantity: e.target.value };
                         setNewLeadForm({...newLeadForm, items: newItems, quantity: newItems[0].quantity});
                       }} />
                     </div>
@@ -1619,28 +1722,79 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Quotation Modal */}
-      <Modal open={!!quotationModalTarget} onClose={() => setQuotationModalTarget(null)} title="Create Quotation" size="lg" footer={<><Button variant="secondary" onClick={() => setQuotationModalTarget(null)}>Cancel</Button><Button onClick={saveQuotation}>Create Quotation</Button></>}>
+      <Modal open={!!quotationModalTarget} onClose={() => setQuotationModalTarget(null)} title="Create Quotation" size="xl" footer={<><Button variant="secondary" onClick={() => setQuotationModalTarget(null)}>Cancel</Button><Button onClick={saveQuotation}>Create Quotation</Button></>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             <FormField label="Quotation No." required><input className={inputClass} value={quoteForm.quoteNo} disabled /></FormField>
-            <FormField label="Customer" required><input className={inputClass} value={quoteForm.customer} disabled /></FormField>
+            <FormField label="Customer" required><input className={inputClass} value={quoteForm.customer || ''} disabled={!!quotationModalTarget?.raw?.id} onChange={e=>setQuoteForm({...quoteForm, customer: e.target.value})} /></FormField>
             <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
             <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
             <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
             <FormField label="Salesperson"><input className={inputClass} value={quoteForm.salesperson} onChange={e=>setQuoteForm({...quoteForm, salesperson: e.target.value})} /></FormField>
           </div>
           <ContactsList form={quoteForm} setForm={setQuoteForm} />
-          <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
-          <div className="grid grid-cols-3 gap-4">
-            <FormField label="Part / Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
-            
-            <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>
-            <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
-            <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
-            <FormField label="Discount %"><input type="number" className={inputClass} value={quoteForm.discount} onChange={e=>setQuoteForm({...quoteForm, discount: e.target.value})} /></FormField>
-            <FormField label="GST %"><input type="number" className={inputClass} value={quoteForm.gst} onChange={e=>setQuoteForm({...quoteForm, gst: e.target.value})} /></FormField>
-            <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-slate-100 font-bold`} value={calcQuoteTotal()} disabled /></FormField>
+          
+          {/* Part-wise Items Table */}
+          <div className="border-t border-slate-100 pt-4">
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Parts / Items Breakdown</h4>
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[5%]">#</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[25%]">Part Name</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[15%]">Unit Price (₹)</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Disc %</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">GST %</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[15%]">Total (₹)</th>
+                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(quoteForm.items || []).map((item: any, idx: number) => (
+                    <tr key={item.id || idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                      <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
+                      <td className="px-3 py-2">
+                        <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Part name" value={item.partName || ''} onChange={e => updateQuoteItem(idx, 'partName', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.quantity || ''} onChange={e => updateQuoteItem(idx, 'quantity', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitPrice || ''} onChange={e => updateQuoteItem(idx, 'unitPrice', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.discount || ''} onChange={e => updateQuoteItem(idx, 'discount', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst || ''} onChange={e => updateQuoteItem(idx, 'gst', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-700">₹{calcItemTotal(item)}</td>
+                      <td className="px-3 py-2 text-center">
+                        {(quoteForm.items || []).length > 1 && (
+                          <button onClick={() => { const newItems = [...quoteForm.items]; newItems.splice(idx, 1); setQuoteForm({...quoteForm, items: newItems}); }} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove part">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-slate-50 border-t border-slate-200">
+                  <tr>
+                    <td colSpan={6} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
+                    <td className="px-3 py-2 text-right font-bold text-base text-brand-700">₹{calcQuoteTotal()}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', gst: '18' }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+              <span className="text-lg">+</span> Add Another Part
+            </button>
           </div>
+
           <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4">Additional Details</h4>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Payment Terms"><input className={inputClass} value={quoteForm.paymentTerms} onChange={e=>setQuoteForm({...quoteForm, paymentTerms: e.target.value})} /></FormField>
@@ -1668,10 +1822,10 @@ export function SalesPipelinePage() {
               </select>
             </FormField>
             <FormField label="Project Name"><input className={inputClass} value={inwardForm.projectName} onChange={e=>setInwardForm({...inwardForm, projectName: e.target.value})} /></FormField>
-            <FormField label="Sales Order Reference"><input className={inputClass} value={inwardForm.salesOrderRef} disabled /></FormField>
+            <FormField label="Sales Order Reference"><input className={inputClass} value={inwardForm.salesOrderRef || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, salesOrderRef: e.target.value})} /></FormField>
             <FormField label="Reference No."><input className={inputClass} value={inwardForm.referenceNo} onChange={e=>setInwardForm({...inwardForm, referenceNo: e.target.value})} placeholder="e.g. DC/Invoice No" /></FormField>
             <FormField label="Inward Date" required><input type="date" className={inputClass} value={inwardForm.inwardDate} onChange={e=>setInwardForm({...inwardForm, inwardDate: e.target.value})} /></FormField>
-            <FormField label="Party / Customer"><input className={inputClass} value={inwardForm.partyName} disabled /></FormField>
+            <FormField label="Party / Customer"><input className={inputClass} value={inwardForm.partyName || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, partyName: e.target.value})} /></FormField>
             <FormField label="Upload Ref Image"><input type="file" className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" /></FormField>
             <div className="col-span-3">
               <FormField label="Remarks"><input className={inputClass} value={inwardForm.remarks} onChange={e=>setInwardForm({...inwardForm, remarks: e.target.value})} /></FormField>
@@ -1702,7 +1856,11 @@ export function SalesPipelinePage() {
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
           <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} onChange={e=>setFgForm({...fgForm, customer: e.target.value})} /></FormField>
           <FormField label="Part Name"><input className={inputClass} value={fgForm.partName || ''} onChange={e=>setFgForm({...fgForm, partName: e.target.value})} /></FormField>
-          <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
+          {fgModalTarget?.raw?.id ? (
+            <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
+          ) : (
+            <FormField label="Order Quantity" required><input type="number" className={inputClass} value={fgForm.orderQty || ''} onChange={e=>setFgForm({...fgForm, orderQty: e.target.value})} /></FormField>
+          )}
           <FormField label="Quantity to Process" required><input type="number" className={inputClass} value={fgForm.completedQty || ''} onChange={e=>setFgForm({...fgForm, completedQty: e.target.value})} /></FormField>
         </div>
       </Modal>

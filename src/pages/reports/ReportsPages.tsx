@@ -1,6 +1,5 @@
-import { BarChart3, TrendingUp, Filter } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
-import { Card } from '@/components/ui/Card';
 
 function ReportStub({ title, description }: { title: string, description: string }) {
   return (

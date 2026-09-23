@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Filter, Calendar, List, Kanban as KanbanIcon, ArrowLeft, ArrowRight, ChevronRight, FileText, CheckCircle2, Clock } from 'lucide-react';
+import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
@@ -18,7 +18,8 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
 
   const fetchEnquiries = async () => {
     setLoading(true);
-    const { data } = await supabase.from('cnc_enquiries').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('cnc_enquiries').select('*').order('created_at', { ascending: false });
+    if (error) console.error("Error fetching enquiries:", error);
     if (data) setEnquiries(data);
     setLoading(false);
   };
@@ -26,12 +27,15 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
   const openEnquiry = async (enq: any) => {
     setSelectedEnquiry(enq);
     // Fetch related quotation using lead_id or enquiry_no
-    const { data: quote } = await supabase.from('cnc_quotations')
+    const filters = [`lead_id.eq.${enq.id}`];
+    if (enq.enquiry_no) filters.push(`enquiry_no.eq.${enq.enquiry_no}`);
+    const { data: quote, error } = await supabase.from('cnc_quotations')
       .select('id, quote_no')
-      .or(`lead_id.eq.\${enq.id},enquiry_no.eq.\${enq.enquiry_no}`)
+      .or(filters.join(','))
       .limit(1)
-      .single();
-    
+      .maybeSingle();
+    if (error) console.error("Error fetching related quotation:", error);
+
     setRelatedQuote(quote || null);
   };
 
@@ -111,7 +115,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.enquiry_no || 'Pending'}`} size="2xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
+      <Modal open={!!selectedEnquiry} onClose={() => setSelectedEnquiry(null)} title={`Enquiry Details: ${selectedEnquiry?.enquiry_no || 'Pending'}`} size="xl" footer={<Button onClick={() => setSelectedEnquiry(null)}>Close</Button>}>
         {selectedEnquiry && (
           <div className="flex gap-6">
             <div className="flex-1 space-y-4">
@@ -159,7 +163,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
   );
 }
 
-function FlowStep({ active, title, subtitle, isFirst, isLast, link }: { active: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean }) {
+function FlowStep({ active, title, subtitle, link }:{ active: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean }) {
   return (
     <div className="relative z-10 flex items-start gap-3 py-3">
       <div className={`mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 ${active ? 'bg-brand-500 border-brand-500' : 'bg-white border-slate-300'}`}></div>

@@ -4,7 +4,6 @@ import { Badge, ProgressBar, statusToVariant, Card } from '@/components/ui/Card'
 import { Printer, Image as ImageIcon } from 'lucide-react';
 import { BarChart, DonutChart } from '@/components/ui/Charts';
 import { getMockImage } from '@/lib/mockStorage';
-import { supabase } from '@/lib/supabase';
 
 export function JobCardTab({ workOrders }: { workOrders: any[] }) {
   const columns: Column<any>[] = [
@@ -32,7 +31,7 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
       const loaded: Record<string, string> = {};
       for (const wo of wipOrders) {
         if (wo.part_name) {
-          const u = await getMockImage(wo.part_name);
+          const u = await getMockImage(wo.part_name).catch(() => null);
           if (u) loaded[wo.part_name] = u;
         }
       }
@@ -81,7 +80,7 @@ export function WIPTab({ workOrders }: { workOrders: any[] }) {
 }
 
 export function CompletedTab({ workOrders }: { workOrders: any[] }) {
-  const completedOrders = workOrders.filter(w => w.status === 'Completed');
+  const completedOrders = workOrders.filter(w => w.status === 'Completed' || w.status === 'Dispatched');
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -89,7 +88,7 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
       const loaded: Record<string, string> = {};
       for (const wo of completedOrders) {
         if (wo.part_name) {
-          const u = await getMockImage(wo.part_name);
+          const u = await getMockImage(wo.part_name).catch(() => null);
           if (u) loaded[wo.part_name] = u;
         }
       }
@@ -120,7 +119,9 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
     { key: 'part_name', label: 'Part' },
     { key: 'quantity', label: 'Target Qty' },
     { key: 'completed', label: 'Produced Qty', render: (r) => <span className="font-bold text-green-600">{r.completed}</span> },
-    { key: 'updated_at', label: 'Completed Date', render: (r) => <span>{new Date(r.updated_at || r.created_at).toLocaleDateString()}</span> }
+    // cnc_work_orders has no completion timestamp; show the due date instead
+    { key: 'due_date', label: 'Due Date', render: (r) => <span>{r.due_date ? new Date(r.due_date).toLocaleDateString() : '-'}</span> },
+    { key: 'status', label: 'Status', render: (r) => <Badge variant={statusToVariant(r.status)}>{r.status}</Badge> }
   ];
 
   return (
@@ -131,12 +132,15 @@ export function CompletedTab({ workOrders }: { workOrders: any[] }) {
 }
 
 
-class ErrorBoundary extends Component {
-  constructor(props) {
+interface ErrorBoundaryProps { children?: React.ReactNode }
+interface ErrorBoundaryState { hasError: boolean; error: Error | null }
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
   render() {
@@ -179,7 +183,7 @@ function ReportsTabContent({ workOrders }: { workOrders: any[] }) {
     if (curr.created_at) {
       try {
         month = new Date(curr.created_at).toLocaleString('default', { month: 'short' });
-      } catch (e) {
+      } catch {
         month = 'Invalid';
       }
     }

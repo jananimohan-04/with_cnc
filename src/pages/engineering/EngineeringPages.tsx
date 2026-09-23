@@ -1,12 +1,41 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Plus, Eye, Edit, Trash2, Boxes, FileText, Cog, ShieldCheck, GitBranch, Download } from 'lucide-react';
-import { PageHeader, FilterButton, ExportButton, DateSelector } from '@/components/ui/PageHeader';
+import { PageHeader, ExportButton, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
-import { parts, bom, routing, revisions } from '@/data/mockData';
-import type { PartMaster, RevisionRecord, BOMItem } from '@/data/mockData';
+import type { PartMaster, RevisionRecord, BOMItem, RoutingOp } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+
+type ParentPart = { part_no: string; part_name: string; material: string | null; revision: string | null };
+
+// Parent part selection shared by BOM / Routing / Work Instructions (records are keyed by parent_part_no)
+function useParentParts() {
+  const [parentParts, setParentParts] = useState<ParentPart[]>([]);
+  const [parentPartNo, setParentPartNo] = useState('');
+
+  useEffect(() => {
+    supabase.from('cnc_parts').select('part_no, part_name, material, revision').order('part_no').then(({ data, error }) => {
+      if (error) console.error('Error fetching parts:', error);
+      const list = (data || []).filter((p: any) => p.part_no) as ParentPart[];
+      setParentParts(list);
+      setParentPartNo(prev => prev || list[0]?.part_no || '');
+    });
+  }, []);
+
+  const parentPart = parentParts.find(p => p.part_no === parentPartNo) || null;
+  return { parentParts, parentPartNo, setParentPartNo, parentPart };
+}
+
+function ParentPartSelect({ parts, value, onChange }: { parts: ParentPart[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <select className="text-sm rounded-md border border-slate-200 bg-white px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20" value={value} onChange={e => onChange(e.target.value)}>
+      {parts.length === 0 && <option value="">No parts in Part Master</option>}
+      {parts.map(p => <option key={p.part_no} value={p.part_no}>{p.part_no} — {p.part_name}</option>)}
+    </select>
+  );
+}
 
 export function PartsPage() {
   const [showAdd, setShowAdd] = useState(false);
@@ -30,7 +59,7 @@ export function PartsPage() {
         if (error) {
           console.error('Error fetching parts:', error);
           setDbError(true);
-          setPartsData(parts); // Fallback to mock on error
+          setPartsData([]);
         } else if (data) {
           setDbError(false);
           const formattedData: PartMaster[] = data.map((d: any) => ({
@@ -47,7 +76,7 @@ export function PartsPage() {
             unit: d.unit,
             status: d.status,
           }));
-          setPartsData(formattedData.length > 0 ? formattedData : parts);
+          setPartsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -251,17 +280,53 @@ export function PartsPage() {
 }
 
 export function DrawingsPage() {
+  // There is no drawings table: drawings are derived from the Part Master (drawing_no / revision)
+  // and the revision log (cnc_revisions).
+  const [drawings, setDrawings] = useState<{ id: string; drawingNo: string; partName: string; revision: string; material: string; status: string }[]>([]);
+  const [revStats, setRevStats] = useState({ pending: 0, superseded: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDrawings() {
+      try {
+        const [partsRes, revRes] = await Promise.all([
+          supabase.from('cnc_parts').select('id, part_name, drawing_no, revision, material, status').order('drawing_no'),
+          supabase.from('cnc_revisions').select('drawing_no, status'),
+        ]);
+        if (partsRes.error) console.error('Error fetching parts:', partsRes.error);
+        if (revRes.error) console.error('Error fetching revisions:', revRes.error);
+        setDrawings((partsRes.data || []).filter((p: any) => p.drawing_no).map((p: any) => ({
+          id: p.id, drawingNo: p.drawing_no, partName: p.part_name, revision: p.revision || '—', material: p.material || '', status: p.status || 'Active',
+        })));
+        const revs = revRes.data || [];
+        setRevStats({
+          pending: revs.filter((r: any) => r.status === 'Pending').length,
+          superseded: revs.filter((r: any) => r.status === 'Superseded').length,
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDrawings();
+  }, []);
+
+  const totalDrawings = new Set(drawings.map(d => d.drawingNo)).size;
+  const withRevision = drawings.filter(d => d.revision && d.revision !== '—').length;
+
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="CAD / Drawing Management" description="Manage engineering drawings and CAD files" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="CAD / Drawing Management" description="Engineering drawings registered in the Part Master" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Drawings" value="348" icon={<FileText size={20} />} accent="brand" />
-        <StatCard label="Latest Revisions" value="248" icon={<FileText size={20} />} accent="success" />
-        <StatCard label="Pending Approval" value="6" icon={<FileText size={20} />} accent="warning" />
-        <StatCard label="Superseded" value="94" icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Total Drawings" value={totalDrawings.toString()} icon={<FileText size={20} />} accent="brand" />
+        <StatCard label="With Revision" value={withRevision.toString()} icon={<FileText size={20} />} accent="success" />
+        <StatCard label="Pending Approval" value={revStats.pending.toString()} icon={<FileText size={20} />} accent="warning" />
+        <StatCard label="Superseded" value={revStats.superseded.toString()} icon={<FileText size={20} />} accent="neutral" />
       </div>
+      {!loading && drawings.length === 0 && (
+        <div className="px-5 py-8 text-center text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200">No drawings yet. Add a drawing number to a part in the Part Master.</div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {parts.map((p) => (
+        {drawings.map((p) => (
           <Card key={p.id} className="overflow-hidden hover:shadow-card-hover transition-shadow group">
             <div className="aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center relative">
               <div className="w-full h-full bg-grid-dark opacity-10" />
@@ -282,10 +347,6 @@ export function DrawingsPage() {
               <h3 className="text-sm font-semibold text-slate-800 mt-1">{p.partName}</h3>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-slate-400">{p.material}</span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={14} /></button>
-                  <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={14} /></button>
-                </div>
               </div>
             </div>
           </Card>
@@ -304,6 +365,7 @@ export function BOMPage() {
   const [projects, setProjects] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const { parentParts, parentPartNo, setParentPartNo, parentPart } = useParentParts();
 
   const resetForm = () => ({
     level: '1', projectName: '', partNo: '', partName: '', material: '', quantity: '1', unit: 'PC', make: 'Make', operation: ''
@@ -311,11 +373,13 @@ export function BOMPage() {
   const [formData, setFormData] = useState(resetForm());
 
   useEffect(() => {
+    if (!parentPartNo) { setBomData([]); setLoading(false); return; }
     async function fetchBOM() {
+      setLoading(true);
       try {
         const [bomRes, projectsRes] = await Promise.all([
-          supabase.from('cnc_bom').select('*').order('level', { ascending: true }).order('created_at', { ascending: true }),
-          supabase.from('cnc_enquiries').select('lead_no').neq('lead_no', null)
+          supabase.from('cnc_bom').select('*').eq('parent_part_no', parentPartNo).order('level', { ascending: true }).order('created_at', { ascending: true }),
+          supabase.from('cnc_enquiries').select('lead_no').not('lead_no', 'is', null)
         ]);
 
         if (projectsRes.data) {
@@ -326,7 +390,7 @@ export function BOMPage() {
         if (bomRes.error) {
           console.error('Error fetching BOM:', bomRes.error);
           setDbError(true);
-          setBomData(bom.map(b => ({ ...b, id: crypto.randomUUID() }))); // Fallback
+          setBomData([]);
         } else if (bomRes.data) {
           setDbError(false);
           const formattedData = bomRes.data.map((d: any) => ({
@@ -341,7 +405,7 @@ export function BOMPage() {
             make: d.make,
             operation: d.operation,
           }));
-          setBomData(formattedData.length > 0 ? formattedData : bom.map(b => ({ ...b, id: crypto.randomUUID() })));
+          setBomData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -351,7 +415,7 @@ export function BOMPage() {
       }
     }
     fetchBOM();
-  }, []);
+  }, [parentPartNo]);
 
   const handleEditClick = (r: BOMItem & { id: string }) => {
     setFormData({
@@ -371,9 +435,10 @@ export function BOMPage() {
 
   const handleSave = async () => {
     if (!formData.partNo || !formData.partName) return;
+    if (!parentPartNo) return alert('Select a parent part first.');
 
     const entryData = {
-      parent_part_no: 'BA-TB-204', // Hardcoded assembly focus for this demo page
+      parent_part_no: parentPartNo,
       level: Number(formData.level) || 1,
       project_name: formData.projectName,
       part_no: formData.partNo,
@@ -424,7 +489,7 @@ export function BOMPage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "BOM_BA-TB-204.csv");
+    link.setAttribute("download", `BOM_${parentPartNo || 'export'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -436,7 +501,7 @@ export function BOMPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Bill of Materials" description="Multi-level BOM for Turbine Bracket (BA-TB-204)" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<Button size="sm" icon={<Plus size={14} />} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
+      <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name} (${parentPart.part_no})` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="BOM Levels" value={maxLevel.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Total Components" value={bomData.length.toString()} icon={<Boxes size={20} />} accent="accent" />
@@ -446,10 +511,9 @@ export function BOMPage() {
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-slate-800">BOM Structure — Turbine Bracket</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Part No: BA-TB-204 • Rev: R3 • Material: Inconel 718</p>
+            <h3 className="text-sm font-semibold text-slate-800">BOM Structure{parentPart ? ` — ${parentPart.part_name}` : ''}</h3>
+            {parentPart && <p className="text-xs text-slate-500 mt-0.5">Part No: {parentPart.part_no} • Rev: {parentPart.revision || '—'} • Material: {parentPart.material || '—'}</p>}
           </div>
-          <Badge variant="brand" dot>Active</Badge>
         </div>
         <div className="overflow-x-auto scrollbar-thin">
           <table className="w-full text-sm whitespace-nowrap">
@@ -494,7 +558,7 @@ export function BOMPage() {
               ))}
               {bomData.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-5 py-8 text-center text-slate-500">No components found.</td>
+                  <td colSpan={10} className="px-5 py-8 text-center text-slate-500">{parentPartNo ? 'No components found.' : 'Select a parent part to view its BOM.'}</td>
                 </tr>
               )}
             </tbody>
@@ -578,6 +642,8 @@ export function RoutingPage() {
   const [routingData, setRoutingData] = useState<(RoutingOp & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const [machineCodes, setMachineCodes] = useState<string[]>([]);
+  const { parentParts, parentPartNo, setParentPartNo, parentPart } = useParentParts();
 
   const resetForm = () => ({
     opNo: '10', operation: '', machine: '', setupTime: '0', cycleTime: '0', tools: '', description: '', cncProgram: ''
@@ -585,13 +651,22 @@ export function RoutingPage() {
   const [formData, setFormData] = useState(resetForm());
 
   useEffect(() => {
+    supabase.from('cnc_machines').select('code').order('code').then(({ data, error }) => {
+      if (error) console.error('Error fetching machines:', error);
+      setMachineCodes((data || []).map((m: any) => m.code).filter(Boolean));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!parentPartNo) { setRoutingData([]); setLoading(false); return; }
     async function fetchRouting() {
+      setLoading(true);
       try {
-        const { data, error } = await supabase.from('cnc_routing').select('*').order('op_no', { ascending: true });
+        const { data, error } = await supabase.from('cnc_routing').select('*').eq('parent_part_no', parentPartNo).order('op_no', { ascending: true });
         if (error) {
           console.error('Error fetching routing:', error);
           setDbError(true);
-          setRoutingData(routing.map(r => ({ ...r, id: crypto.randomUUID() }))); // Fallback
+          setRoutingData([]);
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -605,7 +680,7 @@ export function RoutingPage() {
             description: d.description,
             cncProgram: d.cnc_program,
           }));
-          setRoutingData(formattedData.length > 0 ? formattedData : routing.map(r => ({ ...r, id: crypto.randomUUID() })));
+          setRoutingData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -615,7 +690,7 @@ export function RoutingPage() {
       }
     }
     fetchRouting();
-  }, []);
+  }, [parentPartNo]);
 
   const handleEditClick = (r: RoutingOp & { id: string }) => {
     setFormData({
@@ -624,8 +699,8 @@ export function RoutingPage() {
       machine: r.machine,
       setupTime: r.setupTime.toString(),
       cycleTime: r.cycleTime.toString(),
-      tools: r.tools,
-      description: r.description,
+      tools: r.tools || '',
+      description: r.description || '',
       cncProgram: r.cncProgram || ''
     });
     setEditId(r.id);
@@ -634,9 +709,10 @@ export function RoutingPage() {
 
   const handleSave = async () => {
     if (!formData.operation || !formData.machine) return;
+    if (!parentPartNo) return alert('Select a part first.');
 
     const entryData = {
-      parent_part_no: 'BA-TB-204',
+      parent_part_no: parentPartNo,
       op_no: Number(formData.opNo) || 10,
       operation: formData.operation,
       machine: formData.machine,
@@ -694,7 +770,7 @@ export function RoutingPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Process Routing" description="Manufacturing routing for Turbine Bracket (BA-TB-204)" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<Button size="sm" icon={<Plus size={14} />} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Operation</Button></div>} />
+      <PageHeader title="Process Routing" description={parentPart ? `Manufacturing routing for ${parentPart.part_name} (${parentPart.part_no})` : 'Manufacturing routing — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Operation</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Operations" value={routingData.length.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Total Setup Time" value={`${(totalSetupTime / 60).toFixed(1)} hr`} icon={<Cog size={20} />} accent="accent" />
@@ -705,7 +781,7 @@ export function RoutingPage() {
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Operation Sequence</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Part: BA-TB-204 • Turbine Bracket • Inconel 718</p>
+            {parentPart && <p className="text-xs text-slate-500 mt-0.5">Part: {parentPart.part_no} • {parentPart.part_name} • {parentPart.material || '—'}</p>}
           </div>
         </div>
         <div className="divide-y divide-slate-50">
@@ -747,7 +823,9 @@ export function RoutingPage() {
           <FormField label="Operation Name" required><input className={inputClass} value={formData.operation} onChange={e => setFormData({...formData, operation: e.target.value})} placeholder="e.g. Facing & Turning" /></FormField>
           <FormField label="Machine" required>
             <select className={inputClass} value={formData.machine} onChange={e => setFormData({...formData, machine: e.target.value})}>
-              <option value="">Select machine...</option><option>CNC-T01</option><option>VMC-02</option><option>VTL-01</option><option>GRIND-01</option><option>CMM</option>
+              <option value="">Select machine...</option>
+              {formData.machine && !machineCodes.includes(formData.machine) && <option>{formData.machine}</option>}
+              {machineCodes.map(code => <option key={code}>{code}</option>)}
             </select>
           </FormField>
           <FormField label="CNC Program"><input className={inputClass} value={formData.cncProgram} onChange={e => setFormData({...formData, cncProgram: e.target.value})} placeholder="e.g. O1001" /></FormField>
@@ -790,32 +868,7 @@ export function WorkInstructionsPage() {
   const [instructionsData, setInstructionsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
-
-  const mockInstructions = [
-    { id: '1', opNo: 10, title: 'Facing & Turning — Op 10', machine: 'CNC-T-01', steps: [
-      'Mount raw blank in 3-jaw chuck, ensure datum face is flush',
-      'Load CNC program O8471, verify tool offsets T01-T04',
-      'Run first article in single block mode, verify dimensions',
-      'Facing operation: face both ends to 25mm length, ±0.02mm',
-      'Turning operation: turn OD to Ø48±0.02mm, Ra 1.6',
-      'Drill center hole Ø12mm, depth 15mm',
-      'Deburr sharp edges, inspect before next operation',
-    ]},
-    { id: '2', opNo: 20, title: 'Rough Milling — Op 20', machine: 'CNC-VMC-02', steps: [
-      'Mount part in precision vise, align datum',
-      'Load CNC program O8472, verify tool offsets T02-T06',
-      'Rough mill profile with Ø10 end mill, leave 0.5mm stock',
-      'Rough pocket with Ø16 end mill, leave 0.5mm stock',
-      'Verify stock allowance with caliper before finishing',
-    ]},
-    { id: '3', opNo: 30, title: 'Finish Milling — Op 30', machine: 'CNC-VMC-02', steps: [
-      'Remount part, ensure no deviation from previous setup',
-      'Load CNC program O8473, verify Ø6 ball mill and Ø8 end mill',
-      'Finish profile to drawing dimensions, Ra 1.6',
-      'Finish pocket floor and walls to tolerance',
-      'Inspect critical dimensions on CMM before removal',
-    ]},
-  ];
+  const { parentParts, parentPartNo, setParentPartNo, parentPart } = useParentParts();
 
   const resetForm = () => ({
     opNo: '10', title: '', machine: '', steps: ''
@@ -823,13 +876,15 @@ export function WorkInstructionsPage() {
   const [formData, setFormData] = useState(resetForm());
 
   useEffect(() => {
+    if (!parentPartNo) { setInstructionsData([]); setLoading(false); return; }
     async function fetchInstructions() {
+      setLoading(true);
       try {
-        const { data, error } = await supabase.from('cnc_work_instructions').select('*').order('op_no', { ascending: true });
+        const { data, error } = await supabase.from('cnc_work_instructions').select('*').eq('parent_part_no', parentPartNo).order('op_no', { ascending: true });
         if (error) {
           console.error('Error fetching instructions:', error);
           setDbError(true);
-          setInstructionsData(mockInstructions); // Fallback
+          setInstructionsData([]);
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -837,9 +892,9 @@ export function WorkInstructionsPage() {
             opNo: d.op_no,
             title: d.title,
             machine: d.machine,
-            steps: d.steps,
+            steps: Array.isArray(d.steps) ? d.steps : [],
           }));
-          setInstructionsData(formattedData.length > 0 ? formattedData : mockInstructions);
+          setInstructionsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -849,14 +904,14 @@ export function WorkInstructionsPage() {
       }
     }
     fetchInstructions();
-  }, []);
+  }, [parentPartNo]);
 
   const handleEditClick = (inst: any) => {
     setFormData({
-      opNo: inst.opNo.toString(),
-      title: inst.title,
-      machine: inst.machine,
-      steps: inst.steps.join('\n')
+      opNo: String(inst.opNo ?? ''),
+      title: inst.title || '',
+      machine: inst.machine || '',
+      steps: (inst.steps || []).join('\n')
     });
     setEditId(inst.id);
     setShowAdd(true);
@@ -864,11 +919,12 @@ export function WorkInstructionsPage() {
 
   const handleSave = async () => {
     if (!formData.title || !formData.steps) return;
+    if (!parentPartNo) return alert('Select a part first.');
 
     const stepsArray = formData.steps.split('\n').map(s => s.trim()).filter(s => s.length > 0);
 
     const entryData = {
-      parent_part_no: 'BA-TB-204',
+      parent_part_no: parentPartNo,
       op_no: Number(formData.opNo) || 10,
       title: formData.title,
       machine: formData.machine,
@@ -913,16 +969,18 @@ export function WorkInstructionsPage() {
   };
 
   const totalInstructions = instructionsData.length;
-  const avgSteps = totalInstructions > 0 ? Math.round(instructionsData.reduce((acc, inst) => acc + inst.steps.length, 0) / totalInstructions) : 0;
+  const totalSteps = instructionsData.reduce((acc, inst) => acc + inst.steps.length, 0);
+  const avgSteps = totalInstructions > 0 ? Math.round(totalSteps / totalInstructions) : 0;
+  const machinesUsed = new Set(instructionsData.map(inst => inst.machine).filter(Boolean)).size;
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Work Instructions" description="Step-by-step manufacturing instructions for Turbine Bracket" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<Button size="sm" icon={<Plus size={14} />} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Instruction</Button></div>} />
+      <PageHeader title="Work Instructions" description={parentPart ? `Step-by-step manufacturing instructions for ${parentPart.part_name} (${parentPart.part_no})` : 'Step-by-step manufacturing instructions — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Instruction</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Instructions" value={totalInstructions.toString()} icon={<FileText size={20} />} accent="brand" />
-        <StatCard label="With CNC Programs" value="5" icon={<FileText size={20} />} accent="accent" />
+        <StatCard label="Total Steps" value={totalSteps.toString()} icon={<FileText size={20} />} accent="accent" />
         <StatCard label="Avg Steps/Op" value={avgSteps.toString()} icon={<FileText size={20} />} accent="navy" />
-        <StatCard label="Last Updated" value="Today" icon={<FileText size={20} />} accent="success" />
+        <StatCard label="Machines" value={machinesUsed.toString()} icon={<FileText size={20} />} accent="success" />
       </div>
       <div className="space-y-4">
         {instructionsData.map((inst) => (
@@ -1003,9 +1061,10 @@ export function RevisionsPage() {
   const [revisionsData, setRevisionsData] = useState<(RevisionRecord & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const { profile } = useAuth();
 
   const resetForm = () => ({
-    drawingNo: '', partName: '', revision: '', description: '', date: new Date().toISOString().split('T')[0], approvedBy: 'M. Banerjee', status: 'Pending'
+    drawingNo: '', partName: '', revision: '', description: '', date: new Date().toISOString().split('T')[0], approvedBy: profile?.full_name || '', status: 'Pending'
   });
   const [formData, setFormData] = useState(resetForm());
 
@@ -1016,7 +1075,7 @@ export function RevisionsPage() {
         if (error) {
           console.error('Error fetching revisions:', error);
           setDbError(true);
-          setRevisionsData(revisions as any); // Fallback
+          setRevisionsData([]);
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -1029,7 +1088,7 @@ export function RevisionsPage() {
             approvedBy: d.approved_by,
             status: d.status,
           }));
-          setRevisionsData(formattedData.length > 0 ? formattedData : revisions as any);
+          setRevisionsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);

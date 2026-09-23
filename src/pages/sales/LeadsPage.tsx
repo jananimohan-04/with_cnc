@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, ArrowRightCircle, XCircle, FileText, RefreshCcw } from 'lucide-react';
-import { PageHeader, DateSelector, FilterButton, ExportButton } from '@/components/ui/PageHeader';
+import { Eye, Edit, ArrowRightCircle, XCircle, FileText, RefreshCcw } from 'lucide-react';
+import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
-import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
+import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function LeadsPage() {
+  const { profile } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
@@ -57,7 +59,7 @@ export function LeadsPage() {
   const openQuoteModal = (enq: any) => {
     const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     setQuoteForm({
-        quoteNo: qNo, customer: enq.customer || enq.company, leadNo: enq.leadNo || enq.lead_no || `LD-${enq.enquiry_no}`, quoteDate: new Date().toISOString().split('T')[0], validTill: enq.expectedDate || enq.expected_date || '', salesperson: 'Admin',
+        quoteNo: qNo, customer: enq.customer || enq.company, leadNo: enq.leadNo || enq.lead_no || `LD-${enq.enquiry_no}`, quoteDate: new Date().toISOString().split('T')[0], validTill: enq.expectedDate || enq.expected_date || '', salesperson: profile?.full_name || '',
         partName: enq.partName || enq.part_name, partNumber: enq.partNo || enq.part_no || '', description: '', quantity: (enq.quantity)?.toString() || '0', unitPrice: '', discount: '0', gst: '18',
         paymentTerms: '', deliveryTerms: '', remarks: ''
     });
@@ -66,7 +68,7 @@ export function LeadsPage() {
   };
 
   const [quoteForm, setQuoteForm] = useState<any>({
-      quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: 'Admin',
+      quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: '',
       partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18',
       paymentTerms: '', deliveryTerms: '', remarks: ''
   });
@@ -153,7 +155,7 @@ export function LeadsPage() {
       })) : [{ person: '', phone: '', email: '' }],
       city: r.city || '',
       gst: r.gst || '',
-      enquiringFor: r.enquiring_for || '',
+      enquiringFor: r.enquiringFor ?? r.enquiring_for ?? '',
       partName: r.partName,
       partNo: r.partNo || '',
       quantity: r.quantity?.toString() || '',
@@ -189,10 +191,20 @@ export function LeadsPage() {
     };
 
     setLoading(true);
-    if (editId) {
-      await supabase.from('cnc_enquiries').update(entryData).eq('id', editId);
-    } else {
-      await supabase.from('cnc_enquiries').insert([entryData]);
+    const { error } = editId
+      ? await supabase.from('cnc_enquiries').update(entryData).eq('id', editId)
+      : await supabase.from('cnc_enquiries').insert([{
+          ...entryData,
+          id: crypto.randomUUID(),
+          enquiry_no: formData.leadNo,
+          received_date: new Date().toISOString().split('T')[0],
+          pipeline_stage: 'Enquiry'
+        }]);
+    if (error) {
+      console.error('Failed to save lead:', error);
+      alert('Failed to save lead: ' + error.message);
+      setLoading(false);
+      return;
     }
     await fetchLeads();
     setShowAdd(false);
@@ -210,18 +222,20 @@ export function LeadsPage() {
     const { error: quoteErr } = await supabase.from('cnc_quotations').insert([{
       id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: quoteForm.partName,
       contact_person: quotationTarget.contactPerson, phone: quotationTarget.phone, email: quotationTarget.email,
+      enquiry_no: quoteForm.leadNo || null,
       part_number: quoteForm.partNumber || 'N/A', description: quoteForm.description, unit_price: p,
-      quantity: q, total_value: total, valid_till: quoteForm.validTill, status: 'Sent',
+      quantity: q, total_value: total, date: quoteForm.quoteDate || null, valid_till: quoteForm.validTill || null, status: 'Sent',
       salesperson: quoteForm.salesperson, discount_percent: d, gst_percent: g,
       payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: quotationTarget.id
     }]);
 
     if (!quoteErr) {
       // Update lead
-      await supabase.from('cnc_enquiries').update({
+      const { error: enqErr } = await supabase.from('cnc_enquiries').update({
         status: 'Quoted',
         pipeline_stage: 'Quotation'
       }).eq('id', quotationTarget.id);
+      if (enqErr) console.error('Failed to update lead status:', enqErr);
       setQuotationTarget(null);
       await fetchLeads();
     } else {
@@ -233,7 +247,8 @@ export function LeadsPage() {
 
 
   const handleQuickStatusChange = async (id: string, newStatus: string) => {
-    await supabase.from('cnc_enquiries').update({ status: newStatus }).eq('id', id);
+    const { error } = await supabase.from('cnc_enquiries').update({ status: newStatus }).eq('id', id);
+    if (error) { alert('Failed to update status: ' + error.message); return; }
     setViewHistory(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
     fetchLeads();
   };

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, MouseEvent as ReactMouseEvent } from 'react';
 
 export function Card({ children, className = '', onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
   return (
@@ -102,10 +102,12 @@ export function Badge({
   children,
   variant = 'neutral',
   dot = false,
+  className = '',
 }: {
   children: ReactNode;
   variant?: BadgeVariant;
   dot?: boolean;
+  className?: string;
 }) {
   const dotColors: Record<BadgeVariant, string> = {
     brand: 'bg-brand-500',
@@ -118,16 +120,16 @@ export function Badge({
   };
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeStyles[variant]}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeStyles[variant] ?? badgeStyles.neutral} ${className}`}
     >
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant]}`} />}
+      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant] ?? dotColors.neutral}`} />}
       {children}
     </span>
   );
 }
 
-export function statusToVariant(status: string): BadgeVariant {
-  const s = status.toLowerCase();
+export function statusToVariant(status: string | null | undefined): BadgeVariant {
+  const s = (status ?? '').toString().toLowerCase();
   if (['running', 'active', 'completed', 'pass', 'delivered', 'received', 'released', 'accepted', 'confirmed'].includes(s)) return 'success';
   if (['idle', 'planning', 'pending', 'draft', 'scheduled', 'sent', 'new', 'setup'].includes(s)) return 'neutral';
   if (['in progress', 'partially delivered', 'partially received', 'under review', 'quoted', 'in production', 'on order', 'under investigation', 'action taken'].includes(s)) return 'brand';
@@ -137,8 +139,8 @@ export function statusToVariant(status: string): BadgeVariant {
   return 'neutral';
 }
 
-export function priorityToVariant(priority: string): BadgeVariant {
-  const p = priority.toLowerCase();
+export function priorityToVariant(priority: string | null | undefined): BadgeVariant {
+  const p = (priority ?? '').toString().toLowerCase();
   if (p === 'critical') return 'error';
   if (p === 'high') return 'warning';
   if (p === 'medium') return 'brand';
@@ -153,20 +155,28 @@ export function Button({
   onClick,
   className = '',
   type = 'button',
+  disabled = false,
+  title,
 }: {
-  children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  children?: ReactNode;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'error' | 'brand' | 'success' | 'outline';
   size?: 'sm' | 'md' | 'lg';
   icon?: ReactNode;
-  onClick?: () => void;
+  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   className?: string;
-  type?: 'button' | 'submit';
+  type?: 'button' | 'submit' | 'reset';
+  disabled?: boolean;
+  title?: string;
 }) {
   const variants: Record<string, string> = {
     primary: 'bg-brand-600 hover:bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-brand-500/40 border border-brand-600 hover:-translate-y-0.5',
     secondary: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm hover:shadow-md hover:-translate-y-0.5',
     ghost: 'hover:bg-slate-100 text-slate-600 hover:-translate-y-0.5',
     danger: 'bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-500/20 hover:shadow-red-500/40 border border-red-600 hover:-translate-y-0.5',
+    error: 'bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-500/20 hover:shadow-red-500/40 border border-red-600 hover:-translate-y-0.5',
+    brand: 'bg-brand-600 hover:bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-brand-500/40 border border-brand-600 hover:-translate-y-0.5',
+    success: 'bg-green-600 hover:bg-green-500 text-white shadow-md shadow-green-500/20 hover:shadow-green-500/40 border border-green-600 hover:-translate-y-0.5',
+    outline: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm hover:shadow-md hover:-translate-y-0.5',
   };
   const sizes: Record<string, string> = {
     sm: 'px-3 py-1.5 text-xs',
@@ -177,7 +187,9 @@ export function Button({
     <button
       type={type}
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-lg font-medium transition-all duration-150 active:scale-[0.98] ${variants[variant]} ${sizes[size]} ${className}`}
+      disabled={disabled}
+      title={title}
+      className={`inline-flex items-center gap-2 rounded-lg font-medium transition-all duration-150 active:scale-[0.98] ${variants[variant] ?? variants.primary} ${sizes[size] ?? sizes.md} ${disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''} ${className}`}
     >
       {icon}
       {children}

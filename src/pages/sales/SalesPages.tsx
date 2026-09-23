@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, FileText, Users, Truck } from 'lucide-react';
-import { PageHeader, DateSelector, FilterButton, ExportButton } from '@/components/ui/PageHeader';
+import { Eye, Edit, Trash2, FileText, Users, Truck } from 'lucide-react';
+import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Card, Badge, Button, StatCard, statusToVariant, priorityToVariant } from '@/components/ui/Card';
+import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
-import { enquiries, quotations, salesOrders, deliveries, customers } from '@/data/mockData';
-import type { Enquiry, Quotation, SalesOrder, Delivery, Customer } from '@/data/mockData';
+import type { Quotation, SalesOrder, Customer } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 
 export { LeadsPage } from './LeadsPage';
 export { SalesPipelinePage } from './SalesPipelinePage';
@@ -23,7 +23,7 @@ export function CustomersPage() {
   const [dbError, setDbError] = useState(false);
 
   const resetForm = () => ({
-    name: '', industry: 'Aerospace', contact: '', email: '', phone: '', city: '', gstNumber: '', paymentTerms: 'Net 30', status: 'Active'
+    name: '', industry: 'Aerospace', contact: '', email: '', phone: '', city: '', status: 'Active'
   });
   const [formData, setFormData] = useState(resetForm());
 
@@ -34,7 +34,6 @@ export function CustomersPage() {
         if (error) {
           console.error('Error fetching customers:', error);
           setDbError(true);
-          setCustomersData(customers); // Fallback to mock on error
         } else if (data) {
           setDbError(false);
           const formattedData: Customer[] = data.map((d: any) => ({
@@ -51,7 +50,7 @@ export function CustomersPage() {
             rating: d.rating,
             status: d.status,
           }));
-          setCustomersData(formattedData.length > 0 ? formattedData : customers);
+          setCustomersData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -71,8 +70,6 @@ export function CustomersPage() {
       email: r.email || '',
       phone: r.phone || '',
       city: r.city,
-      gstNumber: '',
-      paymentTerms: 'Net 30',
       status: r.status
     });
     setEditId(r.id);
@@ -104,7 +101,7 @@ export function CustomersPage() {
         setEditId(null);
         setFormData(resetForm());
       } else {
-        alert("Failed to update.");
+        alert("Failed to update: " + error.message);
       }
     } else {
       const newId = `CUST-${Math.floor(100 + Math.random() * 900)}`;
@@ -119,7 +116,8 @@ export function CustomersPage() {
         setShowAdd(false);
         setFormData(resetForm());
       } else {
-        alert("Failed to add to database. Check connection or SQL script.");
+        console.error('Failed to add customer:', error);
+        alert("Failed to add customer: " + error.message);
       }
     }
     setLoading(false);
@@ -172,12 +170,6 @@ export function CustomersPage() {
           <FormField label="Email" required><input type="email" className={inputClass} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@company.com" /></FormField>
           <FormField label="Phone"><input className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+91 ..." /></FormField>
           <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="Address" /></FormField>
-          <FormField label="GST Number"><input className={inputClass} value={formData.gstNumber} onChange={e => setFormData({...formData, gstNumber: e.target.value})} placeholder="22AAAAA0000A1Z5" /></FormField>
-          <FormField label="Payment Terms">
-            <select className={inputClass} value={formData.paymentTerms} onChange={e => setFormData({...formData, paymentTerms: e.target.value})}>
-              <option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Advance</option>
-            </select>
-          </FormField>
           {editId && (
             <FormField label="Status">
               <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
@@ -228,18 +220,42 @@ export function CustomersPage() {
   );
 }
 
+// Quotation rows use the canonical DB statuses (Draft, Sent, Converted, Rejected)
+type QuotationRow = Omit<Quotation, 'status'> & { status: string; paymentTerms?: string };
+
+// Customer / enquiry options for the form dropdowns, loaded from the DB
+function useCustomerOptions() {
+  const [options, setOptions] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    supabase.from('cnc_customers').select('id, name').order('name').then(({ data, error }) => {
+      if (error) console.error('Error fetching customers:', error);
+      else setOptions((data || []).filter((c: any) => c.name));
+    });
+  }, []);
+  return options;
+}
+
 export function QuotationsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [viewTarget, setViewTarget] = useState<Quotation | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Quotation | null>(null);
-  const [quotationsData, setQuotationsData] = useState<Quotation[]>([]);
+  const [viewTarget, setViewTarget] = useState<QuotationRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<QuotationRow | null>(null);
+  const [quotationsData, setQuotationsData] = useState<QuotationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const customerOptions = useCustomerOptions();
+  const [enquiryOptions, setEnquiryOptions] = useState<{ id: string; enquiry_no: string }[]>([]);
+
+  useEffect(() => {
+    supabase.from('cnc_enquiries').select('id, enquiry_no').order('created_at', { ascending: false }).then(({ data, error }) => {
+      if (error) console.error('Error fetching enquiries:', error);
+      else setEnquiryOptions((data || []).filter((e: any) => e.enquiry_no));
+    });
+  }, []);
 
   const resetForm = () => ({
     quoteNo: `QT-2026-${Math.floor(100 + Math.random() * 900)}`,
-    customer: '', enquiryNo: '', partName: '', quantity: '', unitPrice: '', validTill: '', status: 'Draft'
+    customer: '', enquiryNo: '', partName: '', quantity: '', unitPrice: '', validTill: '', paymentTerms: 'Net 30', status: 'Draft'
   });
   const [formData, setFormData] = useState(resetForm());
 
@@ -250,10 +266,9 @@ export function QuotationsPage() {
         if (error) {
           console.error('Error fetching quotations:', error);
           setDbError(true);
-          setQuotationsData(quotations); // Fallback to mock on error
         } else if (data) {
           setDbError(false);
-          const formattedData: Quotation[] = data.map((d: any) => ({
+          const formattedData: QuotationRow[] = data.map((d: any) => ({
             id: d.id,
             quoteNo: d.quote_no,
             customer: d.customer,
@@ -264,9 +279,10 @@ export function QuotationsPage() {
             totalValue: Number(d.total_value),
             date: d.date,
             validTill: d.valid_till,
+            paymentTerms: d.payment_terms || '',
             status: d.status,
           }));
-          setQuotationsData(formattedData.length > 0 ? formattedData : quotations);
+          setQuotationsData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -278,16 +294,17 @@ export function QuotationsPage() {
     fetchQuotations();
   }, []);
 
-  const handleEditClick = (r: Quotation) => {
+  const handleEditClick = (r: QuotationRow) => {
     setFormData({
       quoteNo: r.quoteNo,
       customer: r.customer,
       enquiryNo: r.enquiryNo || '',
       partName: r.partName,
-      quantity: r.quantity.toString(),
-      unitPrice: r.unitPrice.toString(),
+      quantity: (r.quantity ?? '').toString(),
+      unitPrice: (r.unitPrice ?? '').toString(),
       validTill: r.validTill || '',
-      status: r.status
+      paymentTerms: r.paymentTerms || 'Net 30',
+      status: r.status === 'Accepted' ? 'Converted' : r.status
     });
     setEditId(r.id);
     setShowAdd(true);
@@ -299,16 +316,21 @@ export function QuotationsPage() {
     const qty = Number(formData.quantity) || 0;
     const price = Number(formData.unitPrice) || 0;
 
+    const linkedEnquiry = enquiryOptions.find(e => e.enquiry_no === formData.enquiryNo);
+    const linkedCustomer = customerOptions.find(c => c.name === formData.customer);
     const entryData = {
       quote_no: formData.quoteNo,
       customer: formData.customer,
-      enquiry_no: formData.enquiryNo,
+      enquiry_no: formData.enquiryNo || null,
       part_name: formData.partName,
       quantity: qty,
       unit_price: price,
       total_value: qty * price,
       valid_till: formData.validTill || null,
-      status: formData.status
+      payment_terms: formData.paymentTerms,
+      status: formData.status,
+      ...(linkedEnquiry ? { lead_id: linkedEnquiry.id } : {}),
+      ...(linkedCustomer ? { customer_id: linkedCustomer.id } : {})
     };
 
     setLoading(true);
@@ -317,13 +339,13 @@ export function QuotationsPage() {
       const { error } = await supabase.from('cnc_quotations').update(entryData).eq('id', editId);
       if (!error) {
         setQuotationsData(prev => prev.map(q => q.id === editId ? { 
-          ...q, quoteNo: entryData.quote_no, customer: entryData.customer, enquiryNo: entryData.enquiry_no, partName: entryData.part_name, quantity: entryData.quantity, unitPrice: entryData.unit_price, totalValue: entryData.total_value, validTill: entryData.valid_till || '', status: entryData.status as any
+          ...q, quoteNo: entryData.quote_no, customer: entryData.customer, enquiryNo: entryData.enquiry_no || '', partName: entryData.part_name, quantity: entryData.quantity, unitPrice: entryData.unit_price, totalValue: entryData.total_value, validTill: entryData.valid_till || '', paymentTerms: entryData.payment_terms, status: entryData.status
         } : q));
         setShowAdd(false);
         setEditId(null);
         setFormData(resetForm());
       } else {
-        alert("Failed to update.");
+        alert("Failed to update: " + error.message);
       }
     } else {
       const newId = crypto.randomUUID();
@@ -331,30 +353,32 @@ export function QuotationsPage() {
       
       const { error } = await supabase.from('cnc_quotations').insert([insertData]);
       if (!error) {
-        const formatted: Quotation = {
+        const formatted: QuotationRow = {
           id: newId,
           quoteNo: insertData.quote_no,
           customer: insertData.customer,
-          enquiryNo: insertData.enquiry_no,
+          enquiryNo: insertData.enquiry_no || '',
           partName: insertData.part_name,
           quantity: insertData.quantity,
           unitPrice: insertData.unit_price,
           totalValue: insertData.total_value,
           date: insertData.date,
           validTill: insertData.valid_till || '',
-          status: 'Draft'
+          paymentTerms: insertData.payment_terms,
+          status: insertData.status
         };
         setQuotationsData([formatted, ...quotationsData]);
         setShowAdd(false);
         setFormData(resetForm());
       } else {
-        alert("Failed to add to database. Check connection or SQL script.");
+        console.error('Failed to add quotation:', error);
+        alert("Failed to add quotation: " + error.message);
       }
     }
     setLoading(false);
   };
 
-  const columns: Column<Quotation>[] = [
+  const columns: Column<QuotationRow>[] = [
     { key: 'quoteNo', label: 'Quote No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.quoteNo}</span> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
     { key: 'enquiryNo', label: 'Enquiry', render: (r) => <span className="font-mono text-xs text-slate-500">{r.enquiryNo}</span> },
@@ -377,8 +401,9 @@ export function QuotationsPage() {
   ];
 
   const pendingCount = quotationsData.filter(q => q.status === 'Sent' || q.status === 'Draft').length;
-  const acceptedCount = quotationsData.filter(q => q.status === 'Accepted').length;
-  const totalCompleted = quotationsData.filter(q => q.status === 'Accepted' || q.status === 'Rejected').length;
+  const isConverted = (s: string) => s === 'Converted' || s === 'Accepted';
+  const acceptedCount = quotationsData.filter(q => isConverted(q.status)).length;
+  const totalCompleted = quotationsData.filter(q => isConverted(q.status) || q.status === 'Rejected').length;
   const winRate = totalCompleted > 0 ? Math.round((acceptedCount / totalCompleted) * 100) : 0;
 
   return (
@@ -387,33 +412,35 @@ export function QuotationsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Quotations" value={quotationsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="Pending" value={pendingCount.toString()} icon={<FileText size={20} />} accent="warning" />
-        <StatCard label="Accepted" value={acceptedCount.toString()} icon={<FileText size={20} />} trend="12%" trendUp accent="success" />
+        <StatCard label="Converted" value={acceptedCount.toString()} icon={<FileText size={20} />} trend="12%" trendUp accent="success" />
         <StatCard label="Win Rate" value={`${winRate}%`} icon={<FileText size={20} />} trend="3%" trendUp accent="accent" />
       </div>
-      <DataTable data={quotationsData} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Accepted', value: 'Accepted' }, { label: 'Rejected', value: 'Rejected' }]} />
+      <DataTable data={quotationsData} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Converted', value: 'Converted' }, { label: 'Rejected', value: 'Rejected' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Quotation" : "New Quotation"} subtitle={editId ? "Update quotation details" : "Create a new quotation for a customer"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Quotation' : 'Save Quotation'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Quotation Number" required><input className={inputClass} value={formData.quoteNo} onChange={e => setFormData({...formData, quoteNo: e.target.value})} /></FormField>
           <FormField label="Customer" required>
             <select className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
-              <option value="">Select customer...</option>{customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              <option value="">Select customer...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
             </select>
           </FormField>
           <FormField label="Enquiry Reference">
             <select className={inputClass} value={formData.enquiryNo} onChange={e => setFormData({...formData, enquiryNo: e.target.value})}>
-              <option value="">Select enquiry...</option>{enquiries.map((e) => <option key={e.id} value={e.enquiryNo}>{e.enquiryNo}</option>)}
+              <option value="">Select enquiry...</option>{enquiryOptions.map((e) => <option key={e.id} value={e.enquiry_no}>{e.enquiry_no}</option>)}
+              {formData.enquiryNo && !enquiryOptions.some(e => e.enquiry_no === formData.enquiryNo) && <option value={formData.enquiryNo}>{formData.enquiryNo}</option>}
             </select>
           </FormField>
           <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
           <FormField label="Quantity" required><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="Unit Price (₹)" required><input type="number" className={inputClass} value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} /></FormField>
           <FormField label="Valid Till" required><input type="date" className={inputClass} value={formData.validTill} onChange={e => setFormData({...formData, validTill: e.target.value})} /></FormField>
-          <FormField label="Payment Terms"><select className={inputClass}><option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Advance</option></select></FormField>
+          <FormField label="Payment Terms"><select className={inputClass} value={formData.paymentTerms} onChange={e => setFormData({...formData, paymentTerms: e.target.value})}><option>Net 30</option><option>Net 45</option><option>Net 60</option><option>Advance</option></select></FormField>
           {editId && (
             <FormField label="Status">
               <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                <option>Draft</option><option>Sent</option><option>Accepted</option><option>Rejected</option><option>Expired</option>
+                <option>Draft</option><option>Sent</option><option>Converted</option><option>Rejected</option>
               </select>
             </FormField>
           )}
@@ -462,15 +489,27 @@ export function QuotationsPage() {
 
 // ============ SALES ORDERS ============
 
+type SalesOrderRow = Omit<SalesOrder, 'status'> & { status: string; customerId?: string | null; quotationId?: string | null };
+
 export function SalesOrdersPage() {
+  const { profile } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [viewTarget, setViewTarget] = useState<SalesOrder | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SalesOrder | null>(null);
-  const [deliveryTarget, setDeliveryTarget] = useState<SalesOrder | null>(null);
-  const [ordersData, setOrdersData] = useState<SalesOrder[]>([]);
+  const [viewTarget, setViewTarget] = useState<SalesOrderRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SalesOrderRow | null>(null);
+  const [deliveryTarget, setDeliveryTarget] = useState<SalesOrderRow | null>(null);
+  const [ordersData, setOrdersData] = useState<SalesOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const customerOptions = useCustomerOptions();
+  const [quoteOptions, setQuoteOptions] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('cnc_quotations').select('id, quote_no, customer, customer_id, part_name, part_number, unit_price, discount_percent, gst_percent').order('created_at', { ascending: false }).then(({ data, error }) => {
+      if (error) console.error('Error fetching quotations:', error);
+      else setQuoteOptions((data || []).filter((q: any) => q.quote_no));
+    });
+  }, []);
 
   const resetForm = () => ({
     orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -491,24 +530,25 @@ export function SalesOrdersPage() {
         if (error) {
           console.error('Error fetching sales orders:', error);
           setDbError(true);
-          setOrdersData(salesOrders); // Fallback to mock on error
         } else if (data) {
           setDbError(false);
-          const formattedData: SalesOrder[] = data.map((d: any) => ({
+          const formattedData: SalesOrderRow[] = data.map((d: any) => ({
             id: d.id,
             orderNo: d.order_no,
             customer: d.customer,
             quoteNo: d.quote_no,
             partName: d.part_name,
-            partNo: d.part_no,
+            partNo: d.part_no ?? d.part_number,
             quantity: d.quantity,
             delivered: d.delivered || 0,
-            value: Number(d.value),
+            value: Number(d.total_value ?? d.value) || 0,
             orderDate: d.order_date,
             deliveryDate: d.delivery_date,
             status: d.status,
+            customerId: d.customer_id ?? null,
+            quotationId: d.quotation_id ?? null,
           }));
-          setOrdersData(formattedData.length > 0 ? formattedData : salesOrders);
+          setOrdersData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -520,14 +560,14 @@ export function SalesOrdersPage() {
     fetchOrders();
   }, []);
 
-  const handleEditClick = (r: SalesOrder) => {
+  const handleEditClick = (r: SalesOrderRow) => {
     setFormData({
       orderNo: r.orderNo,
       customer: r.customer,
       quoteNo: r.quoteNo || '',
       partName: r.partName,
       partNo: r.partNo || '',
-      quantity: r.quantity.toString(),
+      quantity: (r.quantity ?? '').toString(),
       deliveryDate: r.deliveryDate || '',
       status: r.status
     });
@@ -538,15 +578,25 @@ export function SalesOrdersPage() {
   const handleSave = async () => {
     if (!formData.customer || !formData.partName) return;
     
+    const partNo = formData.partNo || formData.partName.substring(0, 3).toUpperCase();
+    const qty = Number(formData.quantity) || 0;
+    const linkedQuote = quoteOptions.find(q => q.quote_no === formData.quoteNo);
+    const linkedCustomer = customerOptions.find(c => c.name === formData.customer);
+    // Order value is derived from the linked quotation's unit price (incl. discount/GST); 0 when no quotation
+    const unitPrice = Number(linkedQuote?.unit_price) || 0;
+    const orderValue = Number((qty * unitPrice * (1 - (Number(linkedQuote?.discount_percent) || 0) / 100) * (1 + (Number(linkedQuote?.gst_percent) || 0) / 100)).toFixed(2));
     const entryData = {
       order_no: formData.orderNo,
       customer: formData.customer,
       quote_no: formData.quoteNo,
       part_name: formData.partName,
-      part_no: formData.partNo || formData.partName.substring(0, 3).toUpperCase(),
-      quantity: Number(formData.quantity) || 0,
+      part_no: partNo,
+      part_number: partNo,
+      quantity: qty,
       delivery_date: formData.deliveryDate || null,
-      status: formData.status
+      status: formData.status,
+      ...(linkedQuote ? { quotation_id: linkedQuote.id, value: orderValue, total_value: orderValue } : {}),
+      ...(linkedCustomer ? { customer_id: linkedCustomer.id } : {})
     };
 
     setLoading(true);
@@ -554,22 +604,24 @@ export function SalesOrdersPage() {
     if (editId) {
       const { error } = await supabase.from('cnc_sales_orders').update(entryData).eq('id', editId);
       if (!error) {
-        setOrdersData(prev => prev.map(o => o.id === editId ? { 
-          ...o, orderNo: entryData.order_no, customer: entryData.customer, quoteNo: entryData.quote_no, partName: entryData.part_name, partNo: entryData.part_no, quantity: entryData.quantity, deliveryDate: entryData.delivery_date || '', status: entryData.status as any
+        setOrdersData(prev => prev.map(o => o.id === editId ? {
+          ...o, orderNo: entryData.order_no, customer: entryData.customer, quoteNo: entryData.quote_no, partName: entryData.part_name, partNo: entryData.part_no, quantity: entryData.quantity, deliveryDate: entryData.delivery_date || '', status: entryData.status,
+          ...(linkedQuote ? { value: orderValue, quotationId: linkedQuote.id } : {}),
+          ...(linkedCustomer ? { customerId: linkedCustomer.id } : {})
         } : o));
         setShowAdd(false);
         setEditId(null);
         setFormData(resetForm());
       } else {
-        alert("Failed to update.");
+        alert("Failed to update: " + error.message);
       }
     } else {
       const newId = crypto.randomUUID();
-      const insertData = { ...entryData, id: newId, delivered: 0, value: entryData.quantity * 1500, order_date: new Date().toISOString().split('T')[0] };
-      
+      const insertData = { ...entryData, id: newId, delivered: 0, value: orderValue, total_value: orderValue, order_date: new Date().toISOString().split('T')[0] };
+
       const { error } = await supabase.from('cnc_sales_orders').insert([insertData]);
       if (!error) {
-        const formatted: SalesOrder = {
+        const formatted: SalesOrderRow = {
           id: newId,
           orderNo: insertData.order_no,
           customer: insertData.customer,
@@ -581,13 +633,16 @@ export function SalesOrdersPage() {
           value: insertData.value,
           orderDate: insertData.order_date,
           deliveryDate: insertData.delivery_date || '',
-          status: 'Confirmed'
+          status: insertData.status,
+          customerId: linkedCustomer?.id ?? null,
+          quotationId: linkedQuote?.id ?? null
         };
         setOrdersData([formatted, ...ordersData]);
         setShowAdd(false);
         setFormData(resetForm());
       } else {
-        alert("Failed to add to database. Check connection or SQL script.");
+        console.error('Failed to add sales order:', error);
+        alert("Failed to add sales order: " + error.message);
       }
     }
     setLoading(false);
@@ -595,38 +650,50 @@ export function SalesOrdersPage() {
 
   const handleSaveDelivery = async () => {
     if (!deliveryTarget) return;
+    const remaining = Math.max(0, (Number(deliveryTarget.quantity) || 0) - (Number(deliveryTarget.delivered) || 0));
+    const dispatchQty = Number(deliveryForm.dispatchQty) || remaining;
+    if (dispatchQty <= 0) { alert("Nothing left to dispatch for this order."); return; }
+    if (dispatchQty > remaining) { alert(`Dispatch quantity cannot exceed the remaining ${remaining} pcs.`); return; }
     setLoading(true);
     const { error } = await supabase.from('cnc_deliveries').insert([{
       delivery_no: deliveryForm.deliveryNo,
       sales_order_id: deliveryTarget.id,
       sales_order_no: deliveryTarget.orderNo,
-      customer_id: 'unknown',
+      customer_id: deliveryTarget.customerId || null,
       customer_name: deliveryTarget.customer,
       part_name: deliveryTarget.partName,
-      quantity: deliveryTarget.quantity,
+      quantity: dispatchQty,
       delivery_date: new Date().toISOString().split('T')[0],
       delivery_address: deliveryForm.deliveryAddress,
       transport: deliveryForm.transport,
       vehicle_no: deliveryForm.vehicleNo,
       driver_contact: deliveryForm.driverContact,
-      dispatch_qty: Number(deliveryForm.dispatchQty) || deliveryTarget.quantity,
+      dispatch_qty: dispatchQty,
       remarks: deliveryForm.remarks,
       status: 'Pending'
     }]);
-    
+
     if (!error) {
        // Log stock movement
-       await supabase.from('cnc_stock_movements').insert([{
+       const { error: smErr } = await supabase.from('cnc_stock_movements').insert([{
           date: new Date().toISOString().split('T')[0],
           type: 'Issue',
           material: deliveryTarget.partName,
-          qty: Number(deliveryForm.dispatchQty) || deliveryTarget.quantity,
+          qty: dispatchQty,
           uom: 'Nos',
           from: 'Main Warehouse',
           to: deliveryTarget.customer,
           reference: deliveryForm.deliveryNo,
-          user: 'Admin'
+          user: profile?.full_name || ''
        }]);
+       if (smErr) console.error('Failed to log stock movement:', smErr);
+
+       // Update the sales order's delivered count and status
+       const delivered = (Number(deliveryTarget.delivered) || 0) + dispatchQty;
+       const status = delivered >= (Number(deliveryTarget.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
+       const { error: soErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', deliveryTarget.id);
+       if (soErr) console.error('Failed to update sales order delivery:', soErr);
+       else setOrdersData(prev => prev.map(o => o.id === deliveryTarget.id ? { ...o, delivered, status } : o));
     }
 
     if (!error) {
@@ -634,12 +701,13 @@ export function SalesOrdersPage() {
       setDeliveryTarget(null);
       setDeliveryForm(resetDeliveryForm());
     } else {
-      alert("Error creating delivery.");
+      console.error('Failed to create delivery:', error);
+      alert("Error creating delivery: " + error.message);
     }
     setLoading(false);
   };
 
-  const columns: Column<SalesOrder>[] = [
+  const columns: Column<SalesOrderRow>[] = [
     { key: 'orderNo', label: 'Order No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.orderNo}</span> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
     { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p><p className="text-xs text-slate-400">{r.partNo}</p></div> },
@@ -674,19 +742,21 @@ export function SalesOrdersPage() {
         <StatCard label="Delivered" value={deliveredCount.toString()} icon={<FileText size={20} />} trend="100%" trendUp accent="success" />
         <StatCard label="Order Value" value={`₹${(totalValue / 100000).toFixed(1)}L`} icon={<FileText size={20} />} accent="navy" />
       </div>
-      <DataTable data={ordersData} columns={columns} searchKeys={['orderNo', 'customer', 'partName', 'partNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }, { label: 'On Hold', value: 'On Hold' }]} />
+      <DataTable data={ordersData} columns={columns} searchKeys={['orderNo', 'customer', 'partName', 'partNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'Inwarded', value: 'Inwarded' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Sales Order" : "New Sales Order"} subtitle={editId ? "Update sales order details" : "Create a sales order from an accepted quotation"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Order' : 'Create Order'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Order Number" required><input className={inputClass} value={formData.orderNo} onChange={e => setFormData({...formData, orderNo: e.target.value})} /></FormField>
           <FormField label="Customer" required>
             <select className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
-              <option value="">Select customer...</option>{customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              <option value="">Select customer...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
             </select>
           </FormField>
           <FormField label="Quotation Reference">
             <select className={inputClass} value={formData.quoteNo} onChange={e => setFormData({...formData, quoteNo: e.target.value})}>
-              <option value="">Select quotation...</option>{quotations.map((q) => <option key={q.id} value={q.quoteNo}>{q.quoteNo}</option>)}
+              <option value="">Select quotation...</option>{quoteOptions.map((q) => <option key={q.id} value={q.quote_no}>{q.quote_no}</option>)}
+              {formData.quoteNo && !quoteOptions.some(q => q.quote_no === formData.quoteNo) && <option value={formData.quoteNo}>{formData.quoteNo}</option>}
             </select>
           </FormField>
           <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
@@ -696,7 +766,7 @@ export function SalesOrdersPage() {
           {editId && (
             <FormField label="Status">
               <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                <option>Confirmed</option><option>In Production</option><option>Partially Delivered</option><option>Delivered</option><option>On Hold</option>
+                <option>Confirmed</option><option>Inwarded</option><option>In Production</option><option>Partially Delivered</option><option>Delivered</option>
               </select>
             </FormField>
           )}
@@ -721,7 +791,7 @@ export function SalesOrdersPage() {
       <Modal open={!!deliveryTarget} onClose={() => setDeliveryTarget(null)} title="Create Delivery" subtitle={`Dispatch goods for Order ${deliveryTarget?.orderNo}`} size="lg" footer={<><Button variant="secondary" onClick={() => setDeliveryTarget(null)}>Cancel</Button><Button onClick={handleSaveDelivery}>Create Delivery</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Delivery Number" required><input className={inputClass} value={deliveryForm.deliveryNo} disabled /></FormField>
-          <FormField label="Dispatch Quantity" required><input type="number" className={inputClass} value={deliveryForm.dispatchQty} onChange={e => setDeliveryForm({...deliveryForm, dispatchQty: e.target.value})} placeholder={deliveryTarget?.quantity.toString()} /></FormField>
+          <FormField label="Dispatch Quantity" required><input type="number" className={inputClass} value={deliveryForm.dispatchQty} onChange={e => setDeliveryForm({...deliveryForm, dispatchQty: e.target.value})} placeholder={deliveryTarget ? String(Math.max(0, (Number(deliveryTarget.quantity) || 0) - (Number(deliveryTarget.delivered) || 0))) : ''} /></FormField>
           <div className="col-span-2">
             <FormField label="Delivery Address" required><input className={inputClass} value={deliveryForm.deliveryAddress} onChange={e => setDeliveryForm({...deliveryForm, deliveryAddress: e.target.value})} /></FormField>
           </div>

@@ -21,6 +21,7 @@ export function ProductionMainPage() {
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [showNewWO, setShowNewWO] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // New Order Form State
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
@@ -36,6 +37,8 @@ export function ProductionMainPage() {
       supabase.from('cnc_work_orders').select('*').order('created_at', { ascending: false }),
       supabase.from('cnc_sales_orders').select('*').order('created_at', { ascending: false })
     ]);
+    if (woRes.error) console.error('Failed to load work orders:', woRes.error);
+    if (soRes.error) console.error('Failed to load sales orders:', soRes.error);
     if (woRes.data) setWorkOrders(woRes.data);
     if (soRes.data) setSalesOrders(soRes.data);
     setLoading(false);
@@ -51,7 +54,8 @@ export function ProductionMainPage() {
   };
 
   const handleCreateOrder = async () => {
-    if (!selectedSO) return;
+    if (!selectedSO || saving) return;
+    setSaving(true);
     const woNo = `WO-${new Date().getFullYear().toString().slice(-2)}${String(new Date().getMonth()+1).padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
     
     const { error } = await supabase.from('cnc_work_orders').insert([{
@@ -64,12 +68,13 @@ export function ProductionMainPage() {
       quantity: selectedSO.quantity || 0,
       completed: 0,
       rejected: 0,
-      start_date: formData.startDate,
-      due_date: formData.endDate,
-      status: 'Planned',
+      start_date: formData.startDate || null,
+      due_date: formData.endDate || null,
+      status: 'Planning',
       priority: 'Normal'
     }]);
-    
+    setSaving(false);
+
     if (error) {
       console.error(error);
       alert('Failed to create order: ' + error.message);
@@ -89,6 +94,7 @@ export function ProductionMainPage() {
         description="Plan, track and manage production from project to part to finished goods." 
         actions={
           <div className="flex items-center gap-2">
+            {loading && <span className="text-xs text-slate-400">Syncing...</span>}
             <Button variant="primary" className="gap-2" onClick={() => setShowNewWO(true)}>
               <Plus size={16} /> New Production Order
             </Button>
@@ -132,7 +138,7 @@ export function ProductionMainPage() {
       <Modal open={showNewWO} onClose={() => setShowNewWO(false)} title="New Production Order" subtitle="Create production from Sales Order" footer={
         <>
           <Button variant="secondary" onClick={() => setShowNewWO(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleCreateOrder} disabled={!selectedSO}>Create Order</Button>
+          <Button variant="primary" onClick={handleCreateOrder} disabled={!selectedSO || saving}>{saving ? 'Creating...' : 'Create Order'}</Button>
         </>
       }>
         <div className="grid grid-cols-2 gap-4">

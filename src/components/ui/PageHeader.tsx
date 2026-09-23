@@ -44,7 +44,6 @@ export function DateSelector() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const startYear = new Date(dateRange.start).getFullYear();
   const endYear = new Date(dateRange.end).getFullYear();
   
   let dateStr = `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;

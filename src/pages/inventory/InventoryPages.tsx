@@ -1,15 +1,28 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package, MapPin, Building, Layout, Move } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Boxes, ArrowRightLeft, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Package, MapPin, Building, Layout } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
-import { rawMaterials, stockMovements } from '@/data/mockData';
-import type { RawMaterial, StockMovement } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 
-// Reusing parts for components
-import { parts } from '@/data/mockData';
+// Mirrors the real cnc_raw_materials columns (the mockData RawMaterial type has fields the DB doesn't store).
+interface RawMaterial {
+  id: string;
+  materialCode: string;
+  name: string;
+  grade: string;
+  form: string;
+  stockQty: number;
+  uom: string;
+  minStock: number;
+  location: string;
+  status: string;
+  unitPrice?: number | null;
+  preferred_supplier_id?: string | null;
+}
+
 
 export function RawMaterialsPage() {
   const [showAdd, setShowAdd] = useState(false);
@@ -22,15 +35,15 @@ export function RawMaterialsPage() {
   const [dbError, setDbError] = useState(false);
 
   const resetForm = () => ({
-      partNo: `P-${Math.floor(1000 + Math.random() * 9000)}`,
-      partName: '',
-      category: 'Aerospace',
-      material: '',
-      weight: '',
-      unit: 'kg',
-      unitPrice: '',
+      materialCode: '',
+      name: '',
+      grade: '',
+      form: '',
       stockQty: '',
-      status: 'Active',
+      uom: 'kg',
+      minStock: '',
+      location: '',
+      status: 'In Stock',
       preferred_supplier_id: ''
     });
   const [formData, setFormData] = useState(resetForm());
@@ -55,8 +68,9 @@ export function RawMaterialsPage() {
             uom: d.uom,
             minStock: Number(d.min_stock),
             location: d.location,
-              preferred_supplier_id: d.preferred_supplier_id,
             status: d.status,
+            unitPrice: d.unit_price,
+            preferred_supplier_id: d.preferred_supplier_id,
           }));
           setMaterialsData(formattedData);
         }
@@ -78,16 +92,16 @@ export function RawMaterialsPage() {
 
   const handleEditClick = (r: RawMaterial) => {
     setFormData({
-      materialCode: r.materialCode,
-      name: r.name,
-      grade: r.grade,
-      form: r.form,
-      stockQty: r.stockQty.toString(),
-      uom: r.uom,
-      minStock: r.minStock.toString(),
-      preferred_supplier_id: (r as any).preferred_supplier_id || '',
-      location: r.location,
-      status: r.status
+      materialCode: r.materialCode || '',
+      name: r.name || '',
+      grade: r.grade || '',
+      form: r.form || '',
+      stockQty: String(r.stockQty ?? ''),
+      uom: r.uom || '',
+      minStock: String(r.minStock ?? ''),
+      preferred_supplier_id: r.preferred_supplier_id || '',
+      location: r.location || '',
+      status: r.status || 'In Stock'
     });
     setEditId(r.id);
     setShowAdd(true);
@@ -110,7 +124,8 @@ export function RawMaterialsPage() {
       uom: formData.uom,
       min_stock: min,
       location: formData.location,
-      status: editId ? formData.status : calculatedStatus
+      status: editId ? formData.status : calculatedStatus,
+      preferred_supplier_id: formData.preferred_supplier_id || null
     };
 
     setLoading(true);
@@ -119,7 +134,7 @@ export function RawMaterialsPage() {
       const { error } = await supabase.from('cnc_raw_materials').update(entryData).eq('id', editId);
       if (!error) {
         setMaterialsData(prev => prev.map(m => m.id === editId ? { 
-          ...m, materialCode: entryData.material_code, name: entryData.name, grade: entryData.grade, form: entryData.form, stockQty: entryData.stock_qty, uom: entryData.uom, minStock: entryData.min_stock, location: entryData.location, status: entryData.status as any
+          ...m, materialCode: entryData.material_code, name: entryData.name, grade: entryData.grade, form: entryData.form, stockQty: entryData.stock_qty, uom: entryData.uom, minStock: entryData.min_stock, location: entryData.location, status: entryData.status, preferred_supplier_id: entryData.preferred_supplier_id
         } : m));
         setShowAdd(false);
         setEditId(null);
@@ -135,7 +150,7 @@ export function RawMaterialsPage() {
       const { error } = await supabase.from('cnc_raw_materials').insert([insertData]);
       if (!error) {
         const formatted: RawMaterial = {
-          id: newId, materialCode: insertData.material_code, name: insertData.name, grade: insertData.grade, form: insertData.form, stockQty: insertData.stock_qty, uom: insertData.uom, minStock: insertData.min_stock, location: insertData.location, status: insertData.status as any
+          id: newId, materialCode: insertData.material_code, name: insertData.name, grade: insertData.grade, form: insertData.form, stockQty: insertData.stock_qty, uom: insertData.uom, minStock: insertData.min_stock, location: insertData.location, status: insertData.status, preferred_supplier_id: insertData.preferred_supplier_id
         };
         setMaterialsData([formatted, ...materialsData]);
         setShowAdd(false);
@@ -282,14 +297,20 @@ export function RawMaterialsPage() {
 
 export function ComponentsPage() {
   const [componentsData, setComponentsData] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
   useEffect(() => {
     async function fetchComponents() {
       try {
-        const { data, error } = await supabase.from('cnc_parts').select('*').order('created_at', { ascending: false });
+        const [{ data, error }, { data: bomData, error: bomError }] = await Promise.all([
+          supabase.from('cnc_parts').select('*').order('created_at', { ascending: false }),
+          supabase.from('cnc_bom').select('part_no, make'),
+        ]);
+        if (bomError) console.error('Error fetching BOM make/buy:', bomError);
+        // Make/Buy lives on cnc_bom (keyed by part_no), not on cnc_parts.
+        const makeByPartNo = new Map<string, string>();
+        (bomData || []).forEach((b: any) => { if (b.part_no && b.make) makeByPartNo.set(b.part_no, b.make); });
         if (error) {
           console.error('Error fetching components:', error);
           setDbError(true);
@@ -302,7 +323,7 @@ export function ComponentsPage() {
             partName: d.part_name,
             category: d.category,
             status: d.status,
-            make: 'Make', // Assuming 'Make' by default for parts as they are manufactured
+            make: makeByPartNo.get(d.part_no) || null,
           }));
           setComponentsData(formattedData);
         }
@@ -315,17 +336,11 @@ export function ComponentsPage() {
       }
     }
     fetchComponents();
-      async function fetchSuppliers() {
-        const { data } = await supabase.from('cnc_suppliers').select('id, name').eq('status', 'Active');
-        if (data) setSuppliers(data);
-      }
-      fetchSuppliers();
   }, []);
 
   const totalComponents = componentsData.length;
-  // A simplistic mock logic for Make/Buy since cnc_parts doesn't explicitly store make/buy in the schema (it's in cnc_bom).
-  const makeComponents = Math.round(totalComponents * 0.7); 
-  const buyComponents = totalComponents - makeComponents;
+  const makeComponents = componentsData.filter(c => String(c.make || '').toLowerCase() === 'make').length;
+  const buyComponents = componentsData.filter(c => String(c.make || '').toLowerCase() === 'buy').length;
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -341,6 +356,7 @@ export function ComponentsPage() {
           { key: 'partNo', label: 'Part No', render: (r) => <span className="font-mono text-xs">{r.partNo}</span> },
           { key: 'partName', label: 'Part Name', render: (r) => <span className="font-medium">{r.partName}</span> },
           { key: 'category', label: 'Category', render: (r) => <span className="text-sm">{r.category}</span> },
+          { key: 'make', label: 'Make / Buy', render: (r) => <span className="text-sm">{r.make || '—'}</span> },
           { key: 'status', label: 'Status', render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> }
         ]} 
         searchKeys={['partNo', 'partName']} 
@@ -367,12 +383,13 @@ export function StockOverviewPage() {
           setDbError(true);
         } else {
           setDbError(false);
-          const rmTotal = (rmRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price || 150)), 0);
-          const fgTotal = (fgRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price || 1500)), 0);
+          const rmTotal = (rmRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price ?? 0)), 0);
+          const fgTotal = (fgRes.data || []).reduce((acc, curr) => acc + (Number(curr.stock_qty || 0) * Number(curr.unit_price ?? 0)), 0);
           setRmValue(rmTotal);
           setFgValue(fgTotal);
         }
       } catch (err) {
+        console.error('Error computing stock valuation:', err);
         setDbError(true);
       } finally {
         setLoading(false);
@@ -464,7 +481,11 @@ export function StockMovementsPage() {
     { key: 'date', label: 'Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.date}</span> },
     { key: 'type', label: 'Type', sortable: true, render: (r) => <Badge variant={r.type === 'Receipt' ? 'success' : r.type === 'Issue' ? 'warning' : 'info'}>{r.type}</Badge> },
     { key: 'material', label: 'Material', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.material}</span> },
-    { key: 'qty', label: 'Qty', sortable: true, align: 'right', render: (r) => <span className={`font-semibold ${r.qty < 0 ? 'text-red-600' : 'text-green-600'}`}>{r.qty > 0 ? '+' : ''}{r.qty} {r.uom}</span> },
+    { key: 'qty', label: 'Qty', sortable: true, align: 'right', render: (r) => {
+      // Issues are stored as a positive magnitude; show them as outflows regardless of stored sign.
+      const signed = r.type === 'Issue' ? -Math.abs(r.qty) : r.qty;
+      return <span className={`font-semibold ${signed < 0 ? 'text-red-600' : 'text-green-600'}`}>{signed > 0 ? '+' : ''}{signed} {r.uom}</span>;
+    } },
     { key: 'from', label: 'From / To', render: (r) => <div><p className="text-xs text-slate-500">From: {r.from || '—'}</p><p className="text-xs text-slate-500">To: {r.to || '—'}</p></div> },
     { key: 'reference', label: 'Reference', render: (r) => <span className="font-mono text-xs">{r.reference || '—'}</span> },
     { key: 'user', label: 'User', render: (r) => <span className="text-sm">{r.user || '—'}</span> },
@@ -486,7 +507,7 @@ export function StockMovementsPage() {
 
 export function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   
@@ -568,8 +589,8 @@ export function WarehousesPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-         <StatCard title="Total Warehouses" value={warehouses.length.toString()} icon={<Building size={20} className="text-brand-500"/>} />
-         <StatCard title="Active Warehouses" value={warehouses.filter(w => w.status==='Active').length.toString()} icon={<Layout size={20} className="text-emerald-500"/>} />
+         <StatCard label="Total Warehouses" value={warehouses.length.toString()} icon={<Building size={20} className="text-brand-500"/>} />
+         <StatCard label="Active Warehouses" value={warehouses.filter(w => w.status==='Active').length.toString()} icon={<Layout size={20} className="text-emerald-500"/>} />
       </div>
 
       <Card>
@@ -584,6 +605,7 @@ export function WarehousesPage() {
                 <Button variant="secondary" onClick={() => loadWarehouseDetails(r)}><Eye size={14}/> View</Button>
             ) }
           ]}
+          searchKeys={['code', 'name', 'type', 'status']}
         />
       </Card>
 
@@ -684,6 +706,7 @@ export function WarehousesPage() {
                            }},
                            { key: 'qty', label: 'Total Stock Qty', align: 'right', render: (r) => <span className="font-bold text-slate-800">{r.qty} {r.unit}</span> }
                         ]}
+                        searchKeys={['code', 'title', 'item_type']}
                      />
                   </div>
                )}
@@ -696,7 +719,7 @@ export function WarehousesPage() {
 
 export function MaterialRequestsPage() {
   const [requests, setRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [rawMaterialsList, setRawMaterialsList] = useState<any[]>([]);
@@ -715,6 +738,10 @@ export function MaterialRequestsPage() {
   });
   
   const [reqForm, setReqForm] = useState(resetForm());
+  const [saving, setSaving] = useState(false);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const { profile } = useAuth();
+  const userName = profile?.full_name || '';
 
   useEffect(() => {
     fetchRequests();
@@ -750,7 +777,7 @@ export function MaterialRequestsPage() {
     // Auto load from BOM
     const { data: bomData } = await supabase.from('cnc_bom').select('*').eq('parent_part_no', wo.part_no);
     
-    const items = [];
+    const items: any[] = [];
     if (bomData && bomData.length > 0) {
        bomData.forEach((bom: any) => {
           const rm = rawMaterialsList.find(r => (r.name === bom.material || r.material_code === bom.material)) || {};
@@ -792,75 +819,128 @@ export function MaterialRequestsPage() {
   };
 
   const handleSave = async () => {
+     if (saving) return;
      const wo = workOrders.find(w => w.id === selectedWo);
      if (!wo && reqForm.items.length === 0) return alert("Please select a Work Order or add materials manually.");
-     
-     const { data, error } = await supabase.from('cnc_material_requests').insert([{
-        request_no: reqForm.requestNo,
-        request_date: reqForm.requestDate,
-        work_order_id: wo?.id || null,
-        work_order_no: wo?.wo_no || 'MANUAL',
-        part_name: wo?.part_name || reqForm.partName,
-        production_qty: wo?.quantity || reqForm.productionQty,
-        requested_by: 'Admin',
-        required_date: reqForm.requiredDate || reqForm.requestDate,
-        priority: reqForm.priority,
-        remarks: reqForm.remarks,
-        status: 'Pending'
-     }]).select();
+     setSaving(true);
+     try {
+       const { data, error } = await supabase.from('cnc_material_requests').insert([{
+          request_no: reqForm.requestNo,
+          request_date: reqForm.requestDate,
+          work_order_id: wo?.id || null,
+          work_order_no: wo?.wo_no || 'MANUAL',
+          part_name: wo?.part_name || reqForm.partName,
+          production_qty: wo?.quantity || reqForm.productionQty,
+          requested_by: userName,
+          required_date: reqForm.requiredDate || reqForm.requestDate,
+          priority: reqForm.priority,
+          remarks: reqForm.remarks,
+          status: 'Pending'
+       }]).select();
 
-     if (error) { alert("Error: Make sure you ran the SQL to create cnc_material_requests! " + error.message); return; }
-     
-     if (data && data.length > 0) {
-        const reqId = data[0].id;
-        const itemsToInsert = reqForm.items.map(i => ({
-           request_id: reqId,
-           material_name: i.materialName,
-           material_code: i.materialCode,
-           required_qty: i.requiredQty,
-           uom: i.uom,
-           request_qty: i.requestQty,
-           warehouse: i.warehouse,
-           purpose: i.purpose,
-           remarks: i.remarks
-        }));
-        await supabase.from('cnc_material_request_items').insert(itemsToInsert);
+       if (error) { console.error(error); alert("Error creating material request: " + error.message); return; }
+
+       if (data && data.length > 0 && reqForm.items.length > 0) {
+          const reqId = data[0].id;
+          const itemsToInsert = reqForm.items.map(i => ({
+             request_id: reqId,
+             material_name: i.materialName,
+             material_code: i.materialCode,
+             required_qty: Number(i.requiredQty) || 0,
+             uom: i.uom,
+             request_qty: Number(i.requestQty) || 0,
+             warehouse: i.warehouse,
+             purpose: i.purpose,
+             remarks: i.remarks
+          }));
+          const { error: itemsError } = await supabase.from('cnc_material_request_items').insert(itemsToInsert);
+          if (itemsError) {
+             console.error(itemsError);
+             // Don't leave a header without its items.
+             const { error: cleanupError } = await supabase.from('cnc_material_requests').delete().eq('id', reqId);
+             if (cleanupError) console.error('Failed to roll back material request header:', cleanupError);
+             alert("Error saving request items: " + itemsError.message);
+             return;
+          }
+       }
+
+       setShowAdd(false);
+       setReqForm(resetForm());
+       setSelectedWo('');
+       fetchRequests();
+     } finally {
+       setSaving(false);
      }
-     
-     setShowAdd(false);
-     setReqForm(resetForm());
-     setSelectedWo('');
-     fetchRequests();
   };
 
+  // NOTE: not atomic - stock updates, movements and the status change are separate requests (no DB/RPC changes allowed here).
+  // Everything is validated up front so a partial issue is unlikely, and double clicks are guarded.
   const handleIssue = async (req: any) => {
+     if (issuingId) return;
+     if (req.status !== 'Pending') return;
      if (!confirm("Are you sure you want to issue these materials? This will deduct stock and create stock movements.")) return;
-     
-     for (const item of req.items) {
-        // Find RM
-        const { data: rmData } = await supabase.from('cnc_raw_materials').select('*').eq('name', item.material_name).limit(1);
-        if (rmData && rmData.length > 0) {
-           const rm = rmData[0];
-           const newStock = Number(rm.stock_qty || 0) - Number(item.request_qty);
-           await supabase.from('cnc_raw_materials').update({ stock_qty: newStock }).eq('id', rm.id);
-        }
-        
-        // Stock Movement
-        await supabase.from('cnc_stock_movements').insert([{
-           date: new Date().toISOString().split('T')[0],
-           type: 'Issue',
-           material: item.material_name,
-           qty: item.request_qty,
-           uom: item.uom,
-           from: item.warehouse || 'Main Warehouse',
-           to: 'Shop Floor - ' + req.work_order_no,
-           reference: req.request_no,
-           user: 'Admin'
-        }]);
+     setIssuingId(req.id);
+     try {
+       // 1. Resolve every item to a raw material row and validate stock before changing anything.
+       const plan: { item: any; rm: any; qty: number }[] = [];
+       const problems: string[] = [];
+       for (const item of req.items || []) {
+          const qty = Number(item.request_qty) || 0;
+          if (qty <= 0) continue;
+          let rm: any = null;
+          if (item.material_code) {
+             const { data, error } = await supabase.from('cnc_raw_materials').select('*').eq('material_code', item.material_code).limit(1);
+             if (error) { problems.push(`${item.material_name}: ${error.message}`); continue; }
+             rm = data?.[0] || null;
+          }
+          if (!rm && item.material_name) {
+             const { data, error } = await supabase.from('cnc_raw_materials').select('*').eq('name', item.material_name).limit(1);
+             if (error) { problems.push(`${item.material_name}: ${error.message}`); continue; }
+             rm = data?.[0] || null;
+          }
+          if (!rm) { problems.push(`${item.material_name || item.material_code}: not found in raw materials`); continue; }
+          // Account for the same material appearing on several lines.
+          const alreadyPlanned = plan.filter(p => p.rm.id === rm.id).reduce((a, p) => a + p.qty, 0);
+          const available = Number(rm.stock_qty || 0) - alreadyPlanned;
+          if (qty > available) { problems.push(`${rm.name}: requested ${qty} ${item.uom || rm.uom || ''}, only ${available} in stock`); continue; }
+          plan.push({ item, rm, qty });
+       }
+       if (problems.length > 0) {
+          alert("Cannot issue stock:\n" + problems.join('\n'));
+          return;
+       }
+       if (plan.length === 0) { alert("Nothing to issue on this request."); return; }
+
+       // 2. Apply stock deductions and record movements.
+       const stockByRm = new Map<string, number>();
+       for (const { item, rm, qty } of plan) {
+          const current = stockByRm.get(rm.id) ?? Number(rm.stock_qty || 0);
+          const newStock = current - qty;
+          stockByRm.set(rm.id, newStock);
+          const { error: updError } = await supabase.from('cnc_raw_materials').update({ stock_qty: newStock }).eq('id', rm.id);
+          if (updError) { console.error(updError); alert(`Failed to update stock for ${rm.name}: ${updError.message}. Issue stopped part-way; please review stock.`); return; }
+
+          // Issue qty is stored as a positive magnitude (existing convention); the movements page shows it as an outflow.
+          const { error: mvError } = await supabase.from('cnc_stock_movements').insert([{
+             date: new Date().toISOString().split('T')[0],
+             type: 'Issue',
+             material: rm.name || item.material_name,
+             qty,
+             uom: item.uom || rm.uom,
+             from: item.warehouse || rm.location || 'Main Warehouse',
+             to: 'Shop Floor - ' + req.work_order_no,
+             reference: req.request_no,
+             user: userName
+          }]);
+          if (mvError) { console.error(mvError); alert(`Stock for ${rm.name} was deducted but the movement could not be recorded: ${mvError.message}`); return; }
+       }
+
+       const { error: stError } = await supabase.from('cnc_material_requests').update({ status: 'Issued' }).eq('id', req.id);
+       if (stError) { console.error(stError); alert("Stock issued but failed to mark request as Issued: " + stError.message); }
+     } finally {
+       setIssuingId(null);
+       fetchRequests();
      }
-     
-     await supabase.from('cnc_material_requests').update({ status: 'Issued' }).eq('id', req.id);
-     fetchRequests();
   };
 
   return (
@@ -885,14 +965,15 @@ export function MaterialRequestsPage() {
             { key: 'actions', label: 'Actions', align: 'right', render: (r) => (
                 <div className="flex justify-end gap-2">
                    <Button variant="secondary" onClick={() => setViewTarget(r)}><Eye size={14}/></Button>
-                   {r.status === 'Pending' && <Button variant="primary" onClick={() => handleIssue(r)}>Issue Stock</Button>}
+                   {r.status === 'Pending' && <Button variant="primary" disabled={!!issuingId} onClick={() => handleIssue(r)}>{issuingId === r.id ? 'Issuing...' : 'Issue Stock'}</Button>}
                 </div>
             ) }
           ]}
+          searchKeys={['request_no', 'work_order_no', 'part_name', 'status']}
         />
       </Card>
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="CREATE MATERIAL REQUEST" size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Submit Request</Button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="CREATE MATERIAL REQUEST" size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Submitting...' : 'Submit Request'}</Button></>}>
          <div className="space-y-6">
             <div className="p-4 bg-brand-50 border border-brand-100 rounded-xl mb-4">
               <label className="block text-xs font-bold text-brand-700 uppercase mb-2">REQUEST FOR (WORK ORDER)</label>
@@ -912,7 +993,7 @@ export function MaterialRequestsPage() {
                <div className="space-y-1"><label className="text-xs font-medium text-slate-700">Priority</label><select value={reqForm.priority} onChange={e => setReqForm({...reqForm, priority: e.target.value})} className={inputClass}><option>Normal</option><option>High</option><option>Urgent</option></select></div>
                <FormField label="Part / Product"><input type="text" className={inputClass} value={reqForm.partName} onChange={e => setReqForm({...reqForm, partName: e.target.value})} /></FormField>
                <FormField label="Production Qty"><input type="number" className={inputClass} value={reqForm.productionQty.toString()} onChange={e => setReqForm({...reqForm, productionQty: Number(e.target.value)})} /></FormField>
-               <FormField label="Requested By"><input type="text" className={inputClass} defaultValue="Admin" /></FormField>
+               <FormField label="Requested By"><input type="text" className={inputClass} value={userName} readOnly /></FormField>
                <FormField label="Remarks"><input type="text" className={inputClass} value={reqForm.remarks} onChange={e => setReqForm({...reqForm, remarks: e.target.value})} /></FormField>
             </div>
 
@@ -939,7 +1020,7 @@ export function MaterialRequestsPage() {
                      <tbody>
                         {reqForm.items.length === 0 ? (
                            <tr><td colSpan={8} className="p-4 text-center text-slate-400">No materials loaded. Select a Work Order or add manually.</td></tr>
-                        ) : reqForm.items.map((item, idx) => (
+                        ) : reqForm.items.map((item) => (
                            <tr key={item.id} className="border-b border-slate-100 last:border-0 bg-white">
                               <td className="p-2"><input type="text" value={item.materialName} onChange={e => updateItem(item.id, 'materialName', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none focus:border-brand-500" placeholder="Material Name"/></td>
                               <td className="p-2"><input type="text" value={item.materialCode} onChange={e => updateItem(item.id, 'materialCode', e.target.value)} className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none" placeholder="Code"/></td>
@@ -1008,6 +1089,8 @@ export function LowStockPage() {
   const [showPRModal, setShowPRModal] = useState(false);
   const [prTarget, setPrTarget] = useState<any>(null);
 
+  const { profile } = useAuth();
+  const [savingPR, setSavingPR] = useState(false);
   const [prForm, setPrForm] = useState({
     prNo: 'PR-2026-' + Math.floor(1000 + Math.random() * 9000),
     qty: 0,
@@ -1073,36 +1156,47 @@ export function LowStockPage() {
   };
 
   const handleSavePR = async () => {
+    if (savingPR) return;
     if (!prTarget || !prForm.qty || !prForm.requiredDate) return alert('Please fill required fields.');
-    
-    // Save to cnc_purchase_requisitions
-    const { data, error } = await supabase.from('cnc_purchase_requisitions').insert([{
-      pr_no: prForm.prNo,
-      pr_date: new Date().toISOString().split('T')[0],
-      requested_by: 'Inventory Manager',
-      department: 'Stores',
-      status: 'Pending Approval',
-      source_type: 'Low Stock Alert',
-      source_reference: prTarget?.code,
-      remarks: prForm.remarks
-    }]).select();
+    setSavingPR(true);
+    try {
+      // Save to cnc_purchase_requisitions
+      const { data, error } = await supabase.from('cnc_purchase_requisitions').insert([{
+        pr_no: prForm.prNo,
+        pr_date: new Date().toISOString().split('T')[0],
+        requested_by: profile?.full_name || '',
+        department: 'Stores',
+        status: 'Pending Approval',
+        source_type: 'Low Stock Alert',
+        source_reference: prTarget?.code,
+        remarks: prForm.remarks
+      }]).select();
 
-    if (error) return alert('Error saving PR: ' + error.message + '\nDid you run the PR SQL script?');
+      if (error) { console.error(error); return alert('Error saving PR: ' + error.message); }
 
-    if (data && data.length > 0) {
-      const prId = data[0].id;
-      await supabase.from('cnc_purchase_requisition_items').insert([{
-         pr_id: prId,
-         material_code: prTarget.code,
-         material_name: prTarget.name,
-         qty: prForm.qty,
-         uom: prTarget.uom,
-         required_date: prForm.requiredDate
-      }]);
+      if (data && data.length > 0) {
+        const prId = data[0].id;
+        const { error: itemError } = await supabase.from('cnc_purchase_requisition_items').insert([{
+           pr_id: prId,
+           material_code: prTarget.code,
+           material_name: prTarget.name,
+           qty: prForm.qty,
+           uom: prTarget.uom,
+           required_date: prForm.requiredDate
+        }]);
+        if (itemError) {
+          console.error(itemError);
+          const { error: cleanupError } = await supabase.from('cnc_purchase_requisitions').delete().eq('id', prId);
+          if (cleanupError) console.error('Failed to roll back PR header:', cleanupError);
+          return alert('Error saving PR item: ' + itemError.message);
+        }
+      }
+
+      setShowPRModal(false);
+      alert('Purchase Requisition ' + prForm.prNo + ' generated successfully!');
+    } finally {
+      setSavingPR(false);
     }
-    
-    setShowPRModal(false);
-    alert('Purchase Requisition ' + prForm.prNo + ' generated successfully!');
   };
 
   return (
@@ -1130,11 +1224,12 @@ export function LowStockPage() {
                  <Button variant="primary" size="sm" onClick={() => openPR(r)}>Create PR</Button>
               )}
             ]}
+            searchKeys={['code', 'name', 'type', 'status']}
           />
         </Card>
       )}
 
-      <Modal open={showPRModal} onClose={() => setShowPRModal(false)} title="CREATE PURCHASE REQUISITION" subtitle={prTarget?.name} footer={<><Button variant="secondary" onClick={() => setShowPRModal(false)}>Cancel</Button><Button onClick={handleSavePR}>Submit PR</Button></>}>
+      <Modal open={showPRModal} onClose={() => setShowPRModal(false)} title="CREATE PURCHASE REQUISITION" subtitle={prTarget?.name} footer={<><Button variant="secondary" onClick={() => setShowPRModal(false)}>Cancel</Button><Button onClick={handleSavePR} disabled={savingPR}>{savingPR ? 'Submitting...' : 'Submit PR'}</Button></>}>
         {prTarget && (
           <div className="space-y-6">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">

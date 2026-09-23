@@ -11,6 +11,28 @@ export interface Column<T> {
   align?: 'left' | 'right' | 'center';
 }
 
+function getPath(row: any, key: string): any {
+  if (row == null) return undefined;
+  if (key in row) return row[key];
+  return key.split('.').reduce((acc: any, part) => (acc == null ? undefined : acc[part]), row);
+}
+
+function rowMatches(row: Record<string, any>, q: string, keys?: string[]): boolean {
+  if (keys && keys.length > 0) {
+    return keys.some((k) => String(getPath(row, k) ?? '').toLowerCase().includes(q));
+  }
+  // No searchKeys supplied: search every string/number field (one level of nesting).
+  return Object.values(row ?? {}).some((v) => {
+    if (typeof v === 'string' || typeof v === 'number') return String(v).toLowerCase().includes(q);
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      return Object.values(v).some(
+        (inner) => (typeof inner === 'string' || typeof inner === 'number') && String(inner).toLowerCase().includes(q)
+      );
+    }
+    return false;
+  });
+}
+
 export function DataTable<T extends Record<string, any>>({
   data,
   columns,
@@ -25,7 +47,7 @@ export function DataTable<T extends Record<string, any>>({
 }: {
   data: T[];
   columns: Column<T>[];
-  searchKeys: string[];
+  searchKeys?: string[];
   pageSize?: number;
   title?: string;
   onAdd?: () => void;
@@ -41,12 +63,10 @@ export function DataTable<T extends Record<string, any>>({
   const [filterValue, setFilterValue] = useState('all');
 
   const filtered = useMemo(() => {
-    let result = [...data];
+    let result = [...(data ?? [])];
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter((row) =>
-        searchKeys.some((k) => String(row[k] ?? '').toLowerCase().includes(q))
-      );
+      result = result.filter((row) => rowMatches(row, q, searchKeys));
     }
     if (filterValue !== 'all' && filterOptions) {
       result = result.filter((row) =>
@@ -55,8 +75,8 @@ export function DataTable<T extends Record<string, any>>({
     }
     if (sortKey) {
       result.sort((a, b) => {
-        const av = a[sortKey];
-        const bv = b[sortKey];
+        const av = getPath(a, sortKey);
+        const bv = getPath(b, sortKey);
         if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
         return sortDir === 'asc'
           ? String(av ?? '').localeCompare(String(bv ?? ''))
@@ -211,7 +231,7 @@ export function DataTable<T extends Record<string, any>>({
                         col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                       }`}
                     >
-                      {col.render ? col.render(row) : String(row[col.key] ?? '')}
+                      {col.render ? col.render(row) : String(getPath(row, col.key) ?? '')}
                     </td>
                   ))}
                 </tr>

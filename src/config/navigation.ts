@@ -8,18 +8,23 @@ import {
   ClipboardList,
   Boxes,
   ShoppingCart,
-  ShieldCheck,
-  Wrench,
   Calculator,
   BarChart3,
   Settings,
+  Building2,
+  BookOpen,
+  Scale,
+  Landmark,
   type LucideIcon,
 } from 'lucide-react';
+import type { ErpRole } from '@/contexts/AuthContext';
 
 export interface NavItem {
   label: string;
   icon: LucideIcon;
   page: string;
+  /** Only shown to these roles (visibility only — the database enforces access). */
+  roles?: ErpRole[];
 }
 
 export interface NavSection {
@@ -66,9 +71,16 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Invoices', icon: FileText, page: 'finance/invoices' },
       { label: 'Bank Entries', icon: FileText, page: 'finance/bank-entries' },
-      { label: 'Ledger', icon: FileText, page: 'finance/ledger' },
       { label: 'Costing', icon: Calculator, page: 'costing/material' },
-      { label: 'Accounts', icon: FileText, page: 'finance/accounts' },
+    ],
+  },
+  {
+    label: 'Accounts',
+    items: [
+      { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger' },
+      { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance' },
+      { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss' },
+      { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet' },
     ],
   },
   {
@@ -82,7 +94,8 @@ export const navSections: NavSection[] = [
     label: 'System',
     items: [
       { label: 'Reports', icon: BarChart3, page: 'reports/production' },
-      { label: 'Masters', icon: Settings, page: 'admin/users' },
+      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
+      { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'] },
       { label: 'Settings', icon: Settings, page: 'admin/settings' },
     ],
   },
@@ -143,7 +156,12 @@ export const pageTitles: Record<string, string> = {
   'reports/quality': 'Quality Reports',
   'reports/machine-utilization': 'Machine Utilization Reports',
   'reports/cost-analysis': 'Cost Analysis Reports',
+  'accounts/ledger': 'Ledger',
+  'accounts/trial-balance': 'Trial Balance',
+  'accounts/profit-loss': 'Profit & Loss',
+  'accounts/balance-sheet': 'Balance Sheet',
   'admin/users': 'User Management',
+  'admin/companies': 'Company Management',
   'admin/roles': 'Roles',
   'admin/permissions': 'Permissions',
   'admin/settings': 'Company Settings',

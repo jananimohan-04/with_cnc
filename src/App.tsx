@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
+import { AccessDenied } from './components/AccessDenied';
+import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { Dashboard } from './pages/Dashboard';
@@ -35,6 +37,10 @@ import {
 } from './pages/sales/SalesPages';
 
 import { DeliveriesPage } from './pages/operations/OperationsPages';
+import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
+import { LedgerPage } from './pages/accounts/LedgerPage';
+import { TrialBalancePage } from './pages/accounts/TrialBalancePage';
+import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
 
 import {
   RawMaterialsPage, ComponentsPage, StockOverviewPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
@@ -61,7 +67,7 @@ import {
 } from './pages/reports/ReportsPages';
 
 import {
-  UsersPage, RolesPage, PermissionsPage, SettingsPage, AuditLogsPage
+  UsersPage, CompaniesPage, RolesPage, PermissionsPage, SettingsPage, AuditLogsPage
 } from './pages/admin/AdminPages';
 
 // Placeholder Component for unbuilt pages
@@ -74,6 +80,13 @@ function PlaceholderPage({ title }: { title: string }) {
       </div>
     </div>
   );
+}
+
+// UI convenience only: the database refuses these operations for other roles anyway.
+function RequireRole({ roles, children }: { roles: ErpRole[]; children: ReactElement }) {
+  const { profile } = useAuth();
+  if (!profile || !roles.includes(profile.role)) return <PlaceholderPage title="Not Authorized" />;
+  return children;
 }
 
 function MainLayout() {
@@ -89,9 +102,11 @@ function MainLayout() {
     navigate(`/${page}`);
   };
 
-  const handleLogout = () => {
-    // In a real app, this would clear tokens. For now, just reload to go to login.
-    window.location.href = '/';
+  const { signOut, company } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/', { replace: true });
   };
 
   return (
@@ -111,7 +126,8 @@ function MainLayout() {
           onLogout={handleLogout}
           onMenuClick={() => setMobileMenuOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto scrollbar-dark">
+        {/* Keyed by company so every page refetches when the Super Admin switches company */}
+        <main key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
@@ -184,6 +200,12 @@ function MainLayout() {
             <Route path="/costing/job-costing" element={<JobCostingPage />} />
             <Route path="/costing/quote-costing" element={<QuoteCostingPage />} />
 
+            {/* Accounts */}
+            <Route path="/accounts/ledger" element={<LedgerPage />} />
+            <Route path="/accounts/trial-balance" element={<TrialBalancePage />} />
+            <Route path="/accounts/profit-loss" element={<ProfitLossPage />} />
+            <Route path="/accounts/balance-sheet" element={<BalanceSheetPage />} />
+
             {/* Reports */}
             <Route path="/reports/production" element={<ProductionReportsPage />} />
             <Route path="/reports/sales" element={<SalesReportsPage />} />
@@ -193,7 +215,8 @@ function MainLayout() {
             <Route path="/reports/cost-analysis" element={<CostAnalysisReportsPage />} />
 
             {/* Administration */}
-            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/users" element={<RequireRole roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}><UsersPage /></RequireRole>} />
+            <Route path="/admin/companies" element={<RequireRole roles={['SUPER_ADMIN']}><CompaniesPage /></RequireRole>} />
             <Route path="/admin/roles" element={<RolesPage />} />
             <Route path="/admin/permissions" element={<PermissionsPage />} />
             <Route path="/admin/settings" element={<SettingsPage />} />
@@ -208,14 +231,27 @@ function MainLayout() {
   );
 }
 
-function ErpApp() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+function ErpGate() {
+  const { status } = useAuth();
 
-  if (!isAuthenticated) {
-    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
-
+  if (status === 'signed_out') return <LoginScreen />;
+  if (status !== 'authorized') return <AccessDenied />;
   return <MainLayout />;
+}
+
+function ErpApp() {
+  return (
+    <AuthProvider>
+      <ErpGate />
+    </AuthProvider>
+  );
 }
 
 function App() {

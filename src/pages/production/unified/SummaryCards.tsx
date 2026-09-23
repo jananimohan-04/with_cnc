@@ -5,29 +5,26 @@ export function SummaryCards({ workOrders }: { workOrders: any[] }) {
   const totalOrders = workOrders.length;
   const partsInProduction = workOrders.filter(w => w.status === 'In Progress').length;
   
-  // Calculate Delayed Orders
-  const delayedOrders = workOrders.filter(w => {
-    if (w.status === 'Completed' || !w.due_date) return false;
-    return new Date(w.due_date) < new Date();
-  }).length;
+  const isDone = (w: any) => w.status === 'Completed' || w.status === 'Dispatched';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isOverdue = (w: any) => !isDone(w) && !!w.due_date && new Date(w.due_date) < today;
 
+  // Delayed = open (not completed/dispatched) orders past their due date
+  const delayedOrders = workOrders.filter(isOverdue).length;
+
+  // cnc_work_orders has no completion timestamp, so count finished orders that were due this month
   const completedThisMonth = workOrders.filter(w => {
-    if (w.status !== 'Completed' || !w.updated_at) return false;
-    const updateDate = new Date(w.updated_at);
-    const now = new Date();
-    return updateDate.getMonth() === now.getMonth() && updateDate.getFullYear() === now.getFullYear();
+    if (!isDone(w) || !w.due_date) return false;
+    const due = new Date(w.due_date);
+    return due.getMonth() === today.getMonth() && due.getFullYear() === today.getFullYear();
   }).length;
 
-  // On Time completion (just a heuristic percentage for completed items)
-  const completedItems = workOrders.filter(w => w.status === 'Completed');
-  const onTimeItems = completedItems.filter(w => {
-    if (!w.due_date || !w.updated_at) return true;
-    return new Date(w.updated_at) <= new Date(w.due_date);
-  });
-  
-  const onTimePercentage = completedItems.length > 0 
-    ? Math.round((onTimeItems.length / completedItems.length) * 100)
-    : 100;
+  // Without a completion date we can't measure on-time completion; show the share of open orders still on schedule
+  const openOrders = workOrders.filter(w => !isDone(w));
+  const onTrackPercentage = openOrders.length > 0
+    ? Math.round(((openOrders.length - delayedOrders) / openOrders.length) * 100)
+    : 0;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -44,8 +41,8 @@ export function SummaryCards({ workOrders }: { workOrders: any[] }) {
         accent="brand" 
       />
       <StatCard 
-        label="On Time Completion" 
-        value={`${onTimePercentage}%`} 
+        label="Open Orders On Track"
+        value={`${onTrackPercentage}%`}
         icon={<Clock size={20} />} 
         accent="success" 
       />
@@ -56,7 +53,7 @@ export function SummaryCards({ workOrders }: { workOrders: any[] }) {
         accent="error" 
       />
       <StatCard 
-        label="Completed This Month" 
+        label="Completed (Due This Month)"
         value={completedThisMonth.toString()} 
         icon={<CheckCircle size={20} />} 
         accent="success" 

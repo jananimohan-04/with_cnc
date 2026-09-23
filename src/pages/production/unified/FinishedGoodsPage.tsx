@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, statusToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Package, Search, Eye, Edit, Filter, Plus, Download, ChevronLeft, ChevronRight, CheckCircle, Clock } from 'lucide-react';
+import { Package, Eye, Edit, Filter, Plus, Download, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { getMockImage } from '@/lib/mockStorage';
+
+const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
 
 export function FinishedGoodsPage() {
   const [records, setRecords] = useState<any[]>([]);
@@ -38,29 +39,27 @@ export function FinishedGoodsPage() {
   const [selectedWO, setSelectedWO] = useState('');
   const [addQty, setAddQty] = useState('');
   
-  const [stats, setStats] = useState({
-    totalParts: 0,
-    completedQty: 0,
-    pendingQty: 0,
-    totalFgStock: 0
-  });
+  const [saving, setSaving] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
-    
+    try {
     // Fetch production records
-    const { data: woData } = await supabase
+    const { data: woData, error: woError } = await supabase
       .from('cnc_work_orders')
       .select('*')
       .order('created_at', { ascending: false });
+    if (woError) console.error('Failed to load work orders:', woError);
 
     // Fetch part stock for FG stock
-    const { data: partsData } = await supabase.from('cnc_parts').select('part_no, stock_qty');
-    
+    const { data: partsData, error: partsError } = await supabase.from('cnc_parts').select('part_no, stock_qty');
+    if (partsError) console.error('Failed to load parts:', partsError);
+
     if (woData) {
       // Map and enrich with stock
       const enriched = await Promise.all(woData.map(async (wo: any) => {
-        const mockImg = await getMockImage(wo.part_name);
+        // A failing IndexedDB image lookup must not block the whole page from loading
+        const mockImg = await getMockImage(wo.part_name).catch(() => null);
         const part = partsData?.find(p => p.part_no === wo.part_no);
         const orderedQty = Number(wo.quantity) || 0;
         const completedQty = Number(wo.completed) || 0;
@@ -81,38 +80,28 @@ export function FinishedGoodsPage() {
       const finalRecords = enriched.filter((w: any) => w.completedQty > 0 || w.status === 'Completed' || w.status === 'Ready' || w.status === 'Quality Hold');
       setRecords(finalRecords);
 
-      const activeItems = new Set(finalRecords.map((e: any) => e.part_no)).size;
-      
       // Fetch all global customers so the dropdown isn't just limited to current work orders
       const { data: globalCustomers } = await supabase.from('cnc_customers').select('name');
-      const { data: globalLeads } = await supabase.from('cnc_enquiries').select('company');
-      
+      const { data: globalLeads } = await supabase.from('cnc_enquiries').select('customer');
+
       const allCustomers = new Set([
         ...enriched.map((r: any) => r.customer),
         ...(globalCustomers || []).map((c: any) => c.name),
-        ...(globalLeads || []).map((l: any) => l.company)
+        ...(globalLeads || []).map((l: any) => l.customer)
       ].filter(Boolean));
 
       setFilterOptions({
         projects: Array.from(new Set(enriched.map((r: any) => r.sales_order).filter(Boolean))).sort() as string[],
         customers: Array.from(allCustomers).sort() as string[]
       });
-      const totalComp = finalRecords.reduce((sum: any, e: any) => sum + e.completedQty, 0);
-      const totalPend = finalRecords.reduce((sum: any, e: any) => sum + e.pendingQty, 0);
-      const totalStock = partsData ? partsData.reduce((sum, p) => sum + (Number(p.stock_qty)||0), 0) : 0;
-
-      setStats({
-        totalParts: activeItems,
-        completedQty: totalComp,
-        pendingQty: totalPend,
-        totalFgStock: totalStock
-      });
-
-      // Filter for Add FG modal (only In Progress or Planned that are not fully completed)
-      setAvailableWOs(enriched.filter(w => w.pendingQty > 0));
+      // Filter for Add FG modal (only orders that are not fully completed / dispatched)
+      setAvailableWOs(enriched.filter(w => w.pendingQty > 0 && w.status !== 'Dispatched'));
     }
-    
-    setLoading(false);
+    } catch (err) {
+      console.error('Failed to load finished goods:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -131,7 +120,7 @@ export function FinishedGoodsPage() {
   };
 
   const handleSaveFG = async () => {
-    if (!selectedWO || !addQty) return;
+    if (!selectedWO || !addQty || saving) return;
     const wo = availableWOs.find(w => w.id === selectedWO);
     if (!wo) return;
 
@@ -142,12 +131,14 @@ export function FinishedGoodsPage() {
     const newCompleted = wo.completedQty + qtyToAdd;
     let newStatus = wo.status;
     if (newCompleted >= wo.orderedQty) newStatus = 'Completed';
-    else if (newStatus === 'Planned') newStatus = 'In Progress';
+    else if (newStatus === 'Planning' || newStatus === 'Planned') newStatus = 'In Progress';
 
-    const { error } = await supabase.from('cnc_work_orders').update({ 
+    setSaving(true);
+    const { error } = await supabase.from('cnc_work_orders').update({
       completed: newCompleted,
       status: newStatus
     }).eq('id', wo.id);
+    setSaving(false);
 
     if (error) {
       alert("Failed to update Finished Goods: " + error.message);
@@ -161,19 +152,27 @@ export function FinishedGoodsPage() {
 
 
   const handleEditFG = async () => {
-    if (!showEditModal) return;
+    if (!showEditModal || saving) return;
     const newQty = Number(editQty);
     if (newQty < 0) return alert("Quantity cannot be negative.");
     if (newQty > showEditModal.orderedQty) return alert("Completed quantity cannot exceed target ordered quantity.");
 
     let newStatus = showEditModal.status;
-    if (newQty >= showEditModal.orderedQty) newStatus = 'Completed';
-    else if (newQty > 0 && newStatus === 'Planned') newStatus = 'In Progress';
+    if (newQty >= showEditModal.orderedQty) {
+      if (newStatus !== 'Dispatched') newStatus = 'Completed';
+    } else if (newStatus === 'Completed' || newStatus === 'Dispatched') {
+      // Completed qty reduced below the ordered qty: the order is no longer complete
+      newStatus = newQty > 0 ? 'In Progress' : 'Planning';
+    } else if (newQty > 0 && (newStatus === 'Planning' || newStatus === 'Planned')) {
+      newStatus = 'In Progress';
+    }
 
+    setSaving(true);
     const { error } = await supabase.from('cnc_work_orders').update({
       completed: newQty,
       status: newStatus
     }).eq('id', showEditModal.id);
+    setSaving(false);
 
     if (error) {
       alert("Failed to update Finished Goods: " + error.message);
@@ -195,6 +194,22 @@ export function FinishedGoodsPage() {
     const matchesMonth = monthFilter === '' ? true : (r.created_at && r.created_at.startsWith(monthFilter));
     return matchesSearch && matchesProject && matchesCustomer && matchesStatus && matchesMonth;
   });
+
+  // Summary cards reflect the currently filtered set
+  const stats = useMemo(() => {
+    const stockByPart = new Map<string, number>();
+    filteredRecords.forEach((r: any) => { if (r.part_no) stockByPart.set(r.part_no, r.fgStock); });
+    return {
+      totalParts: stockByPart.size,
+      completedQty: filteredRecords.reduce((sum: number, e: any) => sum + e.completedQty, 0),
+      pendingQty: filteredRecords.reduce((sum: number, e: any) => sum + e.pendingQty, 0),
+      totalFgStock: Array.from(stockByPart.values()).reduce((sum, v) => sum + v, 0),
+    };
+  }, [filteredRecords]);
+
+  const statsScopeLabel = monthFilter
+    ? `Orders created ${new Date(monthFilter + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`
+    : 'Filtered orders';
 
   const columns: Column<any>[] = [
     { 
@@ -263,22 +278,17 @@ export function FinishedGoodsPage() {
             value={r.status}
             onChange={(e) => handleStatusChange(r, e.target.value)}
           >
-            <option value="Planned">Planned</option>
-            <option value="Processing">Processing</option>
-            <option value="In Production">In Production</option>
-            <option value="Completed">Completed</option>
-            <option value="Ready">Ready</option>
-            <option value="Quality Hold">Quality Hold</option>
-            <option value="Not Started">Not Started</option>
+            {r.status && !WO_STATUSES.includes(r.status) && <option value={r.status}>{r.status}</option>}
+            {WO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge>
         </div>
       )
     },
     { 
-      key: 'last_updated', 
-      label: 'Last Updated', 
-      render: (r) => <span className="text-slate-500 text-sm whitespace-nowrap">{r.updated_at ? new Date(r.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+      key: 'created_at',
+      label: 'Created',
+      render: (r) => <span className="text-slate-500 text-sm whitespace-nowrap">{r.created_at ? new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</span>
     },
     {
       key: 'actions',
@@ -319,7 +329,7 @@ export function FinishedGoodsPage() {
           <div>
             <div className="text-sm text-slate-500 font-medium">Total Parts</div>
             <div className="text-2xl font-bold text-slate-800">{stats.totalParts}</div>
-            <div className="text-xs text-slate-400 mt-0.5">Active FG Items</div>
+            <div className="text-xs text-slate-400 mt-0.5">Distinct parts in view</div>
           </div>
         </div>
         {/* Completed Qty */}
@@ -330,7 +340,7 @@ export function FinishedGoodsPage() {
           <div>
             <div className="text-sm text-slate-500 font-medium">Completed Qty</div>
             <div className="text-2xl font-bold text-slate-800">{stats.completedQty.toLocaleString()}</div>
-            <div className="text-xs text-slate-400 mt-0.5">This Month</div>
+            <div className="text-xs text-slate-400 mt-0.5">{statsScopeLabel}</div>
           </div>
         </div>
         {/* Pending Qty */}
@@ -355,7 +365,7 @@ export function FinishedGoodsPage() {
           <div>
             <div className="text-sm text-slate-500 font-medium">Total FG Stock</div>
             <div className="text-2xl font-bold text-slate-800">{stats.totalFgStock.toLocaleString()}</div>
-            <div className="text-xs text-slate-400 mt-0.5">In Hand</div>
+            <div className="text-xs text-slate-400 mt-0.5">In hand for parts in view</div>
           </div>
         </div>
       </div>
@@ -409,10 +419,7 @@ export function FinishedGoodsPage() {
             >
               <option value="Active Only">Active (In Stock)</option>
               <option value="All">All Statuses (History)</option>
-              <option value="In Production">In Production</option>
-              <option value="Completed">Completed</option>
-              <option value="Processing">Processing</option>
-              <option value="Not Started">Not Started</option>
+              {WO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="col-span-12 md:col-span-2">
@@ -433,7 +440,12 @@ export function FinishedGoodsPage() {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <DataTable data={filteredRecords} columns={columns} loading={loading} />
+          <DataTable
+            data={filteredRecords}
+            columns={columns}
+            searchKeys={['part_no', 'part_name', 'wo_no', 'sales_order', 'customer', 'status']}
+            emptyMessage={loading ? 'Loading finished goods...' : 'No finished goods found'}
+          />
         </div>
       </div>
 
@@ -441,7 +453,7 @@ export function FinishedGoodsPage() {
       <Modal open={showAddFG} onClose={() => setShowAddFG(false)} title="Finished Goods Entry" size="md" footer={
         <>
           <Button variant="secondary" onClick={() => setShowAddFG(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleSaveFG} disabled={!selectedWO || !addQty}>Save</Button>
+          <Button variant="primary" onClick={handleSaveFG} disabled={!selectedWO || !addQty || saving}>{saving ? 'Saving...' : 'Save'}</Button>
         </>
       }>
         <div className="space-y-4">
@@ -558,7 +570,7 @@ export function FinishedGoodsPage() {
       <Modal open={!!showEditModal} onClose={() => setShowEditModal(null)} title="Edit Finished Goods" size="md" footer={
         <>
           <Button variant="secondary" onClick={() => setShowEditModal(null)}>Cancel</Button>
-          <Button variant="primary" onClick={handleEditFG} disabled={!editQty}>Save Changes</Button>
+          <Button variant="primary" onClick={handleEditFG} disabled={!editQty || saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
         </>
       }>
         {showEditModal && (

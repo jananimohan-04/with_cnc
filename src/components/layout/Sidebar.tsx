@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Cpu } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { navSections } from '@/config/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function Sidebar({
   collapsed,
@@ -17,6 +18,11 @@ export function Sidebar({
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
 }) {
+  const { profile } = useAuth();
+  const visibleSections = navSections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.roles || (profile && i.roles.includes(profile.role))) }))
+    .filter((s) => s.items.length > 0);
+
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     const initial = new Set<string>();
     navSections.forEach((s) => initial.add(s.label));
@@ -61,7 +67,7 @@ export function Sidebar({
 
         {/* Navigation */}
       <nav className="flex-1 overflow-y-auto scrollbar-dark py-4 px-3 space-y-1 relative z-0">
-        {navSections.map((section) => {
+        {visibleSections.map((section) => {
           const isExpanded = expandedSections.has(section.label);
           const hasActive = section.items.some((i) => currentPage === i.page);
           return (

@@ -1,14 +1,44 @@
-import { useState } from 'react';
-import { Plus, Eye, Edit, Trash2, Wrench, Settings, AlertTriangle, Activity, CheckCircle2, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wrench, Settings, AlertTriangle, Activity } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Card, Badge, Button, StatCard, ProgressBar, statusToVariant } from '@/components/ui/Card';
-import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { machines, maintenanceRecords } from '@/data/mockData';
+import { Badge, StatCard, ProgressBar, statusToVariant } from '@/components/ui/Card';
+import { supabase } from '@/lib/supabase';
 import type { Machine, MaintenanceRecord } from '@/data/mockData';
 
 export function MachinesPage() {
-  const [showAdd, setShowAdd] = useState(false);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchMachines() {
+      try {
+        const { data, error } = await supabase.from('cnc_machines').select('*').order('code');
+        if (error) {
+          console.error('Error fetching machines:', error);
+          setMachines([]);
+        } else {
+          setMachines((data || []).map((d: any) => ({
+            id: d.id,
+            code: d.code,
+            name: d.name,
+            type: d.type,
+            status: d.status,
+            utilization: Number(d.utilization) || 0,
+            operator: d.operator,
+            currentJob: d.current_job,
+            location: d.location,
+            lastMaintenance: d.last_maintenance,
+            nextMaintenance: d.next_maintenance,
+            spindleHours: Number(d.spindle_hours) || 0,
+          })));
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchMachines();
+  }, []);
 
   const columns: Column<Machine>[] = [
     { key: 'code', label: 'Machine Code', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-slate-800">{r.code}</span> },
@@ -17,33 +47,27 @@ export function MachinesPage() {
     { key: 'location', label: 'Location', render: (r) => <span className="text-xs text-slate-500">{r.location}</span> },
     { key: 'utilization', label: 'Utilization', sortable: true, render: (r) => <div className="flex items-center gap-2 w-24"><ProgressBar value={r.utilization} max={100} color={r.utilization > 80 ? 'success' : r.utilization > 50 ? 'warning' : 'neutral'} /><span className="text-xs">{r.utilization}%</span></div> },
     { key: 'spindleHours', label: 'Spindle Hrs', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm text-slate-600">{r.spindleHours.toLocaleString()}</span> },
+    { key: 'nextMaintenance', label: 'Next PM', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.nextMaintenance || '—'}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-          <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
-        </div>
-      )
-    },
   ];
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Machine Master" description="Central registry of all CNC machines" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
+      <PageHeader title="Machine Master" description="Central registry of all CNC machines" actions={<div className="flex items-center gap-2">{loading && <Badge variant="neutral">Syncing...</Badge>}<FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Machines" value={machines.length.toString()} icon={<Settings size={20} />} accent="brand" />
         <StatCard label="Running" value={machines.filter(m => m.status === 'Running').length.toString()} icon={<Activity size={20} />} accent="success" />
         <StatCard label="Under Maintenance" value={machines.filter(m => m.status === 'Maintenance').length.toString()} icon={<Wrench size={20} />} accent="warning" />
         <StatCard label="Breakdown" value={machines.filter(m => m.status === 'Breakdown').length.toString()} icon={<AlertTriangle size={20} />} accent="error" />
       </div>
-      <DataTable data={machines} columns={columns} searchKeys={['code', 'name', 'type']} onAdd={() => setShowAdd(true)} addLabel="Add Machine" filterOptions={[{ label: 'Running', value: 'Running' }, { label: 'Idle', value: 'Idle' }, { label: 'Breakdown', value: 'Breakdown' }, { label: 'Maintenance', value: 'Maintenance' }]} />
+      <DataTable data={machines} columns={columns} searchKeys={['code', 'name', 'type', 'location']} emptyMessage={loading ? 'Loading machines...' : 'No machines yet'} filterOptions={[{ label: 'Running', value: 'Running' }, { label: 'Idle', value: 'Idle' }, { label: 'Breakdown', value: 'Breakdown' }, { label: 'Maintenance', value: 'Maintenance' }]} />
     </div>
   );
 }
 
-function MaintenanceList({ type, title, description }: { type: 'Preventive' | 'Breakdown' | 'Calibration' | 'History', title: string, description: string }) {
-  const data = type === 'History' ? maintenanceRecords : maintenanceRecords.filter(m => m.type === type);
+function MaintenanceList({ title, description }: { type: 'Preventive' | 'Breakdown' | 'Calibration' | 'History', title: string, description: string }) {
+  // There is no maintenance table in the database yet, so there are no records to show.
+  const data: MaintenanceRecord[] = [];
 
   const columns: Column<MaintenanceRecord>[] = [
     { key: 'machineCode', label: 'Machine', sortable: true, render: (r) => <div><p className="font-mono text-xs font-semibold">{r.machineCode}</p><p className="text-xs text-slate-500">{r.machineName}</p></div> },
@@ -54,19 +78,12 @@ function MaintenanceList({ type, title, description }: { type: 'Preventive' | 'B
     { key: 'technician', label: 'Technician', render: (r) => <span className="text-xs text-slate-500">{r.technician}</span> },
     { key: 'cost', label: 'Cost', align: 'right', render: (r) => <span className="font-mono text-sm">₹{r.cost.toLocaleString()}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Completed' ? 'success' : r.status === 'Scheduled' ? 'neutral' : r.status === 'Overdue' ? 'error' : 'warning'} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-        </div>
-      )
-    },
   ];
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title={title} description={description} actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
-      <DataTable data={data} columns={columns} searchKeys={['machineCode', 'description', 'technician']} />
+      <DataTable data={data} columns={columns} searchKeys={['machineCode', 'description', 'technician']} emptyMessage="No maintenance records yet" />
     </div>
   );
 }

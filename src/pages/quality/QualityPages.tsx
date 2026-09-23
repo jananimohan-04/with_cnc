@@ -1,14 +1,15 @@
-import { useState } from 'react';
-import { Plus, Eye, Edit, ShieldCheck, AlertTriangle, CheckCircle2, ClipboardList, Settings } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, CheckCircle2, Settings } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Card, Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
-import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { inspections, ncrs } from '@/data/mockData';
+import { Badge, StatCard, statusToVariant } from '@/components/ui/Card';
 import type { Inspection, NCR } from '@/data/mockData';
 
+// There are no inspection / NCR tables in the database yet, so these pages show honest empty states
+// instead of demo rows.
+const inspections: Inspection[] = [];
+const ncrs: NCR[] = [];
+
 function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-Process' | 'Final', title: string, description: string }) {
-  const [showAdd, setShowAdd] = useState(false);
   const data = inspections.filter(i => i.type === type);
 
   const columns: Column<Inspection>[] = [
@@ -21,13 +22,6 @@ function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-P
     { key: 'inspector', label: 'Inspector', render: (r) => <span className="text-sm text-slate-600">{r.inspector}</span> },
     { key: 'date', label: 'Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.date}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-        </div>
-      )
-    },
   ];
 
   return (
@@ -38,7 +32,7 @@ function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-P
         <StatCard label="Passed" value={data.filter(d => d.status === 'Pass').length.toString()} icon={<CheckCircle2 size={20} />} accent="success" />
         <StatCard label="Failed / Rework" value={data.filter(d => d.status === 'Fail' || d.status === 'Rework').length.toString()} icon={<AlertTriangle size={20} />} accent="error" />
       </div>
-      <DataTable data={data} columns={columns} searchKeys={['inspectionNo', 'partName', 'partNo', 'workOrder']} onAdd={() => setShowAdd(true)} addLabel="New Inspection" />
+      <DataTable data={data} columns={columns} searchKeys={['inspectionNo', 'partName', 'partNo', 'workOrder']} emptyMessage="No inspection records yet" />
     </div>
   );
 }
@@ -77,25 +71,22 @@ export function NCRPage() {
     { key: 'raisedBy', label: 'Raised By', render: (r) => <span className="text-xs text-slate-500">{r.raisedBy}</span> },
     { key: 'date', label: 'Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.date}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Closed' ? 'success' : r.status === 'Open' ? 'error' : 'warning'} dot>{r.status}</Badge> },
-    {
-      key: 'actions', label: 'Actions', align: 'center', render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
-        </div>
-      )
-    },
   ];
+
+  const openCount = ncrs.filter(n => n.status === 'Open').length;
+  const investigatingCount = ncrs.filter(n => n.status !== 'Open' && n.status !== 'Closed').length;
+  const closedCount = ncrs.filter(n => n.status === 'Closed').length;
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader title="Non-Conformance Reports (NCR)" description="Manage rejections and non-conforming products" actions={<div className="flex items-center gap-2"><FilterButton /><ExportButton /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total NCRs" value="45" icon={<AlertTriangle size={20} />} accent="brand" />
-        <StatCard label="Open" value="12" icon={<AlertTriangle size={20} />} accent="error" />
-        <StatCard label="Under Investigation" value="8" icon={<Settings size={20} />} accent="warning" />
-        <StatCard label="Closed" value="25" icon={<CheckCircle2 size={20} />} accent="success" />
+        <StatCard label="Total NCRs" value={ncrs.length.toString()} icon={<AlertTriangle size={20} />} accent="brand" />
+        <StatCard label="Open" value={openCount.toString()} icon={<AlertTriangle size={20} />} accent="error" />
+        <StatCard label="Under Investigation" value={investigatingCount.toString()} icon={<Settings size={20} />} accent="warning" />
+        <StatCard label="Closed" value={closedCount.toString()} icon={<CheckCircle2 size={20} />} accent="success" />
       </div>
-      <DataTable data={ncrs} columns={columns} searchKeys={['ncrNo', 'partName', 'defectType']} />
+      <DataTable data={ncrs} columns={columns} searchKeys={['ncrNo', 'partName', 'defectType']} emptyMessage="No NCRs yet" />
     </div>
   );
 }

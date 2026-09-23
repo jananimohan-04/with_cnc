@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Download, Eye, Edit2, MoreVertical } from 'lucide-react';
+import { Search, Download, Eye, Edit2, MoreVertical } from 'lucide-react';
 import { KanbanCard } from './SalesPipelinePage';
 
 interface PipelineListViewProps {

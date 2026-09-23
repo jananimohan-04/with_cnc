@@ -17,7 +17,7 @@ export function Modal({
   subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full';
 }) {
   useEffect(() => {
     if (open) {
@@ -35,6 +35,9 @@ export function Modal({
     md: 'max-w-xl',
     lg: 'max-w-3xl',
     xl: 'max-w-5xl',
+    '2xl': 'max-w-6xl',
+    '3xl': 'max-w-7xl',
+    full: 'max-w-[95vw]',
   };
 
   return (
@@ -44,7 +47,7 @@ export function Modal({
         onClick={onClose}
       />
       <div
-        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] flex flex-col animate-scale-in`}
+        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size] ?? sizes.md} max-h-[90vh] flex flex-col animate-scale-in`}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
           <div>

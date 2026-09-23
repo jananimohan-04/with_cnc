@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Cpu, Plus, FileText, Clock, CheckCircle2, Package, Truck, LogOut, ChevronRight, Eye, AlertCircle } from 'lucide-react';
+import { Cpu, Plus, FileText, Clock, CheckCircle2, Package, Truck, LogOut, Eye, AlertCircle } from 'lucide-react';
 
 // ── Status mapping: ERP internal → customer-facing ──
 const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
@@ -60,7 +60,7 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
     if (error) { alert('Error: ' + error.message); setSaving(false); return; }
 
     const leadNo = `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
-    await supabase.from('cnc_enquiries').insert([{
+    const { error: leadError } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(),
       enquiry_no: leadNo,
       lead_no: leadNo,
@@ -82,6 +82,7 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
       pipeline_stage: null,
       portal_profile_id: profile.id
     }]);
+    if (leadError) console.error('Could not create the profile lead:', leadError);
 
     onComplete();
   };
@@ -116,7 +117,7 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
             ))}
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Address</label>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">City</label>
             <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
           </div>
           <div>
@@ -158,6 +159,8 @@ function NewEnquiryForm({ profile, onClose, onSaved }: { profile: any; onClose: 
       part_name: form.partName,
       part_no: form.partNumber || 'N/A',
       quantity: Number(form.quantity) || 0,
+      material: form.material || null,
+      description: form.description || null,
       estimated_value: 0,
       expected_date: form.expectedDate || null,
       received_date: new Date().toISOString().split('T')[0],
@@ -241,7 +244,7 @@ function EnquiryDetail({ enquiry, onClose }: { enquiry: any; onClose: () => void
         steps.push({ stage: 'Sales Order', status: o.status, date: o.order_date || o.created_at, data: o });
 
         // Step 4: Work Order (if exists)
-        const { data: wos } = await supabase.from('cnc_work_orders').select('*').eq('sales_order_id', o.id);
+        const { data: wos } = await supabase.from('cnc_work_orders').select('*').eq('sales_order', o.order_no);
         if (wos && wos.length > 0) {
           steps.push({ stage: 'Work Order', status: wos[0].status, date: wos[0].created_at, data: wos[0] });
         }
@@ -329,7 +332,8 @@ export function PortalDashboard({ session }: { session: any }) {
 
   const loadProfile = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('portal_profiles').select('*').eq('auth_user_id', session.user.id).single();
+    const { data, error } = await supabase.from('portal_profiles').select('*').eq('auth_user_id', session.user.id).maybeSingle();
+    if (error) console.error('Could not load portal profile:', error);
     if (data) {
       setProfile(data);
       await loadEnquiries(data.id);

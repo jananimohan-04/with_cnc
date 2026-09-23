@@ -1,11 +1,11 @@
-import { Card, Badge, Button } from '@/components/ui/Card';
-import { X, Play, Edit, Printer, FileText, CheckCircle } from 'lucide-react';
+import { Card, Button } from '@/components/ui/Card';
+import { Play, Edit, Printer, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useState, useEffect } from 'react';
 import { DonutChart, BarChart } from '@/components/ui/Charts';
 import { getMockImage } from '@/lib/mockStorage';
 
-export function ProductionOrderDetails({ order, onClose, refresh }: { order: any, onClose: () => void, refresh: () => void }) {
+export function ProductionOrderDetails({ order, refresh }: { order: any, onClose: () => void, refresh: () => void }) {
   const [routing, setRouting] = useState<any[]>([]);
   const [drawingUrl, setDrawingUrl] = useState<string | null>(order.image_url || order.drawing_url || null);
   const [materials, setMaterials] = useState<any[]>([]);
@@ -16,15 +16,25 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
       const { data: routeData } = await supabase.from('cnc_routing').select('*').eq('parent_part_no', order.part_no).order('op_no', { ascending: true });
       if (routeData) setRouting(routeData);
 
-      // Load material issues
-      const { data: matData } = await supabase.from('cnc_stock_movements').select('*').eq('reference', order.wo_no);
-      if (matData) setMaterials(matData);
+      // Load material issues. Inventory issues are recorded with reference = material request no,
+      // so match both the WO no itself and any material requests raised against this WO.
+      const { data: reqData, error: reqError } = await supabase
+        .from('cnc_material_requests')
+        .select('request_no')
+        .eq('work_order_no', order.wo_no);
+      if (reqError) console.error('Failed to load material requests:', reqError);
+      const references = [order.wo_no, ...(reqData || []).map((r: any) => r.request_no)].filter(Boolean);
+      if (references.length > 0) {
+        const { data: matData, error: matError } = await supabase.from('cnc_stock_movements').select('*').in('reference', references);
+        if (matError) console.error('Failed to load material issues:', matError);
+        if (matData) setMaterials(matData);
+      }
     }
     loadDetails();
 
     const loadImg = async () => {
       if (!drawingUrl && order.part_name) {
-        const url = await getMockImage(order.part_name);
+        const url = await getMockImage(order.part_name).catch(() => null);
         if (url) setDrawingUrl(url);
       }
     };
@@ -46,12 +56,9 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
   
   if (progressData.length === 0) progressData.push({ name: 'Pending', value: qty, color: '#94a3b8' });
 
-  // Target vs Actual chart (mocked over days for now since we don't have daily logs table)
+  // Target vs Actual from the work order's real quantities (no daily production log exists)
   const targetVsActual = [
-    { name: 'Day 1', target: qty * 0.2, actual: comp * 0.1 },
-    { name: 'Day 2', target: qty * 0.5, actual: comp * 0.4 },
-    { name: 'Day 3', target: qty * 0.8, actual: comp * 0.8 },
-    { name: 'Day 4', target: qty, actual: comp },
+    { label: order.wo_no || 'This Order', target: qty, actual: comp, rejected: rej },
   ];
 
     const handleStart = async () => {
@@ -81,7 +88,7 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
       window.open(url, '_blank');
       return;
     }
-    const mockUrl = await getMockImage(order.part_name);
+    const mockUrl = await getMockImage(order.part_name).catch(() => null);
     if (mockUrl) {
       window.open(mockUrl, '_blank');
     } else {
@@ -228,7 +235,8 @@ export function ProductionOrderDetails({ order, onClose, refresh }: { order: any
               height={200} 
               series={[
                 { key: 'target', label: 'Target', color: '#94a3b8' },
-                { key: 'actual', label: 'Actual', color: '#10b981' }
+                { key: 'actual', label: 'Completed', color: '#10b981' },
+                { key: 'rejected', label: 'Rejected', color: '#ef4444' }
               ]} 
             />
           </Card>

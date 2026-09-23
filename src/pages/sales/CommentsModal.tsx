@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function CommentsModal({ isOpen, onClose, recordId, recordTitle }: { isOpen: boolean, onClose: () => void, recordId: string, recordTitle: string }) {
+  const { profile } = useAuth();
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState('');
@@ -30,7 +32,7 @@ export function CommentsModal({ isOpen, onClose, recordId, recordTitle }: { isOp
       } else if (data) {
         setComments(data);
       }
-    } catch (err) {
+    } catch {
       fallback = true;
     }
     
@@ -50,7 +52,7 @@ export function CommentsModal({ isOpen, onClose, recordId, recordTitle }: { isOp
       id: crypto.randomUUID(),
       record_id: recordId,
       comment: newComment.trim(),
-      author_name: 'Socrates S.',
+      author_name: profile?.full_name || profile?.email || '',
       created_at: new Date().toISOString()
     };
     

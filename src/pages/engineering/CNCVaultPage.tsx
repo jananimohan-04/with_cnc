@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Monitor } from 'lucide-react';
+import { Monitor } from 'lucide-react';
 
 export function CNCVaultPage() {
   const vaultUrl = import.meta.env.VITE_VAULT_URL || 'http://localhost:8081';

@@ -9,7 +9,7 @@ export function LineChart({
 }: {
   data: Record<string, number | string>[];
   height?: number;
-  series: { key: string; color: string; label: string }[];
+  series: { key: string; color: string; label?: string; name?: string }[];
 }) {
   const width = 600;
   const padding = { top: 20, right: 20, bottom: 30, left: 40 };
@@ -65,7 +65,7 @@ export function LineChart({
             className="fill-slate-400"
             fontSize={10}
           >
-            {d.month || d.label || ''}
+            {d.month || d.label || d.name || ''}
           </text>
         ))}
         {series.map((s, si) => {
@@ -86,7 +86,7 @@ export function LineChart({
         {series.map((s, i) => (
           <div key={i} className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-            <span className="text-xs text-slate-500">{s.label}</span>
+            <span className="text-xs text-slate-500">{s.label ?? s.name}</span>
           </div>
         ))}
       </div>
@@ -101,7 +101,7 @@ export function BarChart({
 }: {
   data: Record<string, number | string>[];
   height?: number;
-  series: { key: string; color: string; label: string }[];
+  series: { key: string; color: string; label?: string; name?: string }[];
 }) {
   const width = 600;
   const padding = { top: 20, right: 20, bottom: 30, left: 40 };
@@ -159,12 +159,12 @@ export function BarChart({
                     fill={s.color}
                     className="transition-all duration-500"
                   >
-                    <title>{`${s.label}: ${val}`}</title>
+                    <title>{`${s.label ?? s.name ?? s.key}: ${val}`}</title>
                   </rect>
                 );
               })}
               <text x={groupX + groupWidth / 2} y={height - 8} textAnchor="middle" className="fill-slate-400" fontSize={10}>
-                {d.month || d.label || ''}
+                {d.month || d.label || d.name || ''}
               </text>
             </g>
           );
@@ -174,7 +174,7 @@ export function BarChart({
         {series.map((s, i) => (
           <div key={i} className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: s.color }} />
-            <span className="text-xs text-slate-500">{s.label}</span>
+            <span className="text-xs text-slate-500">{s.label ?? s.name}</span>
           </div>
         ))}
       </div>
@@ -184,12 +184,17 @@ export function BarChart({
 
 export function DonutChart({
   data,
-  size = 180,
+  size: sizeProp,
+  height,
 }: {
-  data: { label: string; value: number; color: string }[];
+  data: { label?: string; name?: string; value: number; color: string }[];
   size?: number;
+  /** Alias for size (some callers pass height). */
+  height?: number;
 }) {
-  const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+  const size = sizeProp ?? height ?? 180;
+  const rawTotal = data.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
+  const total = rawTotal || 1;
   const radius = size / 2 - 20;
   const innerRadius = radius * 0.62;
   const cx = size / 2;
@@ -197,7 +202,8 @@ export function DonutChart({
 
   let cumulativeAngle = -Math.PI / 2;
 
-  const arcs = data.map((d) => {
+  const arcs = data.map((raw) => {
+    const d = { ...raw, value: Number(raw.value) || 0, label: raw.label ?? raw.name ?? '' };
     const angle = (d.value / total) * Math.PI * 2;
     const startAngle = cumulativeAngle;
     const endAngle = cumulativeAngle + angle;
@@ -227,7 +233,7 @@ export function DonutChart({
           </path>
         ))}
         <text x={cx} y={cy - 4} textAnchor="middle" className="fill-slate-800 font-bold" fontSize={22}>
-          {total}
+          {rawTotal}
         </text>
         <text x={cx} y={cy + 14} textAnchor="middle" className="fill-slate-400" fontSize={10}>
           Total

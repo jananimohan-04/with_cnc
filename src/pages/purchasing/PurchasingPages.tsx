@@ -3,14 +3,13 @@ import { supabase } from '@/lib/supabase';
 import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff, Printer, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Card, Badge, Button, StatCard, ProgressBar, statusToVariant } from '@/components/ui/Card';
+import { Card, Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { purchaseOrders } from '@/data/mockData';
-import type { PurchaseOrder } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -237,7 +236,7 @@ export function SuppliersPage() {
 
 export function PurchaseRequisitionsPage() {
   const [prs, setPrs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   
@@ -259,6 +258,9 @@ export function PurchaseRequisitionsPage() {
     items: [] as any[]
   });
   const [form, setForm] = useState(resetForm());
+  const [submitting, setSubmitting] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const { profile } = useAuth();
 
   useEffect(() => {
     fetchData();
@@ -349,100 +351,143 @@ export function PurchaseRequisitionsPage() {
     }
   };
 
+  // cnc_purchase_requisition_items has no raw_material_id/part_id columns, so resolve them from material_code
+  // when the PR is converted to a PO (and from there onto the GRN).
+  const resolveItemIds = (code: string) => {
+    const mat = materials.find(m => m.code === code);
+    return { raw_material_id: mat?.raw_material_id || null, part_id: mat?.part_id || null };
+  };
+
   const submitPR = async (status: string) => {
+    if (submitting) return;
     if (!form.items.length) return alert('Add at least one item');
-    
-    const { data: prRecord, error } = await supabase.from('cnc_purchase_requisitions').insert([{
-       pr_no: form.prNo,
-       pr_date: form.date,
-       department: form.department,
-       priority: form.priority,
-       source_type: form.sourceType,
-       source_reference: form.sourceReference,
-       material_request_id: form.materialRequestId || null,
-       status: status,
-       remarks: form.remarks,
-       requested_by: 'Current User'
-    }]).select();
+    setSubmitting(true);
+    try {
+      const { data: prRecord, error } = await supabase.from('cnc_purchase_requisitions').insert([{
+         pr_no: form.prNo,
+         pr_date: form.date,
+         department: form.department,
+         priority: form.priority,
+         source_type: form.sourceType,
+         source_reference: form.sourceReference,
+         material_request_id: form.materialRequestId || null,
+         status: status,
+         remarks: form.remarks,
+         requested_by: profile?.full_name || ''
+      }]).select();
 
-    if (error) return alert('Error creating PR: ' + error.message + "\nDid you run the SQL script?");
+      if (error) { console.error(error); return alert('Error creating PR: ' + error.message); }
+      if (!prRecord || prRecord.length === 0) return alert('Error creating PR: no record returned.');
 
-    const prId = prRecord[0].id;
-    
-    const itemsToInsert = form.items.map(i => ({
-      pr_id: prId,
-      material_code: i.material_code,
-      material_name: i.material_name,
-      qty: Number(i.qty),
-      uom: i.uom,
-      required_date: i.required_date || null,
-      preferred_supplier_id: i.preferred_supplier_id || null,
-      estimated_unit_cost: i.estimated_unit_cost ? Number(i.estimated_unit_cost) : null
-    }));
+      const prId = prRecord[0].id;
 
-    await supabase.from('cnc_purchase_requisition_items').insert(itemsToInsert);
-    
-    setShowAdd(false);
-    fetchData();
+      const itemsToInsert = form.items.map(i => ({
+        pr_id: prId,
+        material_code: i.material_code,
+        material_name: i.material_name,
+        qty: Number(i.qty),
+        uom: i.uom,
+        required_date: i.required_date || null,
+        preferred_supplier_id: i.preferred_supplier_id || null,
+        estimated_unit_cost: i.estimated_unit_cost ? Number(i.estimated_unit_cost) : null
+      }));
+
+      const { error: itemsError } = await supabase.from('cnc_purchase_requisition_items').insert(itemsToInsert);
+      if (itemsError) {
+        console.error(itemsError);
+        const { error: cleanupError } = await supabase.from('cnc_purchase_requisitions').delete().eq('id', prId);
+        if (cleanupError) console.error('Failed to roll back PR header:', cleanupError);
+        return alert('Error saving PR items: ' + itemsError.message);
+      }
+
+      setShowAdd(false);
+      fetchData();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleAction = async (id: string, action: string) => {
+    let error: any = null;
     if (action === 'Reject') {
        const reason = prompt("Enter rejection reason:");
        if (!reason) return;
-       await supabase.from('cnc_purchase_requisitions').update({ status: 'Rejected', rejection_reason: reason }).eq('id', id);
+       ({ error } = await supabase.from('cnc_purchase_requisitions').update({ status: 'Rejected', rejection_reason: reason }).eq('id', id));
+    } else if (action === 'Submit') {
+       ({ error } = await supabase.from('cnc_purchase_requisitions').update({ status: 'Pending Approval' }).eq('id', id));
     } else if (action === 'Approve') {
-       await supabase.from('cnc_purchase_requisitions').update({ status: 'Approved' }).eq('id', id);
+       ({ error } = await supabase.from('cnc_purchase_requisitions').update({ status: 'Approved' }).eq('id', id));
     }
+    if (error) { console.error(error); alert(`Failed to ${action.toLowerCase()} PR: ${error.message}`); return; }
     fetchData();
     setViewTarget(null);
   };
 
   const convertToPO = async (pr: any) => {
+    if (converting) return;
     if (!confirm("Create a Draft Purchase Order for this Requisition?")) return;
-    
-    // Create PO
-    const poNo = `PO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    // Pick the first item's supplier as the PO supplier (simplified logic for Phase 1)
-    const primarySupplierId = pr.items[0]?.preferred_supplier_id || null;
+    setConverting(true);
+    try {
+      // Create PO
+      const poNo = `PO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const { data: poRecord, error } = await supabase.from('cnc_purchase_orders').insert([{
-       po_number: poNo,
-       purchase_requisition_id: pr.id,
-       supplier_id: primarySupplierId,
-       order_date: new Date().toISOString().split('T')[0],
-       status: 'Draft',
-       notes: `Generated from ${pr.pr_no}`
-    }]).select();
+      // Pick the first item's supplier as the PO supplier (simplified logic for Phase 1)
+      const primarySupplierId = pr.items?.[0]?.preferred_supplier_id || null;
 
-    if (error) return alert("Error creating PO: " + error.message + "\nCheck SQL migration!");
+      const poItems = (pr.items || []).map((i: any) => {
+         const qty = Number(i.qty) || 0;
+         const price = Number(i.estimated_unit_cost) || 0;
+         return {
+            ...resolveItemIds(i.material_code),
+            material_code: i.material_code,
+            material_name: i.material_name,
+            quantity: qty,
+            unit: i.uom,
+            unit_price: price,
+            tax_amount: 0,
+            total_amount: qty * price,
+            required_date: i.required_date
+         };
+      });
+      const subtotal = poItems.reduce((acc: number, i: any) => acc + i.total_amount, 0);
 
-    const poId = poRecord[0].id;
+      const { data: poRecord, error } = await supabase.from('cnc_purchase_orders').insert([{
+         po_number: poNo,
+         purchase_requisition_id: pr.id,
+         supplier_id: primarySupplierId,
+         order_date: new Date().toISOString().split('T')[0],
+         status: 'Draft',
+         subtotal,
+         tax: 0,
+         grand_total: subtotal,
+         notes: `Generated from ${pr.pr_no}`
+      }]).select();
 
-    // Create PO Items
-    if (pr.items && pr.items.length > 0) {
-       const poItems = pr.items.map((i: any) => ({
-          purchase_order_id: poId,
-      raw_material_id: i.raw_material_id || null,
-      part_id: i.part_id || null,
-      material_code: i.material_code,
-          material_name: i.material_name,
-          quantity: i.qty,
-          unit: i.uom,
-          unit_price: i.estimated_unit_cost || 0,
-          total_amount: (i.qty * (i.estimated_unit_cost || 0)),
-          required_date: i.required_date
-       }));
-       await supabase.from('cnc_purchase_order_items').insert(poItems);
+      if (error) { console.error(error); return alert("Error creating PO: " + error.message); }
+      if (!poRecord || poRecord.length === 0) return alert('Error creating PO: no record returned.');
+
+      const poId = poRecord[0].id;
+
+      // Create PO Items
+      if (poItems.length > 0) {
+         const { error: itemsError } = await supabase.from('cnc_purchase_order_items').insert(poItems.map((i: any) => ({ ...i, purchase_order_id: poId })));
+         if (itemsError) {
+            console.error(itemsError);
+            const { error: cleanupError } = await supabase.from('cnc_purchase_orders').delete().eq('id', poId);
+            if (cleanupError) console.error('Failed to roll back PO header:', cleanupError);
+            return alert('Error creating PO items: ' + itemsError.message);
+         }
+      }
+
+      // Update PR Status
+      const { error: prError } = await supabase.from('cnc_purchase_requisitions').update({ status: 'Converted to PO' }).eq('id', pr.id);
+      if (prError) { console.error(prError); alert(`PO ${poNo} was created but the PR status could not be updated: ${prError.message}`); }
+      else alert(`Draft Purchase Order ${poNo} created successfully!`);
+      fetchData();
+      setViewTarget(null);
+    } finally {
+      setConverting(false);
     }
-
-    // Update PR Status
-    await supabase.from('cnc_purchase_requisitions').update({ status: 'Converted to PO' }).eq('id', pr.id);
-    
-    alert(`Draft Purchase Order ${poNo} created successfully!`);
-    fetchData();
-    setViewTarget(null);
   };
 
   const columns: Column<any>[] = [
@@ -479,8 +524,8 @@ export function PurchaseRequisitionsPage() {
       {/* CREATE PR MODAL */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="New Purchase Requisition" subtitle="Internal Procurement Request" size="xl" footer={<>
          <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
-         <Button variant="secondary" onClick={() => submitPR('Draft')}>Save Draft</Button>
-         <Button onClick={() => submitPR('Pending Approval')}>Submit for Approval</Button>
+         <Button variant="secondary" disabled={submitting} onClick={() => submitPR('Draft')}>Save Draft</Button>
+         <Button disabled={submitting} onClick={() => submitPR('Pending Approval')}>Submit for Approval</Button>
       </>}>
          <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
@@ -539,7 +584,7 @@ export function PurchaseRequisitionsPage() {
                               <th className="p-2 font-semibold text-slate-600">Current Stock</th>
                               <th className="p-2 font-semibold text-slate-600">Shortage</th>
                               <th className="p-2 font-semibold text-slate-600">Pref. Supplier</th>
-                              <th className="p-2 font-semibold text-slate-600">Est. Unit Cost (,1)</th>
+                              <th className="p-2 font-semibold text-slate-600">Est. Unit Cost (₹)</th>
                               <th className="p-2"></th>
                            </tr>
                         </thead>
@@ -582,13 +627,13 @@ export function PurchaseRequisitionsPage() {
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title={`Requisition Details: ${viewTarget?.pr_no}`} subtitle={viewTarget?.status} size="xl" footer={
          <div className="flex gap-2 w-full justify-end">
             <Button variant="secondary" onClick={() => setViewTarget(null)}>Close</Button>
-            {(viewTarget?.status === 'Draft' || viewTarget?.status === 'Pending') && <Button onClick={() => handleAction(viewTarget.id, 'Approve')}>Submit for Approval</Button>}
+            {(viewTarget?.status === 'Draft' || viewTarget?.status === 'Pending') && <Button onClick={() => handleAction(viewTarget.id, 'Submit')}>Submit for Approval</Button>}
             {viewTarget?.status === 'Pending Approval' && <>
                <Button variant="error" onClick={() => handleAction(viewTarget.id, 'Reject')}>Reject</Button>
                <Button variant="primary" onClick={() => handleAction(viewTarget.id, 'Approve')}>Approve PR</Button>
             </>}
             {viewTarget?.status === 'Approved' && (
-               <Button variant="brand" onClick={() => convertToPO(viewTarget)} icon={<ShoppingCart size={16}/>}>Convert to Purchase Order</Button>
+               <Button variant="brand" disabled={converting} onClick={() => convertToPO(viewTarget)} icon={<ShoppingCart size={16}/>}>Convert to Purchase Order</Button>
             )}
             {viewTarget?.status === 'Converted to PO' && (
                <div className="px-4 py-2 bg-brand-50 text-brand-700 rounded-lg font-medium border border-brand-200 flex items-center gap-2">
@@ -636,7 +681,7 @@ export function PurchaseRequisitionsPage() {
                                  </td>
                                  <td className="py-3 font-semibold">{item.qty} <span className="text-xs font-normal text-slate-500">{item.uom}</span></td>
                                  <td className="py-3">{sup ? sup.name : <span className="text-slate-400 italic">Not Specified</span>}</td>
-                                 <td className="py-3 font-mono">{item.estimated_unit_cost ? `,1${item.estimated_unit_cost}` : '-'}</td>
+                                 <td className="py-3 font-mono">{item.estimated_unit_cost ? `₹${item.estimated_unit_cost}` : '-'}</td>
                               </tr>
                            );
                         })}
@@ -652,7 +697,7 @@ export function PurchaseRequisitionsPage() {
 
 export function PurchaseOrdersPage() {
   const [pos, setPos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   
@@ -674,6 +719,7 @@ export function PurchaseOrdersPage() {
     items: [] as any[]
   });
   const [form, setForm] = useState(resetForm());
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -758,6 +804,7 @@ export function PurchaseOrdersPage() {
   };
 
   const savePO = async (statusToSave = 'Draft') => {
+    if (saving) return;
     if (!form.supplierId) return alert('Supplier is required');
     if (!form.items.length) return alert('At least one item is required');
     if (statusToSave === 'Issued' && !form.expectedDate) return alert('Expected Delivery Date is required to Issue PO');
@@ -779,40 +826,64 @@ export function PurchaseOrdersPage() {
        notes: form.notes
     };
 
-    let poId = form.id;
+    setSaving(true);
+    try {
+      let poId = form.id;
+      const isNew = !poId;
+      let oldItemIds: string[] = [];
 
-    if (poId) {
-       // Update existing Draft
-       const { error: updErr } = await supabase.from('cnc_purchase_orders').update(poRecord).eq('id', poId);
-       if (updErr) return alert('Error updating PO: ' + updErr.message);
-       // Delete old items and re-insert
-       await supabase.from('cnc_purchase_order_items').delete().eq('purchase_order_id', poId);
-    } else {
-       // Insert new
-       const { data: insData, error: insErr } = await supabase.from('cnc_purchase_orders').insert([poRecord]).select();
-       if (insErr) return alert('Error creating PO: ' + insErr.message);
-       poId = insData[0].id;
+      if (poId) {
+         // Update existing Draft
+         const { error: updErr } = await supabase.from('cnc_purchase_orders').update(poRecord).eq('id', poId);
+         if (updErr) { console.error(updErr); return alert('Error updating PO: ' + updErr.message); }
+         // Remember the old items; they are only removed after the new ones are saved,
+         // so a failed insert can't leave the PO with no items (still not a single transaction).
+         const { data: oldItems, error: oldErr } = await supabase.from('cnc_purchase_order_items').select('id').eq('purchase_order_id', poId);
+         if (oldErr) { console.error(oldErr); return alert('Error loading existing PO items: ' + oldErr.message); }
+         oldItemIds = (oldItems || []).map((i: any) => i.id);
+      } else {
+         // Insert new
+         const { data: insData, error: insErr } = await supabase.from('cnc_purchase_orders').insert([poRecord]).select();
+         if (insErr) { console.error(insErr); return alert('Error creating PO: ' + insErr.message); }
+         if (!insData || insData.length === 0) return alert('Error creating PO: no record returned.');
+         poId = insData[0].id;
+      }
+
+      // Insert items
+      const itemsToInsert = form.items.map(i => ({
+        purchase_order_id: poId,
+        raw_material_id: i.raw_material_id || null,
+        part_id: i.part_id || null,
+        material_code: i.material_code,
+        material_name: i.material_name,
+        quantity: Number(i.quantity) || 0,
+        unit: i.unit,
+        unit_price: Number(i.unit_price) || 0,
+        tax_amount: Number(i.tax_amount) || 0, // Storing tax % here for simplicity
+        total_amount: Number(i.total_amount) || 0
+      }));
+
+      const { error: itemsErr } = await supabase.from('cnc_purchase_order_items').insert(itemsToInsert);
+      if (itemsErr) {
+         console.error(itemsErr);
+         if (isNew) {
+            const { error: cleanupError } = await supabase.from('cnc_purchase_orders').delete().eq('id', poId);
+            if (cleanupError) console.error('Failed to roll back PO header:', cleanupError);
+         }
+         return alert('Error saving PO items: ' + itemsErr.message);
+      }
+
+      if (oldItemIds.length > 0) {
+         const { error: delErr } = await supabase.from('cnc_purchase_order_items').delete().in('id', oldItemIds);
+         if (delErr) { console.error(delErr); alert('PO saved, but old line items could not be removed (they may appear duplicated): ' + delErr.message); }
+      }
+
+      setShowAdd(false);
+      setViewTarget(null);
+      fetchData();
+    } finally {
+      setSaving(false);
     }
-
-    // Insert items
-    const itemsToInsert = form.items.map(i => ({
-      purchase_order_id: poId,
-      raw_material_id: i.raw_material_id || null,
-      part_id: i.part_id || null,
-      material_code: i.material_code,
-      material_name: i.material_name,
-      quantity: Number(i.quantity),
-      unit: i.unit,
-      unit_price: Number(i.unit_price),
-      tax_amount: Number(i.tax_amount), // Storing tax % here for simplicity
-      total_amount: Number(i.total_amount)
-    }));
-
-    await supabase.from('cnc_purchase_order_items').insert(itemsToInsert);
-
-    setShowAdd(false);
-    setViewTarget(null);
-    fetchData();
   };
 
   const loadPOForEdit = (po: any) => {
@@ -826,7 +897,7 @@ export function PurchaseOrdersPage() {
         billingAddress: po.billing_address || '',
         deliveryAddress: po.delivery_address || '',
         notes: po.notes || '',
-        items: po.items.map((i:any) => ({ ...i }))
+        items: (po.items || []).map((i:any) => ({ ...i }))
      });
      setShowAdd(true);
   };
@@ -834,7 +905,8 @@ export function PurchaseOrdersPage() {
   const handleIssueAction = async (po: any) => {
      if (!po.expected_date) return alert("Expected delivery date is missing. Please edit the PO first.");
      if (!confirm("Are you sure you want to issue this PO? It will be marked as Issued.")) return;
-     await supabase.from('cnc_purchase_orders').update({ status: 'Issued' }).eq('id', po.id);
+     const { error } = await supabase.from('cnc_purchase_orders').update({ status: 'Issued' }).eq('id', po.id);
+     if (error) { console.error(error); return alert('Failed to issue PO: ' + error.message); }
      fetchData();
      setViewTarget(null);
   };
@@ -853,10 +925,10 @@ export function PurchaseOrdersPage() {
     { key: 'expected_date', label: 'Expected By', sortable: true, render: (r) => (
        <div className="flex items-center gap-1">
           <span className="text-xs text-slate-500">{r.expected_date || '-'}</span>
-          {isDelayed(r) && <AlertCircle size={12} className="text-red-500" title="Delayed" />}
+          {isDelayed(r) && <span title="Delayed"><AlertCircle size={12} className="text-red-500" /></span>}
        </div>
     )},
-    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">,1{(r.grand_total).toLocaleString()}</span> },
+    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">₹{Number(r.grand_total ?? 0).toLocaleString()}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => (
        <div className="flex flex-col gap-1 items-start">
          <Badge variant={r.status === 'Issued' ? 'brand' : r.status === 'Draft' ? 'neutral' : r.status === 'Received' ? 'success' : 'warning'} dot>{r.status}</Badge>
@@ -866,7 +938,7 @@ export function PurchaseOrdersPage() {
     { key: 'actions', label: 'Actions', align: 'center', render: (r) => (
        <div className="flex gap-1 justify-center">
          <Button variant="secondary" size="sm" onClick={() => setViewTarget(r)} icon={<Eye size={14} />}>View</Button>
-         {r.status === 'Draft' && <Button variant="secondary" size="sm" onClick={() => loadPOForEdit(r)} icon={<Edit size={14} />}></Button>}
+         {r.status === 'Draft' && <Button variant="secondary" size="sm" onClick={() => loadPOForEdit(r)} icon={<Edit size={14} />} title="Edit PO">Edit</Button>}
        </div>
     ) }
   ];
@@ -894,8 +966,8 @@ export function PurchaseOrdersPage() {
       {/* CREATE / EDIT PO MODAL */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={form.id ? "Edit Purchase Order" : "New Purchase Order"} subtitle="Commercial Commitment" size="xl" footer={<>
          <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
-         <Button variant="secondary" onClick={() => savePO('Draft')}>Save Draft</Button>
-         <Button onClick={() => savePO('Issued')} icon={<Send size={16}/>}>Issue PO</Button>
+         <Button variant="secondary" disabled={saving} onClick={() => savePO('Draft')}>Save Draft</Button>
+         <Button disabled={saving} onClick={() => savePO('Issued')} icon={<Send size={16}/>}>Issue PO</Button>
       </>}>
          <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
@@ -941,9 +1013,9 @@ export function PurchaseOrdersPage() {
                               <th className="p-2 font-semibold text-slate-600">Material</th>
                               <th className="p-2 font-semibold text-slate-600 w-24">Qty</th>
                               <th className="p-2 font-semibold text-slate-600 w-16">UoM</th>
-                              <th className="p-2 font-semibold text-slate-600 w-32">Unit Price (,1)</th>
+                              <th className="p-2 font-semibold text-slate-600 w-32">Unit Price (₹)</th>
                               <th className="p-2 font-semibold text-slate-600 w-24">Tax %</th>
-                              <th className="p-2 font-semibold text-slate-600 text-right">Total (,1)</th>
+                              <th className="p-2 font-semibold text-slate-600 text-right">Total (₹)</th>
                               <th className="p-2"></th>
                            </tr>
                         </thead>
@@ -960,7 +1032,7 @@ export function PurchaseOrdersPage() {
                                     <td className="p-1"><input className={inputClass} value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} /></td>
                                     <td className="p-1"><input type="number" className={inputClass} value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} /></td>
                                     <td className="p-1"><input type="number" className={inputClass} value={item.tax_amount} onChange={e => updateItem(idx, 'tax_amount', e.target.value)} /></td>
-                                    <td className="p-2 text-right font-mono font-semibold text-slate-800">{item.total_amount ? Number(item.total_amount).toLocaleString() : '-'}</td>
+                                    <td className="p-2 text-right font-mono font-semibold text-slate-800">{item.total_amount ? Number(item.total_amount ?? 0).toLocaleString() : '-'}</td>
                                     <td className="p-1 text-center"><button onClick={() => { const ni = [...form.items]; ni.splice(idx, 1); setForm({...form, items: ni}); }} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
                                  </tr>
                            ))}
@@ -974,9 +1046,9 @@ export function PurchaseOrdersPage() {
                   return (
                      <div className="flex justify-end mt-4">
                         <div className="w-64 bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm">
-                           <div className="flex justify-between mb-2"><span className="text-slate-500">Subtotal</span><span className="font-mono">,1{totals.subtotal.toLocaleString()}</span></div>
-                           <div className="flex justify-between mb-2 pb-2 border-b border-slate-200"><span className="text-slate-500">Estimated Tax</span><span className="font-mono">,1{totals.tax.toLocaleString()}</span></div>
-                           <div className="flex justify-between font-bold text-slate-900 text-base"><span>Grand Total</span><span className="font-mono text-brand-700">,1{totals.grandTotal.toLocaleString()}</span></div>
+                           <div className="flex justify-between mb-2"><span className="text-slate-500">Subtotal</span><span className="font-mono">₹{totals.subtotal.toLocaleString()}</span></div>
+                           <div className="flex justify-between mb-2 pb-2 border-b border-slate-200"><span className="text-slate-500">Estimated Tax</span><span className="font-mono">₹{totals.tax.toLocaleString()}</span></div>
+                           <div className="flex justify-between font-bold text-slate-900 text-base"><span>Grand Total</span><span className="font-mono text-brand-700">₹{totals.grandTotal.toLocaleString()}</span></div>
                         </div>
                      </div>
                   );
@@ -1076,9 +1148,9 @@ export function PurchaseOrdersPage() {
                               </td>
                               <td className="py-3 text-center font-medium">{item.quantity} {item.unit}</td>
                               <td className="py-3 text-center text-slate-500">{item.quantity} {item.unit} <span className="text-[10px] block">(0 Received)</span></td>
-                              <td className="py-3 text-right font-mono">,1{Number(item.unit_price).toLocaleString()}</td>
+                              <td className="py-3 text-right font-mono">₹{Number(item.unit_price ?? 0).toLocaleString()}</td>
                               <td className="py-3 text-right text-slate-500">{item.tax_amount}%</td>
-                              <td className="py-3 text-right font-mono font-bold text-slate-900">,1{Number(item.total_amount).toLocaleString()}</td>
+                              <td className="py-3 text-right font-mono font-bold text-slate-900">₹{Number(item.total_amount ?? 0).toLocaleString()}</td>
                            </tr>
                         ))}
                      </tbody>
@@ -1088,9 +1160,9 @@ export function PurchaseOrdersPage() {
                {/* Totals */}
                <div className="flex justify-end pt-4">
                   <div className="w-72">
-                     <div className="flex justify-between py-1 text-sm text-slate-600"><span>Subtotal</span><span className="font-mono text-slate-900">,1{Number(viewTarget.subtotal).toLocaleString()}</span></div>
-                     <div className="flex justify-between py-1 text-sm text-slate-600 border-b border-slate-200 mb-2 pb-2"><span>Total Tax</span><span className="font-mono text-slate-900">,1{Number(viewTarget.tax).toLocaleString()}</span></div>
-                     <div className="flex justify-between py-2 text-lg font-black text-slate-900"><span>Grand Total</span><span className="font-mono">,1{Number(viewTarget.grand_total).toLocaleString()}</span></div>
+                     <div className="flex justify-between py-1 text-sm text-slate-600"><span>Subtotal</span><span className="font-mono text-slate-900">₹{Number(viewTarget.subtotal ?? 0).toLocaleString()}</span></div>
+                     <div className="flex justify-between py-1 text-sm text-slate-600 border-b border-slate-200 mb-2 pb-2"><span>Total Tax</span><span className="font-mono text-slate-900">₹{Number(viewTarget.tax ?? 0).toLocaleString()}</span></div>
+                     <div className="flex justify-between py-2 text-lg font-black text-slate-900"><span>Grand Total</span><span className="font-mono">₹{Number(viewTarget.grand_total ?? 0).toLocaleString()}</span></div>
                   </div>
                </div>
                
@@ -1115,7 +1187,7 @@ export function PurchaseOrdersPage() {
 
 export function GoodsReceiptPage() {
   const [grns, setGrns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
   
@@ -1138,6 +1210,9 @@ export function GoodsReceiptPage() {
     items: [] as any[]
   });
   const [form, setForm] = useState(resetForm());
+  const [saving, setSaving] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const { profile } = useAuth();
 
   useEffect(() => {
     fetchData();
@@ -1227,10 +1302,11 @@ export function GoodsReceiptPage() {
   };
 
   const saveGRN = async () => {
+    if (saving) return;
     if (!form.poId) return alert('Purchase Order is required');
     if (!form.warehouseId) return alert('Warehouse is required');
     if (!form.items.length) return alert('At least one item is required');
-    
+
     const po = pos.find(p => p.id === form.poId);
 
     const grnRecord = {
@@ -1244,55 +1320,84 @@ export function GoodsReceiptPage() {
        warehouse_id: form.warehouseId,
        status: 'Draft',
        remarks: form.remarks,
-       created_by: 'Current User'
+       created_by: profile?.full_name || ''
     };
 
-    let grnId = form.id;
+    setSaving(true);
+    try {
+      let grnId = form.id;
+      const isNew = !grnId;
+      let oldItemIds: string[] = [];
 
-    if (grnId) {
-       // Update existing Draft
-       const { error: updErr } = await supabase.from('cnc_goods_receipts').update(grnRecord).eq('id', grnId);
-       if (updErr) return alert('Error updating GRN: ' + updErr.message);
-       await supabase.from('cnc_goods_receipt_items').delete().eq('goods_receipt_id', grnId);
-    } else {
-       // Insert new
-       const { data: insData, error: insErr } = await supabase.from('cnc_goods_receipts').insert([grnRecord]).select();
-       if (insErr) return alert('Error creating GRN: ' + insErr.message);
-       grnId = insData[0].id;
+      if (grnId) {
+         // Update existing Draft
+         const { error: updErr } = await supabase.from('cnc_goods_receipts').update(grnRecord).eq('id', grnId);
+         if (updErr) { console.error(updErr); return alert('Error updating GRN: ' + updErr.message); }
+         // Old items are removed only after the new ones are saved (not a single transaction).
+         const { data: oldItems, error: oldErr } = await supabase.from('cnc_goods_receipt_items').select('id').eq('goods_receipt_id', grnId);
+         if (oldErr) { console.error(oldErr); return alert('Error loading existing GRN items: ' + oldErr.message); }
+         oldItemIds = (oldItems || []).map((i: any) => i.id);
+      } else {
+         // Insert new
+         const { data: insData, error: insErr } = await supabase.from('cnc_goods_receipts').insert([grnRecord]).select();
+         if (insErr) { console.error(insErr); return alert('Error creating GRN: ' + insErr.message); }
+         if (!insData || insData.length === 0) return alert('Error creating GRN: no record returned.');
+         grnId = insData[0].id;
+      }
+
+      // Insert items
+      const itemsToInsert = form.items.map(i => ({
+        goods_receipt_id: grnId,
+        purchase_order_item_id: i.purchase_order_item_id,
+        raw_material_id: i.raw_material_id || null,
+        part_id: i.part_id || null,
+        material_code: i.material_code,
+        material_name: i.material_name,
+        ordered_qty: i.ordered_qty,
+        received_qty: Number(i.received_qty) || 0,
+        unit: i.unit,
+        location_id: i.location_id || null,
+        condition: i.condition
+      }));
+
+      const { error: itemsErr } = await supabase.from('cnc_goods_receipt_items').insert(itemsToInsert);
+      if (itemsErr) {
+         console.error(itemsErr);
+         if (isNew) {
+            const { error: cleanupError } = await supabase.from('cnc_goods_receipts').delete().eq('id', grnId);
+            if (cleanupError) console.error('Failed to roll back GRN header:', cleanupError);
+         }
+         return alert('Error saving GRN items: ' + itemsErr.message);
+      }
+
+      if (oldItemIds.length > 0) {
+         const { error: delErr } = await supabase.from('cnc_goods_receipt_items').delete().in('id', oldItemIds);
+         if (delErr) { console.error(delErr); alert('GRN saved, but old line items could not be removed (they may appear duplicated): ' + delErr.message); }
+      }
+
+      setShowAdd(false);
+      fetchData();
+    } finally {
+      setSaving(false);
     }
-
-    // Insert items
-    const itemsToInsert = form.items.map(i => ({
-      goods_receipt_id: grnId,
-      purchase_order_item_id: i.purchase_order_item_id,
-      raw_material_id: i.raw_material_id || null,
-      part_id: i.part_id || null,
-      material_code: i.material_code,
-      material_name: i.material_name,
-      ordered_qty: i.ordered_qty,
-      received_qty: Number(i.received_qty),
-      unit: i.unit,
-      location_id: i.location_id || null,
-      condition: i.condition
-    }));
-
-    await supabase.from('cnc_goods_receipt_items').insert(itemsToInsert);
-
-    setShowAdd(false);
-    fetchData();
   };
 
   const handlePost = async (grn: any) => {
+     if (posting) return;
      if (!confirm("Are you sure you want to POST this GRN? This will permanently update stock quantities and create stock movements. This action is atomic.")) return;
-     
+
+     setPosting(true);
      try {
-        const { error } = await supabase.rpc('post_goods_receipt', { p_grn_id: grn.id, p_user: 'Current User' });
+        const { error } = await supabase.rpc('post_goods_receipt', { p_grn_id: grn.id, p_user: profile?.full_name || 'Current User' });
         if (error) throw error;
         alert("GRN Posted successfully! Inventory updated.");
      } catch (err: any) {
+        console.error(err);
         alert("Error posting GRN: " + (err.message || "Unknown error"));
+     } finally {
+        setPosting(false);
      }
-     
+
      fetchData();
      setViewTarget(null);
   };
@@ -1324,7 +1429,7 @@ export function GoodsReceiptPage() {
         <StatCard label="Total GRNs" value={grns.length.toString()} icon={<Package size={20} />} accent="brand" />
         <StatCard label="Draft" value={grns.filter(g => g.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
         <StatCard label="Posted" value={grns.filter(g => g.status === 'Posted').length.toString()} icon={<CheckCircle size={20} />} accent="success" />
-        <StatCard label="This Month" value={grns.filter(g => g.receipt_date.startsWith(new Date().toISOString().substring(0, 7))).length.toString()} icon={<TrendingUp size={20} />} accent="brand" />
+        <StatCard label="This Month" value={grns.filter(g => (g.receipt_date || '').startsWith(new Date().toISOString().substring(0, 7))).length.toString()} icon={<TrendingUp size={20} />} accent="brand" />
       </div>
       
       <Card>
@@ -1334,7 +1439,7 @@ export function GoodsReceiptPage() {
       {/* CREATE / EDIT GRN MODAL */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="New Goods Receipt" subtitle="Supplier Delivery" size="xl" footer={<>
          <Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
-         <Button onClick={() => saveGRN()} icon={<CheckCircle size={16}/>}>Save Draft</Button>
+         <Button disabled={saving} onClick={() => saveGRN()} icon={<CheckCircle size={16}/>}>Save Draft</Button>
       </>}>
          <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
@@ -1426,7 +1531,7 @@ export function GoodsReceiptPage() {
             </div>
             <div className="flex gap-2">
                <Button variant="secondary" onClick={() => window.print()} icon={<Printer size={16}/>}>Print / PDF</Button>
-               {viewTarget?.status === 'Draft' && <Button variant="brand" onClick={() => handlePost(viewTarget)} icon={<CheckCircle size={16}/>}>Post to Inventory</Button>}
+               {viewTarget?.status === 'Draft' && <Button variant="brand" disabled={posting} onClick={() => handlePost(viewTarget)} icon={<CheckCircle size={16}/>}>Post to Inventory</Button>}
                <Button variant="secondary" onClick={() => setViewTarget(null)}>Close</Button>
             </div>
          </div>
@@ -1541,10 +1646,11 @@ export function SupplierPerformancePage() {
       const processed = poData.map(po => {
          let finalReceiptDate = null;
          if (po.status === 'Received') {
-            const grns = grnData.filter(g => g.purchase_order_id === po.id);
+            const grns = grnData.filter(g => g.purchase_order_id === po.id && g.receipt_date);
             if (grns.length > 0) {
+               // Latest receipt date = the date the PO was fully received
                grns.sort((a,b) => new Date(b.receipt_date).getTime() - new Date(a.receipt_date).getTime());
-               finalReceiptDate = grns[grns.length - 1].receipt_date; // Max date
+               finalReceiptDate = grns[0].receipt_date;
             }
          }
 
@@ -1628,7 +1734,7 @@ export function SupplierPerformancePage() {
          <div>Final Receipt: {r.final_receipt_date || '-'}</div>
        </div>
     )},
-    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">,1{(r.grand_total).toLocaleString()}</span> },
+    { key: 'grand_total', label: 'Value', align: 'right', sortable: true, render: (r) => <span className="font-mono text-sm">₹{Number(r.grand_total ?? 0).toLocaleString()}</span> },
     { key: 'performance', label: 'Delivery Performance', sortable: true, render: (r) => {
        if (r.condition === 'On Time') return <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">On Time</span>;
        if (r.condition === 'Delivered Late') return <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded">Late ({r.delayDays}d)</span>;
@@ -1671,7 +1777,7 @@ export function SupplierPerformancePage() {
             {/* KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <div onClick={() => setKpiFilter('All')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'All' ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>
-                 <StatCard label="Total Purchase Value" value={`,1${totalValue.toLocaleString()}`} icon={<TrendingUp size={20} />} accent="brand" />
+                 <StatCard label="Total Purchase Value" value={`₹${totalValue.toLocaleString()}`} icon={<TrendingUp size={20} />} accent="brand" />
               </div>
               
               <div onClick={() => setKpiFilter('Open')} className={`cursor-pointer transition-transform hover:scale-105 ${kpiFilter === 'Open' ? 'ring-2 ring-brand-500 rounded-xl' : ''}`}>
@@ -1755,7 +1861,7 @@ export function SupplierPerformancePage() {
                      )}
                      <div className="flex justify-between pt-1">
                         <span className="text-slate-500">Grand Total Included in Value</span>
-                        <span className="font-mono text-slate-800 font-bold">,1{Number(viewTarget.grand_total).toLocaleString()}</span>
+                        <span className="font-mono text-slate-800 font-bold">₹{Number(viewTarget.grand_total ?? 0).toLocaleString()}</span>
                      </div>
                   </div>
                </div>

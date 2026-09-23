@@ -1,14 +1,53 @@
 export { ProductionMainPage as ProductionPlanningPage } from './unified/ProductionMainPage';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Plus, Eye, Edit, Trash2, Cog, ClipboardList, Gauge, Package, Activity, TrendingUp, Calendar } from 'lucide-react';
+import { Eye, Edit, Trash2, Cog, ClipboardList, Gauge, Package, Activity, Calendar } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton, DateSelector, SectionCard } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard, ProgressBar, statusToVariant, priorityToVariant } from '@/components/ui/Card';
 import { Modal, FormField, FormSection, inputClass, ConfirmDialog } from '@/components/ui/Modal';
 import { BarChart, ChartCard, GaugeChart } from '@/components/ui/Charts';
-import { workOrders, jobCards, machines, productionTrend } from '@/data/mockData';
+// Mock data is only referenced by the unrouted legacy pages (OldProductionPlanningPage, MachineSchedulingPage)
+import { workOrders, machines, productionTrend } from '@/data/mockData';
 import type { WorkOrder, JobCard, Machine } from '@/data/mockData';
+
+// Canonical statuses (see cnc_work_orders / cnc_job_cards)
+const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
+type JobCardStatus = 'Planned' | 'In Progress' | 'On Hold' | 'Completed';
+const JOB_STATUSES: JobCardStatus[] = ['Planned', 'In Progress', 'On Hold', 'Completed'];
+
+// Shape of a cnc_job_cards row as used by the live pages (the mock JobCard type has different statuses/fields)
+type JobCardRow = Omit<JobCard, 'status' | 'cncProgram' | 'startDate'> & {
+  id: string;
+  status: JobCardStatus | string;
+  cncProgram?: string;
+  startDate?: string;
+};
+
+function mapJobCardRow(d: any): JobCardRow {
+  const opNo = Number(d.op_no);
+  return {
+    id: d.id,
+    jobNo: d.job_no,
+    workOrder: d.work_order,
+    partName: d.part_name,
+    opNo: Number.isFinite(opNo) ? opNo : 0,
+    operation: d.operation || '',
+    machine: d.machine,
+    operator: d.operator,
+    qtyPlanned: Number(d.qty_planned) || 0,
+    qtyCompleted: Number(d.qty_completed) || 0,
+    qtyRejected: Number(d.qty_rejected) || 0,
+    cycleTime: Number(d.cycle_time) || 0,
+    setupTime: Number(d.setup_time) || 0,
+    toolNo: d.tool_no,
+    status: d.status,
+  };
+}
+
+// "Op 10 - Turning", tolerating job cards saved without an op number / operation
+const formatOp = (opNo: number | null | undefined, operation?: string | null) =>
+  [opNo ? `Op ${opNo}` : null, operation || null].filter(Boolean).join(' - ') || '—';
 
 export function OldProductionPlanningPage() {
   const [woData, setWoData] = useState<WorkOrder[]>([]);
@@ -208,7 +247,14 @@ export function OldProductionPlanningPage() {
 }
 
 function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => void }) {
-  const operations = jobCards.filter(j => j.workOrder === wo.woNo).sort((a, b) => a.opNo - b.opNo);
+  const [operations, setOperations] = useState<JobCardRow[]>([]);
+
+  useEffect(() => {
+    supabase.from('cnc_job_cards').select('*').eq('work_order', wo.woNo).then(({ data, error }) => {
+      if (error) console.error('Failed to load job cards for work order:', error);
+      setOperations((data || []).map(mapJobCardRow).sort((a, b) => a.opNo - b.opNo));
+    });
+  }, [wo.woNo]);
 
   return (
     <Modal open={true} onClose={onClose} title={`Work Order Details`} subtitle={wo.woNo} size="xl">
@@ -273,7 +319,7 @@ function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => v
             <tbody>
               {operations.length > 0 ? operations.map((op) => (
                 <tr key={op.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                  <td className="py-3 font-mono text-xs">OP-{op.opNo}</td>
+                  <td className="py-3 font-mono text-xs">{op.opNo ? `OP-${op.opNo}` : '—'}</td>
                   <td className="py-3 font-medium text-slate-700">{op.operation}</td>
                   <td className="py-3 font-mono text-xs text-brand-600">{op.machine}</td>
                   <td className="py-3 text-slate-600">{op.operator || '—'}</td>
@@ -317,7 +363,7 @@ export function WorkOrdersPage() {
         if (error) {
           console.error('Error fetching WOs:', error);
           setDbError(true);
-          setWoData(workOrders as any);
+          setWoData([]);
         } else if (data) {
           setDbError(false);
           const formattedData = data.map((d: any) => ({
@@ -337,7 +383,7 @@ export function WorkOrdersPage() {
             drawingRevision: d.drawing_revision || '',
             description: d.description || ''
           }));
-          setWoData(formattedData.length > 0 ? formattedData : workOrders as any);
+          setWoData(formattedData);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -360,8 +406,8 @@ export function WorkOrdersPage() {
       customer: wo.customer,
       quantity: wo.quantity.toString(),
       priority: wo.priority,
-      startDate: wo.startDate,
-      dueDate: wo.dueDate,
+      startDate: wo.startDate || '',
+      dueDate: wo.dueDate || '',
       status: wo.status,
       completed: wo.completed,
       rejected: wo.rejected
@@ -382,8 +428,8 @@ export function WorkOrdersPage() {
       quantity: Number(formData.quantity) || 0,
       completed: Number(formData.completed) || 0,
       rejected: Number(formData.rejected) || 0,
-      start_date: formData.startDate,
-      due_date: formData.dueDate,
+      start_date: formData.startDate || null,
+      due_date: formData.dueDate || null,
       status: formData.status,
       priority: formData.priority,
       drawing_revision: formData.drawingRevision,
@@ -396,7 +442,7 @@ export function WorkOrdersPage() {
       const { error } = await supabase.from('cnc_work_orders').update(entryData).eq('id', editId);
       if (!error) {
         setWoData(prev => prev.map(wo => wo.id === editId ? { 
-          ...wo, woNo: entryData.wo_no, partName: entryData.part_name, partNo: entryData.part_no, customer: entryData.customer, salesOrder: entryData.sales_order, quantity: entryData.quantity, completed: entryData.completed, rejected: entryData.rejected, startDate: entryData.start_date, dueDate: entryData.due_date, status: entryData.status as any, priority: entryData.priority as any
+          ...wo, woNo: entryData.wo_no, partName: entryData.part_name, partNo: entryData.part_no, customer: entryData.customer, salesOrder: entryData.sales_order, quantity: entryData.quantity, completed: entryData.completed, rejected: entryData.rejected, startDate: entryData.start_date ?? '', dueDate: entryData.due_date ?? '', status: entryData.status as any, priority: entryData.priority as any
         } : wo));
         setShowAdd(false);
         setEditId(null);
@@ -420,8 +466,8 @@ export function WorkOrdersPage() {
           quantity: insertData.quantity,
           completed: insertData.completed,
           rejected: insertData.rejected,
-          startDate: insertData.start_date,
-          dueDate: insertData.due_date,
+          startDate: insertData.start_date ?? '',
+          dueDate: insertData.due_date ?? '',
           status: insertData.status as any,
           priority: insertData.priority as any
         };
@@ -475,10 +521,8 @@ export function WorkOrdersPage() {
         onChange={(e) => handleInlineUpdate(r.id, 'status', e.target.value)}
         onClick={(e) => e.stopPropagation()}
       >
-        <option value="Planning">Planning</option>
-        <option value="In Progress">In Progress</option>
-        <option value="On Hold">On Hold</option>
-        <option value="Completed">Completed</option>
+        {r.status && !WO_STATUSES.includes(r.status) && <option value={r.status}>{r.status}</option>}
+        {WO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
     ) },
     {
@@ -506,7 +550,7 @@ export function WorkOrdersPage() {
         <StatCard label="Completed" value={completedWOs.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="On Hold" value={onHoldWOs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
       </div>
-      <DataTable data={woData} columns={columns} searchKeys={['woNo', 'partName', 'partNo', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={[{ label: 'Planning', value: 'Planning' }, { label: 'In Progress', value: 'In Progress' }, { label: 'Completed', value: 'Completed' }, { label: 'On Hold', value: 'On Hold' }]} />
+      <DataTable data={woData} columns={columns} searchKeys={['woNo', 'partName', 'partNo', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))} />
       
       {selectedWO && <WorkOrderDetailModal wo={selectedWO} onClose={() => setSelectedWO(null)} />}
 
@@ -547,7 +591,7 @@ export function WorkOrdersPage() {
               </FormField>
               <FormField label="Status" required>
                 <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                  <option>Planning</option><option>In Progress</option><option>Completed</option><option>On Hold</option>
+                  {WO_STATUSES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </FormField>
               <FormField label="Priority">
@@ -601,9 +645,26 @@ export function WorkOrdersPage() {
   );
 }
 
-function JobCardModal({ job, onClose }: { job: JobCard, onClose: () => void }) {
-  const wo = workOrders.find(w => w.woNo === job.workOrder);
-  const material = 'EN19 (Mock Material)'; // We can derive this if needed
+function JobCardModal({ job, onClose }: { job: JobCardRow, onClose: () => void }) {
+  const [wo, setWo] = useState<{ partNo: string; drawing: string; material: string } | null>(null);
+
+  useEffect(() => {
+    async function loadWo() {
+      const { data: woRow, error } = await supabase.from('cnc_work_orders').select('part_no, drawing_revision').eq('wo_no', job.workOrder).maybeSingle();
+      if (error) console.error('Failed to load work order:', error);
+      const partNo = woRow?.part_no || '';
+      let drawing = '';
+      let material = '';
+      if (partNo) {
+        const { data: part } = await supabase.from('cnc_parts').select('drawing_no, revision, material').eq('part_no', partNo).maybeSingle();
+        drawing = [part?.drawing_no, part?.revision || woRow?.drawing_revision].filter(Boolean).join(' / ');
+        material = part?.material || '';
+      }
+      setWo({ partNo, drawing, material });
+    }
+    loadWo();
+  }, [job.workOrder]);
+  const material = wo?.material || '—';
 
   return (
     <Modal open={true} onClose={onClose} title={`Job Card`} subtitle={job.jobNo} size="xl">
@@ -618,8 +679,8 @@ function JobCardModal({ job, onClose }: { job: JobCard, onClose: () => void }) {
         </div>
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-6 text-sm">
-          <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Part Number:</span><span className="font-mono">{wo?.partNo}</span></div>
-          <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Drawing Number:</span><span className="font-mono">DWG-{wo?.partNo}-R03</span></div>
+          <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Part Number:</span><span className="font-mono">{wo?.partNo || '—'}</span></div>
+          <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Drawing Number:</span><span className="font-mono">{wo?.drawing || '—'}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Material:</span><span>{material}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Work Order:</span><span className="font-mono">{job.workOrder}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Quantity:</span><span>{job.qtyPlanned} Nos</span></div>
@@ -642,7 +703,7 @@ function JobCardModal({ job, onClose }: { job: JobCard, onClose: () => void }) {
             </thead>
             <tbody>
               <tr>
-                <td className="border border-slate-800 py-2 px-3 text-center">{job.opNo}</td>
+                <td className="border border-slate-800 py-2 px-3 text-center">{job.opNo || '—'}</td>
                 <td className="border border-slate-800 py-2 px-3 font-medium">{job.operation}</td>
                 <td className="border border-slate-800 py-2 px-3 font-mono text-xs">{job.machine}</td>
                 <td className="border border-slate-800 py-2 px-3 font-mono text-xs">{job.toolNo}</td>
@@ -667,14 +728,14 @@ function JobCardModal({ job, onClose }: { job: JobCard, onClose: () => void }) {
 export function JobCardsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<JobCard & { id: string } | null>(null);
-  const [jobData, setJobData] = useState<(JobCard & { id: string })[]>([]);
+  const [selectedJob, setSelectedJob] = useState<JobCardRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JobCardRow | null>(null);
+  const [jobData, setJobData] = useState<JobCardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
   const resetForm = () => ({
-    jobNo: '', workOrder: '', partName: '', opNo: '', operation: '', machine: '', operator: '', qtyPlanned: '', qtyCompleted: 0, qtyRejected: 0, cycleTime: '', setupTime: '', toolNo: '', status: 'Pending'
+    jobNo: '', workOrder: '', partName: '', opNo: '', operation: '', machine: '', operator: '', qtyPlanned: '', qtyCompleted: 0, qtyRejected: 0, cycleTime: '', setupTime: '', toolNo: '', status: 'Planned'
   });
   const [formData, setFormData] = useState(resetForm());
 
@@ -685,27 +746,10 @@ export function JobCardsPage() {
         if (error) {
           console.error('Error fetching jobs:', error);
           setDbError(true);
-          setJobData(jobCards as any);
+          setJobData([]);
         } else if (data) {
           setDbError(false);
-          const formattedData = data.map((d: any) => ({
-            id: d.id,
-            jobNo: d.job_no,
-            workOrder: d.work_order,
-            partName: d.part_name,
-            opNo: Number(d.op_no),
-            operation: d.operation,
-            machine: d.machine,
-            operator: d.operator,
-            qtyPlanned: Number(d.qty_planned),
-            qtyCompleted: Number(d.qty_completed),
-            qtyRejected: Number(d.qty_rejected),
-            cycleTime: Number(d.cycle_time),
-            setupTime: Number(d.setup_time),
-            toolNo: d.tool_no,
-            status: d.status,
-          }));
-          setJobData(formattedData.length > 0 ? formattedData : jobCards as any);
+          setJobData(data.map(mapJobCardRow));
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -717,12 +761,12 @@ export function JobCardsPage() {
     fetchJobs();
   }, []);
 
-  const handleEditClick = (job: JobCard & { id: string }) => {
+  const handleEditClick = (job: JobCardRow) => {
     setFormData({
       jobNo: job.jobNo,
       workOrder: job.workOrder,
       partName: job.partName,
-      opNo: job.opNo.toString(),
+      opNo: job.opNo ? job.opNo.toString() : '',
       operation: job.operation,
       machine: job.machine,
       operator: job.operator || '',
@@ -764,7 +808,7 @@ export function JobCardsPage() {
       const { error } = await supabase.from('cnc_job_cards').update(entryData).eq('id', editId);
       if (!error) {
         setJobData(prev => prev.map(job => job.id === editId ? { 
-          ...job, jobNo: entryData.job_no, workOrder: entryData.work_order, partName: entryData.part_name, opNo: entryData.op_no, operation: entryData.operation, machine: entryData.machine, operator: entryData.operator, qtyPlanned: entryData.qty_planned, qtyCompleted: entryData.qty_completed, qtyRejected: entryData.qty_rejected, cycleTime: entryData.cycle_time, setupTime: entryData.setup_time, toolNo: entryData.tool_no, status: entryData.status as any
+          ...job, jobNo: entryData.job_no, workOrder: entryData.work_order, partName: entryData.part_name, opNo: entryData.op_no, operation: entryData.operation, machine: entryData.machine, operator: entryData.operator, qtyPlanned: entryData.qty_planned, qtyCompleted: entryData.qty_completed, qtyRejected: entryData.qty_rejected, cycleTime: entryData.cycle_time, setupTime: entryData.setup_time, toolNo: entryData.tool_no, status: entryData.status
         } : job));
         setShowAdd(false);
         setEditId(null);
@@ -778,7 +822,7 @@ export function JobCardsPage() {
       const { error } = await supabase.from('cnc_job_cards').insert([insertData]);
       
       if (!error) {
-        const formatted = {
+        const formatted: JobCardRow = {
           id: newId,
           jobNo: insertData.job_no,
           workOrder: insertData.work_order,
@@ -793,9 +837,9 @@ export function JobCardsPage() {
           cycleTime: insertData.cycle_time,
           setupTime: insertData.setup_time,
           toolNo: insertData.tool_no,
-          status: insertData.status as any
+          status: insertData.status
         };
-        setJobData([formatted, ...jobData]);
+        setJobData(prev => [formatted, ...prev]);
         setShowAdd(false);
         setFormData(resetForm());
       } else {
@@ -818,11 +862,11 @@ export function JobCardsPage() {
     }
   };
 
-  const columns: Column<JobCard & { id: string }>[] = [
+  const columns: Column<JobCardRow>[] = [
     { key: 'jobNo', label: 'Job Card No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.jobNo}</span> },
     { key: 'workOrder', label: 'WO Ref', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.workOrder}</span> },
     { key: 'partName', label: 'Part', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.partName}</span> },
-    { key: 'opNo', label: 'Op', align: 'center', sortable: true, render: (r) => <Badge variant="neutral">Op {r.opNo}</Badge> },
+    { key: 'opNo', label: 'Op', align: 'center', sortable: true, render: (r) => r.opNo ? <Badge variant="neutral">Op {r.opNo}</Badge> : <span className="text-slate-400">—</span> },
     { key: 'operation', label: 'Operation', sortable: true, render: (r) => <span className="text-sm font-medium text-slate-700">{r.operation}</span> },
     { key: 'machine', label: 'Machine', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-slate-600">{r.machine}</span> },
     { key: 'operator', label: 'Operator', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.operator}</span> },
@@ -836,16 +880,14 @@ export function JobCardsPage() {
         onChange={(e) => handleInlineUpdate(r.id, 'status', e.target.value)}
         onClick={(e) => e.stopPropagation()}
       >
-        <option value="Pending">Pending</option>
-        <option value="In Progress">In Progress</option>
-        <option value="On Hold">On Hold</option>
-        <option value="Completed">Completed</option>
+        {r.status && !(JOB_STATUSES as string[]).includes(r.status) && <option value={r.status}>{r.status}</option>}
+        {JOB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
     ) },
     {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
-          <button onClick={() => setSelectedJob(r as JobCard)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
+          <button onClick={() => setSelectedJob(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => handleEditClick(r)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
           <button onClick={() => setDeleteTarget(r)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
@@ -855,7 +897,7 @@ export function JobCardsPage() {
 
   const totalJobs = jobData.length;
   const runningJobs = jobData.filter(j => j.status === 'In Progress').length;
-  const pendingJobs = jobData.filter(j => j.status === 'Pending').length;
+  const pendingJobs = jobData.filter(j => j.status === 'Planned' || j.status === 'Pending').length;
   const onHoldJobs = jobData.filter(j => j.status === 'On Hold').length;
 
   return (
@@ -864,10 +906,10 @@ export function JobCardsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Job Cards" value={totalJobs.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Running" value={runningJobs.toString()} icon={<Cog size={20} />} accent="success" />
-        <StatCard label="Pending" value={pendingJobs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
+        <StatCard label="Planned" value={pendingJobs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
         <StatCard label="On Hold" value={onHoldJobs.toString()} icon={<ClipboardList size={20} />} accent="neutral" />
       </div>
-      <DataTable data={jobData} columns={columns} searchKeys={['jobNo', 'workOrder', 'partName', 'operation', 'machine', 'operator']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Job Card" filterOptions={[{ label: 'Pending', value: 'Pending' }, { label: 'In Progress', value: 'In Progress' }, { label: 'Completed', value: 'Completed' }, { label: 'On Hold', value: 'On Hold' }]} />
+      <DataTable data={jobData} columns={columns} searchKeys={['jobNo', 'workOrder', 'partName', 'operation', 'machine', 'operator']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Job Card" filterOptions={JOB_STATUSES.map(s => ({ label: s, value: s }))} />
       
       {selectedJob && <JobCardModal job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
@@ -928,7 +970,7 @@ export function JobCardsPage() {
               </FormField>
               <FormField label="Status" required>
                 <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                  <option>Pending</option><option>In Progress</option><option>Completed</option><option>On Hold</option>
+                  {JOB_STATUSES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </FormField>
             </div>
@@ -1129,28 +1171,11 @@ export function CNCOperationsPage() {
         if (error) {
           console.error('Error fetching jobs:', error);
           setDbError(true);
-          setJobData(jobCards.filter(j => j.status === 'Running') as any);
+          setJobData([]);
         } else if (data) {
           setDbError(false);
-          const formattedData = data.map((d: any) => ({
-            id: d.id,
-            jobNo: d.job_no,
-            workOrder: d.work_order,
-            partName: d.part_name,
-            opNo: Number(d.op_no),
-            operation: d.operation,
-            machine: d.machine,
-            operator: d.operator,
-            qtyPlanned: Number(d.qty_planned),
-            qtyCompleted: Number(d.qty_completed),
-            qtyRejected: Number(d.qty_rejected),
-            cycleTime: Number(d.cycle_time),
-            setupTime: Number(d.setup_time),
-            toolNo: d.tool_no,
-            status: d.status,
-            cncProgram: d.cnc_program || `O${d.op_no || 1000}`
-          }));
-          setJobData(formattedData.length > 0 ? formattedData : jobCards.filter(j => j.status === 'Running') as any);
+          // cnc_job_cards has no CNC program column
+          setJobData(data.map((d: any) => ({ ...mapJobCardRow(d), cncProgram: d.cnc_program || '—' })));
         }
       } catch (err) {
         console.error('Unexpected error:', err);
@@ -1186,7 +1211,7 @@ export function CNCOperationsPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-800">{j.jobNo}</h3>
-                <p className="text-xs text-slate-500">{j.partName} • Op {j.opNo} — {j.operation}</p>
+                <p className="text-xs text-slate-500">{j.partName} • {formatOp(j.opNo, j.operation)}</p>
               </div>
               <Badge variant="success" dot>Running</Badge>
             </div>
@@ -1223,9 +1248,9 @@ export function CNCOperationsPage() {
   );
 }
 
-function MachineDetailPage({ machine, onBack }: { machine: Machine, onBack: () => void }) {
-  const job = jobCards.find(j => j.machine === machine.code && j.status === 'Running') || jobCards.find(j => j.machine === machine.code);
-  const wo = workOrders.find(w => w.woNo === job?.workOrder);
+function MachineDetailPage({ machine, jobCards, onBack }: { machine: Machine, jobCards: JobCardRow[], onBack: () => void }) {
+  const job = jobCards.find(j => j.machine === machine.code && (j.status === 'In Progress' || j.status === 'Running'))
+    || jobCards.find(j => j.machine === machine.code && j.status !== 'Completed');
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -1249,9 +1274,9 @@ function MachineDetailPage({ machine, onBack }: { machine: Machine, onBack: () =
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div><p className="text-xs text-slate-400">Work Order</p><p className="text-sm font-mono font-medium text-slate-700">{job.workOrder}</p></div>
               <div><p className="text-xs text-slate-400">Part</p><p className="text-sm font-medium text-slate-700">{job.partName}</p></div>
-              <div><p className="text-xs text-slate-400">Operation</p><p className="text-sm font-medium text-slate-700">Op {job.opNo} - {job.operation}</p></div>
+              <div><p className="text-xs text-slate-400">Operation</p><p className="text-sm font-medium text-slate-700">{formatOp(job.opNo, job.operation)}</p></div>
               <div><p className="text-xs text-slate-400">Operator</p><p className="text-sm font-medium text-slate-700">{job.operator || machine.operator}</p></div>
-              <div><p className="text-xs text-slate-400">CNC Program</p><p className="text-sm font-mono font-medium text-slate-700">{job.cncProgram}</p></div>
+              <div><p className="text-xs text-slate-400">CNC Program</p><p className="text-sm font-mono font-medium text-slate-700">{job.cncProgram || '—'}</p></div>
               <div><p className="text-xs text-slate-400">Target Qty</p><p className="text-sm font-medium text-slate-700">{job.qtyPlanned}</p></div>
               <div className="col-span-2 md:col-span-3 mt-2">
                 <div className="flex justify-between text-sm mb-1">
@@ -1287,19 +1312,9 @@ function MachineDetailPage({ machine, onBack }: { machine: Machine, onBack: () =
       
       <Card className="p-6">
         <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3 mb-4">Production Timeline (Today)</h3>
-        <div className="h-24 flex items-center">
-          <div className="w-full bg-slate-100 h-8 rounded-lg flex overflow-hidden">
-            <div className="h-full bg-green-500" style={{ width: '65%' }} title="Running"></div>
-            <div className="h-full bg-amber-500" style={{ width: '10%' }} title="Setup"></div>
-            <div className="h-full bg-slate-400" style={{ width: '15%' }} title="Idle"></div>
-            <div className="h-full bg-red-500" style={{ width: '10%' }} title="Breakdown"></div>
-          </div>
-        </div>
-        <div className="flex gap-4 text-xs text-slate-500 mt-2 justify-center">
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-500 rounded-sm"></div> Running</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-500 rounded-sm"></div> Setup</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-400 rounded-sm"></div> Idle</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Breakdown</div>
+        {/* No machine state log is recorded yet, so there is no real timeline to show */}
+        <div className="h-24 flex items-center justify-center text-slate-500 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+          No machine state history recorded yet
         </div>
       </Card>
     </div>
@@ -1309,7 +1324,7 @@ function MachineDetailPage({ machine, onBack }: { machine: Machine, onBack: () =
 export function ShopFloorPage() {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [jobCards, setJobCards] = useState<any[]>([]);
+  const [jobCards, setJobCards] = useState<JobCardRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1319,7 +1334,9 @@ export function ShopFloorPage() {
           supabase.from('cnc_machines').select('*').order('code'),
           supabase.from('cnc_job_cards').select('*')
         ]);
-        
+        if (mRes.error) console.error('Failed to load machines:', mRes.error);
+        if (jRes.error) console.error('Failed to load job cards:', jRes.error);
+
         if (mRes.data) {
           setMachines(mRes.data.map((d: any) => ({
             id: d.id, code: d.code, name: d.name, type: d.type, status: d.status,
@@ -1330,13 +1347,7 @@ export function ShopFloorPage() {
         }
         
         if (jRes.data) {
-          setJobCards(jRes.data.map((d: any) => ({
-            id: d.id, jobNo: d.job_no, workOrder: d.work_order, partName: d.part_name,
-            opNo: Number(d.op_no), operation: d.operation, machine: d.machine,
-            operator: d.operator, qtyPlanned: Number(d.qty_planned), qtyCompleted: Number(d.qty_completed),
-            qtyRejected: Number(d.qty_rejected), cycleTime: Number(d.cycle_time),
-            setupTime: Number(d.setup_time), toolNo: d.tool_no, status: d.status,
-          })));
+          setJobCards(jRes.data.map(mapJobCardRow));
         }
       } catch (err) {
         console.error(err);
@@ -1348,7 +1359,7 @@ export function ShopFloorPage() {
   }, []);
 
   if (selectedMachine) {
-    return <MachineDetailPage machine={selectedMachine} onBack={() => setSelectedMachine(null)} />;
+    return <MachineDetailPage machine={selectedMachine} jobCards={jobCards} onBack={() => setSelectedMachine(null)} />;
   }
 
   const activeMachinesCount = machines.filter(m => m.status === 'Running').length;
@@ -1365,11 +1376,11 @@ export function ShopFloorPage() {
         <StatCard label="Active Machines" value={activeMachinesCount.toString()} icon={<Cog size={20} />} accent="success" />
         <StatCard label="Running Jobs" value={runningJobsCount.toString()} icon={<Activity size={20} />} accent="brand" />
         <StatCard label="Total Production" value={totalProd.toString()} icon={<Package size={20} />} accent="accent" />
-        <StatCard label="OEE Average" value={`${oee}%`} icon={<Gauge size={20} />} trend="2.1%" trendUp accent="navy" />
+        <StatCard label="OEE Average" value={`${oee}%`} icon={<Gauge size={20} />} accent="navy" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {machines.map((m) => {
-          const job = jobCards.find(j => j.machine === m.code && (j.status === 'Running' || j.status === 'In Progress' || j.status === 'Setup')) || jobCards.find(j => j.machine === m.code);
+          const job = jobCards.find(j => j.machine === m.code && (j.status === 'Running' || j.status === 'In Progress' || j.status === 'Setup')) || jobCards.find(j => j.machine === m.code && j.status !== 'Completed');
           return (
             <Card key={m.id} className="p-5 hover:shadow-card-hover transition-shadow cursor-pointer border border-transparent hover:border-brand-200" onClick={() => setSelectedMachine(m)}>
               <div className="flex items-center justify-between mb-4">
@@ -1397,7 +1408,7 @@ export function ShopFloorPage() {
                       </div>
                     </div>
                     <div className="flex justify-between items-center text-xs text-slate-600">
-                      <span>Op {job.opNo}: {job.operation}</span>
+                      <span>{formatOp(job.opNo, job.operation)}</span>
                       <span className="font-medium text-brand-600">{job.operator || m.operator}</span>
                     </div>
                   </>
@@ -1444,6 +1455,7 @@ export function ProductionTrackingPage() {
     async function fetchWOs() {
       try {
         const { data, error } = await supabase.from('cnc_work_orders').select('*').order('created_at', { ascending: false });
+        if (error) console.error('Error fetching WOs:', error);
         if (data) {
           setWoData(data.map((d: any) => ({
             id: d.id, woNo: d.wo_no, partName: d.part_name, partNo: d.part_no, customer: d.customer, salesOrder: d.sales_order,
@@ -1511,6 +1523,7 @@ export function FinishedGoodsPage() {
     async function fetchWOs() {
       try {
         const { data, error } = await supabase.from('cnc_work_orders').select('*').order('created_at', { ascending: false });
+        if (error) console.error('Error fetching WOs:', error);
         if (data) {
           setWoData(data.map((d: any) => ({
             id: d.id, woNo: d.wo_no, partName: d.part_name, partNo: d.part_no, customer: d.customer, salesOrder: d.sales_order,
@@ -1559,7 +1572,7 @@ export function FinishedGoodsPage() {
         { key: 'completed', label: 'Produced', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.completed}</span> },
         { key: 'rejected', label: 'Rejected', align: 'right', render: (r) => <span className={r.rejected > 0 ? 'text-red-500' : 'text-slate-400'}>{r.rejected}</span> },
         { key: 'accepted', label: 'Accepted (OK)', align: 'right', render: (r) => <span className="font-bold text-green-600">{r.accepted}</span> },
-        { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant="success">In Stock</Badge> },
+        { key: 'status', label: 'Status', sortable: true, render: () => <Badge variant="success">In Stock</Badge> },
       ]} searchKeys={['woNo', 'partName', 'partNo', 'customer']} filterOptions={[{ label: 'Completed', value: 'Completed' }, { label: 'In Progress', value: 'In Progress' }]} />
     </div>
   );

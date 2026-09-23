@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { Eye, Edit, Image as ImageIcon } from 'lucide-react';
@@ -6,6 +6,8 @@ import { ProductionOrderDetails } from './ProductionOrderDetails';
 import { getMockImage } from '@/lib/mockStorage';
 import { supabase } from '@/lib/supabase';
 import { Modal } from '@/components/ui/Modal';
+
+const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
 
 export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[], refresh: () => void }) {
   const [selectedWO, setSelectedWO] = useState<any | null>(null);
@@ -22,9 +24,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   };
 
   
-  // Filter states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  // Search and status filtering are handled by DataTable itself
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       const loaded: Record<string, string> = {};
       for (const wo of workOrders) {
         if (wo.part_name) {
-          const u = await getMockImage(wo.part_name);
+          const u = await getMockImage(wo.part_name).catch(() => null);
           if (u) loaded[wo.part_name] = u;
         }
       }
@@ -41,17 +41,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     if (workOrders.length > 0) loadImages();
   }, [workOrders]);
 
-  const filteredOrders = useMemo(() => {
-    return workOrders.filter(w => {
-      const matchesSearch = 
-        (w.wo_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (w.customer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (w.part_name || '').toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus = statusFilter === 'All' || w.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [workOrders, searchTerm, statusFilter]);
 
   const columns: Column<any>[] = [
     { key: 'wo_no', label: 'WO No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.wo_no}</span> },
@@ -98,11 +87,8 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
             value={r.status}
             onChange={(e) => handleStatusChange(r, e.target.value)}
           >
-            <option value="Planning">Planning</option>
-            <option value="Planned">Planned</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-            <option value="Dispatched">Dispatched</option>
+            {r.status && !WO_STATUSES.includes(r.status) && <option value={r.status}>{r.status}</option>}
+            {WO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge>
         </div>
@@ -125,15 +111,10 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       {/* Table section */}
       <div className="p-4">
         <DataTable 
-          data={filteredOrders} 
+          data={workOrders}
           columns={columns} 
           searchKeys={['wo_no', 'customer', 'part_name']}
-          filterOptions={[
-            { label: 'All', value: 'All' },
-            { label: 'Planned', value: 'Planned' },
-            { label: 'In Progress', value: 'In Progress' },
-            { label: 'Completed', value: 'Completed' },
-          ]}
+          filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))}
         />
       </div>
 

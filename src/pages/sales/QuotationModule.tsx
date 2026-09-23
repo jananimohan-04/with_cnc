@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Filter, Calendar, List, Kanban as KanbanIcon, ArrowLeft, ArrowRight, ChevronRight, FileText, CheckCircle2, Clock } from 'lucide-react';
+import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
@@ -27,7 +27,8 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
 
   const fetchQuotations = async () => {
     setLoading(true);
-    const { data } = await supabase.from('cnc_quotations').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('cnc_quotations').select('*').order('created_at', { ascending: false });
+    if (error) console.error('Error fetching quotations:', error);
     if (data) setQuotations(data);
     setLoading(false);
   };
@@ -47,11 +48,13 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
     }
 
     // Fetch related Sales Order
+    const soFilters = [`quotation_id.eq.${quote.id}`];
+    if (quote.quote_no) soFilters.push(`quote_no.eq.${quote.quote_no}`);
     const { data: so } = await supabase.from('cnc_sales_orders')
       .select('id, order_no')
-      .or(`quotation_id.eq.${quote.id},quote_no.eq.${quote.quote_no}`)
+      .or(soFilters.join(','))
       .limit(1)
-      .single();
+      .maybeSingle();
     
     if (so) setRelatedSO(so);
   };
@@ -63,34 +66,50 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
     // Auto-generate SO number
     const nextSO = `SO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
     
+    const qty = Number(formData.get('quantity')) || Number(soModalTarget.quantity) || 0;
+    const unitPrice = Number(soModalTarget.unit_price) || 0;
+    const disc = Number(soModalTarget.discount_percent) || 0;
+    const gst = Number(soModalTarget.gst_percent) || 0;
+    // Re-price from the quotation's unit price when the quantity changes; fall back to the quoted total
+    const orderValue = unitPrice
+      ? Number((qty * unitPrice * (1 - disc / 100) * (1 + gst / 100)).toFixed(2))
+      : (Number(soModalTarget.total_value) || 0);
+
     const { error } = await supabase.from('cnc_sales_orders').insert({
       order_no: nextSO,
       customer: soModalTarget.customer,
       quote_no: soModalTarget.quote_no,
       quotation_id: soModalTarget.id,
-      lead_no: soModalTarget.enquiry_no,
-      customer_id: soModalTarget.customer_id,
+      lead_no: relatedEnquiry?.lead_no || relatedEnquiry?.enquiry_no || soModalTarget.enquiry_no || '',
+      customer_id: soModalTarget.customer_id || null,
       part_name: soModalTarget.part_name || soModalTarget.part_number,
-      quantity: Number(formData.get('quantity')) || soModalTarget.quantity,
-      value: soModalTarget.total_value,
-      total_value: soModalTarget.total_value,
-      order_date: formData.get('order_date'),
-      delivery_date: formData.get('delivery_date'),
+      part_number: soModalTarget.part_number || '',
+      part_no: soModalTarget.part_number || '',
+      contact_person: soModalTarget.contact_person || '',
+      phone: soModalTarget.phone || '',
+      email: soModalTarget.email || '',
+      quantity: qty,
+      delivered: 0,
+      value: orderValue,
+      total_value: orderValue,
+      order_date: formData.get('order_date') || null,
+      delivery_date: formData.get('delivery_date') || null,
       status: 'Confirmed'
     });
 
     if (error) {
-      alert('Failed to create Sales Order');
+      alert('Failed to create Sales Order: ' + error.message);
       console.error(error);
     } else {
       alert(`Sales Order ${nextSO} created successfully!`);
       // Update quote status
-      await supabase.from('cnc_quotations').update({ status: 'Accepted' }).eq('id', soModalTarget.id);
-      
+      const { error: qErr } = await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', soModalTarget.id);
+      if (qErr) console.error('Failed to update quotation status:', qErr);
+
       setSoModalOpen(false);
       setSoModalTarget(null);
       // Refresh current quote view
-      openQuotation({...soModalTarget, status: 'Accepted'});
+      openQuotation({...soModalTarget, status: 'Converted'});
       fetchQuotations();
     }
   };
@@ -156,7 +175,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                   <td className="p-3 text-sm text-slate-700">{quote.part_name || quote.part_number || 'N/A'}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">₹{quote.total_value?.toLocaleString('en-IN') || '-'}</td>
                   <td className="p-3">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${quote.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${(quote.status === 'Converted' || quote.status === 'Accepted') ?'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
                   </td>
                   <td className="p-3">
                     <Button variant="secondary" size="sm" onClick={() => openQuotation(quote)}>View Details</Button>
@@ -171,7 +190,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedQuote} onClose={() => setSelectedQuote(null)} title={`Quotation Details: ${selectedQuote?.quote_no || 'Pending'}`} size="3xl" footer={
+      <Modal open={!!selectedQuote} onClose={() => setSelectedQuote(null)} title={`Quotation Details: ${selectedQuote?.quote_no || 'Pending'}`} size="xl" footer={
         <div className="flex justify-between w-full">
           <div>
              {!relatedSO && (
@@ -297,7 +316,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
   );
 }
 
-function FlowStep({ active, highlight, title, subtitle, isFirst, isLast, link, onClick }: { active: boolean, highlight?: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean, onClick?: () => void }) {
+function FlowStep({ active, highlight, title, subtitle, link, onClick }:{ active: boolean, highlight?: boolean, title: string, subtitle: string, isFirst?: boolean, isLast?: boolean, link?: boolean, onClick?: () => void }) {
   return (
     <div className="relative z-10 flex items-start gap-3 py-3">
       <div className={`mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 ${highlight ? 'bg-brand-500 border-brand-500' : (active ? 'bg-white border-brand-400' : 'bg-white border-slate-300')}`}></div>
