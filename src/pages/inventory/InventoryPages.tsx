@@ -911,32 +911,13 @@ export function MaterialRequestsPage() {
        }
        if (plan.length === 0) { alert("Nothing to issue on this request."); return; }
 
-       // 2. Apply stock deductions and record movements.
-       const stockByRm = new Map<string, number>();
-       for (const { item, rm, qty } of plan) {
-          const current = stockByRm.get(rm.id) ?? Number(rm.stock_qty || 0);
-          const newStock = current - qty;
-          stockByRm.set(rm.id, newStock);
-          const { error: updError } = await supabase.from('cnc_raw_materials').update({ stock_qty: newStock }).eq('id', rm.id);
-          if (updError) { console.error(updError); alert(`Failed to update stock for ${rm.name}: ${updError.message}. Issue stopped part-way; please review stock.`); return; }
-
-          // Issue qty is stored as a positive magnitude (existing convention); the movements page shows it as an outflow.
-          const { error: mvError } = await supabase.from('cnc_stock_movements').insert([{
-             date: new Date().toISOString().split('T')[0],
-             type: 'Issue',
-             material: rm.name || item.material_name,
-             qty,
-             uom: item.uom || rm.uom,
-             from: item.warehouse || rm.location || 'Main Warehouse',
-             to: 'Shop Floor - ' + req.work_order_no,
-             reference: req.request_no,
-             user: userName
-          }]);
-          if (mvError) { console.error(mvError); alert(`Stock for ${rm.name} was deducted but the movement could not be recorded: ${mvError.message}`); return; }
-       }
-
-       const { error: stError } = await supabase.from('cnc_material_requests').update({ status: 'Issued' }).eq('id', req.id);
-       if (stError) { console.error(stError); alert("Stock issued but failed to mark request as Issued: " + stError.message); }
+       // 2. Issue through the stock ledger: the database checks stock again, records the Production
+       //    Issue movements, updates balances and marks the request Issued — all or nothing.
+       const { error: issueError } = await supabase.rpc('erp_issue_material', {
+          p_request_id: String(req.id),
+          p_lines: plan.map(({ rm, qty }) => ({ raw_material_id: String(rm.id), qty })),
+       });
+       if (issueError) { console.error(issueError); alert('Could not issue stock: ' + issueError.message); return; }
      } finally {
        setIssuingId(null);
        fetchRequests();

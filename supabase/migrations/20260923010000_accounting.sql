@@ -379,7 +379,7 @@ begin
   end if;
 
   v_amount := round(coalesce(new.amount::numeric, 0), 2);
-  v_date := coalesce(new.invoice_date::date, new.created_at::date, current_date);
+  v_date := coalesce(new.invoice_date::date, new.created_at::date, public.erp_today());
   v_label := 'Invoice ' || coalesce(new.invoice_no, '') || coalesce(' — ' || new.customer_name, '');
 
   perform public.erp_post_system_journal(new.company_id, 'invoice', new.id::text, v_date, 'Sales',
@@ -418,7 +418,7 @@ begin
   end if;
 
   if new.status is distinct from 'Posted' then
-    perform public.erp_post_system_journal(new.company_id, 'grn', new.id::text, current_date, 'Purchase', null, null, null);
+    perform public.erp_post_system_journal(new.company_id, 'grn', new.id::text, public.erp_today(), 'Purchase', null, null, null);
     return new;
   end if;
 
@@ -444,7 +444,7 @@ begin
   from per_account;
 
   perform public.erp_post_system_journal(new.company_id, 'grn', new.id::text,
-    coalesce(new.receipt_date::date, current_date), 'Purchase',
+    coalesce(new.receipt_date::date, public.erp_today()), 'Purchase',
     'Goods receipt ' || coalesce(new.grn_number, '') || coalesce(' — ' || v_supplier, ''),
     coalesce(new.supplier_invoice_no, new.grn_number),
     case when v_total > 0 then v_lines || jsonb_build_array(
@@ -473,7 +473,7 @@ begin
   end if;
 
   if new.type is distinct from 'Issue' then
-    perform public.erp_post_system_journal(new.company_id, 'stock_issue', new.id::text, current_date, 'Stock', null, null, null);
+    perform public.erp_post_system_journal(new.company_id, 'stock_issue', new.id::text, public.erp_today(), 'Stock', null, null, null);
     return new;
   end if;
 
@@ -488,7 +488,7 @@ begin
   v_value := round(abs(coalesce(new.qty::numeric, 0)) * coalesce(v_price, 0), 2);
 
   perform public.erp_post_system_journal(new.company_id, 'stock_issue', new.id::text,
-    coalesce(new.date::date, current_date), 'Stock',
+    coalesce(new.date::date, public.erp_today()), 'Stock',
     'Material issued: ' || coalesce(new.material, '') || coalesce(' (' || new.reference || ')', ''), new.reference,
     case when v_value > 0 then jsonb_build_array(
       jsonb_build_object('key', 'MATERIAL_CONSUMED', 'debit', v_value),
@@ -616,16 +616,16 @@ declare
   v_company uuid := public.erp_report_company();
   v_first date;
 begin
-  perform public.erp_ensure_financial_year(v_company, current_date);
+  perform public.erp_ensure_financial_year(v_company, public.erp_today());
   select min(entry_date) into v_first from public.journal_entries where company_id = v_company;
   if v_first is not null then perform public.erp_ensure_financial_year(v_company, v_first); end if;
   return jsonb_build_object(
     'company', (select jsonb_build_object('id', c.id, 'company_name', c.company_name, 'fy_start_month', c.fy_start_month)
                 from public.companies c where c.id = v_company),
-    'today', current_date,
+    'today', public.erp_today(),
     'years', (select coalesce(jsonb_agg(jsonb_build_object(
                 'id', f.id, 'name', f.name, 'start_date', f.start_date, 'end_date', f.end_date, 'status', f.status,
-                'is_current', current_date between f.start_date and f.end_date) order by f.start_date desc), '[]')
+                'is_current', public.erp_today() between f.start_date and f.end_date) order by f.start_date desc), '[]')
               from public.financial_years f where f.company_id = v_company));
 end;
 $$;
@@ -1106,7 +1106,7 @@ begin
     select coalesce(sum(round(coalesce(stock_qty, 0)::numeric * coalesce(unit_price, 0)::numeric, 2)), 0) into v_fg
     from public.cnc_parts where company_id = c.id and coalesce(stock_qty, 0) > 0;
 
-    perform public.erp_post_system_journal(c.id, 'opening_stock', c.id::text, current_date, 'Opening',
+    perform public.erp_post_system_journal(c.id, 'opening_stock', c.id::text, public.erp_today(), 'Opening',
       'Opening stock at accounting go-live (stock qty × unit price)', null,
       case when v_raw + v_fg > 0 then jsonb_build_array(
         jsonb_build_object('key', 'INV_RAW', 'debit', v_raw),

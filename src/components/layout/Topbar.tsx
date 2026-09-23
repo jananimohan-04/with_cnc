@@ -11,6 +11,7 @@ import {
   HelpCircle,
   Building2,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchRecentActivity, timeAgo, type ActivityItem } from '@/lib/recentActivity';
@@ -57,6 +58,19 @@ export function Topbar({
   }, []);
 
   const breadcrumbs = getBreadcrumbs(currentPage);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchText, setSearchText] = useState('');
+  const searchHint = currentPage.startsWith('inventory')
+    ? 'Search by Part No, Item Name, Category, Supplier...'
+    : 'Search anything (customer, project, part, invoice...)';
+  // Pages that support it read ?q= (e.g. Inventory); others simply ignore it.
+  const submitSearch = () => {
+    const params = new URLSearchParams(location.search);
+    if (searchText.trim()) params.set('q', searchText.trim()); else params.delete('q');
+    navigate({ pathname: location.pathname, search: params.toString() });
+  };
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(/,/g, '');
 
   return (
     <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-16 flex items-center px-4 lg:px-6 gap-6">
@@ -81,7 +95,10 @@ export function Topbar({
       <div className="hidden md:flex items-center relative group">
         <Search size={16} className="absolute left-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
         <input
-          placeholder="Search anything (customer, project, part, invoice...)"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submitSearch(); }}
+          placeholder={searchHint}
           className="w-64 lg:w-96 pl-9 pr-12 py-2 text-sm rounded-md bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-300 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all shadow-inner placeholder:text-slate-400"
         />
         <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] text-slate-400 bg-white border border-slate-200 rounded shadow-sm px-1.5 py-0.5 font-mono font-bold tracking-widest">
@@ -116,6 +133,8 @@ export function Topbar({
           {company.company_name}
         </div>
       )}
+
+      <span className="hidden xl:block text-xs font-medium text-slate-500 whitespace-nowrap">{today}</span>
 
       {/* System Status */}
       <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full">

@@ -9,7 +9,8 @@ function download(filename: string, content: BlobPart, type: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Released late: a large export can still be writing when a short timeout would cut it off.
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
 
 const csvCell = (v: unknown) => {

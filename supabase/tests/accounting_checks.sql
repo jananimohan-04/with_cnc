@@ -56,7 +56,7 @@ begin
       v := v || jsonb_build_object(c.column_name, case
         when c.data_type in ('smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision') then to_jsonb(0)
         when c.data_type = 'boolean' then to_jsonb(false)
-        when c.data_type = 'date' then to_jsonb(current_date)
+        when c.data_type = 'date' then to_jsonb(public.erp_today())
         when c.data_type like 'timestamp%' then to_jsonb(now())
         when c.data_type like 'time%' then to_jsonb('00:00'::text)
         when c.data_type = 'uuid' then to_jsonb(gen_random_uuid())
@@ -153,27 +153,34 @@ begin
   select (y ->> 'id')::uuid into fy from jsonb_array_elements(public.erp_financial_years() -> 'years') y where (y ->> 'is_current')::boolean;
   if fy is null then raise exception 'FAILED A2: no current financial year'; end if;
 
-  bs0 := public.erp_balance_sheet(fy, current_date);
+  bs0 := public.erp_balance_sheet(fy, public.erp_today());
   if not (bs0 ->> 'balanced')::boolean then raise exception 'FAILED A2: opening balance sheet does not balance: %', bs0 -> 'totals'; end if;
   select (x ->> 'amount')::numeric into tr0 from jsonb_array_elements(bs0 -> 'rows') x where x ->> 'system_key' = 'TRADE_RECEIVABLES';
 
   -- Sales invoice → receivable
   v_inv := public.erp_test_insert('cnc_invoices', jsonb_build_object('id', 'f0000000-0000-4000-8000-000000000031', 'invoice_no', 'ACC-INV-1',
-    'customer_name', 'ACC Customer', 'amount', 1180, 'invoice_date', current_date, 'status', 'Sent')) ->> 'id';
-  bs1 := public.erp_balance_sheet(fy, current_date);
+    'customer_name', 'ACC Customer', 'amount', 1180, 'invoice_date', public.erp_today(), 'status', 'Sent')) ->> 'id';
+  bs1 := public.erp_balance_sheet(fy, public.erp_today());
   select (x ->> 'amount')::numeric into tr1 from jsonb_array_elements(bs1 -> 'rows') x where x ->> 'system_key' = 'TRADE_RECEIVABLES';
   if tr1 - tr0 <> 1180 then raise exception 'FAILED A2: invoice did not raise Trade Receivables (% → %)', tr0, tr1; end if;
 
   -- Paid → receipt into bank, receivable cleared
   update public.cnc_invoices set status = 'Paid' where id::text = v_inv;
-  bs1 := public.erp_balance_sheet(fy, current_date);
+  bs1 := public.erp_balance_sheet(fy, public.erp_today());
   select (x ->> 'amount')::numeric into tr1 from jsonb_array_elements(bs1 -> 'rows') x where x ->> 'system_key' = 'TRADE_RECEIVABLES';
   if tr1 <> tr0 then raise exception 'FAILED A2: receipt did not clear the receivable'; end if;
 
   -- Posted goods receipt → inventory 500 + GST 90 / payable 590
   v_grn := public.erp_test_insert('cnc_goods_receipts', jsonb_build_object('id', 'f0000000-0000-4000-8000-000000000032', 'grn_number', 'ACC-GRN-1',
-    'supplier_id', 'c0000000-0000-4000-8000-000000000001', 'receipt_date', current_date, 'status', 'Draft')) ->> 'id';
-  perform public.erp_test_insert('cnc_goods_receipt_items', '{"id":"f0000000-0000-4000-8000-000000000033","goods_receipt_id":"f0000000-0000-4000-8000-000000000032","purchase_order_item_id":"c0000000-0000-4000-8000-000000000002","received_qty":10}');
+    'supplier_id', 'c0000000-0000-4000-8000-000000000001', 'receipt_date', public.erp_today(), 'status', 'Draft')) ->> 'id';
+  -- The received item must exist in the inventory master (inventory migration), so use a real one.
+  perform public.erp_test_insert('cnc_goods_receipt_items', jsonb_build_object(
+    'id', 'f0000000-0000-4000-8000-000000000033', 'goods_receipt_id', 'f0000000-0000-4000-8000-000000000032',
+    'purchase_order_item_id', 'c0000000-0000-4000-8000-000000000002', 'received_qty', 10,
+    'raw_material_id', (select r.id::text from public.cnc_raw_materials r
+                          where r.company_id = (select id from public.companies where code = 'ARGUS') limit 1),
+    'material_code', (select r.material_code from public.cnc_raw_materials r
+                        where r.company_id = (select id from public.companies where code = 'ARGUS') limit 1)));
   if exists (select 1 from public.journal_entries where source_type = 'grn' and source_id = v_grn::text) then
     raise exception 'FAILED A2: a draft goods receipt was posted';
   end if;
@@ -188,7 +195,7 @@ begin
   -- stock ledger is written through erp_issue_material, covered by inventory_checks.sql)
   if not exists (select 1 from information_schema.columns where table_schema = 'public'
                  and table_name = 'cnc_stock_movements' and column_name = 'item_id') then
-  perform public.erp_test_insert('cnc_stock_movements', jsonb_build_object('id', 'f0000000-0000-4000-8000-000000000034', 'date', current_date,
+  perform public.erp_test_insert('cnc_stock_movements', jsonb_build_object('id', 'f0000000-0000-4000-8000-000000000034', 'date', public.erp_today(),
     'type', 'Issue', 'qty', 2, 'reference', 'ACC-MR-1', 'material', coalesce(
       (select material_code from public.cnc_raw_materials where unit_price > 0 limit 1), 'ERP-TEST material')));
   end if;
@@ -197,20 +204,20 @@ begin
   select id into acc_bank from public.chart_of_accounts where system_key = 'BANK_DEFAULT';
   select id into acc_capital from public.chart_of_accounts where system_key = 'CAPITAL';
   select id into acc_group from public.chart_of_accounts where system_key = 'BANK_GROUP';
-  perform public.erp_save_journal(null, current_date, 'Receipt', 'Capital introduced', 'ACC-CAP', jsonb_build_array(
+  perform public.erp_save_journal(null, public.erp_today(), 'Receipt', 'Capital introduced', 'ACC-CAP', jsonb_build_array(
     jsonb_build_object('account_id', acc_bank, 'debit', 10000),
     jsonb_build_object('account_id', acc_capital, 'credit', 10000)));
 
   err := false;
   begin
-    perform public.erp_save_journal(null, current_date, 'Journal', 'unbalanced', null, jsonb_build_array(
+    perform public.erp_save_journal(null, public.erp_today(), 'Journal', 'unbalanced', null, jsonb_build_array(
       jsonb_build_object('account_id', acc_bank, 'debit', 100), jsonb_build_object('account_id', acc_capital, 'credit', 90)));
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A2: an unbalanced voucher was accepted'; end if;
 
   err := false;
   begin
-    perform public.erp_save_journal(null, current_date, 'Journal', 'group', null, jsonb_build_array(
+    perform public.erp_save_journal(null, public.erp_today(), 'Journal', 'group', null, jsonb_build_array(
       jsonb_build_object('account_id', acc_group, 'debit', 100), jsonb_build_object('account_id', acc_capital, 'credit', 100)));
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A2: posting to a group account was accepted'; end if;
@@ -218,30 +225,30 @@ begin
   err := false;
   begin
     perform public.erp_save_journal((select id from public.journal_entries where source_type = 'grn' and source_id = v_grn::text),
-      current_date, 'Journal', 'edit system', null, jsonb_build_array(
+      public.erp_today(), 'Journal', 'edit system', null, jsonb_build_array(
       jsonb_build_object('account_id', acc_bank, 'debit', 1), jsonb_build_object('account_id', acc_capital, 'credit', 1)));
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A2: an automatic entry was edited manually'; end if;
 
   err := false;
   begin
-    insert into public.journal_entries (entry_no, entry_date, voucher_type) values ('HACK-1', current_date, 'Journal');
+    insert into public.journal_entries (entry_no, entry_date, voucher_type) values ('HACK-1', public.erp_today(), 'Journal');
   exception when insufficient_privilege then err := true; end;
   if not err then raise exception 'FAILED A2: journal_entries is writable from the browser'; end if;
 
   err := false;
   begin
-    perform public.erp_post_system_journal(gen_random_uuid(), 'x', 'x', current_date, 'Journal', null, null, '[]'::jsonb);
+    perform public.erp_post_system_journal(gen_random_uuid(), 'x', 'x', public.erp_today(), 'Journal', null, null, '[]'::jsonb);
   exception when insufficient_privilege then err := true; end;
   if not err then raise exception 'FAILED A2: internal posting function is callable from the browser'; end if;
 
   err := false;
-  begin perform public.erp_balance_sheet(fy, current_date + 800);
+  begin perform public.erp_balance_sheet(fy, public.erp_today() + 800);
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A2: an as-on date outside the financial year was accepted'; end if;
 
   -- Report consistency
-  bs1 := public.erp_balance_sheet(fy, current_date);
+  bs1 := public.erp_balance_sheet(fy, public.erp_today());
   if not (bs1 ->> 'balanced')::boolean then raise exception 'FAILED A2: balance sheet does not balance: %', bs1 -> 'totals'; end if;
   if (bs1 -> 'totals' ->> 'assets')::numeric <> (bs1 -> 'totals' ->> 'liabilities')::numeric + (bs1 -> 'totals' ->> 'equity')::numeric then
     raise exception 'FAILED A2: assets ≠ liabilities + equity';
@@ -263,15 +270,15 @@ begin
 
   -- Ledger closing = balance sheet amount; trial balance balances; P&L = period profit
   led := public.erp_account_ledger((select id from public.chart_of_accounts where system_key = 'BANK_DEFAULT'),
-                                   (select start_date from public.financial_years where id = fy), current_date);
+                                   (select start_date from public.financial_years where id = fy), public.erp_today());
   if (led ->> 'closing')::numeric <> (select (x ->> 'amount')::numeric from jsonb_array_elements(rows_) x where x ->> 'system_key' = 'BANK_DEFAULT') then
     raise exception 'FAILED A2: bank ledger closing % ≠ balance sheet', led ->> 'closing';
   end if;
-  tb := public.erp_trial_balance(fy, current_date);
+  tb := public.erp_trial_balance(fy, public.erp_today());
   if (tb -> 'totals' ->> 'debit') <> (tb -> 'totals' ->> 'credit') then
     raise exception 'FAILED A2: trial balance does not balance: %', tb -> 'totals';
   end if;
-  pl := public.erp_profit_and_loss((select start_date from public.financial_years where id = fy), current_date);
+  pl := public.erp_profit_and_loss((select start_date from public.financial_years where id = fy), public.erp_today());
   if (pl -> 'totals' ->> 'net_profit')::numeric <> (bs1 -> 'totals' ->> 'profit_current_period')::numeric then
     raise exception 'FAILED A2: P&L net profit ≠ balance sheet period profit';
   end if;
@@ -293,10 +300,10 @@ declare
 begin
   perform public.erp_get_session();
   select (y ->> 'id')::uuid into fy from jsonb_array_elements(public.erp_financial_years() -> 'years') y where (y ->> 'is_current')::boolean;
-  bs := public.erp_balance_sheet(fy, current_date);
+  bs := public.erp_balance_sheet(fy, public.erp_today());
   if (bs ->> 'has_data')::boolean or (bs -> 'totals' ->> 'assets')::numeric <> 0
      or (bs -> 'totals' ->> 'equity')::numeric <> 0 or (bs -> 'totals' ->> 'profit_current_period')::numeric <> 0
-     or (public.erp_profit_and_loss(current_date - 400, current_date) -> 'totals' ->> 'net_profit')::numeric <> 0 then
+     or (public.erp_profit_and_loss(public.erp_today() - 400, public.erp_today()) -> 'totals' ->> 'net_profit')::numeric <> 0 then
     raise exception 'FAILED A3: Company B sees accounting data it does not own';
   end if;
   if exists (select 1 from public.journal_entries) or exists (select 1 from public.journal_entry_lines) then
@@ -308,14 +315,14 @@ begin
 
   err := false;
   begin
-    perform public.erp_save_journal(null, current_date, 'Journal', 'cross-company', null, jsonb_build_array(
+    perform public.erp_save_journal(null, public.erp_today(), 'Journal', 'cross-company', null, jsonb_build_array(
       jsonb_build_object('account_id', v_argus_bank, 'debit', 1),
       jsonb_build_object('account_id', (select id from public.chart_of_accounts where system_key = 'CAPITAL'), 'credit', 1)));
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A3: Company B posted to an Argus account'; end if;
 
   err := false;
-  begin perform public.erp_account_ledger(v_argus_bank, current_date - 30, current_date);
+  begin perform public.erp_account_ledger(v_argus_bank, public.erp_today() - 30, public.erp_today());
   exception when others then err := true; end;
   if not err then raise exception 'FAILED A3: Company B read an Argus ledger'; end if;
 end $$;

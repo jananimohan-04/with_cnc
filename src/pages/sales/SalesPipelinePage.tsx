@@ -410,7 +410,7 @@ export function SalesPipelinePage() {
     }
 
     if (invoicesData && invoicesData.length > 0) {
-      invoicesData.forEach(inv => {
+      invoicesData.filter((inv: any) => inv.status !== 'Completed').forEach(inv => {
          newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
     }
@@ -500,6 +500,84 @@ export function SalesPipelinePage() {
       return form;
     });
   };
+
+    const handleCompleteInvoice = async (card: KanbanCard) => {
+      if (!window.confirm(`Mark "${card.refNo}" as complete? This will save the full deal history under the customer's lead.`)) return;
+      setLoading(true);
+      try {
+        // 1. Collect all the lineage data for this invoice
+        const invoiceData = card.raw;
+        const customer = card.customer;
+
+        // Try to find the full chain: invoice -> DC -> FG -> Inward -> SO -> Quotation -> Enquiry
+        let soRef = invoiceData.sales_order_no || '';
+        let leadNo = '';
+        let leadId = '';
+        let totalValue = Number(invoiceData.amount) || 0;
+        let parts: any[] = [];
+
+        // Find SO
+        if (soRef) {
+          const { data: so } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', soRef).single();
+          if (so) {
+            if (so.items && Array.isArray(so.items)) parts = so.items;
+            leadNo = so.lead_no || '';
+            if (so.quotation_id) {
+              const { data: qt } = await supabase.from('cnc_quotations').select('*').eq('id', so.quotation_id).single();
+              if (qt && qt.lead_id) {
+                leadId = qt.lead_id;
+                leadNo = qt.enquiry_no || leadNo;
+              }
+            }
+          }
+        }
+
+        // If we still don't have a lead, try to find by customer name
+        if (!leadId && customer) {
+          const { data: enq } = await supabase.from('cnc_enquiries').select('id, lead_no').eq('customer', customer).order('created_at', { ascending: false }).limit(1).single();
+          if (enq) { leadId = enq.id; leadNo = enq.lead_no || leadNo; }
+        }
+
+        // 2. Save purchase history record
+        const historyRecord = {
+          id: crypto.randomUUID(),
+          customer: customer,
+          lead_id: leadId || null,
+          lead_no: leadNo || '',
+          invoice_no: card.refNo,
+          invoice_date: invoiceData.invoice_date || invoiceData.created_at || new Date().toISOString(),
+          part_name: card.part || invoiceData.part_name || '',
+          quantity: Number(card.qty) || 0,
+          total_value: totalValue,
+          parts: parts.length > 0 ? parts : null,
+          sales_order_ref: soRef || '',
+          completed_at: new Date().toISOString()
+        };
+
+        // Try to insert into purchase_history table, if it doesn't exist we'll store in enquiry remarks
+        const { error: histErr } = await supabase.from('cnc_purchase_history').insert([historyRecord]);
+        
+        if (histErr) {
+          // Table doesn't exist yet - store as JSON in enquiry's remarks field instead
+          if (leadId) {
+            const { data: existingEnq } = await supabase.from('cnc_enquiries').select('remarks').eq('id', leadId).single();
+            let existingHistory: any[] = [];
+            try { if (existingEnq?.remarks) existingHistory = JSON.parse(existingEnq.remarks); } catch { existingHistory = []; }
+            if (!Array.isArray(existingHistory)) existingHistory = [];
+            existingHistory.push(historyRecord);
+            await supabase.from('cnc_enquiries').update({ remarks: JSON.stringify(existingHistory), status: 'Converted' }).eq('id', leadId);
+          }
+        }
+
+        // 3. Mark invoice as completed and remove from pipeline
+        await supabase.from('cnc_invoices').update({ status: 'Completed' }).eq('id', card.raw.id);
+
+        fetchPipeline();
+      } catch (err: any) {
+        alert("Error completing invoice: " + err.message);
+      }
+      setLoading(false);
+    };
 
     const handleDeleteCard = async (e: React.MouseEvent, card: KanbanCard) => {
     e.stopPropagation();
@@ -863,18 +941,7 @@ export function SalesPipelinePage() {
       }]);
       
       if (!error) {
-         // Log stock movement
-         await supabase.from('cnc_stock_movements').insert([{
-            date: inwardForm.inwardDate || new Date().toISOString().split('T')[0],
-            type: 'Receipt',
-            material: inwardForm.partName,
-            qty: q,
-            uom: 'Nos',
-            from: inwardForm.partyName,
-            to: 'Main Warehouse',
-            reference: inwardForm.inwardNo,
-            user: userName
-         }]);
+         // Customer inward is the customer's material (job work), so it is not added to company stock.
       }
     if (error) alert("Error creating inward: " + error.message);
     else {
@@ -1337,9 +1404,11 @@ export function SalesPipelinePage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${stage.bg} ${stage.text} border ${stage.border}`}>
-                            {card.status || stage.id}
-                          </span>
+                          {card.type === 'invoice' && (
+                            <button onClick={(e) => { e.stopPropagation(); handleCompleteInvoice(card); }} className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors" title="Mark Complete & Save to History">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </button>
+                          )}
                           <div className="flex -space-x-1">
                             <div className="w-5 h-5 rounded-full bg-slate-200 border border-white flex items-center justify-center text-[8px] font-bold text-slate-600" title="Assigned User">
                               {card.raw?.contact_person ? card.raw.contact_person.substring(0, 2).toUpperCase() : (card.customer ? card.customer.substring(0, 2).toUpperCase() : 'AD')}

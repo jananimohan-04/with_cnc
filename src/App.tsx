@@ -38,12 +38,13 @@ import {
 
 import { DeliveriesPage } from './pages/operations/OperationsPages';
 import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
+import { InventoryPage } from './pages/inventory/InventoryPage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
 import { TrialBalancePage } from './pages/accounts/TrialBalancePage';
 import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
 
 import {
-  RawMaterialsPage, ComponentsPage, StockOverviewPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
+  RawMaterialsPage, ComponentsPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
 } from './pages/inventory/InventoryPages';
 
 import {
@@ -163,7 +164,7 @@ function MainLayout() {
             {/* Inventory */}
             <Route path="/inventory/raw-materials" element={<RawMaterialsPage />} />
             <Route path="/inventory/components" element={<ComponentsPage />} />
-            <Route path="/inventory/stock" element={<StockOverviewPage />} />
+            <Route path="/inventory/stock" element={<InventoryPage />} />
             <Route path="/inventory/movements" element={<StockMovementsPage />} />
             <Route path="/inventory/requests" element={<MaterialRequestsPage />} />
             <Route path="/inventory/warehouse" element={<WarehousesPage />} />

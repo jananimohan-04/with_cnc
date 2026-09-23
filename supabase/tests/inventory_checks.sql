@@ -56,7 +56,7 @@ begin
       v := v || jsonb_build_object(c.column_name, case
         when c.data_type in ('smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision') then to_jsonb(0)
         when c.data_type = 'boolean' then to_jsonb(false)
-        when c.data_type = 'date' then to_jsonb(current_date)
+        when c.data_type = 'date' then to_jsonb(public.erp_today())
         when c.data_type like 'timestamp%' then to_jsonb(now())
         when c.data_type like 'time%' then to_jsonb('00:00'::text)
         when c.data_type = 'uuid' then to_jsonb(gen_random_uuid())
@@ -162,13 +162,13 @@ begin
   if not err then raise exception 'FAILED I2: a duplicate item code was accepted'; end if;
 
   -- Adjust down 7 → 3 (Low Stock); cannot go below zero
-  perform public.erp_adjust_stock('RAW', v_rm, 'OUT', 7, 'Cycle count', 'CC-1', current_date);
+  perform public.erp_adjust_stock('RAW', v_rm, 'OUT', 7, 'Cycle count', 'CC-1', public.erp_today());
   row_ := public.erp_inventory_items(null, 'INV-T-RM1', null, null, null, 1, 10) -> 'rows' -> 0;
   if (row_ ->> 'current_stock')::numeric <> 3 or row_ ->> 'status' <> 'Low Stock' then
     raise exception 'FAILED I2: adjustment/low-stock rule wrong: %', row_;
   end if;
   err := false;
-  begin perform public.erp_adjust_stock('RAW', v_rm, 'OUT', 5, 'too much', null, current_date);
+  begin perform public.erp_adjust_stock('RAW', v_rm, 'OUT', 5, 'too much', null, public.erp_today());
   exception when others then err := true; end;
   if not err then raise exception 'FAILED I2: stock went below zero'; end if;
 
@@ -176,7 +176,7 @@ begin
   perform public.erp_test_insert('cnc_purchase_order_items', jsonb_build_object('id', 'd1000000-0000-4000-8000-000000000002',
     'unit_price', 120, 'tax_amount', 0, 'quantity', 10));
   perform public.erp_test_insert('cnc_goods_receipts', jsonb_build_object('id', 'd1000000-0000-4000-8000-000000000003',
-    'grn_number', 'INV-GRN-1', 'supplier_id', 'd1000000-0000-4000-8000-000000000001', 'receipt_date', current_date, 'status', 'Draft'));
+    'grn_number', 'INV-GRN-1', 'supplier_id', 'd1000000-0000-4000-8000-000000000001', 'receipt_date', public.erp_today(), 'status', 'Draft'));
   perform public.erp_test_insert('cnc_goods_receipt_items', jsonb_build_object('id', 'd1000000-0000-4000-8000-000000000004',
     'goods_receipt_id', 'd1000000-0000-4000-8000-000000000003', 'purchase_order_item_id', 'd1000000-0000-4000-8000-000000000002',
     'raw_material_id', v_rm, 'material_code', 'INV-T-RM1', 'received_qty', 10));
@@ -208,7 +208,7 @@ begin
 
   -- The ledger cannot be written from the browser
   err := false;
-  begin insert into public.cnc_stock_movements (type, qty) values ('Adjustment', 1);
+  begin insert into public.cnc_stock_movements (id, type, qty) values ('d1000000-0000-4000-8000-0000000000ff', 'Adjustment', 1);
   exception when insufficient_privilege then err := true; end;
   if not err then raise exception 'FAILED I2: cnc_stock_movements is writable from the browser'; end if;
 
@@ -249,7 +249,7 @@ begin
 
   -- Inventory value = inventory accounts on the Balance Sheet
   select (y ->> 'id')::uuid into fy from jsonb_array_elements(public.erp_financial_years() -> 'years') y where (y ->> 'is_current')::boolean;
-  bs := public.erp_balance_sheet(fy, current_date);
+  bs := public.erp_balance_sheet(fy, public.erp_today());
   select coalesce(sum((r ->> 'value')::numeric) filter (where r ->> 'kind' = 'RAW'), 0),
          coalesce(sum((r ->> 'value')::numeric) filter (where r ->> 'kind' = 'PART'), 0)
   into v_raw_value, v_fg_value
@@ -271,7 +271,7 @@ declare err boolean := false; v_id text;
 begin
   perform public.erp_get_session();
   v_id := public.erp_inventory_items(null, 'INV-T-RM1', null, null, null, 1, 10) -> 'rows' -> 0 ->> 'id';
-  begin perform public.erp_adjust_stock('RAW', v_id, 'IN', 1, 'x', null, current_date);
+  begin perform public.erp_adjust_stock('RAW', v_id, 'IN', 1, 'x', null, public.erp_today());
   exception when others then err := true; end;
   if not err then raise exception 'FAILED I3: a USER adjusted stock'; end if;
   err := false;
@@ -300,7 +300,7 @@ begin
   exception when others then err := true; end;
   if not err then raise exception 'FAILED I4: Company B opened an Argus item'; end if;
   err := false;
-  begin perform public.erp_adjust_stock('RAW', current_setting('inv_test.rm'), 'IN', 1, 'x', null, current_date);
+  begin perform public.erp_adjust_stock('RAW', current_setting('inv_test.rm'), 'IN', 1, 'x', null, public.erp_today());
   exception when others then err := true; end;
   if not err then raise exception 'FAILED I4: Company B adjusted Argus stock'; end if;
   -- Import: valid row saved, duplicate and bad rows reported

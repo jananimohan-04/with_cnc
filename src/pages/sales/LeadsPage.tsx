@@ -14,6 +14,7 @@ export function LeadsPage() {
   const [viewTarget, setViewTarget] = useState<any | null>(null);
   const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
   const [viewHistory, setViewHistory] = useState<any[]>([]);
+  const [purchaseHistory, setPurchaseHistory] = useState<any[]>([]);
 
   useEffect(() => {
     if (viewTarget) {
@@ -42,11 +43,44 @@ export function LeadsPage() {
            })));
         }
 
-        const [q, o] = await Promise.all([
+        const [q, o, inv] = await Promise.all([
            supabase.from('cnc_quotations').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
-           supabase.from('cnc_sales_orders').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company)
+           supabase.from('cnc_sales_orders').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
+           supabase.from('cnc_invoices').select('*').eq('customer_name', viewTarget.company).eq('status', 'Completed').order('created_at', { ascending: false })
         ]);
         setViewData({ enquiries: enqs?.length || 0, quotes: q.count || 0, orders: o.count || 0 });
+        
+        // Fetch purchase history from enquiry remarks (stored as JSON by handleCompleteInvoice)
+        let purchaseHist: any[] = [];
+        if (inv.data && inv.data.length > 0) {
+          purchaseHist = inv.data.map((i: any) => ({
+            invoice_no: i.invoice_no, part_name: i.part_name || i.item || '-',
+            quantity: i.quantity || 0, total_value: i.amount || 0,
+            date: i.invoice_date || (i.created_at ? i.created_at.split('T')[0] : '')
+          }));
+        }
+        // Also check enquiry remarks for stored history
+        if (enqs) {
+          enqs.forEach((e: any) => {
+            try {
+              if (e.remarks) {
+                const parsed = JSON.parse(e.remarks);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((h: any) => {
+                    if (h.invoice_no) purchaseHist.push({
+                      invoice_no: h.invoice_no, part_name: h.part_name || '-',
+                      quantity: h.quantity || 0, total_value: h.total_value || 0,
+                      date: h.completed_at ? h.completed_at.split('T')[0] : ''
+                    });
+                  });
+                }
+              }
+            } catch { /* not JSON */ }
+          });
+        }
+        // Deduplicate by invoice_no
+        const seen = new Set();
+        setPurchaseHistory(purchaseHist.filter(h => { if (seen.has(h.invoice_no)) return false; seen.add(h.invoice_no); return true; }));
       };
       fetchHistory();
     }
@@ -483,6 +517,47 @@ export function LeadsPage() {
             </div>
 
             <div className="mt-2">
+              {/* Purchase History */}
+              {purchaseHistory.length > 0 && (
+                <div className="mb-6">
+                  <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><polyline points="16 8 12 12 8 8"></polyline><line x1="12" y1="16" x2="12" y2="12"></line></svg>
+                    Purchase History ({purchaseHistory.length} completed)
+                  </h5>
+                  <div className="bg-emerald-50/50 rounded-lg border border-emerald-200 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-emerald-100/50 border-b border-emerald-200">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Invoice</th>
+                          <th className="text-left px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Part</th>
+                          <th className="text-center px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Qty</th>
+                          <th className="text-right px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Amount (₹)</th>
+                          <th className="text-right px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {purchaseHistory.map((ph: any, idx: number) => (
+                          <tr key={idx} className="border-b border-emerald-100 last:border-0">
+                            <td className="px-4 py-2.5 font-semibold text-emerald-800">{ph.invoice_no}</td>
+                            <td className="px-4 py-2.5 text-slate-700">{ph.part_name}</td>
+                            <td className="px-4 py-2.5 text-center font-medium text-slate-700">{ph.quantity}</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-emerald-700">₹{Number(ph.total_value).toLocaleString('en-IN')}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-600 text-xs">{ph.date ? new Date(ph.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-emerald-100/50 border-t border-emerald-200">
+                        <tr>
+                          <td colSpan={3} className="px-4 py-2 text-right font-bold text-sm text-emerald-800 uppercase">Total Purchased</td>
+                          <td className="px-4 py-2 text-right font-bold text-base text-emerald-800">₹{purchaseHistory.reduce((s: number, h: any) => s + (Number(h.total_value) || 0), 0).toLocaleString('en-IN')}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
                <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">All Enquiries</h5>
                <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 pb-2">
                  {viewHistory.map(h => (

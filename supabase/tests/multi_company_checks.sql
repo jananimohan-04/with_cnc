@@ -61,7 +61,7 @@ begin
       v := v || jsonb_build_object(c.column_name, case
         when c.data_type in ('smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision') then to_jsonb(0)
         when c.data_type = 'boolean' then to_jsonb(false)
-        when c.data_type = 'date' then to_jsonb(current_date)
+        when c.data_type = 'date' then to_jsonb(public.erp_today())
         when c.data_type like 'timestamp%' then to_jsonb(now())
         when c.data_type like 'time%' then to_jsonb('00:00'::text)
         when c.data_type = 'uuid' then to_jsonb(gen_random_uuid())

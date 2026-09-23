@@ -253,7 +253,7 @@ begin
   end if;
   r := public.erp_insert_json('cnc_stock_movements', jsonb_build_object(
     'company_id', p_company,
-    'date', coalesce(p_date, current_date),
+    'date', coalesce(p_date, public.erp_today()),
     'type', p_type,
     'material', i.code,
     'qty', abs(p_qty_change),
@@ -368,7 +368,7 @@ begin
   -- Only ledger rows for known items; pre-go-live rows and purchase receipts (posted by the
   -- goods-receipt journal) are not posted here.
   if new.item_id is null or coalesce(new.reference_type, '') in ('legacy', 'golive', 'grn') then
-    perform public.erp_post_system_journal(new.company_id, 'stock_movement', new.id::text, current_date, 'Stock', null, null, null);
+    perform public.erp_post_system_journal(new.company_id, 'stock_movement', new.id::text, public.erp_today(), 'Stock', null, null, null);
     return new;
   end if;
 
@@ -391,7 +391,7 @@ begin
   end;
 
   perform public.erp_post_system_journal(new.company_id, 'stock_movement', new.id::text,
-    coalesce(new.date::date, current_date), case when new.type = 'Opening' then 'Opening' else 'Stock' end,
+    coalesce(new.date::date, public.erp_today()), case when new.type = 'Opening' then 'Opening' else 'Stock' end,
     new.type || ': ' || coalesce(new.material, '') || coalesce(' (' || new.reference_no || ')', ''), new.reference_no, v_lines);
   return new;
 end;
@@ -426,7 +426,7 @@ begin
     perform set_config('erp.stock_sync_skip', 'on', true);
     perform public.erp_insert_movement(new.company_id, v_kind, new.id::text, 'Adjustment', 'ADJ',
       coalesce(new.stock_qty, 0) - coalesce(old.stock_qty, 0), coalesce(old.unit_price, 0), 'direct_edit', new.id::text,
-      null, 'Stock edited directly on the item master', current_date, coalesce((public.erp_current_user()).full_name, 'System'));
+      null, 'Stock edited directly on the item master', public.erp_today(), coalesce((public.erp_current_user()).full_name, 'System'));
     perform set_config('erp.stock_sync_skip', 'off', true);
   end if;
   return new;
@@ -448,7 +448,7 @@ begin
     if coalesce(new.stock_qty, 0) <> 0 then
       perform set_config('erp.stock_sync_skip', 'on', true);
       perform public.erp_insert_movement(new.company_id, v_kind, new.id::text, 'Opening', 'IN', new.stock_qty,
-        coalesce(new.unit_price, 0), 'opening', new.id::text, null, 'Opening stock of new item', current_date,
+        coalesce(new.unit_price, 0), 'opening', new.id::text, null, 'Opening stock of new item', public.erp_today(),
         coalesce((public.erp_current_user()).full_name, 'System'));
       perform set_config('erp.stock_sync_skip', 'off', true);
     end if;
@@ -456,7 +456,7 @@ begin
     v_value := round(coalesce(new.stock_qty, 0) * (coalesce(new.unit_price, 0) - coalesce(old.unit_price, 0)), 2);
     if v_value <> 0 then
       perform public.erp_post_system_journal(new.company_id, 'inventory_reval', new.id::text || ':' || clock_timestamp()::text,
-        current_date, 'Journal', 'Inventory revaluation: ' || coalesce(case when v_kind = 'RAW' then new.material_code::text end, ''),
+        public.erp_today(), 'Journal', 'Inventory revaluation: ' || coalesce(case when v_kind = 'RAW' then new.material_code::text end, ''),
         null, case when v_value > 0 then jsonb_build_array(
           jsonb_build_object('key', v_inv, 'debit', v_value), jsonb_build_object('key', 'STOCK_ADJUSTMENT', 'credit', v_value))
         else jsonb_build_array(
@@ -489,7 +489,7 @@ begin
   select qty into v_base from public.inventory_source_baselines
   where company_id = new.company_id and reference_type = 'work_order' and reference_id = new.id::text;
   perform public.erp_upsert_source_movement(new.company_id, 'work_order', new.id::text, 'PART', v_part,
-    'Production Receipt', 'IN', coalesce(new.completed, 0)::numeric - coalesce(v_base, 0), new.wo_no, current_date,
+    'Production Receipt', 'IN', coalesce(new.completed, 0)::numeric - coalesce(v_base, 0), new.wo_no, public.erp_today(),
     'Finished goods from work order ' || coalesce(new.wo_no, ''));
   return new;
 end;
@@ -518,7 +518,7 @@ begin
   where company_id = new.company_id and reference_type = 'delivery' and reference_id = new.id::text;
   v_qty := case when new.status = 'Cancelled' then 0 else coalesce(new.dispatch_qty, new.quantity, 0)::numeric end;
   perform public.erp_upsert_source_movement(new.company_id, 'delivery', new.id::text, 'PART', v_part,
-    'Delivery', 'OUT', -(v_qty - coalesce(v_base, 0)), new.delivery_no, coalesce(new.delivery_date::date, current_date),
+    'Delivery', 'OUT', -(v_qty - coalesce(v_base, 0)), new.delivery_no, coalesce(new.delivery_date::date, public.erp_today()),
     'Delivered to ' || coalesce(new.customer_name, 'customer'));
   return new;
 end;
@@ -538,12 +538,13 @@ begin
 end;
 $$;
 
-create or replace function public.post_goods_receipt(p_grn_id text, p_user text)
-returns void
-language plpgsql volatile security definer set search_path = ''
-as $$
+-- Posts (or removes) the stock of one goods receipt. Driven by its status, so the ledger and
+-- the accounts agree however the status was changed.
+create or replace function public.erp_post_grn_stock(p_company uuid, p_grn_id text, p_user text)
+returns int
+language plpgsql security definer set search_path = ''
+as $fn$
 declare
-  v_company uuid := public.erp_report_company();
   g record;
   gi record;
   v_kind text;
@@ -551,12 +552,23 @@ declare
   v_rate numeric;
   n int := 0;
 begin
-  select * into g from public.cnc_goods_receipts where id::text = p_grn_id and company_id = v_company;
-  if g.id is null then raise exception 'Goods receipt not found' using errcode = '22023'; end if;
-  if g.status = 'Posted' then raise exception 'Goods receipt % is already posted', g.grn_number; end if;
+  select * into g from public.cnc_goods_receipts where id::text = p_grn_id and company_id = p_company;
+  if g.id is null then return 0; end if;
 
-  for gi in select * from public.cnc_goods_receipt_items where goods_receipt_id::text = p_grn_id and company_id = v_company loop
+  if g.status is distinct from 'Posted' then
+    delete from public.cnc_stock_movements
+    where company_id = p_company and reference_type = 'grn'
+      and reference_id in (select gi2.id::text from public.cnc_goods_receipt_items gi2
+                           where gi2.goods_receipt_id::text = p_grn_id);
+    return 0;
+  end if;
+
+  for gi in select * from public.cnc_goods_receipt_items where goods_receipt_id::text = p_grn_id and company_id = p_company loop
     continue when coalesce(gi.received_qty, 0) <= 0;
+    if exists (select 1 from public.cnc_stock_movements
+               where company_id = p_company and reference_type = 'grn' and reference_id = gi.id::text) then
+      n := n + 1; continue;   -- already in the ledger
+    end if;
     v_kind := null; v_item := null;
     if gi.raw_material_id is not null then
       v_kind := 'RAW'; v_item := gi.raw_material_id::text;
@@ -564,22 +576,62 @@ begin
       v_kind := 'PART'; v_item := gi.part_id::text;
     else
       select 'RAW', r.id::text into v_kind, v_item from public.cnc_raw_materials r
-      where r.company_id = v_company and r.material_code = gi.material_code limit 1;
+      where r.company_id = p_company and r.material_code = gi.material_code limit 1;
       if v_item is null then
         select 'PART', p.id::text into v_kind, v_item from public.cnc_parts p
-        where p.company_id = v_company and p.part_no = gi.material_code limit 1;
+        where p.company_id = p_company and p.part_no = gi.material_code limit 1;
       end if;
     end if;
     if v_item is null then
       raise exception 'Item % (%) is not in the inventory master', gi.material_code, gi.material_name using errcode = '22023';
     end if;
     select poi.unit_price into v_rate from public.cnc_purchase_order_items poi where poi.id::text = gi.purchase_order_item_id::text;
-    perform public.erp_insert_movement(v_company, v_kind, v_item, 'Purchase Inward', 'IN', gi.received_qty::numeric, v_rate,
+    perform public.erp_insert_movement(p_company, v_kind, v_item, 'Purchase Inward', 'IN', gi.received_qty::numeric, v_rate,
       'grn', gi.id::text, g.grn_number, coalesce('Supplier invoice ' || g.supplier_invoice_no, 'Goods receipt'),
-      coalesce(g.receipt_date::date, current_date), p_user, g.warehouse_id::text);
+      coalesce(g.receipt_date::date, public.erp_today(p_company)), p_user, g.warehouse_id::text);
     n := n + 1;
   end loop;
-  if n = 0 then raise exception 'Nothing to post: the goods receipt has no received quantity'; end if;
+  return n;
+end;
+$fn$;
+
+create or replace function public.erp_stock_from_grn()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $fn$
+begin
+  if tg_op = 'DELETE' then
+    delete from public.cnc_stock_movements
+    where company_id = old.company_id and reference_type = 'grn'
+      and reference_id in (select gi.id::text from public.cnc_goods_receipt_items gi
+                           where gi.goods_receipt_id::text = old.id::text);
+    return old;
+  end if;
+  if tg_op = 'INSERT' or new.status is distinct from old.status then
+    perform public.erp_post_grn_stock(new.company_id, new.id::text,
+      coalesce((public.erp_current_user()).full_name, 'System'));
+  end if;
+  return new;
+end;
+$fn$;
+
+-- Called by the Purchasing page: validates, then marks the receipt Posted (the trigger books
+-- the stock, and the goods-receipt journal books the purchase).
+create or replace function public.post_goods_receipt(p_grn_id text, p_user text)
+returns void
+language plpgsql volatile security definer set search_path = ''
+as $fn$
+declare
+  v_company uuid := public.erp_report_company();
+  g record;
+begin
+  select * into g from public.cnc_goods_receipts where id::text = p_grn_id and company_id = v_company;
+  if g.id is null then raise exception 'Goods receipt not found' using errcode = '22023'; end if;
+  if g.status = 'Posted' then raise exception 'Goods receipt % is already posted', g.grn_number; end if;
+  if not exists (select 1 from public.cnc_goods_receipt_items
+                 where goods_receipt_id::text = p_grn_id and company_id = v_company and coalesce(received_qty, 0) > 0) then
+    raise exception 'Nothing to post: the goods receipt has no received quantity';
+  end if;
 
   update public.cnc_goods_receipts set status = 'Posted' where id::text = p_grn_id;
   begin
@@ -603,7 +655,7 @@ begin
   exception when undefined_column or undefined_table then null;
   end;
 end;
-$$;
+$fn$;
 
 -- Material issued against a material request (Inventory → Material Requests).
 create or replace function public.erp_issue_material(p_request_id text, p_lines jsonb)
@@ -639,7 +691,7 @@ begin
   for l in select x ->> 'raw_material_id' as item_id, (x ->> 'qty')::numeric as qty from jsonb_array_elements(p_lines) x loop
     perform public.erp_insert_movement(v_company, 'RAW', l.item_id, 'Production Issue', 'OUT', -l.qty, null,
       'material_request', mr.id::text, mr.request_no, 'Issued for work order ' || coalesce(mr.work_order_no, ''),
-      current_date, me.full_name);
+      public.erp_today(), me.full_name);
     n := n + 1;
   end loop;
   if n = 0 then raise exception 'Nothing to issue on this request'; end if;
@@ -695,8 +747,30 @@ begin
     where company_id = i.company_id and item_kind = i.kind and item_id = i.id;
     if i.stock - v_hist <> 0 then
       perform public.erp_insert_movement(i.company_id, i.kind, i.id, 'Opening', 'IN', i.stock - v_hist, i.rate,
-        'golive', i.id, 'GO-LIVE', 'Stock at inventory go-live', current_date, 'System');
+        'golive', i.id, 'GO-LIVE', 'Stock at inventory go-live', public.erp_today(), 'System');
     end if;
+  end loop;
+end;
+$$;
+
+-- Goods receipts already posted before go-live are part of today's stock, so they are marked
+-- as already in the ledger rather than added again.
+do $$
+declare rec record;
+begin
+  for rec in
+    select gi.id::text as item_id, gi.company_id, gi.material_code, g.grn_number
+    from public.cnc_goods_receipt_items gi
+    join public.cnc_goods_receipts g on g.id::text = gi.goods_receipt_id::text
+    where g.status = 'Posted'
+      and not exists (select 1 from public.cnc_stock_movements m
+                      where m.company_id = gi.company_id and m.reference_type = 'grn' and m.reference_id = gi.id::text)
+  loop
+    perform public.erp_insert_json('cnc_stock_movements', jsonb_build_object(
+      'company_id', rec.company_id, 'date', public.erp_today(rec.company_id), 'type', 'Purchase Inward',
+      'material', coalesce(rec.material_code, ''), 'qty', 0, 'qty_change', 0, 'direction', 'IN',
+      'reference_type', 'grn', 'reference_id', rec.item_id, 'reference_no', rec.grn_number,
+      'remarks', 'Received before inventory go-live (already included in opening stock)', 'created_by', 'System'));
   end loop;
 end;
 $$;
@@ -733,6 +807,9 @@ create trigger zz_erp_item_after_change after insert or update on public.cnc_par
 drop trigger if exists zz_erp_stock_from_work_order on public.cnc_work_orders;
 create trigger zz_erp_stock_from_work_order after insert or update or delete on public.cnc_work_orders
   for each row execute function public.erp_stock_from_work_order();
+drop trigger if exists zz_erp_stock_from_grn on public.cnc_goods_receipts;
+create trigger zz_erp_stock_from_grn after insert or update or delete on public.cnc_goods_receipts
+  for each row execute function public.erp_stock_from_grn();
 drop trigger if exists zz_erp_stock_from_delivery on public.cnc_deliveries;
 create trigger zz_erp_stock_from_delivery after insert or update or delete on public.cnc_deliveries
   for each row execute function public.erp_stock_from_delivery();
@@ -1011,7 +1088,7 @@ begin
 
   if v_open > 0 then
     perform public.erp_insert_movement(v_company, v_kind, v_row ->> 'id', 'Opening', 'IN', v_open, v_rate, 'opening', v_row ->> 'id',
-      null, 'Opening stock', coalesce(nullif(p_item ->> 'opening_date', '')::date, current_date), me.full_name);
+      null, 'Opening stock', coalesce(nullif(p_item ->> 'opening_date', '')::date, public.erp_today()), me.full_name);
   end if;
   return jsonb_build_object('kind', v_kind, 'id', v_row ->> 'id');
 end;
@@ -1041,7 +1118,7 @@ begin
   end if;
   v_id := public.erp_insert_movement(v_company, p_kind, p_id, 'Adjustment', 'ADJ',
     case when p_direction = 'IN' then p_qty else -p_qty end, null, 'adjustment', null,
-    nullif(btrim(p_reference), ''), btrim(p_reason), coalesce(p_date, current_date), me.full_name);
+    nullif(btrim(p_reference), ''), btrim(p_reason), coalesce(p_date, public.erp_today()), me.full_name);
   return jsonb_build_object('movement_id', v_id, 'new_stock', (select stock from public.erp_item_info(v_company, p_kind, p_id))::text);
 end;
 $$;
@@ -1137,7 +1214,7 @@ begin
       'erp_insert_json', 'erp_update_json', 'erp_seed_inventory_setup', 'erp_seed_inventory_trigger', 'erp_item_info', 'erp_insert_movement',
       'erp_apply_item_stock', 'erp_sync_item_stock', 'erp_upsert_source_movement', 'erp_post_stock_issue',
       'erp_item_defaults', 'erp_item_stock_guard', 'erp_item_after_change', 'erp_stock_from_work_order',
-      'erp_stock_from_delivery', 'erp_inventory_rows', 'erp_movement_json')
+      'erp_stock_from_delivery', 'erp_post_grn_stock', 'erp_stock_from_grn', 'erp_inventory_rows', 'erp_movement_json')
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
   end loop;

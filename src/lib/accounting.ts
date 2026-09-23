@@ -132,6 +132,8 @@ export const SOURCE_LABELS: Record<string, string> = {
   grn: 'Goods receipt',
   stock_issue: 'Material issue',
   opening_stock: 'Opening stock',
+  stock_movement: 'Stock movement',
+  inventory_reval: 'Inventory revaluation',
 };
 
 /** Where to open the source record of an automatic entry. */
@@ -141,6 +143,8 @@ export const SOURCE_ROUTES: Record<string, string> = {
   grn: '/purchasing/goods-receipt',
   stock_issue: '/inventory/movements',
   opening_stock: '/inventory/stock',
+  stock_movement: '/inventory/stock',
+  inventory_reval: '/inventory/stock',
 };
 
 async function call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {

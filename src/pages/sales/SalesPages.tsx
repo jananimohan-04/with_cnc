@@ -6,7 +6,6 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
 import type { Quotation, SalesOrder, Customer } from '@/data/mockData';
-import { useAuth } from '@/contexts/AuthContext';
 
 export { LeadsPage } from './LeadsPage';
 export { SalesPipelinePage } from './SalesPipelinePage';
@@ -492,7 +491,6 @@ export function QuotationsPage() {
 type SalesOrderRow = Omit<SalesOrder, 'status'> & { status: string; customerId?: string | null; quotationId?: string | null };
 
 export function SalesOrdersPage() {
-  const { profile } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<SalesOrderRow | null>(null);
@@ -674,19 +672,7 @@ export function SalesOrdersPage() {
     }]);
 
     if (!error) {
-       // Log stock movement
-       const { error: smErr } = await supabase.from('cnc_stock_movements').insert([{
-          date: new Date().toISOString().split('T')[0],
-          type: 'Issue',
-          material: deliveryTarget.partName,
-          qty: dispatchQty,
-          uom: 'Nos',
-          from: 'Main Warehouse',
-          to: deliveryTarget.customer,
-          reference: deliveryForm.deliveryNo,
-          user: profile?.full_name || ''
-       }]);
-       if (smErr) console.error('Failed to log stock movement:', smErr);
+       // Finished-goods stock is reduced by the database when the delivery challan is saved.
 
        // Update the sales order's delivered count and status
        const delivered = (Number(deliveryTarget.delivered) || 0) + dispatchQty;

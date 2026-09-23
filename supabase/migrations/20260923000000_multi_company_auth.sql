@@ -27,6 +27,8 @@ create table if not exists public.companies (
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+alter table public.companies add column if not exists timezone text not null default 'Asia/Kolkata';
+
 create unique index if not exists companies_name_key on public.companies (lower(company_name));
 create unique index if not exists companies_one_portal_default on public.companies (portal_default) where portal_default;
 
@@ -76,6 +78,16 @@ where cu.auth_user_id is null
   and i.provider = 'google'
   and lower(i.identity_data ->> 'email') = cu.email
   and not exists (select 1 from public.company_users x where x.auth_user_id = i.user_id);
+
+-- The current business day. A Supabase database runs in UTC, so "today" for an Indian
+-- factory (UTC+5:30) is taken in the company's own timezone.
+create or replace function public.erp_today(p_company uuid default null)
+returns date
+language sql stable security definer set search_path = ''
+as $$
+  select (now() at time zone coalesce(
+    (select c.timezone from public.companies c where c.id = p_company), 'Asia/Kolkata'))::date
+$$;
 
 -- -------------------------------------------------------------------------------------
 -- 3. Identity helpers (SECURITY DEFINER so RLS policies can call them cheaply)

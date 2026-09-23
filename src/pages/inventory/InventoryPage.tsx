@@ -11,7 +11,7 @@ import {
   inventoryApi, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
   parseCsv, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
   type InventoryFilters, type InventoryItemsPage, type InventoryItemRow, type InventorySummary, type RecentTransaction,
-  type StockStatus, type Direction, type InventoryItemDetail, type ItemKind, type ImportRow, type ImportResult,
+  type StockStatus, type StatusFilter, type Direction, type InventoryItemDetail, type ItemKind, type ImportRow, type ImportResult,
 } from '@/lib/inventory';
 import { formatDate, formatINR, formatPercent, toPaise, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
@@ -25,7 +25,7 @@ interface FilterState {
   search: string;
   categoryId: string; // '' = all
   supplierId: string;
-  status: '' | StockStatus;
+  status: '' | StatusFilter;
   warehouseId: string;
 }
 
@@ -237,7 +237,7 @@ export function InventoryPage() {
     setDraft(d => ({ ...d, categoryId }));
     applyFilters({ ...applied, categoryId });
   };
-  const filterByStatus = (status: StockStatus) => {
+  const filterByStatus = (status: StatusFilter) => {
     const next = { ...applied, categoryId: '', status };
     setDraft({ ...draft, categoryId: '', status });
     applyFilters(next);
@@ -399,6 +399,7 @@ export function InventoryPage() {
               <option value="In Stock">In Stock</option>
               <option value="Low Stock">Low Stock</option>
               <option value="Out of Stock">Out of Stock</option>
+              <option value="Reorder">Needs Reorder</option>
             </select>
             <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[180px]`}>
               <option value="">All Warehouses</option>
@@ -549,7 +550,7 @@ export function InventoryPage() {
                       <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" /> {formatQty(summary.low_stock)} items are below minimum stock</button></li>
                   )}
                   {summary.to_reorder > 0 && (
-                    <li><button onClick={() => filterByStatus(summary.low_stock > 0 ? 'Low Stock' : 'Out of Stock')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
+                    <li><button onClick={() => filterByStatus('Reorder')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
                       <Info size={16} className="text-blue-500 flex-shrink-0" /> {formatQty(summary.to_reorder)} items need reordering</button></li>
                   )}
                 </ul>

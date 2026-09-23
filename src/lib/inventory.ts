@@ -6,6 +6,8 @@ import { formatINR, toPaise } from '@/lib/format';
 
 export type ItemKind = 'RAW' | 'PART';
 export type StockStatus = 'In Stock' | 'Low Stock' | 'Out of Stock';
+/** Filter value: a status, or 'Reorder' = Low Stock + Out of Stock. */
+export type StatusFilter = StockStatus | 'Reorder';
 export type Direction = 'IN' | 'OUT' | 'ADJ';
 
 export interface InventoryCategory {
@@ -72,7 +74,7 @@ export interface InventoryItemsQuery {
   categoryId: string | null;
   search: string | null;
   supplierId: string | null;
-  status: StockStatus | null;
+  status: StatusFilter | null;
   warehouseId: string | null;
   page: number;
   pageSize: number;
