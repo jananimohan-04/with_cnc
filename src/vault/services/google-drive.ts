@@ -27,6 +27,33 @@ export interface GoogleDriveUploadResult {
   webViewLink: string;
 }
 
+async function extractFunctionsError(error: any, defaultMsg: string): Promise<string> {
+  if (!error) return defaultMsg;
+  try {
+    if (error.context && typeof error.context.json === 'function') {
+      const cloned = error.context.clone ? error.context.clone() : error.context;
+      const json = await cloned.json();
+      if (json && (json.error || json.message)) {
+        return json.error || json.message;
+      }
+    }
+  } catch {
+    try {
+      if (error.context && typeof error.context.text === 'function') {
+        const text = await error.context.text();
+        if (text) {
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed.error || parsed.message) return parsed.error || parsed.message;
+          } catch {}
+          return text;
+        }
+      }
+    } catch {}
+  }
+  return error.message || defaultMsg;
+}
+
 export class GoogleDriveService {
   /**
    * Checks if the Google Drive integration is fully configured on the server.
@@ -67,7 +94,10 @@ export class GoogleDriveService {
       // Supabase handles the auth headers automatically
     });
 
-    if (error) throw new Error(error.message || "Failed to upload to Google Drive");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to upload to Google Drive");
+      throw new Error(msg);
+    }
 
     return {
       fileId: data.fileId,
@@ -143,7 +173,10 @@ export class GoogleDriveService {
    */
   static async listFolders(partyId: string): Promise<DriveFolder[]> {
     const { data, error } = await supabase.functions.invoke(`drive-api/list-folders?partyId=${partyId}`, { method: 'GET' });
-    if (error) throw error;
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to list folders");
+      throw new Error(msg);
+    }
     return data.folders || [];
   }
 
@@ -154,7 +187,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/create-folder', {
       body: { partyId, name, parentFolderId }
     });
-    if (error) throw new Error(error.message || "Failed to create folder");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to create folder");
+      throw new Error(msg);
+    }
     return data.folder;
   }
 
@@ -165,7 +201,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/sync-versions', {
       body: { partyId }
     });
-    if (error) throw new Error(error.message || "Failed to sync versions");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to sync versions");
+      throw new Error(msg);
+    }
     return data;
   }
 
@@ -176,7 +215,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/share-folder', {
       body: { partyId, emailAddress }
     });
-    if (error) throw new Error(error.message || "Failed to share folder");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to share folder");
+      throw new Error(msg);
+    }
     return data;
   }
 
@@ -187,7 +229,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/share-files', {
       body: { partyId, fileIds, emailAddress }
     });
-    if (error) throw new Error(error.message || "Failed to share files");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to share files");
+      throw new Error(msg);
+    }
     return data;
   }
 
@@ -198,7 +243,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/list-file-permissions', {
       body: { partyId, fileIds }
     });
-    if (error) throw new Error(error.message || "Failed to list permissions");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to list permissions");
+      throw new Error(msg);
+    }
     return data;
   }
 
@@ -209,7 +257,10 @@ export class GoogleDriveService {
     const { data, error } = await supabase.functions.invoke('drive-api/unshare-files', {
       body: { partyId, fileIds, emailAddress }
     });
-    if (error) throw new Error(error.message || "Failed to unshare files");
+    if (error) {
+      const msg = await extractFunctionsError(error, "Failed to unshare files");
+      throw new Error(msg);
+    }
     return data;
   }
 }

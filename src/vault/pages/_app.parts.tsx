@@ -51,7 +51,8 @@ import {
   FileCheck,
   ExternalLink,
   Laptop,
-  CheckSquare
+  CheckSquare,
+  AlertCircle
 } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -1073,21 +1074,32 @@ function PartsPage() {
   const [isBatchSharing, setIsBatchSharing] = useState(false);
   const [sharedEmails, setSharedEmails] = useState<string[]>([]);
   const [isLoadingSharedEmails, setIsLoadingSharedEmails] = useState(false);
+  const [isDriveConfigured, setIsDriveConfigured] = useState<boolean | null>(null);
 
   const fetchSharedEmails = async () => {
     const allDocs = [...(documentsData?.rows || []), ...(fallbackDocsData?.rows || [])];
     const selectedDocsData = allDocs.filter(d => selectedDocIds.includes(d.id));
     const targetPartyId = selectedDocsData[0]?.party_id || profile?.party_id || partyId;
-    if (!targetPartyId || targetPartyId === 'all') return;
+    if (!targetPartyId || targetPartyId === 'all') {
+      setIsDriveConfigured(null);
+      return;
+    }
     const fileIds = selectedDocsData.map(d => d.versions?.[0]?.google_drive_file_id || d.google_drive_file_id).filter(Boolean) as string[];
-    if (fileIds.length === 0) return;
+    if (fileIds.length === 0) {
+      setIsDriveConfigured(false);
+      setSharedEmails([]);
+      return;
+    }
 
     setIsLoadingSharedEmails(true);
     try {
       const res = await GoogleDriveService.listFilePermissions(targetPartyId, fileIds);
       setSharedEmails(res.emails || []);
+      setIsDriveConfigured(true);
     } catch (e: any) {
-      toast.error(e.message || "Failed to load shared emails");
+      console.warn("Could not load shared emails:", e?.message);
+      setIsDriveConfigured(false);
+      setSharedEmails([]);
     } finally {
       setIsLoadingSharedEmails(false);
     }
@@ -1099,6 +1111,7 @@ function PartsPage() {
     } else {
       setSharedEmails([]);
       setBatchShareEmail("");
+      setIsDriveConfigured(null);
     }
   }, [showBatchShareDialog, selectedDocIds]);
 
@@ -1138,7 +1151,12 @@ function PartsPage() {
       setBatchShareEmail("");
       fetchSharedEmails();
     } catch (e: any) {
-      toast.error(e.message || "Failed to share documents");
+      const msg = e?.message || "";
+      if (msg.toLowerCase().includes("drive not connected")) {
+        toast.error("Google Drive is not connected for this company. Please configure it in Settings.");
+      } else {
+        toast.error(msg || "Failed to share documents");
+      }
     } finally {
       setIsBatchSharing(false);
     }
@@ -1361,6 +1379,18 @@ function PartsPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
+                  {isDriveConfigured === false && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-amber-800">Google Drive Not Connected</div>
+                        <div className="text-amber-700 mt-0.5">
+                          Google Drive integration is not connected for this company or the selected files are not yet uploaded to Drive. Connect Drive in Settings to share documents externally.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label>Recipient Email</Label>
                     <div className="flex gap-2">
@@ -1369,15 +1399,19 @@ function PartsPage() {
                         value={batchShareEmail} 
                         onChange={e => setBatchShareEmail(e.target.value)} 
                         onKeyDown={e => e.key === 'Enter' && handleBatchShare()}
+                        disabled={isBatchSharing || isDriveConfigured === false}
                       />
-                      <Button onClick={handleBatchShare} disabled={isBatchSharing}>
-                        {isBatchSharing ? 'Sharing...' : 'Share'}
+                      <Button onClick={handleBatchShare} disabled={isBatchSharing || isDriveConfigured === false} className="bg-indigo-600 hover:bg-indigo-700">
+                        {isBatchSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Share'}
                       </Button>
                     </div>
                   </div>
 
                   {isLoadingSharedEmails ? (
-                    <div className="text-sm text-slate-500 text-center py-2">Loading permissions...</div>
+                    <div className="flex items-center justify-center py-3 text-xs text-slate-500 gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      Loading permissions...
+                    </div>
                   ) : sharedEmails.length > 0 ? (
                     <div className="space-y-2 mt-4">
                       <Label className="text-xs text-slate-500 uppercase tracking-wider">Currently Shared With</Label>
