@@ -1,5 +1,6 @@
 import { Calculator } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProjectCostingPage } from './ProjectCostingPage';
 
 function CostingStub({ title, description }: { title: string, description: string }) {
   return (
@@ -21,8 +22,7 @@ export function ToolingCostPage() { return <CostingStub title="Tooling Cost" des
 export function OverheadCostPage() { return <CostingStub title="Overhead Cost" description="Factory and administrative overheads" />; }
 
 export function JobCostingPage() {
-  // No job-costing data source exists yet (no cost tables); show an honest empty state instead of sample figures.
-  return <CostingStub title="Job Costing" description="Detailed cost breakdown for completed jobs" />;
+  return <ProjectCostingPage />;
 }
 
 export function QuoteCostingPage() { return <CostingStub title="Quotation Costing" description="Pre-production cost estimation for enquiries" />; }

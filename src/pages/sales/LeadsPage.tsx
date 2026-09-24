@@ -46,7 +46,7 @@ export function LeadsPage() {
         const [q, o, inv] = await Promise.all([
            supabase.from('cnc_quotations').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
            supabase.from('cnc_sales_orders').select('*', { count: 'exact', head: true }).eq('customer', viewTarget.company),
-           supabase.from('cnc_invoices').select('*').eq('customer_name', viewTarget.company).eq('status', 'Completed').order('created_at', { ascending: false })
+           supabase.from('cnc_invoices').select('*').eq('customer_name', viewTarget.company).not('pipeline_completed_at', 'is', null).order('created_at', { ascending: false })
         ]);
         setViewData({ enquiries: enqs?.length || 0, quotes: q.count || 0, orders: o.count || 0 });
         

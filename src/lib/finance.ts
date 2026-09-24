@@ -17,7 +17,13 @@ export const financeApi={
  cancelInvoice:(id:string,reason:string)=>call<void>('erp_cancel_invoice',{p_id:id,p_reason:reason}),
  creditNote:(id:string,reason:string)=>call<{id:string;invoice_no:string}>('erp_credit_note',{p_invoice_id:id,p_reason:reason}),
  bankFilters:()=>call<BankFilters>('erp_bank_filters'),
- bankTransactions:(a:{kind?:string|null;account?:string|null;type?:string|null;party?:string|null;search?:string;from?:string;to?:string;page?:number;pageSize?:number})=>call<BankPageResult>('erp_bank_transactions',{p_kind:a.kind??null,p_account_id:a.account??null,p_type:a.type??null,p_party:a.party??null,p_search:a.search??null,p_from:a.from??null,p_to:a.to??null,p_page:a.page??1,p_page_size:a.pageSize??10}),
+ bankTransactions:async(a:{kind?:string|null;account?:string|null;type?:string|null;party?:string|null;search?:string;from?:string;to?:string;page?:number;pageSize?:number})=>{
+  const page=await call<BankPageResult>('erp_bank_transactions',{p_kind:a.kind??null,p_account_id:a.account??null,p_type:a.type??null,p_party:a.party??null,p_search:a.search??null,p_from:a.from??null,p_to:a.to??null,p_page:a.page??1,p_page_size:a.pageSize??10});
+  if(!page.rows.length)return page;
+  const balances=await call<{id:string;balance:string|null}[]>('erp_bank_transaction_balances',{p_transaction_ids:page.rows.map(row=>row.id)});
+  const byId=new Map(balances.map(row=>[row.id,row.balance]));
+  return {...page,rows:page.rows.map(row=>({...row,balance:byId.get(row.id)??null}))};
+ },
  bankSummary:(from?:string,to?:string)=>call<BankSummary>('erp_bank_summary',{p_from:from??null,p_to:to??null}),
  addBankEntry:(entry:Record<string,unknown>)=>call<{id:string;txn_no:string}>('erp_add_bank_entry',{p_entry:entry}),
  bankTransfer:(a:{from:string;to:string;amount:string;date:string;mode:string;reference:string;description:string})=>call<{txn_no:string;transfer_group:string}>('erp_bank_transfer',{p_from_account:a.from,p_to_account:a.to,p_amount:a.amount,p_date:a.date,p_mode:a.mode,p_reference:a.reference,p_description:a.description}),

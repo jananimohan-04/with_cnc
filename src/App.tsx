@@ -42,6 +42,8 @@ import { InventoryPage } from './pages/inventory/InventoryPage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
 import { TrialBalancePage } from './pages/accounts/TrialBalancePage';
 import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
+import { InvoicesPage } from './pages/finance/InvoicesPage';
+import { BankCashPage } from './pages/finance/BankCashPage';
 
 import {
   RawMaterialsPage, ComponentsPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
@@ -142,14 +144,15 @@ function MainLayout() {
             
             {/* Operations */}
             <Route path="/operations/delivery" element={<DeliveriesPage />} />
+            <Route path="/finance/invoices" element={<InvoicesPage />} />
+            <Route path="/finance/bank-entries" element={<BankCashPage />} />
             
             {/* Engineering */}
             <Route path="/engineering/parts" element={<PartsPage />} />
             <Route path="/engineering/drawings" element={<DrawingsPage />} />
             <Route path="/engineering/bom" element={<BOMPage />} />
             <Route path="/engineering/work-instructions" element={<WorkInstructionsPage />} />
-            <Route path="/engineering/revisions" element={<RevisionsPage />} />
-            <Route path="/engineering/cnc-vault" element={<CNCVaultPage />} />
+            <Route path="/engineering/cnc-vault/*" element={<CNCVaultPage />} />
 
             {/* Production */}
             <Route path="/production/planning" element={<ProductionPlanningPage />} />

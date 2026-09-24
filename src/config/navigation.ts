@@ -70,8 +70,8 @@ export const navSections: NavSection[] = [
     label: 'Finance',
     items: [
       { label: 'Invoices', icon: FileText, page: 'finance/invoices' },
-      { label: 'Bank Entries', icon: FileText, page: 'finance/bank-entries' },
-      { label: 'Costing', icon: Calculator, page: 'costing/material' },
+      { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries' },
+      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing' },
     ],
   },
   {
@@ -148,7 +148,7 @@ export const pageTitles: Record<string, string> = {
   'costing/labour': 'Labour Cost',
   'costing/tooling': 'Tooling Cost',
   'costing/overhead': 'Overhead Cost',
-  'costing/job-costing': 'Job Costing',
+  'costing/job-costing': 'Project Costing',
   'costing/quote-costing': 'Quotation Costing',
   'reports/production': 'Production Reports',
   'reports/sales': 'Sales Reports',
@@ -160,6 +160,8 @@ export const pageTitles: Record<string, string> = {
   'accounts/trial-balance': 'Trial Balance',
   'accounts/profit-loss': 'Profit & Loss',
   'accounts/balance-sheet': 'Balance Sheet',
+  'finance/invoices': 'Invoices',
+  'finance/bank-entries': 'Bank & Cash',
   'admin/users': 'User Management',
   'admin/companies': 'Company Management',
   'admin/roles': 'Roles',

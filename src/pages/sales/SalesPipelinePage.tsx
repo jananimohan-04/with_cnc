@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Plus, Trash2, Eye, UploadCloud , Edit2 } from 'lucide-react';
@@ -410,7 +411,7 @@ export function SalesPipelinePage() {
     }
 
     if (invoicesData && invoicesData.length > 0) {
-      invoicesData.filter((inv: any) => inv.status !== 'Completed').forEach(inv => {
+      invoicesData.filter((inv: any) => !inv.pipeline_completed_at).forEach(inv => {
          newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
     }
@@ -569,8 +570,11 @@ export function SalesPipelinePage() {
           }
         }
 
-        // 3. Mark invoice as completed and remove from pipeline
-        await supabase.from('cnc_invoices').update({ status: 'Completed' }).eq('id', card.raw.id);
+        // Completion is pipeline history metadata; invoice payment status stays derived
+        // from the same receipt records shown on the Invoices and Bank & Cash pages.
+        const { error: completionError } = await supabase.from('cnc_invoices')
+          .update({ pipeline_completed_at: new Date().toISOString() }).eq('id', card.raw.id);
+        if (completionError) throw completionError;
 
         fetchPipeline();
       } catch (err: any) {
@@ -849,10 +853,10 @@ export function SalesPipelinePage() {
       setDcModalTarget(card);
     } else if (card.type === 'dc' && toStage === 'Invoice') {
       setInvoiceForm({
-         invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+         invoiceNo: '',
          date: new Date().toISOString().split('T')[0], partyName: card.customer,
          dcNumber: card.refNo, partName: card.part, quantity: card.qty?.toString() || '0', price: '0', 
-         cgst: '9', sgst: '9', igst: '0'
+         cgst: '', sgst: '', igst: ''
       });
       setInvoiceModalTarget(card);
     } else {
@@ -1073,22 +1077,39 @@ export function SalesPipelinePage() {
     if (!invoiceModalTarget) return;
     const q = Number(invoiceForm.quantity) || 0;
     const p = Number(invoiceForm.price) || 0;
-    const cg = Number(invoiceForm.cgst) || 0;
-    const sg = Number(invoiceForm.sgst) || 0;
-    const ig = Number(invoiceForm.igst) || 0;
-    const amt = q * p * (1 + (cg+sg+ig)/100);
-    const { error } = await supabase.from('cnc_invoices').insert([{
-       id: crypto.randomUUID(), invoice_no: invoiceForm.invoiceNo, customer_name: invoiceForm.partyName,
-       part_name: invoiceForm.partName, quantity: q, amount: amt, invoice_date: invoiceForm.date || null, status: 'Sent',
-       created_at: new Date().toISOString()
-    }]);
-    if (!error) {
-       if (invoiceModalTarget.raw?.id) {
-         const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', invoiceModalTarget.raw.id);
-         if (dcErr) console.error("Failed to update delivery status:", dcErr);
-       }
-       setInvoiceModalTarget(null); fetchPipeline();
-    } else { alert("Error: " + error.message); }
+    if (!invoiceForm.partyName?.trim() || !invoiceForm.partName?.trim() || q <= 0 || p < 0) {
+      alert('Customer, item, positive quantity and a valid unit price are required.');
+      return;
+    }
+    try {
+      const rates = [invoiceForm.cgst, invoiceForm.sgst, invoiceForm.igst]
+        .map((value: string) => value === '' ? null : Number(value));
+      const gstRate = rates.some((value: number | null) => value !== null)
+        ? rates.reduce((sum: number, value: number | null) => sum + (value || 0), 0)
+        : null;
+      const target = invoiceModalTarget.raw || {};
+      const deliveryId = invoiceModalTarget.type === 'dc' && target.id !== 'dummy' ? String(target.id) : null;
+      await financeApi.saveInvoice({
+        invoice_no: invoiceForm.invoiceNo || null,
+        invoice_type: 'Sales Invoice',
+        customer_name: invoiceForm.partyName.trim(),
+        customer_id: target.customer_id || null,
+        part_name: invoiceForm.partName.trim(),
+        quantity: q,
+        invoice_date: invoiceForm.date || null,
+        dc_no: invoiceForm.dcNumber || null,
+        delivery_id: deliveryId,
+        sales_order_id: target.sales_order_id || null,
+      }, [{ description: invoiceForm.partName.trim(), quantity: q, unit: target.unit || null, rate: p, gst_rate: gstRate }]);
+      if (deliveryId) {
+        const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', deliveryId);
+        if (dcErr) throw dcErr;
+      }
+      setInvoiceModalTarget(null);
+      fetchPipeline();
+    } catch (error: any) {
+      alert('Error creating invoice: ' + (error?.message || 'Please try again.'));
+    }
   };
 
   const calcQuoteTotal = () => {
@@ -1367,7 +1388,7 @@ export function SalesPipelinePage() {
                       setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Invoice') {
                       setInvoiceForm({
-                        invoiceNo: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '9', sgst: '9', igst: '0'
+                        invoiceNo: '', partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '', sgst: '', igst: ''
                       });
                       setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     }
@@ -1958,7 +1979,7 @@ export function SalesPipelinePage() {
       <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Billing System" size="lg" footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
-          <FormField label="Invoice No" required><input className={inputClass} value={invoiceForm.invoiceNo || ''} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNo: e.target.value})} /></FormField>
+          <FormField label="Invoice No (optional)" ><input className={inputClass} value={invoiceForm.invoiceNo || ''} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNo: e.target.value})} placeholder="Auto-number if blank" /></FormField>
           <FormField label="Party Name" required><input className={inputClass} value={invoiceForm.partyName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partyName: e.target.value})} /></FormField>
           <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} onChange={e=>setInvoiceForm({...invoiceForm, dcNumber: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={invoiceForm.date || ''} onChange={e=>setInvoiceForm({...invoiceForm, date: e.target.value})} /></FormField>
@@ -1971,7 +1992,7 @@ export function SalesPipelinePage() {
               <FormField label="CGST (%)"><input type="number" className={inputClass} value={invoiceForm.cgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, cgst: e.target.value})} /></FormField>
               <FormField label="SGST (%)"><input type="number" className={inputClass} value={invoiceForm.sgst || ''} onChange={e=>setInvoiceForm({...invoiceForm, sgst: e.target.value})} /></FormField>
               <FormField label="IGST (%)"><input type="number" className={inputClass} value={invoiceForm.igst || ''} onChange={e=>setInvoiceForm({...invoiceForm, igst: e.target.value})} /></FormField>
-              <FormField label="Total Amount"><input type="text" className={`${inputClass} bg-slate-100 font-bold`} value={((Number(invoiceForm.quantity)||0) * (Number(invoiceForm.price)||0) * (1 + ((Number(invoiceForm.cgst)||0) + (Number(invoiceForm.sgst)||0) + (Number(invoiceForm.igst)||0))/100)).toFixed(2)} disabled /></FormField>
+              <FormField label="Tax / Total"><div className={`${inputClass} bg-slate-100 text-xs text-slate-500`}>Tax and total use company settings when saved.</div></FormField>
             </div>
           </div>
         </div>

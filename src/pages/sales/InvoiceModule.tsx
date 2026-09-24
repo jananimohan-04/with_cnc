@@ -3,8 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { InvoicesPage } from '@/pages/finance/InvoicesPage';
 
-export function InvoiceModule({ onBack }: { onBack: () => void }) {
+export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -136,6 +137,8 @@ export function InvoiceModule({ onBack }: { onBack: () => void }) {
     </div>
   );
 }
+
+export function InvoiceModule({ onBack }: { onBack: () => void }) { return <InvoicesPage onBack={onBack} />; }
 
 function FlowStep({ active, highlight, title, subtitle }: { active: boolean, highlight?: boolean, title: string, subtitle: string }) {
   return (
