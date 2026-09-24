@@ -72,7 +72,7 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
 );
 
 export function SalesPipelinePage() {
-  const { profile } = useAuth();
+  const { profile, company } = useAuth();
   const userName = profile?.full_name || '';
   const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
@@ -874,16 +874,30 @@ export function SalesPipelinePage() {
   const saveEnquiry = async () => {
     if (!enquiryForm.company || !enquiryForm.partName) return;
     setLoading(true);
-    const cStr = getContactStrings(enquiryForm);
-    const { error } = await supabase.from('cnc_enquiries').insert([{
-      id: crypto.randomUUID(), lead_no: enquiryForm.leadNo, enquiry_no: enquiryForm.leadNo, customer: enquiryForm.company,
-      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      part_name: enquiryForm.partName, part_no: enquiryForm.partNumber || 'N/A', quantity: Number(enquiryForm.quantity) || 0,
-      expected_date: enquiryForm.expectedDate || null, received_date: enquiryForm.receivedDate || new Date().toISOString().split('T')[0], estimated_value: Number(enquiryForm.estimatedValue) || 0,
-      source: enquiryForm.source, status: 'New', pipeline_stage: 'Enquiry'
-    }]);
-    if (!error) { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); fetchPipeline(); } 
-    else { alert("Error: " + error.message); setLoading(false); }
+    try {
+      const cStr = getContactStrings(enquiryForm);
+      const payload: any = {
+        id: crypto.randomUUID(), lead_no: enquiryForm.leadNo, enquiry_no: enquiryForm.leadNo, customer: enquiryForm.company,
+        contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
+        part_name: enquiryForm.partName, part_no: enquiryForm.partNumber || 'N/A', quantity: Number(enquiryForm.quantity) || 0,
+        expected_date: enquiryForm.expectedDate || null, received_date: enquiryForm.receivedDate || new Date().toISOString().split('T')[0], estimated_value: Number(enquiryForm.estimatedValue) || 0,
+        source: enquiryForm.source, status: 'New', pipeline_stage: 'Enquiry'
+      };
+      if (company?.id) payload.company_id = company.id;
+
+      const { error } = await supabase.from('cnc_enquiries').insert([payload]);
+      if (!error) { 
+        setEnquiryModalOpen(false); 
+        setEnquiryForm(resetEnquiryForm()); 
+        fetchPipeline(); 
+      } else { 
+        alert("Error saving enquiry: " + error.message); 
+      }
+    } catch (err: any) {
+      alert("Error saving enquiry: " + (err?.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const saveQuotation = async () => {
@@ -1162,37 +1176,87 @@ export function SalesPipelinePage() {
   }, []);
 
   const saveNewLead = async () => {
-    if (!newLeadForm.company) return;
+    if (!newLeadForm.company) {
+      alert("Please enter a company name.");
+      return;
+    }
     setLoading(true);
-    const cStr = getContactStrings(newLeadForm);
-    
-    const itemsToSave = (newLeadForm.items && newLeadForm.items.length > 0 && newLeadForm.items[0].partName) 
-      ? newLeadForm.items 
-      : [{ partName: newLeadForm.partName || 'TBD', quantity: newLeadForm.quantity || '0' }];
+    try {
+      const cStr = getContactStrings(newLeadForm);
       
-    const firstItem = itemsToSave[0];
-    const multiplePartsString = itemsToSave.length > 1 ? `Multiple Parts (${itemsToSave.length})` : firstItem.partName;
-    const projNo = newLeadForm.leadNo?.trim() || `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    const { error } = await supabase.from('cnc_enquiries').insert([{
-      id: crypto.randomUUID(), lead_no: projNo, enquiry_no: projNo, customer: newLeadForm.company,
-      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      city: newLeadForm.city, gst: newLeadForm.gst, 
-      enquiring_for: JSON.stringify(itemsToSave),
-      part_name: multiplePartsString, part_no: newLeadForm.partNo || 'N/A', quantity: totalQty, estimated_value: Number(newLeadForm.estimatedValue) || 0, expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0], received_date: new Date().toISOString().split('T')[0],
-      source: newLeadForm.source, status: 'New', pipeline_stage: 'Enquiry'
-    }]);
-    if (!error) {
-      setShowNewLead(false);
-      setNewLeadForm({
-        leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
-        company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
-        items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
-      });
-      fetchPipeline();
-    } else {
-      console.error(error);
-      alert("Failed to save lead: " + error.message);
+      const itemsToSave = (newLeadForm.items && newLeadForm.items.length > 0 && newLeadForm.items[0].partName) 
+        ? newLeadForm.items 
+        : [{ partName: newLeadForm.partName || 'TBD', quantity: newLeadForm.quantity || '0' }];
+        
+      const firstItem = itemsToSave[0];
+      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Parts (${itemsToSave.length})` : firstItem.partName;
+      const projNo = newLeadForm.leadNo?.trim() || `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
+      const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
+      
+      const payload: any = {
+        id: crypto.randomUUID(),
+        lead_no: projNo,
+        enquiry_no: projNo,
+        customer: newLeadForm.company,
+        contact_person: cStr.person,
+        phone: cStr.phone,
+        email: cStr.email,
+        city: newLeadForm.city,
+        gst: newLeadForm.gst, 
+        enquiring_for: JSON.stringify(itemsToSave),
+        part_name: multiplePartsString,
+        part_no: newLeadForm.partNo || 'N/A',
+        quantity: totalQty,
+        estimated_value: Number(newLeadForm.estimatedValue) || 0,
+        expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0],
+        received_date: new Date().toISOString().split('T')[0],
+        source: newLeadForm.source,
+        status: 'New',
+        pipeline_stage: 'Enquiry'
+      };
+
+      if (company?.id) {
+        payload.company_id = company.id;
+      }
+
+      const { error } = await supabase.from('cnc_enquiries').insert([payload]);
+      
+      if (!error) {
+        // Also auto-sync new customer to cnc_customers if not yet present
+        try {
+          const custExists = customerList.some(c => c.name?.toLowerCase() === newLeadForm.company.toLowerCase());
+          if (!custExists) {
+            const custPayload: any = {
+              id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+              name: newLeadForm.company,
+              contact: cStr.person || null,
+              phone: cStr.phone || null,
+              email: cStr.email || null,
+              city: newLeadForm.city || null,
+              status: 'Active'
+            };
+            if (company?.id) custPayload.company_id = company.id;
+            await supabase.from('cnc_customers').insert([custPayload]);
+          }
+        } catch (cErr) {
+          console.warn('Customer auto-insert error:', cErr);
+        }
+
+        setShowNewLead(false);
+        setNewLeadForm({
+          leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+          company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
+          items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
+        });
+        await fetchPipeline();
+      } else {
+        console.error('Failed to save lead:', error);
+        alert("Failed to save lead: " + error.message);
+      }
+    } catch (err: any) {
+      console.error('Exception in saveNewLead:', err);
+      alert("Failed to save lead: " + (err?.message || "Unknown error"));
+    } finally {
       setLoading(false);
     }
   };

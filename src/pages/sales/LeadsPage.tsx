@@ -8,7 +8,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function LeadsPage() {
-  const { profile } = useAuth();
+  const { profile, company } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
@@ -204,45 +204,58 @@ export function LeadsPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.customer || !formData.partName) return;
-    
-    const entryData = {
-      lead_no: formData.leadNo,
-      customer: formData.customer,
-      contact_person: formData.contacts.map((c: any) => c.person).join(' | '),
-      phone: formData.contacts.map((c: any) => c.phone).join(' | '),
-      email: formData.contacts.map((c: any) => c.email).join(' | '),
-      city: formData.city,
-        gst: formData.gst,
-        enquiring_for: formData.enquiringFor,
-      part_name: formData.partName,
-      part_no: formData.partNo,
-      quantity: Number(formData.quantity) || 0,
-      estimated_value: Number(formData.estimatedValue) || 0,
-      expected_date: formData.expectedDate || null,
-      source: formData.source,
-      status: formData.status
-    };
-
-    setLoading(true);
-    const { error } = editId
-      ? await supabase.from('cnc_enquiries').update(entryData).eq('id', editId)
-      : await supabase.from('cnc_enquiries').insert([{
-          ...entryData,
-          id: crypto.randomUUID(),
-          enquiry_no: formData.leadNo,
-          received_date: new Date().toISOString().split('T')[0],
-          pipeline_stage: 'Enquiry'
-        }]);
-    if (error) {
-      console.error('Failed to save lead:', error);
-      alert('Failed to save lead: ' + error.message);
-      setLoading(false);
+    if (!formData.customer || !formData.partName) {
+      alert("Please enter customer name and product/part name.");
       return;
     }
-    await fetchLeads();
-    setShowAdd(false);
-    setEditId(null);
+    
+    setLoading(true);
+    try {
+      const entryData: any = {
+        lead_no: formData.leadNo,
+        customer: formData.customer,
+        contact_person: formData.contacts.map((c: any) => c.person).join(' | '),
+        phone: formData.contacts.map((c: any) => c.phone).join(' | '),
+        email: formData.contacts.map((c: any) => c.email).join(' | '),
+        city: formData.city,
+        gst: formData.gst,
+        enquiring_for: formData.enquiringFor,
+        part_name: formData.partName,
+        part_no: formData.partNo,
+        quantity: Number(formData.quantity) || 0,
+        estimated_value: Number(formData.estimatedValue) || 0,
+        expected_date: formData.expectedDate || null,
+        source: formData.source,
+        status: formData.status
+      };
+
+      if (company?.id) {
+        entryData.company_id = company.id;
+      }
+
+      const { error } = editId
+        ? await supabase.from('cnc_enquiries').update(entryData).eq('id', editId)
+        : await supabase.from('cnc_enquiries').insert([{
+            ...entryData,
+            id: crypto.randomUUID(),
+            enquiry_no: formData.leadNo,
+            received_date: new Date().toISOString().split('T')[0],
+            pipeline_stage: 'Enquiry'
+          }]);
+      if (error) {
+        console.error('Failed to save lead:', error);
+        alert('Failed to save lead: ' + error.message);
+        return;
+      }
+      await fetchLeads();
+      setShowAdd(false);
+      setEditId(null);
+    } catch (err: any) {
+      console.error('Failed to save lead:', err);
+      alert('Failed to save lead: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateQuotation = async () => {
