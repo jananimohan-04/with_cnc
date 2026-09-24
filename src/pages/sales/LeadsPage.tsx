@@ -360,7 +360,7 @@ export function LeadsPage() {
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} disabled={!!editId} /></FormField>
+          <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. PROJ-5397 or Custom Project Name" /></FormField>
           <div className="relative">
             <FormField label="Company Name" required>
               <input 

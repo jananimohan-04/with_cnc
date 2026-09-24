@@ -1172,10 +1172,10 @@ export function SalesPipelinePage() {
       
     const firstItem = itemsToSave[0];
     const multiplePartsString = itemsToSave.length > 1 ? `Multiple Parts (${itemsToSave.length})` : firstItem.partName;
-    const totalQty = itemsToSave.reduce((acc: number, i: any) => acc + (Number(i.quantity) || 0), 0);
+    const projNo = newLeadForm.leadNo?.trim() || `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
     
     const { error } = await supabase.from('cnc_enquiries').insert([{
-      id: crypto.randomUUID(), lead_no: newLeadForm.leadNo, enquiry_no: newLeadForm.leadNo, customer: newLeadForm.company,
+      id: crypto.randomUUID(), lead_no: projNo, enquiry_no: projNo, customer: newLeadForm.company,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
       city: newLeadForm.city, gst: newLeadForm.gst, 
       enquiring_for: JSON.stringify(itemsToSave),
@@ -1541,7 +1541,14 @@ export function SalesPipelinePage() {
       {/* New Lead Modal */}
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Lead" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required><input className={inputClass} value={newLeadForm.leadNo} disabled /></FormField>
+          <FormField label="Project Name" required>
+            <input 
+              className={inputClass} 
+              value={newLeadForm.leadNo} 
+              onChange={e => setNewLeadForm({ ...newLeadForm, leadNo: e.target.value })} 
+              placeholder="e.g. PROJ-5397 or Custom Project Name" 
+            />
+          </FormField>
           <div className="relative">
             <FormField label="Company Name" required>
               <input 

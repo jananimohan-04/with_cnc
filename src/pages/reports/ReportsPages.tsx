@@ -35,7 +35,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
     if (!from || !to || from > to) { setError('Choose a valid date range.'); return; }
     setLoading(true); setError('');
     try {
-      const invQ = supabase.from('cnc_invoices').select('id,invoice_no,invoice_date,customer_name,customer_id,amount,status,cancelled,part_name,quantity').gte('invoice_date', from).lte('invoice_date', to).order('invoice_date', { ascending: false }).limit(2000);
+      const invQ = supabase.from('cnc_invoices').select('id,invoice_no,invoice_type,invoice_date,customer_name,customer_id,amount,status,cancelled,part_name,quantity').gte('invoice_date', from).lte('invoice_date', to).order('invoice_date', { ascending: false }).limit(2000);
       const soQ = supabase.from('cnc_sales_orders').select('id,order_no,order_date,created_at,customer,part_name,part_no,quantity,value,total_value,status').gte('order_date', from).lte('order_date', to).order('order_date', { ascending: false }).limit(2000);
       const woQ = supabase.from('cnc_work_orders').select('id,wo_no,customer,part_name,part_no,quantity,completed,rejected,status,start_date,due_date,created_at,sales_order').gte('created_at', `${from}T00:00:00`).lte('created_at', `${to}T23:59:59`).order('created_at', { ascending: false }).limit(2000);
       const jobsQ = supabase.from('cnc_job_cards').select('id,work_order,machine,qty_planned,qty_completed,qty_rejected,cycle_time,setup_time,status,created_at').gte('created_at', `${from}T00:00:00`).lte('created_at', `${to}T23:59:59`).limit(5000);
@@ -65,7 +65,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const filteredOrders = useMemo(() => data.orders.filter(x => !customer || x.customer === data.customers.find(c => c.id === customer)?.name), [data.orders, data.customers, customer]);
   const filteredWos = useMemo(() => data.workOrders.filter(x => (!customer || x.customer === data.customers.find(c => c.id === customer)?.name)), [data.workOrders, data.customers, customer]);
   const filteredJobs = useMemo(() => data.jobs.filter(x => (!machine || x.machine === machine) && (!customer || filteredWos.some(w => w.wo_no === x.work_order))), [data.jobs, filteredWos, machine, customer]);
-  const salesTotal = filteredInvoices.filter(x => !x.cancelled).reduce((n,x) => n + Number(x.amount || 0), 0);
+  const salesTotal = filteredInvoices.filter(x => !x.cancelled && x.invoice_type !== 'Proforma Invoice').reduce((n,x) => n + Number(x.amount || 0) * (x.invoice_type === 'Credit Note' ? -1 : 1), 0);
   const productionTotal = filteredWos.reduce((n,x) => n + Number(x.completed || 0), 0);
   const rejectedTotal = filteredWos.reduce((n,x) => n + Number(x.rejected || 0), 0);
   const fgValue = Number(data.inventory?.by_category?.find((x:any) => x.code === 'FG')?.value || 0);
@@ -81,19 +81,19 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   }, [filteredOrders]);
   const trend = useMemo(() => {
     const groups = new Map<string,{sales:number;orders:number}>();
-    for (const invoice of filteredInvoices) { if (invoice.cancelled || !invoice.invoice_date) continue; const k=String(invoice.invoice_date).slice(0,7);const x=groups.get(k)||{sales:0,orders:0};x.sales+=Number(invoice.amount||0);x.orders+=1;groups.set(k,x); }
+    for (const invoice of filteredInvoices) { if (invoice.cancelled || invoice.invoice_type === 'Proforma Invoice' || !invoice.invoice_date) continue; const k=String(invoice.invoice_date).slice(0,7);const x=groups.get(k)||{sales:0,orders:0};x.sales+=Number(invoice.amount||0)*(invoice.invoice_type==='Credit Note'?-1:1);x.orders+=1;groups.set(k,x); }
     return [...groups.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([month,v])=>({month,...v}));
   }, [filteredInvoices]);
   const categoryValues = data.inventory?.by_category || [];
   const maxCategory = Math.max(1, ...categoryValues.map((x:any)=>Number(x.value||0)));
   const pendingWos = filteredWos.filter(w=>isOpen(w.status));
   const overdueWos = pendingWos.filter(w=>w.due_date && w.due_date < todayISO());
-  const topCustomer = Object.entries(filteredInvoices.reduce<Record<string,number>>((a,x)=>{if(!x.cancelled){const k=x.customer_name||'Unspecified';a[k]=(a[k]||0)+Number(x.amount||0)}return a},{})).sort((a,b)=>b[1]-a[1])[0];
+  const topCustomer = Object.entries(filteredInvoices.reduce<Record<string,number>>((a,x)=>{if(!x.cancelled&&x.invoice_type!=='Proforma Invoice'){const k=x.customer_name||'Unspecified';a[k]=(a[k]||0)+Number(x.amount||0)*(x.invoice_type==='Credit Note'?-1:1)}return a},{})).sort((a,b)=>b[1]-a[1])[0];
 
   const exportReport = () => exportCsv(`ERP_Report_${section.replace(/ /g,'_')}_${todayISO()}`,[
     ['Report',section],['Company',company?.company_name||'Current authorized company'],['Date From',from],['Date To',to],['Customer',data.customers.find(c=>c.id===customer)?.name||'All'],['Machine',machine||'All'],[],
     ['KPI','Value'],['Invoiced Sales',salesTotal],['Production Completed Qty',productionTotal],['Finished Goods Stock Value',fgValue],['Machine Utilization %',avgUtil??''],['Net Profit (P&L)',data.pnl?.totals?.net_profit||''],[],
-    ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Customer','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),
+    ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Customer','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),[],['Inventory Category','Items','Stock Value'],...categoryValues.map((x:any)=>[x.name,x.items,x.value]),[],['Machine','Status','Utilization %'],...utilizationRows.map(x=>[x.code,x.status,x.utilizationValue]),[],['P&L Account','Type','Amount'],...(data.pnl?.rows||[]).map((x:any)=>[x.name,x.account_type,x.amount]),
   ]);
 
   return <div className="p-4 lg:p-6 bg-grid min-h-full space-y-4">
