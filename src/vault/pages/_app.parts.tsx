@@ -455,6 +455,10 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
   const [drawingNumber, setDrawingNumber] = useState("");
   const [partyId, setPartyId] = useState(userPartyId || "");
 
+  // Project details & cascading
+  const [selectedProjectName, setSelectedProjectName] = useState("");
+  const [customPartMode, setCustomPartMode] = useState(false);
+
   // Integrated Document Upload options
   const [attachDocument, setAttachDocument] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -471,6 +475,145 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
     queryKey: ["parties-list-for-parts"],
     queryFn: listParties,
   });
+
+  // Query leads/projects from All Leads (cnc_enquiries)
+  const { data: leadsData } = useQuery({
+    queryKey: ["leads-for-vault-parts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cnc_enquiries")
+        .select("id, lead_no, customer, part_name, part_no, enquiring_for")
+        .not("lead_no", "is", null)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.warn("Could not query cnc_enquiries for vault parts:", error);
+        return [];
+      }
+      return data || [];
+    },
+    enabled: open,
+  });
+
+  const projectList = useMemo(() => {
+    if (!leadsData) return [];
+    const map = new Map<string, { projectName: string; customer: string; parts: { partName: string; partNumber?: string }[] }>();
+
+    leadsData.forEach((lead: any) => {
+      const pName = lead.lead_no?.trim();
+      if (!pName) return;
+      const key = pName.toLowerCase();
+
+      if (!map.has(key)) {
+        map.set(key, {
+          projectName: pName,
+          customer: lead.customer?.trim() || "",
+          parts: [],
+        });
+      }
+
+      const proj = map.get(key)!;
+      if (!proj.customer && lead.customer) {
+        proj.customer = lead.customer.trim();
+      }
+
+      // 1. Try parsing enquiring_for (can be array of parts)
+      if (lead.enquiring_for) {
+        try {
+          const parsed = typeof lead.enquiring_for === "string" ? JSON.parse(lead.enquiring_for) : lead.enquiring_for;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item: any) => {
+              const name = item.partName || item.part_name || item.name;
+              if (name && name !== "TBD") {
+                const cleanName = String(name).trim();
+                const partNo = item.partNumber || item.part_number || item.partNo || item.part_no || "";
+                if (!proj.parts.some(p => p.partName.toLowerCase() === cleanName.toLowerCase())) {
+                  proj.parts.push({
+                    partName: cleanName,
+                    partNumber: partNo ? String(partNo).trim() : undefined,
+                  });
+                }
+              }
+            });
+          }
+        } catch {
+          // not JSON
+        }
+      }
+
+      // 2. Try direct part_name
+      if (lead.part_name && !lead.part_name.startsWith("Multiple Parts") && lead.part_name !== "TBD") {
+        const directName = lead.part_name.trim();
+        if (!proj.parts.some(p => p.partName.toLowerCase() === directName.toLowerCase())) {
+          proj.parts.push({
+            partName: directName,
+            partNumber: lead.part_no && lead.part_no !== "N/A" ? String(lead.part_no).trim() : undefined,
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));
+  }, [leadsData]);
+
+  const selectedProject = useMemo(() => {
+    if (!selectedProjectName || selectedProjectName === "none") return null;
+    return projectList.find(p => p.projectName === selectedProjectName) || null;
+  }, [selectedProjectName, projectList]);
+
+  const handleProjectSelect = (projectName: string) => {
+    if (projectName === "none" || !projectName) {
+      setSelectedProjectName("");
+      setCustomPartMode(true);
+      return;
+    }
+
+    setSelectedProjectName(projectName);
+    const found = projectList.find(p => p.projectName === projectName);
+    if (!found) return;
+
+    // Automatically match customer to party
+    if (found.customer && parties) {
+      const match = parties.find(
+        p => p.name.trim().toLowerCase() === found.customer.trim().toLowerCase()
+      );
+      if (match) {
+        setPartyId(match.id);
+      }
+    }
+
+    // Auto-select or prepare parts
+    if (found.parts.length === 1) {
+      const onlyPart = found.parts[0];
+      setPartName(onlyPart.partName);
+      if (onlyPart.partNumber) setPartNumber(onlyPart.partNumber);
+      if (!docNumber && onlyPart.partNumber) setDocNumber(onlyPart.partNumber);
+      if (!docName) setDocName(onlyPart.partName);
+      setCustomPartMode(false);
+    } else if (found.parts.length > 1) {
+      setPartName(""); // User selects from dropdown
+      setCustomPartMode(false);
+    } else {
+      // 0 parts in this project
+      setCustomPartMode(true);
+    }
+  };
+
+  const handlePartSelectFromDropdown = (value: string) => {
+    if (value === "__custom__") {
+      setCustomPartMode(true);
+      setPartName("");
+      return;
+    }
+
+    const foundPart = selectedProject?.parts.find(p => p.partName === value);
+    setPartName(value);
+    if (!docName) setDocName(value);
+
+    if (foundPart?.partNumber) {
+      setPartNumber(foundPart.partNumber);
+      if (!docNumber) setDocNumber(foundPart.partNumber);
+    }
+  };
 
   const { data: partyFolders } = useQuery({
     queryKey: ["drive_folders", effectivePartyForFolders],
@@ -504,6 +647,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
         part_number: partNumber.trim(),
         part_name: partName.trim(),
         drawing_number: drawingNumber.trim() || null,
+        drawing_type: selectedProjectName ? `Project: ${selectedProjectName}` : null,
         party_id: effectiveParty,
       });
 
@@ -587,6 +731,8 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
       setPartName("");
       setDrawingNumber("");
       setPartyId("");
+      setSelectedProjectName("");
+      setCustomPartMode(false);
       setAttachDocument(false);
       setFile(null);
       setDocNumber("");
@@ -625,6 +771,57 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
               1. Part Information
             </div>
+
+            {/* Project Selection from All Leads */}
+            <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-800">
+                  Project Name (From All Leads)
+                </Label>
+                {selectedProjectName && selectedProjectName !== "none" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProjectName("");
+                      setCustomPartMode(true);
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 underline font-medium"
+                  >
+                    Clear Project Selection
+                  </button>
+                )}
+              </div>
+              <Select 
+                value={selectedProjectName || "none"} 
+                onValueChange={handleProjectSelect}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Select a Project (e.g. PROJ-5397)..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectItem value="none">-- None (Enter Custom Part Manually) --</SelectItem>
+                  {projectList.map(proj => (
+                    <SelectItem key={proj.projectName} value={proj.projectName}>
+                      <span className="font-semibold text-slate-800">{proj.projectName}</span>
+                      {proj.customer && <span className="text-slate-500 ml-1.5 text-xs">({proj.customer})</span>}
+                      <span className="text-indigo-600 ml-1.5 text-xs font-medium">
+                        · {proj.parts.length} {proj.parts.length === 1 ? 'part' : 'parts'}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedProject && (
+                <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-2 pt-1 border-t border-indigo-100/70 mt-1">
+                  <span>Selected Project: <strong className="text-indigo-700">{selectedProject.projectName}</strong></span>
+                  {selectedProject.customer && (
+                    <span>• Company: <strong className="text-slate-800">{selectedProject.customer}</strong></span>
+                  )}
+                  <span>• {selectedProject.parts.length} part(s) available</span>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Part Number *</Label>
@@ -637,16 +834,51 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                   placeholder="e.g. CNC-1001" 
                 />
               </div>
+
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Part Name *</Label>
-                <Input 
-                  value={partName} 
-                  onChange={e => {
-                    setPartName(e.target.value);
-                    if (!docName) setDocName(e.target.value);
-                  }} 
-                  placeholder="e.g. Flange Adapter" 
-                />
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Part Name *</Label>
+                  {selectedProject && selectedProject.parts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomPartMode(!customPartMode)}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 underline font-medium"
+                    >
+                      {customPartMode ? `Pick from project parts (${selectedProject.parts.length})` : "Type custom name"}
+                    </button>
+                  )}
+                </div>
+
+                {selectedProject && selectedProject.parts.length > 0 && !customPartMode ? (
+                  <Select 
+                    value={partName || ""} 
+                    onValueChange={handlePartSelectFromDropdown}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Select Part from Project..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {selectedProject.parts.map((p, idx) => (
+                        <SelectItem key={idx} value={p.partName}>
+                          <span className="font-medium text-slate-800">{p.partName}</span>
+                          {p.partNumber && <span className="text-slate-400 text-xs ml-2">({p.partNumber})</span>}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__" className="text-indigo-600 font-semibold border-t border-slate-100">
+                        + Type Custom Part Name...
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input 
+                    value={partName} 
+                    onChange={e => {
+                      setPartName(e.target.value);
+                      if (!docName) setDocName(e.target.value);
+                    }} 
+                    placeholder="e.g. Flange Adapter" 
+                  />
+                )}
               </div>
             </div>
 
@@ -662,7 +894,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Company / Party (Optional)</Label>
                 <Select value={partyId} onValueChange={setPartyId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white">
                     <SelectValue placeholder="Select Party / Customer..." />
                   </SelectTrigger>
                   <SelectContent>
