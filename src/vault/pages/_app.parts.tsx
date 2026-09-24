@@ -632,8 +632,8 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
   };
 
   const handleSave = async () => {
-    if (!partNumber.trim() || !partName.trim()) {
-      return toast.error("Part Number and Name are required.");
+    if (!partName.trim()) {
+      return toast.error("Part Name is required.");
     }
 
     setLoading(true);
@@ -641,10 +641,11 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
 
     try {
       const effectiveParty = (partyId && partyId !== "internal") ? partyId : (userPartyId || null);
+      const effectivePartNumber = partNumber.trim() || drawingNumber.trim() || `PRT-${Date.now().toString().slice(-6)}`;
 
       // 1. Create the Part
       const newPart = await createPart({
-        part_number: partNumber.trim(),
+        part_number: effectivePartNumber,
         part_name: partName.trim(),
         drawing_number: drawingNumber.trim() || null,
         drawing_type: selectedProjectName ? `Project: ${selectedProjectName}` : null,
@@ -663,7 +664,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
           throw new Error("File exceeds maximum size (50MB).");
         }
 
-        const effectiveDocNumber = docNumber.trim() || partNumber.trim();
+        const effectiveDocNumber = docNumber.trim() || drawingNumber.trim() || effectivePartNumber;
         const effectiveDocName = docName.trim() || partName.trim();
 
         // Upload to Google Drive
@@ -681,7 +682,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
           document_number: effectiveDocNumber,
           document_name: effectiveDocName,
           drawing_number: drawingNumber.trim() || null,
-          part_number: partNumber.trim(),
+          part_number: effectivePartNumber,
           document_type: docType,
           current_version: 1,
           status: status as DocStatus,
@@ -715,12 +716,12 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
           document_id: newDoc.id,
           document_number: effectiveDocNumber,
           version_number: 1,
-          details: `Created Part ${partNumber} and uploaded initial document ${effectiveDocNumber}`,
+          details: `Created Part ${partName} (${effectivePartNumber}) and uploaded initial document ${effectiveDocNumber}`,
         });
 
-        toast.success(`Part ${partNumber} and document uploaded successfully!`);
+        toast.success(`Part "${partName}" and document uploaded successfully!`);
       } else {
-        toast.success(`Part ${partNumber} created successfully!`);
+        toast.success(`Part "${partName}" created successfully!`);
       }
 
       setOpen(false);
@@ -824,18 +825,6 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Part Number *</Label>
-                <Input 
-                  value={partNumber} 
-                  onChange={e => {
-                    setPartNumber(e.target.value);
-                    if (!docNumber) setDocNumber(e.target.value);
-                  }} 
-                  placeholder="e.g. CNC-1001" 
-                />
-              </div>
-
-              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-semibold">Part Name *</Label>
                   {selectedProject && selectedProject.parts.length > 0 && (
@@ -880,9 +869,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                   />
                 )}
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Drawing Number (Optional)</Label>
                 <Input 
@@ -891,20 +878,21 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                   placeholder="e.g. DRG-1001" 
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Company / Party (Optional)</Label>
-                <Select value={partyId} onValueChange={setPartyId}>
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Select Party / Customer..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="internal">Internal Company</SelectItem>
-                    {parties?.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Company / Party (Optional)</Label>
+              <Select value={partyId} onValueChange={setPartyId}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Select Party / Customer..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-56 overflow-y-auto">
+                  <SelectItem value="internal">Internal Company</SelectItem>
+                  {parties?.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -967,7 +955,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                     <Input 
                       value={docNumber} 
                       onChange={e => setDocNumber(e.target.value)} 
-                      placeholder={partNumber || "DOC-1001"} 
+                      placeholder={drawingNumber || "DOC-1001"} 
                     />
                   </div>
                   <div className="space-y-1.5">
