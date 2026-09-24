@@ -510,10 +510,10 @@ export function SalesPipelinePage() {
         const customer = card.customer;
 
         // Try to find the full chain: invoice -> DC -> FG -> Inward -> SO -> Quotation -> Enquiry
-        let soRef = invoiceData.sales_order_no || '';
+        const soRef = invoiceData.sales_order_no || '';
         let leadNo = '';
         let leadId = '';
-        let totalValue = Number(invoiceData.amount) || 0;
+        const totalValue = Number(invoiceData.amount) || 0;
         let parts: any[] = [];
 
         // Find SO

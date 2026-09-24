@@ -411,60 +411,60 @@ export function InventoryPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[1120px] text-[13px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
-                  <th className="px-3 py-3 text-left w-10">#</th>
-                  <th className="px-3 py-3 text-left">Item Code</th>
-                  <th className="px-3 py-3 text-left">Item Name</th>
-                  <th className="px-3 py-3 text-left">Category</th>
-                  <th className="px-3 py-3 text-left">Specification</th>
-                  <th className="px-3 py-3 text-left">Unit</th>
-                  <th className="px-3 py-3 text-right">Current Stock</th>
-                  <th className="px-3 py-3 text-right">Min Stock</th>
-                  <th className="px-3 py-3 text-right">Reorder Qty</th>
-                  <th className="px-3 py-3 text-right">Rate (₹)</th>
-                  <th className="px-3 py-3 text-right">Value (₹)</th>
-                  <th className="px-3 py-3 text-left">Status</th>
-                  <th className="px-3 py-3 text-center">Actions</th>
+                  <th className="px-2 py-3 text-left w-10">#</th>
+                  <th className="px-2 py-3 text-left">Item Code</th>
+                  <th className="px-2 py-3 text-left">Item Name</th>
+                  <th className="px-2 py-3 text-left">Category</th>
+                  <th className="px-2 py-3 text-left">Specification</th>
+                  <th className="px-2 py-3 text-left">Unit</th>
+                  <th className="px-2 py-3 text-right">Current Stock</th>
+                  <th className="px-2 py-3 text-right">Min Stock</th>
+                  <th className="px-2 py-3 text-right">Reorder Qty</th>
+                  <th className="px-2 py-3 text-right">Rate (₹)</th>
+                  <th className="px-2 py-3 text-right">Value (₹)</th>
+                  <th className="px-2 py-3 text-left">Status</th>
+                  <th className="px-2 py-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {(itemsLoading || (!items && !itemsError)) && Array.from({ length: pageSize > 10 ? 10 : pageSize }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     {Array.from({ length: 13 }).map((__, j) => (
-                      <td key={j} className="px-3 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
+                      <td key={j} className="px-2 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
                     ))}
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && (
-                  <tr><td colSpan={13} className="px-3 py-12 text-center text-slate-500">No inventory items found.</td></tr>
+                  <tr><td colSpan={13} className="px-2 py-12 text-center text-slate-500">No inventory items found.</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
-                    <td className="px-3 py-2.5 text-slate-500">{firstShown + i}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-2 py-2.5 text-slate-500">{firstShown + i}</td>
+                    <td className="px-2 py-2.5">
                       <div className="flex items-center gap-2.5">
                         {r.image_url && imageUrls[r.image_url]
-                          ? <img src={imageUrls[r.image_url]} alt="" className="w-9 h-9 rounded-md object-cover border border-slate-200 flex-shrink-0" />
-                          : <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><Package size={16} /></div>}
+                          ? <img src={imageUrls[r.image_url]} alt="" className="w-8 h-8 rounded-md object-cover border border-slate-200 flex-shrink-0" />
+                          : <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><Package size={16} /></div>}
                         <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 whitespace-nowrap">{r.code}</button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-800">
+                    <td className="px-2 py-2.5 text-slate-800 max-w-[150px] truncate" title={r.name}>
                       {r.name}
                       {r.item_status === 'Inactive' && <span className="ml-2 text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.category_name ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate" title={r.specification ?? ''}>{r.specification || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-600">{r.unit ?? ''}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{formatQty(r.reorder_qty)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.rate)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
-                    <td className="px-3 py-2.5"><StatusPill status={r.status} /></td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-2 py-2.5 text-slate-600 max-w-[110px] truncate" title={r.category_name ?? ''}>{r.category_name ?? '—'}</td>
+                    <td className="px-2 py-2.5 text-slate-600 max-w-[150px] truncate" title={r.specification ?? ''}>{r.specification || '—'}</td>
+                    <td className="px-2 py-2.5 text-slate-600">{r.unit ?? ''}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{formatQty(r.reorder_qty)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{money(r.rate)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
+                    <td className="px-2 py-2.5"><StatusPill status={r.status} /></td>
+                    <td className="px-2 py-2.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <button title="Edit" onClick={() => setEditing(r)}
                           className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><Pencil size={14} /></button>

@@ -1235,11 +1235,11 @@ $$;
 select
   (select count(*) from public.cnc_stock_movements where reference_type = 'golive') as opening_movements,
   (select count(*) from (
-     select r.id from public.cnc_raw_materials r
+     select r.id::text from public.cnc_raw_materials r
      where coalesce(r.stock_qty, 0) <> coalesce((select sum(qty_change) from public.cnc_stock_movements m
                                                  where m.company_id = r.company_id and m.item_kind = 'RAW' and m.item_id = r.id::text), 0)
      union all
-     select p.id from public.cnc_parts p
+     select p.id::text from public.cnc_parts p
      where coalesce(p.stock_qty, 0) <> coalesce((select sum(qty_change) from public.cnc_stock_movements m
                                                  where m.company_id = p.company_id and m.item_kind = 'PART' and m.item_id = p.id::text), 0)
    ) x) as items_not_matching_ledger;
