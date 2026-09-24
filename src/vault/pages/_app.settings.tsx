@@ -310,7 +310,7 @@ function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Email Address</Label>
-                  <Input defaultValue={session?.user?.email || profile?.email || ""} disabled />
+                  <Input defaultValue={session?.user.email || ""} disabled />
                 </div>
               </div>
             </CardContent>

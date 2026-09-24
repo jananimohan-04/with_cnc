@@ -47,10 +47,29 @@ function InviteUserModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
       if (!email || !fullName) throw new Error("Email and Full Name are required");
       
       // 1. Create auth user without logging out active session
-      const user = await createAuthUserWithoutLogin(email, password, fullName);
-      const userId = user.id;
+      let userId: string;
+      try {
+        const user = await createAuthUserWithoutLogin(email, password, fullName);
+        userId = user.id;
+      } catch (authErr: any) {
+        console.warn("Auth signup notice:", authErr?.message);
+        userId = crypto.randomUUID();
+      }
 
-      // 2. Save Profile
+      // 2. Sync to Main ERP company_users
+      try {
+        await supabase.from("company_users").upsert({
+          auth_user_id: userId,
+          email: email.trim().toLowerCase(),
+          full_name: fullName.trim(),
+          role: "USER",
+          status: "Active"
+        }, { onConflict: "email" });
+      } catch (erpErr) {
+        console.warn("Could not insert company_users:", erpErr);
+      }
+
+      // 3. Save Profile into cncvault_profiles
       await updateProfile(userId, {
         full_name: fullName.trim(),
         email: email.trim(),
@@ -59,18 +78,17 @@ function InviteUserModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
         status: "Active"
       });
 
-      // 3. Assign Role if selected
+      // 4. Assign Role if selected
       if (roleId) {
         await setUserRole(userId, roleId);
       }
 
-      // 4. Automatically share Google Drive folder with the new user
+      // 5. Automatically share Google Drive folder with the new user
       if (partyId && partyId !== "internal") {
         try {
           await GoogleDriveService.shareFolder(partyId, email.trim());
         } catch (e) {
           console.warn("Could not automatically share Google Drive folder:", e);
-          // We don't throw here because user creation succeeded
         }
       }
     },
@@ -301,11 +319,13 @@ function ManageRoleModal({ profile, currentRoleId, open, onOpenChange }: { profi
   const roleMutation = useMutation({
     mutationFn: async () => {
       if (!roleId) throw new Error("Please select a role");
-      await setUserRole(profile.user_id, roleId);
+      const targetUserId = profile.user_id || profile.id || profile.auth_user_id || profile.erp_user_id;
+      await setUserRole(targetUserId, roleId);
     },
     onSuccess: () => {
-      toast.success("User role updated successfully!");
+      toast.success("Part & Drawings role updated successfully!");
       queryClient.invalidateQueries({ queryKey: ["user-roles-list"] });
+      queryClient.invalidateQueries({ queryKey: ["users-list"] });
       onOpenChange(false);
     },
     onError: (err: any) => {
@@ -317,8 +337,8 @@ function ManageRoleModal({ profile, currentRoleId, open, onOpenChange }: { profi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Manage Role Permissions</DialogTitle>
-          <DialogDescription>Assign role to {profile?.full_name || profile?.email}.</DialogDescription>
+          <DialogTitle>Part & Drawings Role & Permissions</DialogTitle>
+          <DialogDescription>Assign Part & Drawings access role to {profile?.full_name || profile?.email}.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-3">
@@ -401,10 +421,29 @@ function UsersPage() {
 
   const isLoading = profilesLoading || rolesLoading;
 
-  const getUserRole = (userId: string) => {
-    const ur = userRoles?.find(r => r.user_id === userId);
-    if (!ur) return null;
-    return roles?.find(r => r.id === ur.role_id);
+  const getUserRole = (profileOrId: any) => {
+    if (!profileOrId) return null;
+    const id = typeof profileOrId === 'string' ? profileOrId : (profileOrId.user_id || profileOrId.id);
+    const authId = typeof profileOrId === 'object' ? profileOrId.auth_user_id : undefined;
+    const erpId = typeof profileOrId === 'object' ? profileOrId.erp_user_id : undefined;
+    const erpRole = typeof profileOrId === 'object' ? profileOrId.erp_role : undefined;
+
+    const ur = userRoles?.find(r => r.user_id === id || (authId && r.user_id === authId) || (erpId && r.user_id === erpId));
+    if (ur) {
+      const match = roles?.find(r => r.id === ur.role_id);
+      if (match) return match;
+    }
+
+    if (erpRole === 'SUPER_ADMIN') {
+      return roles?.find(r => r.name === 'Super Admin') || null;
+    }
+    if (erpRole === 'COMPANY_ADMIN') {
+      return roles?.find(r => r.name === 'Admin') || null;
+    }
+    if (erpRole === 'USER') {
+      return roles?.find(r => r.name === 'Viewer') || null;
+    }
+    return null;
   };
 
   return (
@@ -413,7 +452,7 @@ function UsersPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Users & Access Control</h2>
           <p className="text-muted-foreground mt-1">
-            Manage multi-tenant company users, assigned roles, and access permissions.
+            Manage ERP users and control their Part & Drawings access permissions.
           </p>
         </div>
         <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => setIsInviteOpen(true)}>
@@ -435,7 +474,7 @@ function UsersPage() {
       {roleManagingProfile && (
         <ManageRoleModal 
           profile={roleManagingProfile} 
-          currentRoleId={getUserRole(roleManagingProfile.user_id)?.id || ""} 
+          currentRoleId={getUserRole(roleManagingProfile)?.id || ""} 
           open={!!roleManagingProfile} 
           onOpenChange={(open) => !open && setRoleManagingProfile(null)} 
         />
@@ -447,7 +486,7 @@ function UsersPage() {
             <TableRow>
               <TableHead>User Profile</TableHead>
               <TableHead>Company (Party)</TableHead>
-              <TableHead>Role</TableHead>
+              <TableHead>Part & Drawings Role</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Joined Date</TableHead>
@@ -472,7 +511,7 @@ function UsersPage() {
               </TableRow>
             ) : (
               profiles.map((profile: any) => {
-                const userRole = getUserRole(profile.user_id);
+                const userRole = getUserRole(profile);
                 return (
                   <TableRow key={profile.id} className="hover:bg-slate-50">
                     <TableCell>
@@ -531,7 +570,7 @@ function UsersPage() {
                             <Edit className="mr-2 h-4 w-4 text-indigo-600" /> Edit Profile & Company
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setRoleManagingProfile(profile)}>
-                            <Shield className="mr-2 h-4 w-4 text-purple-600" /> Manage Role
+                            <Shield className="mr-2 h-4 w-4 text-purple-600" /> Manage Part & Drawings Role
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 

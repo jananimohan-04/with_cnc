@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
-import { AuthProvider } from './hooks/use-auth';
+import { AuthProvider, useAuth } from './hooks/use-auth';
 import { usePermissions } from './hooks/use-permissions';
 import { Link } from './router-adapter';
 import {
@@ -10,6 +10,10 @@ import {
   FileText,
   Building2,
   Box,
+  Users,
+  Shield,
+  Activity,
+  Bell,
   Settings,
 } from 'lucide-react';
 
@@ -18,6 +22,10 @@ import { Route as DocumentsPage } from './pages/_app.documents.index';
 import { Route as DocumentDetailPage } from './pages/_app.documents.$documentId';
 import { Route as PartiesPage } from './pages/_app.parties';
 import { Route as PartsPage } from './pages/_app.parts';
+import { Route as UsersPage } from './pages/_app.users';
+import { Route as RolesPage } from './pages/_app.roles';
+import { Route as AuditLogsPage } from './pages/_app.audit-logs';
+import { Route as NotificationsPage } from './pages/_app.notifications';
 import { Route as SettingsPage } from './pages/_app.settings';
 import { Route as UploadPage } from './pages/_app.upload';
 
@@ -34,13 +42,15 @@ function VaultHeader() {
   const { can } = usePermissions();
   const location = useLocation();
 
-  // Only show Part & Drawings relevant tabs — Users, Roles, Audit Logs
-  // are managed from the main ERP's Admin section (same users system).
   const navItems = [
     { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard", show: true },
     { label: "Documents", icon: FileText, path: "/documents", show: can("view") },
     { label: "Parties", icon: Building2, path: "/parties", show: can("manage_parties") || can("view") },
     { label: "Parts & Drawings", icon: Box, path: "/parts", show: can("manage_documents") || can("view") },
+    { label: "Users", icon: Users, path: "/users", show: can("manage_users") },
+    { label: "Roles & Permissions", icon: Shield, path: "/roles", show: can("manage_roles") },
+    { label: "Audit Logs", icon: Activity, path: "/audit-logs", show: can("view_audit") },
+    { label: "Notifications", icon: Bell, path: "/notifications", show: true },
     { label: "Settings", icon: Settings, path: "/settings", show: can("manage_settings") || true },
   ];
 
@@ -91,6 +101,10 @@ function VaultContent() {
           <Route path="documents/:documentId" element={<DocumentDetailPage />} />
           <Route path="parties" element={<PartiesPage />} />
           <Route path="parts" element={<PartsPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="roles" element={<RolesPage />} />
+          <Route path="audit-logs" element={<AuditLogsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="*" element={<Navigate to="" replace />} />

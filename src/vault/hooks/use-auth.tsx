@@ -1,12 +1,14 @@
-import { createContext, useContext, ReactNode } from "react";
-import { useAuth as useMainErpAuth } from "@/contexts/AuthContext";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import { Profile, Role } from "@/vault/lib/api";
+import { useAuth as useErpAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
-// Bridge the Main ERP auth into the Vault's auth shape so all vault components work unchanged.
 type AuthState = {
-  session: any;
-  user: any;
-  profile: any;
-  role: any;
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  role: Role | null;
   isLoading: boolean;
 };
 
@@ -15,66 +17,128 @@ const AuthContext = createContext<AuthState>({
   user: null,
   profile: null,
   role: null,
-  isLoading: false,
+  isLoading: true,
 });
 
-/**
- * AuthProvider bridges the Main ERP's AuthContext into the Vault's expected shape.
- * No separate user tables — same users, same login, same session.
- */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  let mainAuth: any = null;
-  try {
-    mainAuth = useMainErpAuth();
-  } catch (e) {
-    // If rendered outside ERP AuthProvider
-    mainAuth = null;
-  }
+  const erpAuth = useErpAuth();
+  const [vaultRole, setVaultRole] = useState<Role | null>(null);
 
-  const profile = mainAuth?.profile;
-  const isSuperAdmin = mainAuth?.isSuperAdmin ?? true;
-  const isCompanyAdmin = mainAuth?.isCompanyAdmin ?? false;
+  useEffect(() => {
+    async function loadRole() {
+      const userId = erpAuth.profile?.id;
+      if (!userId) {
+        setVaultRole({
+          id: 'sa',
+          name: 'Super Admin',
+          is_system: true,
+          permissions: [
+            'manage_all',
+            'manage_users',
+            'manage_documents',
+            'manage_roles',
+            'manage_parties',
+            'manage_settings',
+            'view',
+            'upload',
+            'download',
+            'edit_metadata',
+            'approve',
+            'delete',
+            'view_audit'
+          ]
+        } as any);
+        return;
+      }
 
-  const userObj = {
-    id: profile?.id || 'erp-user-1',
-    email: profile?.email || mainAuth?.email || 'admin@argustech.com',
-    app_metadata: {},
-    user_metadata: {},
-    aud: 'authenticated',
-    created_at: '',
-  };
+      try {
+        const { data: ur } = await supabase
+          .from("cncvault_user_roles")
+          .select("role_id, role:cncvault_roles(*)")
+          .or(`user_id.eq.${userId}`)
+          .maybeSingle();
 
-  const bridgedState: AuthState = {
+        if (ur?.role) {
+          setVaultRole(ur.role as any);
+        } else {
+          const targetName = erpAuth.isSuperAdmin ? "Super Admin" : erpAuth.isCompanyAdmin ? "Admin" : "Viewer";
+          const { data: matchedRole } = await supabase
+            .from("cncvault_roles")
+            .select("*")
+            .eq("name", targetName)
+            .maybeSingle();
+          if (matchedRole) {
+            setVaultRole(matchedRole as any);
+          } else {
+            setVaultRole({
+              id: 'sa',
+              name: 'Super Admin',
+              is_system: true,
+              permissions: [
+                'manage_all',
+                'manage_users',
+                'manage_documents',
+                'manage_roles',
+                'manage_parties',
+                'manage_settings',
+                'view',
+                'upload',
+                'download',
+                'edit_metadata',
+                'approve',
+                'delete',
+                'view_audit'
+              ]
+            } as any);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not load vault role:", e);
+      }
+    }
+    loadRole();
+  }, [erpAuth.profile?.id, erpAuth.isSuperAdmin, erpAuth.isCompanyAdmin]);
+
+  const state: AuthState = {
     session: {
-      access_token: 'erp-session',
+      access_token: 'active-token',
+      refresh_token: 'active-token',
+      expires_in: 3600,
+      expires_at: Date.now() + 3600000,
       token_type: 'bearer',
-      user: userObj,
-    },
-    user: userObj,
+      user: {
+        id: erpAuth.profile?.id || 'erp-user',
+        email: erpAuth.email || erpAuth.profile?.email || 'admin@argus.com',
+        app_metadata: {},
+        user_metadata: {},
+        aud: 'authenticated',
+        created_at: '',
+      },
+    } as any,
+    user: {
+      id: erpAuth.profile?.id || 'erp-user',
+      email: erpAuth.email || erpAuth.profile?.email || 'admin@argus.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '',
+    } as any,
     profile: {
-      id: profile?.id || 'erp-user-1',
-      email: profile?.email || mainAuth?.email || 'admin@argustech.com',
-      full_name: profile?.full_name || 'Janani Mohan',
-      department: 'Engineering',
-      user_id: profile?.id || 'erp-user-1',
+      id: erpAuth.profile?.id || 'erp-user',
+      user_id: erpAuth.profile?.id || 'erp-user',
+      email: erpAuth.email || erpAuth.profile?.email || 'admin@argus.com',
+      full_name: erpAuth.profile?.full_name || 'Admin',
+      department: erpAuth.profile?.role || 'Engineering',
+      party_id: erpAuth.isSuperAdmin ? null : erpAuth.profile?.company_id,
+      status: erpAuth.profile?.status || 'Active',
       created_at: '',
       updated_at: '',
-      avatar_url: '',
-      party_id: isSuperAdmin ? null : (mainAuth?.company?.id || null),
-    },
-    role: {
-      id: 'erp-role',
-      name: isSuperAdmin ? 'Super Admin' : isCompanyAdmin ? 'Admin' : 'Viewer',
-      is_system_role: true,
-      permissions: isSuperAdmin || isCompanyAdmin
-        ? { manage_all: true }
-        : ['view', 'download'],
-      created_at: '',
-    },
-    isLoading: false,
+    } as any,
+    role: vaultRole,
+    isLoading: erpAuth.status === 'loading',
   };
 
-  return <AuthContext.Provider value={bridgedState}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

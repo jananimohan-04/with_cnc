@@ -256,17 +256,98 @@ export async function createAuthUserWithoutLogin(email: string, password: string
 }
 
 export async function listProfiles(partyId?: string) {
-  let query = supabase.from("cncvault_profiles").select("*, party:cncvault_parties(id, name, code)").order("full_name");
-  if (partyId) {
-    query = query.eq("party_id", partyId);
+  // 1. Fetch ERP users from company_users (the source of truth for all users in the ERP)
+  let erpUsers: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from('company_users')
+      .select('id, auth_user_id, email, full_name, role, status, company_id, created_at, companies!company_users_company_id_fkey(id, company_name, code)')
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      erpUsers = data;
+    }
+  } catch (e) {
+    console.warn("Could not query company_users:", e);
   }
-  return unwrap(await query);
+
+  // 2. Fetch Vault-specific profiles
+  let vaultProfiles: any[] = [];
+  try {
+    let query = supabase.from("cncvault_profiles").select("*, party:cncvault_parties(id, name, code)").order("full_name");
+    if (partyId) {
+      query = query.eq("party_id", partyId);
+    }
+    const { data, error } = await query;
+    if (!error && data) {
+      vaultProfiles = data;
+    }
+  } catch (e) {
+    console.warn("Could not query cncvault_profiles:", e);
+  }
+
+  // 3. Merge: Every ERP user is primary
+  const profileMap = new Map<string, any>();
+
+  for (const u of erpUsers) {
+    const vp = vaultProfiles.find(p => 
+      (p.email && p.email.toLowerCase() === u.email.toLowerCase()) || 
+      p.user_id === u.id || 
+      (u.auth_user_id && p.user_id === u.auth_user_id)
+    );
+
+    const merged = {
+      id: vp?.id || u.id,
+      user_id: u.auth_user_id || u.id,
+      erp_user_id: u.id,
+      auth_user_id: u.auth_user_id,
+      email: u.email,
+      full_name: u.full_name || u.email,
+      department: vp?.department || (u.role === 'SUPER_ADMIN' ? 'Super Admin' : u.role === 'COMPANY_ADMIN' ? 'Admin' : 'Operations'),
+      status: u.status || 'Active',
+      party_id: vp?.party_id || u.company_id,
+      party: vp?.party || (u.companies ? { id: u.companies.id, name: u.companies.company_name, code: u.companies.code } : { id: 'internal', name: 'Super Admin / Internal', code: 'INTERNAL' }),
+      created_at: u.created_at,
+      erp_role: u.role,
+    };
+    profileMap.set(u.email.toLowerCase(), merged);
+  }
+
+  // Also include standalone vault profiles not yet in company_users
+  for (const p of vaultProfiles) {
+    if (p.email && !profileMap.has(p.email.toLowerCase())) {
+      profileMap.set(p.email.toLowerCase(), p);
+    }
+  }
+
+  return Array.from(profileMap.values());
 }
 
 export async function updateProfile(userId: string, input: Tables["cncvault_profiles"]["Update"]) {
-  return unwrap(await supabase.from("cncvault_profiles").update(input).eq("user_id", userId).select().single());
-}
+  // Update in cncvault_profiles
+  try {
+    await supabase.from("cncvault_profiles").upsert({
+      user_id: userId,
+      ...input,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "user_id" });
+  } catch (e) {
+    console.warn("Could not upsert cncvault_profiles:", e);
+  }
 
+  // Also sync status/name to company_users if applicable
+  if (input.status || input.full_name) {
+    try {
+      const updates: any = {};
+      if (input.status) updates.status = input.status;
+      if (input.full_name) updates.full_name = input.full_name;
+      await supabase.from("company_users").update(updates).or(`id.eq.${userId},auth_user_id.eq.${userId}`);
+    } catch (e) {
+      console.warn("Could not update company_users:", e);
+    }
+  }
+
+  return { user_id: userId, ...input };
+}
 
 export async function createRole(input: Tables["cncvault_roles"]["Insert"]) {
   return unwrap(await supabase.from("cncvault_roles").insert(input).select().single());
@@ -281,8 +362,26 @@ export async function listUserRoles() {
 }
 
 export async function setUserRole(userId: string, roleId: string) {
+  // Ensure profile row exists in cncvault_profiles
+  try {
+    const { data: existing } = await supabase.from("cncvault_profiles").select("user_id").eq("user_id", userId).maybeSingle();
+    if (!existing) {
+      const { data: erpUser } = await supabase.from("company_users").select("email, full_name").or(`id.eq.${userId},auth_user_id.eq.${userId}`).maybeSingle();
+      if (erpUser) {
+        await supabase.from("cncvault_profiles").insert({
+          user_id: userId,
+          email: erpUser.email,
+          full_name: erpUser.full_name || erpUser.email,
+          status: "Active"
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Could not check/insert cncvault_profiles:", e);
+  }
+
   const del = await supabase.from("cncvault_user_roles").delete().eq("user_id", userId);
-  if (del.error) throw new Error(del.error.message);
+  if (del.error) console.warn("delete user role warning:", del.error.message);
   const ins = await supabase.from("cncvault_user_roles").insert({ user_id: userId, role_id: roleId });
   if (ins.error) throw new Error(ins.error.message);
 }

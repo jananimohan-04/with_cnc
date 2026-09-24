@@ -371,7 +371,7 @@ begin
   ),
   filtered as (select * from base where nullif(p_status, '') is null or st = p_status)
   select (select count(*) from filtered),
-         (select coalesce(jsonb_agg(public.erp_invoice_json((f.inv).*::public.cnc_invoices, v_company, false)
+         (select coalesce(jsonb_agg(public.erp_invoice_json(f.inv, v_company, false)
                    order by (f.inv).invoice_date desc nulls last, (f.inv).invoice_no desc), '[]')
           from (select inv from filtered order by (inv).invoice_date desc nulls last limit v_size offset (v_page-1)*v_size) f)
   into v_total, v_rows;

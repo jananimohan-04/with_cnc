@@ -43,7 +43,8 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     setLoading(true); setError('');
     try {
       const [list, summary] = await Promise.all([
-        financeApi.invoices({ type: t || null, status: f.status || null, customer: f.customer || null, search: f.search, from: f.from, to: f.to, page: p, pageSize: PAGE }),
+        // Empty date inputs must be omitted; Postgres cannot cast '' to a date.
+        financeApi.invoices({ type: t || null, status: f.status || null, customer: f.customer || null, search: f.search, from: f.from || undefined, to: f.to || undefined, page: p, pageSize: PAGE }),
         financeApi.invoiceSummary(f.from || undefined, f.to || undefined),
       ]);
       setRows(list.rows); setTotal(list.total); setStats(summary || emptySummary); setPage(p);
@@ -145,7 +146,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     try {
       const out: InvoiceRow[] = [];
       for (let p = 1; p <= Math.max(1, Math.ceil(total / 500)); p++) {
-        const r = await financeApi.invoices({ type: tab || null, status: filters.status || null, customer: filters.customer || null, search: filters.search, from: filters.from, to: filters.to, page: p, pageSize: 500 });
+        const r = await financeApi.invoices({ type: tab || null, status: filters.status || null, customer: filters.customer || null, search: filters.search, from: filters.from || undefined, to: filters.to || undefined, page: p, pageSize: 500 });
         out.push(...r.rows); if (out.length >= r.total) break;
       }
       exportCsv('Invoices_' + todayISO(), [['Invoice No','Date','Customer','PO No','DC No','Basic Value','CGST','SGST','IGST','Total','Received','Balance','Status'], ...out.map(r => [r.invoice_no,r.invoice_date||'',r.customer_name||'',r.po_no||'',r.dc_no||'',r.basic_value,r.cgst,r.sgst,r.igst,r.total,r.received,r.balance,r.status])]);

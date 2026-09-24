@@ -70,4 +70,57 @@ $$;
 revoke all on function public.erp_bank_transactions(text, text, text, text, text, date, date, int, int) from public, anon;
 grant execute on function public.erp_bank_transactions(text, text, text, text, text, date, date, int, int) to authenticated;
 
+-- The Bank & Cash entry form loads invoices alongside its account filters. Pass the
+-- invoice composite value directly; expanding it with (row).* inside jsonb_agg fails.
+create or replace function public.erp_invoices(p_type text default null, p_status text default null, p_customer text default null,
+  p_search text default null, p_from date default null, p_to date default null, p_page int default 1, p_page_size int default 10)
+returns jsonb
+language plpgsql stable security definer set search_path = ''
+as $$
+declare
+  v_company uuid := public.erp_report_company();
+  v_size int := least(greatest(coalesce(p_page_size, 10), 1), 500);
+  v_page int := greatest(coalesce(p_page, 1), 1);
+  v_q text := nullif(btrim(coalesce(p_search, '')), '');
+  v_total int;
+  v_rows jsonb;
+begin
+  with base as (
+    select inv, public.erp_invoice_status(v_company, inv) as st
+    from public.cnc_invoices inv
+    where inv.company_id = v_company
+      and (nullif(p_type, '') is null or inv.invoice_type = p_type or (p_type = 'Cancelled' and inv.cancelled))
+      and (nullif(p_customer, '') is null or inv.customer_id = p_customer or inv.customer_name = p_customer)
+      and (p_from is null or inv.invoice_date >= p_from)
+      and (p_to is null or inv.invoice_date <= p_to)
+      and (v_q is null or inv.invoice_no ilike '%' || v_q || '%'
+           or inv.customer_name ilike '%' || v_q || '%'
+           or inv.po_no ilike '%' || v_q || '%'
+           or inv.dc_no ilike '%' || v_q || '%'
+           or inv.part_name ilike '%' || v_q || '%')
+  ),
+  filtered as (
+    select base.inv
+    from base
+    where nullif(p_status, '') is null or base.st = p_status
+  ),
+  page_rows as (
+    select filtered.inv
+    from filtered
+    order by (filtered.inv).invoice_date desc nulls last, (filtered.inv).invoice_no desc
+    limit v_size offset (v_page - 1) * v_size
+  )
+  select (select count(*) from filtered),
+         (select coalesce(jsonb_agg(public.erp_invoice_json(page_rows.inv, v_company, false)
+                    order by (page_rows.inv).invoice_date desc nulls last, (page_rows.inv).invoice_no desc), '[]')
+          from page_rows)
+  into v_total, v_rows;
+
+  return jsonb_build_object('total', v_total, 'page', v_page, 'page_size', v_size, 'rows', v_rows);
+end;
+$$;
+
+revoke all on function public.erp_invoices(text, text, text, text, date, date, int, int) from public, anon;
+grant execute on function public.erp_invoices(text, text, text, text, date, date, int, int) to authenticated;
+
 commit;
