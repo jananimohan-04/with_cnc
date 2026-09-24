@@ -8,9 +8,8 @@ import { Input } from "@/vault/components/ui/input";
 import { Label } from "@/vault/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/vault/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/vault/components/ui/tabs";
-import { Switch } from "@/vault/components/ui/switch";
 import { toast } from "sonner";
-import { UserCircle, Shield, Settings2, Cloud, AlertCircle, RefreshCw, Check, Loader2, Building, Folder, FolderPlus, ChevronRight } from "lucide-react";
+import { UserCircle, Cloud, AlertCircle, RefreshCw, Check, Loader2, Building, Folder, FolderPlus, ChevronRight } from "lucide-react";
 import { GoogleDriveService, DriveFolder } from "@/vault/services/google-drive";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/vault/components/ui/dialog";
@@ -280,10 +279,6 @@ function SettingsPage() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="bg-slate-100/80 p-1 w-full justify-start overflow-x-auto flex-nowrap rounded-xl border border-slate-200 shadow-sm h-auto">
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          {can("manage_settings") && (
-            <TabsTrigger value="app">Application Settings</TabsTrigger>
-          )}
           {can("manage_settings") && (
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           )}
@@ -319,65 +314,6 @@ function SettingsPage() {
             </CardFooter>
           </Card>
         </TabsContent>
-
-        <TabsContent value="security" className="space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-indigo-500" />
-                Security Settings
-              </CardTitle>
-              <CardDescription>Manage your password and security preferences.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2 max-w-sm">
-                <Label>Current Password</Label>
-                <Input type="password" />
-              </div>
-              <div className="space-y-2 max-w-sm">
-                <Label>New Password</Label>
-                <Input type="password" />
-              </div>
-              <div className="space-y-2 max-w-sm">
-                <Label>Confirm New Password</Label>
-                <Input type="password" />
-              </div>
-            </CardContent>
-            <CardFooter className="border-t border-slate-100 bg-slate-50 mt-4 rounded-b-xl px-6 py-4">
-              <Button>Update Password</Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-
-        {can("manage_settings") && (
-          <TabsContent value="app" className="space-y-6">
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings2 className="w-5 h-5 text-indigo-500" />
-                  System Preferences
-                </CardTitle>
-                <CardDescription>Configure global application settings (Admins only).</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium text-slate-900">Enforce Strict Versioning</h4>
-                    <p className="text-sm text-slate-500">Prevent uploads that don't match the standard versioning schema.</p>
-                  </div>
-                  <Switch checked={true} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium text-slate-900">Require Approval Workflows</h4>
-                    <p className="text-sm text-slate-500">Documents remain in 'Under Review' until explicitly approved.</p>
-                  </div>
-                  <Switch checked={true} />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
 
         {can("manage_settings") && (
           <TabsContent value="integrations" className="space-y-6">
