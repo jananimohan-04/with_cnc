@@ -5,6 +5,27 @@ begin;
 alter table public.cnc_invoices
   add column if not exists pipeline_completed_at timestamptz;
 
+-- Keep invoice links inside the owning tenant even when the application uses a
+-- SECURITY DEFINER RPC to create or edit records.
+drop trigger if exists zz_erp_invoice_customer_company on public.cnc_invoices;
+create trigger zz_erp_invoice_customer_company before insert or update on public.cnc_invoices
+  for each row execute function public.erp_check_same_company('customer_id', 'cnc_customers');
+drop trigger if exists zz_erp_invoice_sales_order_company on public.cnc_invoices;
+create trigger zz_erp_invoice_sales_order_company before insert or update on public.cnc_invoices
+  for each row execute function public.erp_check_same_company('sales_order_id', 'cnc_sales_orders');
+drop trigger if exists zz_erp_invoice_delivery_company on public.cnc_invoices;
+create trigger zz_erp_invoice_delivery_company before insert or update on public.cnc_invoices
+  for each row execute function public.erp_check_same_company('delivery_id', 'cnc_deliveries');
+drop trigger if exists zz_erp_invoice_quotation_company on public.cnc_invoices;
+create trigger zz_erp_invoice_quotation_company before insert or update on public.cnc_invoices
+  for each row execute function public.erp_check_same_company('quotation_id', 'cnc_quotations');
+drop trigger if exists zz_erp_invoice_item_parent_company on public.cnc_invoice_items;
+create trigger zz_erp_invoice_item_parent_company before insert or update on public.cnc_invoice_items
+  for each row execute function public.erp_check_same_company('invoice_id', 'cnc_invoices');
+drop trigger if exists zz_erp_bank_invoice_company on public.cnc_bank_transactions;
+create trigger zz_erp_bank_invoice_company before insert or update on public.cnc_bank_transactions
+  for each row execute function public.erp_check_same_company('invoice_id', 'cnc_invoices');
+
 -- Preserve the former Pipeline "Completed" marker as history metadata before status is
 -- switched to its accounting-derived value.
 update public.cnc_invoices
@@ -25,7 +46,15 @@ begin
     if tg_op = 'DELETE' then return old; end if;
     return new;
   end if;
-  if tg_op = 'DELETE' then
+  if tg_table_name = 'cnc_invoices' then
+    if tg_op = 'DELETE' then
+      v_company := old.company_id;
+      v_invoice_id := old.id::text;
+    else
+      v_company := new.company_id;
+      v_invoice_id := new.id::text;
+    end if;
+  elsif tg_op = 'DELETE' then
     v_company := old.company_id;
     v_invoice_id := old.invoice_id;
   else

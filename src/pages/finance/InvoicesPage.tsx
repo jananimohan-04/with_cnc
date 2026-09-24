@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Download, Eye, FileText, Plus, Printer, CreditCard, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { FormField, inputClass, Modal } from '@/components/ui/Modal';
@@ -15,6 +16,8 @@ const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', tota
 
 export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const { company } = useAuth();
+  const [searchParams] = useSearchParams();
+  const linkedInvoiceId = searchParams.get('invoice') || '';
   const [tab, setTab] = useState('');
   const [filters, setFilters] = useState({ from: '', to: '', customer: '', status: '', search: '' });
   const [draft, setDraft] = useState(filters);
@@ -33,7 +36,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const [payOpen, setPayOpen] = useState(false);
   const [editId, setEditId] = useState('');
   const [form, setForm] = useState<any>({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_date: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
-  const [lines, setLines] = useState<any[]>([{ description: '', quantity: '1', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
+  const [lines, setLines] = useState<any[]>([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
   const [payment, setPayment] = useState<any>({ account_id: '', amount: '', txn_date: todayISO(), mode: '', reference_no: '' });
 
   const reload = async (p = page, f = filters, t = tab) => {
@@ -49,6 +52,17 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   };
 
   useEffect(() => { void reload(1, filters, tab); }, [company?.id, tab]);
+  useEffect(() => {
+    if (!linkedInvoiceId) return;
+    let active = true;
+    Promise.all([
+      financeApi.invoice(linkedInvoiceId),
+      supabase.from('cnc_invoice_items').select('id,description,hsn,quantity,unit,rate,gst_rate,discount_pct,amount').eq('invoice_id', linkedInvoiceId).order('line_no'),
+    ]).then(([detail, itemResult]) => {
+      if (active) setSelected({ ...detail, items: itemResult.data?.length ? itemResult.data as InvoiceDetail['items'] : detail.items });
+    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to open linked invoice.'); });
+    return () => { active = false; };
+  }, [linkedInvoiceId, company?.id]);
   useEffect(() => {
     let active = true;
     Promise.all([
@@ -66,13 +80,19 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
 
   const view = async (r: InvoiceRow) => {
     setSelected(null);
-    try { setSelected(await financeApi.invoice(r.id)); }
+    try {
+      const [detail, itemResult] = await Promise.all([
+        financeApi.invoice(r.id),
+        supabase.from('cnc_invoice_items').select('id,description,hsn,quantity,unit,rate,gst_rate,discount_pct,amount').eq('invoice_id', r.id).order('line_no'),
+      ]);
+      setSelected({ ...detail, items: itemResult.data?.length ? itemResult.data as InvoiceDetail['items'] : detail.items });
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'Unable to open invoice.'); }
   };
   const startNew = () => {
     setEditId('');
     setForm({ invoice_type: 'Sales Invoice', invoice_date: todayISO(), customer_name: '', customer_id: '', due_date: '', po_no: '', dc_no: '', delivery_id: '', payment_terms: '' });
-    setLines([{ description: '', quantity: '1', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
+    setLines([{ description: '', quantity: '', unit: '', rate: '', gst_rate: '', discount_pct: '0' }]);
     setFormOpen(true);
   };
   const startEdit = () => {
@@ -80,7 +100,10 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     const item = selected.items?.[0];
     setEditId(selected.id);
     setForm({ id: selected.id, invoice_no: selected.invoice_no, invoice_type: selected.invoice_type, invoice_date: selected.invoice_date || todayISO(), due_date: selected.due_date || '', customer_name: selected.customer_name || '', customer_id: selected.customer_id || '', po_no: selected.po_no || '', dc_no: selected.dc_no || '', payment_terms: selected.payment_terms || '' });
-    setLines(selected.items?.length ? selected.items.map(item => ({ description: item.description, quantity: item.quantity, unit: item.unit || '', rate: item.rate, gst_rate: item.gst_rate, discount_pct: '0' })) : [{ description: selected.part_name || '', quantity: String(selected.quantity || 1), unit: '', rate: String(Number(selected.total || 0) / Math.max(1, Number(selected.quantity || 1))), gst_rate: '0', discount_pct: '0' }]);
+    const quantity = Math.max(1, Number(selected.quantity || 1));
+    const taxable = Number(selected.taxable_value || selected.basic_value || 0);
+    const taxRate = taxable > 0 ? (Number(selected.cgst || 0) + Number(selected.sgst || 0) + Number(selected.igst || 0)) * 100 / taxable : 0;
+    setLines(selected.items?.length ? selected.items.map(item => ({ description: item.description, quantity: item.quantity, unit: item.unit || '', rate: item.rate, gst_rate: item.gst_rate, discount_pct: item.discount_pct || '0' })) : [{ description: selected.part_name || '', quantity: String(quantity), unit: '', rate: String(taxable / quantity), gst_rate: String(taxRate), discount_pct: '0' }]);
     setFormOpen(true);
   };
   const save = async () => {
@@ -89,7 +112,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     try {
       const items = lines.map(line => ({ ...line, quantity: Number(line.quantity), rate: Number(line.rate), gst_rate: line.gst_rate === '' ? null : Number(line.gst_rate), discount_pct: Number(line.discount_pct || 0) }));
       const result = await financeApi.saveInvoice({ ...form, quantity: items.reduce((sum, item) => sum + item.quantity, 0), part_name: items.map(item => item.description).join(', ') }, items);
-      setFormOpen(false); await reload(1); setSelected(await financeApi.invoice(result.id));
+      setFormOpen(false); await reload(1); await view({ id: result.id } as InvoiceRow);
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save invoice.'); }
     finally { setBusy(false); }
   };
@@ -170,7 +193,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         <div className="grid grid-cols-2 gap-y-1 border-y py-2"><span>Invoice No</span><b>{selected.invoice_no}</b><span>Date</span><b>{formatDate(selected.invoice_date)}</b><span>Customer</span><b>{selected.customer_name}</b><span>PO / DC</span><b>{selected.po_no||'-'} / {selected.dc_no||'-'}</b></div>
         <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Item</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
         <Total label="Basic Value" value={cash(selected.basic_value)}/><Total label="CGST / SGST / IGST" value={cash(selected.cgst)+' / '+cash(selected.sgst)+' / '+cash(selected.igst)}/><Total label="Received" value={cash(selected.received)}/><Total label="Balance" value={cash(selected.balance)} bold/><Total label="Total" value={cash(selected.total)} bold/>
-        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
+        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
       </div>}</Card>
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Customers</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>
@@ -186,7 +209,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         <FormField label="PO No"><input className={inputClass} value={form.po_no||''} onChange={e=>setForm({...form,po_no:e.target.value})}/></FormField>
         <FormField label="Payment Terms"><input className={inputClass} value={form.payment_terms||''} onChange={e=>setForm({...form,payment_terms:e.target.value})}/></FormField>
       </div>
-      <div className="mt-4 space-y-3 border-t pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Invoice Items</h3><Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'1',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button></div>{lines.map((line,index)=><div key={index} className="grid md:grid-cols-7 gap-2 items-end rounded border p-2"><FormField label="Item"><input className={inputClass} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField><FormField label="Quantity"><input type="number" min="0" className={inputClass} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField><FormField label="Unit"><input className={inputClass} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField><FormField label="Rate"><input type="number" min="0" className={inputClass} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField><FormField label="GST %"><input type="number" min="0" className={inputClass} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField><FormField label="Discount %"><input type="number" min="0" className={inputClass} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField><button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-9 rounded border text-rose-600 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button></div>)}</div>
+      <div className="mt-4 space-y-3 border-t pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Invoice Items</h3><Button size="sm" variant="secondary" icon={<Plus size={13}/>} onClick={()=>setLines([...lines,{description:'',quantity:'',unit:'',rate:'',gst_rate:'',discount_pct:'0'}])}>Add Item</Button></div>{lines.map((line,index)=><div key={index} className="grid md:grid-cols-7 gap-2 items-end rounded border p-2"><FormField label="Item"><input className={inputClass} value={line.description} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,description:e.target.value}:x))}/></FormField><FormField label="Quantity"><input type="number" min="0" className={inputClass} value={line.quantity} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></FormField><FormField label="Unit"><input className={inputClass} value={line.unit} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,unit:e.target.value}:x))}/></FormField><FormField label="Rate"><input type="number" min="0" className={inputClass} value={line.rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,rate:e.target.value}:x))}/></FormField><FormField label="GST %"><input type="number" min="0" className={inputClass} value={line.gst_rate} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,gst_rate:e.target.value}:x))} placeholder="Company default"/></FormField><FormField label="Discount %"><input type="number" min="0" className={inputClass} value={line.discount_pct} onChange={e=>setLines(lines.map((x,i)=>i===index?{...x,discount_pct:e.target.value}:x))}/></FormField><button type="button" aria-label="Remove item" disabled={lines.length===1} onClick={()=>setLines(lines.filter((_,i)=>i!==index))} className="h-9 rounded border text-rose-600 disabled:opacity-40"><Trash2 size={14} className="mx-auto"/></button></div>)}</div>
     </Modal>
     <Modal open={payOpen} onClose={()=>!busy&&setPayOpen(false)} title="Record Customer Receipt" subtitle={selected?.invoice_no} footer={<><Button variant="secondary" onClick={()=>setPayOpen(false)}>Cancel</Button><Button onClick={()=>void saveReceipt()} disabled={busy}>Record Receipt</Button></>}>
       <div className="grid md:grid-cols-2 gap-3"><FormField label="Bank / Cash Account"><select className={inputClass} value={payment.account_id} onChange={e=>setPayment({...payment,account_id:e.target.value})}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></FormField><FormField label="Amount"><input type="number" min="0.01" max={selected?.balance} className={inputClass} value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/></FormField><FormField label="Date"><input type="date" className={inputClass} value={payment.txn_date} onChange={e=>setPayment({...payment,txn_date:e.target.value})}/></FormField><FormField label="Mode"><input className={inputClass} value={payment.mode} onChange={e=>setPayment({...payment,mode:e.target.value})}/></FormField><FormField label="Reference"><input className={inputClass} value={payment.reference_no} onChange={e=>setPayment({...payment,reference_no:e.target.value})}/></FormField></div>

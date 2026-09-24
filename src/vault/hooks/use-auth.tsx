@@ -1,12 +1,12 @@
-﻿import { createContext, useContext, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { Profile, Role } from "@/vault/lib/api";
+import { createContext, useContext, ReactNode } from "react";
+import { useAuth as useMainErpAuth } from "@/contexts/AuthContext";
 
+// Bridge the Main ERP auth into the Vault's auth shape so all vault components work unchanged.
 type AuthState = {
-  session: Session | null;
-  user: User | null;
-  profile: Profile | null;
-  role: Role | null;
+  session: any;
+  user: any;
+  profile: any;
+  role: any;
   isLoading: boolean;
 };
 
@@ -18,23 +18,49 @@ const AuthContext = createContext<AuthState>({
   isLoading: true,
 });
 
+/**
+ * AuthProvider bridges the Main ERP's AuthContext into the Vault's expected shape.
+ * No separate user tables — same users, same login, same session.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state] = useState<AuthState>({
-    session: { 
-      access_token: 'mock-token', 
-      refresh_token: 'mock-token', 
-      expires_in: 3600, 
-      expires_at: Date.now() + 3600000,
-      token_type: 'bearer',
-      user: { id: 'mock-user-123', email: 'admin@company.com', app_metadata: {}, user_metadata: {}, aud: 'authenticated', created_at: '' } 
-    } as any,
-    user: { id: 'mock-user-123', email: 'admin@company.com', app_metadata: {}, user_metadata: {}, aud: 'authenticated', created_at: '' } as any,
-    profile: { id: 'mock-user-123', email: 'admin@company.com', full_name: 'Super Admin', department: 'Engineering', user_id: 'mock-user-123', created_at: '', updated_at: '', avatar_url: '' } as any,
-    role: { id: 'mock-role-id', name: 'Super Admin', is_system_role: true, permissions: { 'manage_all': true }, created_at: '' } as any,
-    isLoading: false,
-  });
+  const mainAuth = useMainErpAuth();
 
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  // Map the Main ERP profile to what the vault components expect
+  const bridgedState: AuthState = {
+    session: mainAuth.status === 'authorized' ? { access_token: 'erp-session', token_type: 'bearer' } : null,
+    user: mainAuth.profile ? {
+      id: mainAuth.profile.id,
+      email: mainAuth.profile.email,
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '',
+    } : null,
+    profile: mainAuth.profile ? {
+      id: mainAuth.profile.id,
+      email: mainAuth.profile.email,
+      full_name: mainAuth.profile.full_name,
+      department: 'Engineering',
+      user_id: mainAuth.profile.id,
+      created_at: '',
+      updated_at: '',
+      avatar_url: '',
+      // Super Admin & Company Admin get full vault access; regular users get viewer access
+      party_id: mainAuth.isSuperAdmin ? null : (mainAuth.company?.id || null),
+    } : null,
+    role: {
+      id: 'erp-role',
+      name: mainAuth.isSuperAdmin ? 'Super Admin' : mainAuth.isCompanyAdmin ? 'Admin' : 'Viewer',
+      is_system_role: true,
+      permissions: mainAuth.isSuperAdmin || mainAuth.isCompanyAdmin
+        ? { manage_all: true }
+        : ['view', 'download'],
+      created_at: '',
+    },
+    isLoading: mainAuth.status === 'loading',
+  };
+
+  return <AuthContext.Provider value={bridgedState}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

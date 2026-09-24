@@ -35,6 +35,14 @@ begin
       (select sum(pc.total_cost) from public.process_costing pc
        where pc.company_id = v_company and pc.project_name = k.project_name
          and pc.party_name is not distinct from k.party_name and pc.part_name is not distinct from k.part_name) as process_cost,
+      (select sum(round(abs(coalesce(m.qty_change, m.qty::numeric)) * coalesce(m.rate, 0), 2))
+       from public.cnc_stock_movements m
+       join public.cnc_material_requests mr on mr.id::text = m.reference_id and mr.company_id = v_company
+       join public.cnc_work_orders w on w.company_id = v_company and w.wo_no = mr.work_order_no
+       where m.company_id = v_company and m.reference_type = 'material_request'
+         and (w.wo_no = k.project_name or w.sales_order = k.project_name)
+         and w.part_name is not distinct from k.part_name
+         and coalesce(w.customer, '') = coalesce(k.party_name, '')) as material_cost,
       (select sum(pw.total_amount) from public.planned_workings pw
        where pw.company_id = v_company and pw.project_name = k.project_name) as planned_cost,
       (select max(w.quantity) from public.cnc_work_orders w
@@ -51,14 +59,15 @@ begin
             'project_name', x.project_name, 'party_name', x.party_name, 'part_name', x.part_name,
             'quantity', x.quantity::text,
             'planned_cost', x.planned_cost::text,
-            'actual_cost', coalesce(x.product_cost, x.process_cost)::text,
+            'actual_cost', coalesce(x.product_cost, x.process_cost, x.material_cost)::text,
             'sales_value', x.sales_value::text,
-            'profit', case when x.sales_value is not null and coalesce(x.product_cost,x.process_cost) is not null
-                           then (x.sales_value-coalesce(x.product_cost,x.process_cost))::text else null end,
-            'profit_pct', case when x.sales_value is not null and x.sales_value <> 0 and coalesce(x.product_cost,x.process_cost) is not null
-                               then round((x.sales_value-coalesce(x.product_cost,x.process_cost))*100/x.sales_value,2)::text else null end,
+            'profit', case when x.sales_value is not null and coalesce(x.product_cost,x.process_cost,x.material_cost) is not null
+                           then (x.sales_value-coalesce(x.product_cost,x.process_cost,x.material_cost))::text else null end,
+            'profit_pct', case when x.sales_value is not null and x.sales_value <> 0 and coalesce(x.product_cost,x.process_cost,x.material_cost) is not null
+                               then round((x.sales_value-coalesce(x.product_cost,x.process_cost,x.material_cost))*100/x.sales_value,2)::text else null end,
             'cost_source', case when x.product_cost is not null then 'product_costing'
-                                when x.process_cost is not null then 'process_costing' else null end
+                                when x.process_cost is not null then 'process_costing'
+                                when x.material_cost is not null then 'inventory issues' else null end
           ) order by x.project_name, x.part_name), '[]')
           from (select * from filtered order by project_name, part_name limit v_size offset (v_page-1)*v_size) x)
   into v_total, v_rows;
@@ -82,6 +91,7 @@ declare
   v_operations jsonb;
   v_sales numeric;
   v_actual numeric;
+  v_material_actual numeric;
 begin
   if nullif(btrim(p_project_name), '') is null then raise exception 'Choose a project'; end if;
 
@@ -91,6 +101,16 @@ begin
     select 1 from public.cnc_work_orders w where w.company_id = v_company
       and w.sales_order = so.order_no and w.wo_no = p_project_name));
 
+  select sum(round(abs(coalesce(m.qty_change, m.qty::numeric)) * coalesce(m.rate, 0), 2))
+  into v_material_actual
+  from public.cnc_stock_movements m
+  join public.cnc_material_requests mr on mr.id::text = m.reference_id and mr.company_id = v_company
+  join public.cnc_work_orders w on w.company_id = v_company and w.wo_no = mr.work_order_no
+  where m.company_id = v_company and m.reference_type = 'material_request'
+    and (w.wo_no = p_project_name or w.sales_order = p_project_name)
+    and (p_part_name is null or w.part_name is not distinct from p_part_name)
+    and (p_party_name is null or w.customer is not distinct from p_party_name);
+
   select coalesce(
     (select sum(pc.total_cost) from public.product_costing pc
       where pc.company_id = v_company and pc.project_name = p_project_name
@@ -99,7 +119,8 @@ begin
     (select sum(pc.total_cost) from public.process_costing pc
       where pc.company_id = v_company and pc.project_name = p_project_name
         and (p_part_name is null or pc.part_name is not distinct from p_part_name)
-        and (p_party_name is null or pc.party_name is not distinct from p_party_name)))
+        and (p_party_name is null or pc.party_name is not distinct from p_party_name)),
+    v_material_actual)
   into v_actual;
 
   select jsonb_build_object(
@@ -116,6 +137,15 @@ begin
                      where pc.company_id = v_company and pc.project_name = p_project_name
                        and (p_part_name is null or pc.part_name is not distinct from p_part_name)
                        and (p_party_name is null or pc.party_name is not distinct from p_party_name)),
+    'actual_cost', v_actual::text,
+    'cost_source', case
+      when exists (select 1 from public.product_costing pc where pc.company_id=v_company and pc.project_name=p_project_name
+                   and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+                   and (p_party_name is null or pc.party_name is not distinct from p_party_name)) then 'product_costing'
+      when exists (select 1 from public.process_costing pc where pc.company_id=v_company and pc.project_name=p_project_name
+                   and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+                   and (p_party_name is null or pc.party_name is not distinct from p_party_name)) then 'process_costing'
+      when v_material_actual is not null then 'inventory issues' else null end,
     'sales_value', v_sales::text,
     'profit', case when v_sales is not null and v_actual is not null then (v_sales-v_actual)::text else null end,
     'profit_pct', case when v_sales is not null and v_sales <> 0 and v_actual is not null
@@ -129,17 +159,40 @@ begin
                       and not i.cancelled and i.invoice_type = 'Sales Invoice')
   ) into v_project;
 
-  select coalesce(jsonb_agg(jsonb_build_object('category', c.category, 'amount', c.amount::text)
-                            order by c.category), '[]')
-  into v_categories
-  from (
-    select pc.category, sum(pc.total_cost) as amount
-    from public.product_costing pc
-    where pc.company_id = v_company and pc.project_name = p_project_name
-      and (p_part_name is null or pc.part_name is not distinct from p_part_name)
-      and (p_party_name is null or pc.party_name is not distinct from p_party_name)
-    group by pc.category
-  ) c;
+  if exists (select 1 from public.product_costing pc where pc.company_id=v_company and pc.project_name=p_project_name
+             and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+             and (p_party_name is null or pc.party_name is not distinct from p_party_name)) then
+    select coalesce(jsonb_agg(jsonb_build_object('category', c.category, 'amount', c.amount::text) order by c.category), '[]')
+    into v_categories
+    from (select pc.category, sum(pc.total_cost) amount from public.product_costing pc
+          where pc.company_id=v_company and pc.project_name=p_project_name
+            and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+            and (p_party_name is null or pc.party_name is not distinct from p_party_name)
+          group by pc.category) c;
+  elsif exists (select 1 from public.process_costing pc where pc.company_id=v_company and pc.project_name=p_project_name
+                and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+                and (p_party_name is null or pc.party_name is not distinct from p_party_name)) then
+    select coalesce(jsonb_agg(jsonb_build_object('category', c.category, 'amount', c.amount::text) order by c.category), '[]')
+    into v_categories
+    from (select pc.process_name category, sum(pc.total_cost) amount from public.process_costing pc
+          where pc.company_id=v_company and pc.project_name=p_project_name
+            and (p_part_name is null or pc.part_name is not distinct from p_part_name)
+            and (p_party_name is null or pc.party_name is not distinct from p_party_name)
+          group by pc.process_name) c;
+  else
+    select coalesce(jsonb_agg(jsonb_build_object('category', c.category, 'amount', c.amount::text) order by c.category), '[]')
+    into v_categories
+    from (select m.material category,
+                 sum(round(abs(coalesce(m.qty_change, m.qty::numeric))*coalesce(m.rate,0),2)) amount
+          from public.cnc_stock_movements m
+          join public.cnc_material_requests mr on mr.id::text=m.reference_id and mr.company_id=v_company
+          join public.cnc_work_orders w on w.company_id=v_company and w.wo_no=mr.work_order_no
+          where m.company_id=v_company and m.reference_type='material_request'
+            and (w.wo_no=p_project_name or w.sales_order=p_project_name)
+            and (p_part_name is null or w.part_name is not distinct from p_part_name)
+            and (p_party_name is null or w.customer is not distinct from p_party_name)
+          group by m.material) c;
+  end if;
 
   select coalesce(jsonb_agg(jsonb_build_object(
     'id', pc.id::text, 'process', pc.process_name, 'supplier', pc.party_name,
@@ -187,11 +240,6 @@ begin
   from public.cnc_job_cards jc
   join public.cnc_work_orders w on w.company_id = v_company and w.wo_no = jc.work_order
   where jc.company_id = v_company and (w.wo_no = p_project_name or w.sales_order = p_project_name);
-
-  if coalesce(v_project->>'product_cost', v_project->>'process_cost') is null
-     and jsonb_array_length(v_materials) = 0 and jsonb_array_length(v_processes) = 0 then
-    raise exception 'Project costing record not found' using errcode = '22023';
-  end if;
 
   return jsonb_build_object('project', v_project, 'categories', coalesce(v_categories,'[]'),
     'processes', v_processes, 'materials', v_materials, 'work_orders', v_work_orders,
