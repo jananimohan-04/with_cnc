@@ -142,8 +142,8 @@ function UploadWizardPage() {
   };
 
   const { session, profile } = useAuth();
-  const userName = profile?.full_name || session?.user.email || "Unknown";
-  const userId = session?.user.id;
+  const userName = profile?.full_name || session?.user?.email || "Unknown";
+  const userId = session?.user?.id || profile?.id || "unknown-user";
 
   const handleUpload = async () => {
     setUploading(true);

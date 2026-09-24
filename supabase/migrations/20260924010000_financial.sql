@@ -637,7 +637,12 @@ declare
   v_total int; v_rows jsonb;
 begin
   with f as (
-    select bt.*, a.name as account_name from public.cnc_bank_transactions bt
+    select bt.id, bt.txn_no, bt.txn_date, bt.kind, bt.direction, bt.account_id,
+           bt.contra_account_id, bt.party_type, bt.party_name, bt.customer_id, bt.supplier_id,
+           bt.invoice_id, bt.amount, bt.mode, bt.reference_no, bt.description, bt.status,
+           bt.transfer_group, bt.source_type, bt.source_id, bt.journal_entry_id,
+           bt.created_by, bt.created_at, a.name as account_name
+    from public.cnc_bank_transactions bt
     join public.chart_of_accounts a on a.id = bt.account_id
     where bt.company_id = v_company
       and (nullif(p_account_id,'') is null or bt.account_id::text = p_account_id)
@@ -663,7 +668,10 @@ begin
             'payment', case when direction = 'OUT' then amount::text else null end,
             'amount', amount::text, 'mode', mode, 'reference_no', reference_no, 'description', description,
             'status', status, 'transfer_group', transfer_group, 'created_by', created_by) order by txn_date desc, created_at desc), '[]')
-          from (select * from f order by txn_date desc, created_at desc limit v_size offset (v_page-1)*v_size) p)
+          from (select id, txn_no, txn_date, kind, direction, account_id, party_type, party_name,
+                       customer_id, supplier_id, invoice_id, amount, mode, reference_no, description,
+                       status, transfer_group, created_by, created_at, account_name
+                from f order by txn_date desc, created_at desc limit v_size offset (v_page-1)*v_size) p)
   into v_total, v_rows;
   return jsonb_build_object('total', v_total, 'page', v_page, 'page_size', v_size, 'rows', v_rows);
 end;
