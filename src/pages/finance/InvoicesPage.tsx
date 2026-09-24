@@ -18,6 +18,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const { company } = useAuth();
   const [searchParams] = useSearchParams();
   const linkedInvoiceId = searchParams.get('invoice') || '';
+  const deliveryId = searchParams.get('delivery') || '';
   const [tab, setTab] = useState('');
   const [filters, setFilters] = useState({ from: '', to: '', customer: '', status: '', search: '' });
   const [draft, setDraft] = useState(filters);
@@ -64,6 +65,29 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to open linked invoice.'); });
     return () => { active = false; };
   }, [linkedInvoiceId, company?.id]);
+  useEffect(() => {
+    if (!deliveryId) return;
+    let active = true;
+    (async () => {
+      const { data: delivery, error: deliveryError } = await supabase.from('cnc_deliveries')
+        .select('id,delivery_no,delivery_date,customer_id,customer_name,sales_order_id,sales_order_no,part_name,dispatch_qty,quantity,delivery_address')
+        .eq('id', deliveryId).maybeSingle();
+      if (deliveryError) throw deliveryError;
+      if (!delivery) throw new Error('Delivery challan not found.');
+      const { data: order } = delivery.sales_order_id
+        ? await supabase.from('cnc_sales_orders').select('id,quantity,value').eq('id', delivery.sales_order_id).maybeSingle()
+        : { data: null };
+      if (!active) return;
+      const qty = Number(delivery.dispatch_qty ?? delivery.quantity ?? 0);
+      const unitRate = Number(order?.quantity || 0) > 0 ? Number(order?.value || 0) / Number(order?.quantity) : 0;
+      setSelected(null);
+      setEditId('');
+      setForm({ invoice_type: 'Sales Invoice', invoice_date: delivery.delivery_date || todayISO(), customer_name: delivery.customer_name || '', customer_id: delivery.customer_id || '', billing_address: delivery.delivery_address || '', due_date: '', po_no: '', dc_no: delivery.delivery_no || '', delivery_id: delivery.id, sales_order_id: delivery.sales_order_id || '', payment_terms: '' });
+      setLines([{ description: delivery.part_name || '', quantity: String(qty), unit: '', rate: String(unitRate), gst_rate: '', discount_pct: '0' }]);
+      setFormOpen(true);
+    })().catch(e => { if (active) setError(e instanceof Error ? e.message : 'Unable to load the delivery challan.'); });
+    return () => { active = false; };
+  }, [deliveryId, company?.id]);
   useEffect(() => {
     let active = true;
     Promise.all([

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Download, Package, Factory, Boxes, Gauge, TrendingUp } from 'lucide-react';
+import { BarChart3, Download, Factory, Boxes, Gauge, TrendingUp } from 'lucide-react';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { FormField, inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -90,7 +90,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const overdueWos = pendingWos.filter(w=>w.due_date && w.due_date < todayISO());
   const topCustomer = Object.entries(filteredInvoices.reduce<Record<string,number>>((a,x)=>{if(!x.cancelled){const k=x.customer_name||'Unspecified';a[k]=(a[k]||0)+Number(x.amount||0)}return a},{})).sort((a,b)=>b[1]-a[1])[0];
 
-  const exportReport = () => exportCsv(`ERP_Report_${section.replaceAll(' ','_')}_${todayISO()}`,[
+  const exportReport = () => exportCsv(`ERP_Report_${section.replace(/ /g,'_')}_${todayISO()}`,[
     ['Report',section],['Company',company?.company_name||'Current authorized company'],['Date From',from],['Date To',to],['Customer',data.customers.find(c=>c.id===customer)?.name||'All'],['Machine',machine||'All'],[],
     ['KPI','Value'],['Invoiced Sales',salesTotal],['Production Completed Qty',productionTotal],['Finished Goods Stock Value',fgValue],['Machine Utilization %',avgUtil??''],['Net Profit (P&L)',data.pnl?.totals?.net_profit||''],[],
     ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Customer','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),

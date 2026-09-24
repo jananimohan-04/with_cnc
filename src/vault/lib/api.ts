@@ -26,8 +26,161 @@ function unwrap<T>({ data, error }: { data: T | null; error: { message: string }
 
 /* ------------------------------ parties ------------------------------ */
 
+function generatePartyCode(name: string): string {
+  if (!name) return 'PRT';
+  const clean = name.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0].slice(0, 2) + words[1].slice(0, 2)).toUpperCase();
+  }
+  return clean.slice(0, 4).toUpperCase() || 'PRT';
+}
+
 export async function listParties() {
-  return unwrap(await supabase.from("cncvault_parties").select("*").order("name"));
+  // 1. Fetch existing vault parties
+  let vaultParties: Party[] = [];
+  try {
+    const { data } = await supabase.from("cncvault_parties").select("*").order("name");
+    if (data) vaultParties = data;
+  } catch (e) {
+    console.warn("Could not query cncvault_parties:", e);
+  }
+
+  // 2. Fetch companies from cnc_enquiries (All Leads page)
+  let leadCompanies: any[] = [];
+  try {
+    const { data: enqs } = await supabase
+      .from("cnc_enquiries")
+      .select("customer, contact_person, phone, email, status, created_at")
+      .not("customer", "is", null);
+    if (enqs) leadCompanies = enqs;
+  } catch (e) {
+    console.warn("Could not query cnc_enquiries for parties:", e);
+  }
+
+  // 3. Fetch from cnc_customers (Customers page)
+  let erpCustomers: any[] = [];
+  try {
+    const { data: custs } = await supabase
+      .from("cnc_customers")
+      .select("name, contact, phone, email, status, created_at")
+      .not("name", "is", null);
+    if (custs) erpCustomers = custs;
+  } catch (e) {
+    console.warn("Could not query cnc_customers for parties:", e);
+  }
+
+  // 4. Fetch from companies table
+  let erpCompanies: any[] = [];
+  try {
+    const { data: comps } = await supabase
+      .from("companies")
+      .select("company_name, code, status, created_at");
+    if (comps) erpCompanies = comps;
+  } catch (e) {
+    console.warn("Could not query companies for parties:", e);
+  }
+
+  // Map to find all unique companies across leads and customers
+  const existingNames = new Map<string, Party>();
+  vaultParties.forEach(p => existingNames.set(p.name.trim().toLowerCase(), p));
+
+  const toInsert: any[] = [];
+  const virtualToAdd: Party[] = [];
+
+  // Merge companies from All Leads page (cnc_enquiries)
+  for (const lead of leadCompanies) {
+    const name = lead.customer?.trim();
+    if (!name) continue;
+    const lower = name.toLowerCase();
+    if (!existingNames.has(lower)) {
+      const newParty = {
+        name,
+        code: generatePartyCode(name),
+        contact_person: lead.contact_person || null,
+        email: lead.email || null,
+        phone: lead.phone || null,
+        status: "Active" as const,
+        created_at: lead.created_at || new Date().toISOString()
+      };
+      existingNames.set(lower, newParty as any);
+      toInsert.push(newParty);
+    } else {
+      // If contact info was missing in vault party, backfill from lead
+      const existing = existingNames.get(lower)!;
+      if (!existing.contact_person && lead.contact_person) existing.contact_person = lead.contact_person;
+      if (!existing.email && lead.email) existing.email = lead.email;
+      if (!existing.phone && lead.phone) existing.phone = lead.phone;
+    }
+  }
+
+  // Merge companies from cnc_customers
+  for (const cust of erpCustomers) {
+    const name = cust.name?.trim();
+    if (!name) continue;
+    const lower = name.toLowerCase();
+    if (!existingNames.has(lower)) {
+      const newParty = {
+        name,
+        code: generatePartyCode(name),
+        contact_person: cust.contact || null,
+        email: cust.email || null,
+        phone: cust.phone || null,
+        status: (cust.status === "Inactive" ? "Inactive" : "Active") as const,
+        created_at: cust.created_at || new Date().toISOString()
+      };
+      existingNames.set(lower, newParty as any);
+      toInsert.push(newParty);
+    }
+  }
+
+  // Merge from companies
+  for (const comp of erpCompanies) {
+    const name = comp.company_name?.trim();
+    if (!name) continue;
+    const lower = name.toLowerCase();
+    if (!existingNames.has(lower)) {
+      const newParty = {
+        name,
+        code: comp.code || generatePartyCode(name),
+        status: (comp.status === "Inactive" ? "Inactive" : "Active") as const,
+        created_at: comp.created_at || new Date().toISOString()
+      };
+      existingNames.set(lower, newParty as any);
+      toInsert.push(newParty);
+    }
+  }
+
+  // Persist newly discovered companies into cncvault_parties
+  if (toInsert.length > 0) {
+    try {
+      const { data: inserted, error } = await supabase.from("cncvault_parties").insert(toInsert).select();
+      if (!error && inserted) {
+        vaultParties = [...vaultParties, ...inserted];
+      } else {
+        // Fallback with client-side IDs if insert encounters RLS
+        toInsert.forEach(item => {
+          virtualToAdd.push({ id: crypto.randomUUID(), ...item } as Party);
+        });
+      }
+    } catch (e) {
+      console.warn("Could not insert discovered parties:", e);
+      toInsert.forEach(item => {
+        virtualToAdd.push({ id: crypto.randomUUID(), ...item } as Party);
+      });
+    }
+  }
+
+  const allParties = [...vaultParties, ...virtualToAdd];
+  // Deduplicate and sort
+  const uniqueMap = new Map<string, Party>();
+  allParties.forEach(p => {
+    if (!uniqueMap.has(p.name.trim().toLowerCase())) {
+      uniqueMap.set(p.name.trim().toLowerCase(), p);
+    }
+  });
+
+  return Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getParty(id: string) {
@@ -35,11 +188,44 @@ export async function getParty(id: string) {
 }
 
 export async function createParty(input: Tables["cncvault_parties"]["Insert"]) {
-  return unwrap(await supabase.from("cncvault_parties").insert(input).select().single());
+  const result = unwrap(await supabase.from("cncvault_parties").insert(input).select().single());
+  
+  // Two-way sync: Also ensure customer exists in cnc_customers
+  try {
+    if (input.name) {
+      await supabase.from("cnc_customers").upsert({
+        name: input.name,
+        contact: input.contact_person || '',
+        email: input.email || '',
+        phone: input.phone || '',
+        status: input.status || 'Active'
+      }, { onConflict: 'name' });
+    }
+  } catch (e) {
+    console.warn("Two-way customer sync warning:", e);
+  }
+
+  return result;
 }
 
 export async function updateParty(id: string, input: Tables["cncvault_parties"]["Update"]) {
-  return unwrap(await supabase.from("cncvault_parties").update(input).eq("id", id).select().single());
+  const result = unwrap(await supabase.from("cncvault_parties").update(input).eq("id", id).select().single());
+
+  // Two-way sync: Also update customer in cnc_customers if name changed
+  try {
+    if (input.name) {
+      await supabase.from("cnc_customers").update({
+        contact: input.contact_person || '',
+        email: input.email || '',
+        phone: input.phone || '',
+        status: input.status || 'Active'
+      }).eq('name', input.name);
+    }
+  } catch (e) {
+    console.warn("Two-way customer update warning:", e);
+  }
+
+  return result;
 }
 
 /* ------------------------------- parts ------------------------------- */
