@@ -14,7 +14,7 @@ import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 
-export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Unavailability Parts' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
+export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
 export interface KanbanCard {
   id: string;
@@ -213,7 +213,11 @@ export function SalesPipelinePage() {
                      }}
                    />
                 ) : (
-                   <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
+                   <span className="text-sm text-slate-800 font-medium break-words">
+                     {['value', 'total_value'].includes(key) && Number.isFinite(Number(value))
+                       ? Number(value).toFixed(2)
+                       : String(value)}
+                   </span>
                 )}
               </div>
             );
@@ -250,9 +254,6 @@ export function SalesPipelinePage() {
                             <div className="flex items-center justify-end gap-2">
                               <button onClick={() => handleItemAction(raw, i, 'inward')} className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded border border-emerald-200" title="Available (Inward)">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                              </button>
-                              <button onClick={() => handleItemAction(raw, i, 'unavailable')} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded border border-red-200" title="Unavailable">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                               </button>
                             </div>
                           )}
@@ -309,7 +310,8 @@ export function SalesPipelinePage() {
   const [quoteForm, setQuoteForm] = useState<any>({
     quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: 'Admin',
     contacts: [{ person: '', phone: '', email: '' }],
-    partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18',
+    partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
+    items: [{ id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }],
     paymentTerms: '', deliveryTerms: '', remarks: ''
   });
 
@@ -379,7 +381,7 @@ export function SalesPipelinePage() {
     }));
 
     if (orders) orders.forEach(o => newCards.push({
-      id: `order_${o.id}`, stage: o.status === 'Waiting for Parts' ? 'Unavailability Parts' : 'Sales Order', type: 'order',
+      id: `order_${o.id}`, stage: 'Sales Order', type: 'order',
       refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
       qty: o.quantity || (o.items?.[0]?.quantity), value: Number(o.total_value ?? o.value) || 0, date: o.delivery_date, status: o.status, raw: o
     }));
@@ -740,6 +742,7 @@ export function SalesPipelinePage() {
             quantity: (p.quantity || p.qty || '0').toString(),
             unitPrice: '',
             discount: '0',
+            unitDiscount: '0',
             gst: '18'
           }))
         : [{
@@ -749,6 +752,7 @@ export function SalesPipelinePage() {
             quantity: card.qty?.toString() || '',
             unitPrice: '',
             discount: '0',
+            unitDiscount: '0',
             gst: '18'
           }];
 
@@ -766,8 +770,9 @@ export function SalesPipelinePage() {
       let p = Number(card.raw.unit_price) || 0;
       if (!p && card.value && card.qty) {
         const d = Number(card.raw.discount_percent) || 0;
+        const ud = Number(card.raw.unit_discount) || 0;
         const g = Number(card.raw.gst_percent) || 0;
-        p = Number((card.value / (q * (1 - d/100) * (1 + g/100))).toFixed(2));
+        p = Number(((card.value / (q * (1 + g/100)) + ud) / (1 - d/100 || 1)).toFixed(2));
       }
       
       const item = {
@@ -778,6 +783,7 @@ export function SalesPipelinePage() {
          quantity: q.toString(),
          unitPrice: p.toString(),
          discount: (card.raw.discount_percent || 0).toString(),
+         unitDiscount: (card.raw.unit_discount || 0).toString(),
          gst: (card.raw.gst_percent || 18).toString()
       };
       
@@ -787,7 +793,10 @@ export function SalesPipelinePage() {
       if (itemsArr && Array.isArray(itemsArr) && itemsArr.length > 0) {
         finalItems = itemsArr.map(i => ({
           id: crypto.randomUUID(), partName: i.partName, partNumber: i.partNumber || '', description: '',
-          quantity: i.quantity?.toString() || '0', unitPrice: p.toString(), discount: (card.raw.discount_percent || 0).toString(), gst: (card.raw.gst_percent || 18).toString()
+          quantity: i.quantity?.toString() || '0', unitPrice: (i.unitPrice || p).toString(),
+          discount: (i.discount || card.raw.discount_percent || 0).toString(),
+          unitDiscount: (i.unitDiscount || card.raw.unit_discount || 0).toString(),
+          gst: (i.gst || card.raw.gst_percent || 18).toString()
         }));
       } else {
         finalItems = [item];
@@ -821,12 +830,6 @@ export function SalesPipelinePage() {
       } else {
         alert("Error creating sales order: " + error.message);
       }
-    } else if (card.type === 'order' && toStage === 'Unavailability Parts') {
-      const { error } = await supabase.from('cnc_sales_orders').update({ status: 'Waiting for Parts' }).eq('id', card.raw.id);
-      if (!error) fetchPipeline();
-    } else if (card.type === 'order' && toStage === 'Sales Order' && card.stage === 'Unavailability Parts') {
-      const { error } = await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('id', card.raw.id);
-      if (!error) fetchPipeline();
     } else if (card.type === 'order' && toStage === 'Inward') {
       const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       setInwardForm({
@@ -910,28 +913,37 @@ export function SalesPipelinePage() {
     const items = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
       partName: quoteForm.partName || '', partNumber: quoteForm.partNumber || '',
       quantity: quoteForm.quantity || '0', unitPrice: quoteForm.unitPrice || '0',
-      discount: quoteForm.discount || '0', gst: quoteForm.gst || '18'
+      discount: quoteForm.discount || '0', unitDiscount: quoteForm.unitDiscount || '0', gst: quoteForm.gst || '18'
     }];
 
     const totalQty = items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0);
     const totalValue = items.reduce((sum: number, i: any) => {
       const q = Number(i.quantity) || 0; const p = Number(i.unitPrice) || 0;
-      const d = Number(i.discount) || 0; const g = Number(i.gst) || 0;
-      return sum + (q * p * (1 - d / 100) * (1 + g / 100));
+      const d = Number(i.discount) || 0; const ud = Number(i.unitDiscount) || 0; const g = Number(i.gst) || 0;
+      const discountedUnit = Math.max(0, p * (1 - d / 100) - ud);
+      return sum + (q * discountedUnit * (1 + g / 100));
     }, 0);
     
     const firstItem = items[0];
     const partNameStr = items.length > 1 ? `Multiple Parts (${items.length})` : (firstItem.partName || 'TBD');
 
-    const { error } = await supabase.from('cnc_quotations').insert([{
+    const quotePayload: any = {
       id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: partNameStr,
       enquiry_no: quotationModalTarget.raw?.enquiry_no || quotationModalTarget.raw?.lead_no || null,
       contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
       part_number: firstItem.partNumber || '', description: JSON.stringify(items), unit_price: Number(firstItem.unitPrice) || 0,
+      unit_discount: Number(firstItem.unitDiscount) || 0,
       quantity: totalQty, total_value: totalValue, date: quoteForm.quoteDate || null, valid_till: quoteForm.validTill || null, status: 'Sent',
       salesperson: quoteForm.salesperson, discount_percent: Number(firstItem.discount) || 0, gst_percent: Number(firstItem.gst) || 18,
       payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: leadId
-    }]);
+    };
+
+    let { error } = await supabase.from('cnc_quotations').insert([quotePayload]);
+    if (error && (error.message?.includes('unit_discount') || error.code === '42703')) {
+      const { unit_discount, ...fallbackPayload } = quotePayload;
+      const retry = await supabase.from('cnc_quotations').insert([fallbackPayload]);
+      error = retry.error;
+    }
 
     if (error) alert("Error: " + error.message);
     else {
@@ -1130,19 +1142,22 @@ export function SalesPipelinePage() {
     if (quoteForm.items && Array.isArray(quoteForm.items)) {
       return quoteForm.items.reduce((total: number, item: any) => {
         const q = Number(item.quantity) || 0; const p = Number(item.unitPrice) || 0;
-        const d = Number(item.discount) || 0; const g = Number(item.gst) || 0;
-        return total + (q * p * (1 - d / 100) * (1 + g / 100));
+        const d = Number(item.discount) || 0; const ud = Number(item.unitDiscount) || 0; const g = Number(item.gst) || 0;
+        const discountedUnit = Math.max(0, p * (1 - d / 100) - ud);
+        return total + (q * discountedUnit * (1 + g / 100));
       }, 0).toFixed(2);
     }
     const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
-    const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
-    return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+    const d = Number(quoteForm.discount) || 0; const ud = Number(quoteForm.unitDiscount) || 0; const g = Number(quoteForm.gst) || 0;
+    const discountedUnit = Math.max(0, p * (1 - d / 100) - ud);
+    return (q * discountedUnit * (1 + g / 100)).toFixed(2);
   };
 
   const calcItemTotal = (item: any) => {
     const q = Number(item.quantity) || 0; const p = Number(item.unitPrice) || 0;
-    const d = Number(item.discount) || 0; const g = Number(item.gst) || 0;
-    return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+    const d = Number(item.discount) || 0; const ud = Number(item.unitDiscount) || 0; const g = Number(item.gst) || 0;
+    const discountedUnit = Math.max(0, p * (1 - d / 100) - ud);
+    return (q * discountedUnit * (1 + g / 100)).toFixed(2);
   };
 
   const updateQuoteItem = (index: number, field: string, value: string) => {
@@ -1399,7 +1414,6 @@ export function SalesPipelinePage() {
             { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' },
             { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700' },
             { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700' },
-              { id: 'Unavailability Parts', title: 'UNAVAILABILITY PARTS', desc: 'Waiting for material', color: 'red', bg: 'bg-red-50/70', border: 'border-red-200/60', text: 'text-red-700' },
             { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700' },
             { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700' },
             { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700' },
@@ -1425,7 +1439,9 @@ export function SalesPipelinePage() {
                     if (stage.id === 'Enquiry') setShowNewLead(true);
                     else if (stage.id === 'Quotation') {
                       setQuoteForm({
-                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18', paymentTerms: '', deliveryTerms: '', remarks: ''
+                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
+                        items: [{ id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }],
+                        paymentTerms: '', deliveryTerms: '', remarks: ''
                       });
                       setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Sales Order') {
@@ -1902,13 +1918,14 @@ export function SalesPipelinePage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[5%]">#</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[25%]">Part Name</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[15%]">Unit Price (₹)</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Disc %</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">GST %</th>
-                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[15%]">Total (₹)</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Part Name</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">Qty</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
                     <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Action</th>
                   </tr>
                 </thead>
@@ -1929,6 +1946,9 @@ export function SalesPipelinePage() {
                         <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.discount || ''} onChange={e => updateQuoteItem(idx, 'discount', e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
+                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitDiscount || ''} onChange={e => updateQuoteItem(idx, 'unitDiscount', e.target.value)} />
+                      </td>
+                      <td className="px-3 py-2">
                         <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst || ''} onChange={e => updateQuoteItem(idx, 'gst', e.target.value)} />
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-slate-700">₹{calcItemTotal(item)}</td>
@@ -1944,14 +1964,14 @@ export function SalesPipelinePage() {
                 </tbody>
                 <tfoot className="bg-slate-50 border-t border-slate-200">
                   <tr>
-                    <td colSpan={6} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
+                    <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
                     <td className="px-3 py-2 text-right font-bold text-base text-brand-700">₹{calcQuoteTotal()}</td>
                     <td></td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', gst: '18' }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
               <span className="text-lg">+</span> Add Another Part
             </button>
           </div>

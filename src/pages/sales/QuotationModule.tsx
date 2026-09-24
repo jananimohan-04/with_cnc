@@ -69,10 +69,12 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
     const qty = Number(formData.get('quantity')) || Number(soModalTarget.quantity) || 0;
     const unitPrice = Number(soModalTarget.unit_price) || 0;
     const disc = Number(soModalTarget.discount_percent) || 0;
+    const unitDisc = Number(soModalTarget.unit_discount) || 0;
     const gst = Number(soModalTarget.gst_percent) || 0;
     // Re-price from the quotation's unit price when the quantity changes; fall back to the quoted total
+    const discountedPrice = Math.max(0, unitPrice * (1 - disc / 100) - unitDisc);
     const orderValue = unitPrice
-      ? Number((qty * unitPrice * (1 - disc / 100) * (1 + gst / 100)).toFixed(2))
+      ? Number((qty * discountedPrice * (1 + gst / 100)).toFixed(2))
       : (Number(soModalTarget.total_value) || 0);
 
     const { error } = await supabase.from('cnc_sales_orders').insert({
@@ -222,6 +224,8 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                 
                 <FormField label="Quantity"><input className={inputClass} value={selectedQuote.quantity || ''} disabled /></FormField>
                 <FormField label="Rate"><input className={inputClass} value={selectedQuote.unit_price || ''} disabled /></FormField>
+                <FormField label="Discount %"><input className={inputClass} value={selectedQuote.discount_percent ?? '0'} disabled /></FormField>
+                <FormField label="Unit Discount (₹)"><input className={inputClass} value={selectedQuote.unit_discount ?? '0'} disabled /></FormField>
                 
                 <FormField label="Total Value"><input className={`${inputClass} font-bold`} value={selectedQuote.total_value || ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedQuote.status || 'Sent'} disabled /></FormField>

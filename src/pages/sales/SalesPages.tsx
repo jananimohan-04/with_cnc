@@ -503,7 +503,7 @@ export function SalesOrdersPage() {
   const [quoteOptions, setQuoteOptions] = useState<any[]>([]);
 
   useEffect(() => {
-    supabase.from('cnc_quotations').select('id, quote_no, customer, customer_id, part_name, part_number, unit_price, discount_percent, gst_percent').order('created_at', { ascending: false }).then(({ data, error }) => {
+    supabase.from('cnc_quotations').select('id, quote_no, customer, customer_id, part_name, part_number, unit_price, discount_percent, unit_discount, gst_percent').order('created_at', { ascending: false }).then(({ data, error }) => {
       if (error) console.error('Error fetching quotations:', error);
       else setQuoteOptions((data || []).filter((q: any) => q.quote_no));
     });
@@ -582,7 +582,11 @@ export function SalesOrdersPage() {
     const linkedCustomer = customerOptions.find(c => c.name === formData.customer);
     // Order value is derived from the linked quotation's unit price (incl. discount/GST); 0 when no quotation
     const unitPrice = Number(linkedQuote?.unit_price) || 0;
-    const orderValue = Number((qty * unitPrice * (1 - (Number(linkedQuote?.discount_percent) || 0) / 100) * (1 + (Number(linkedQuote?.gst_percent) || 0) / 100)).toFixed(2));
+    const disc = Number(linkedQuote?.discount_percent) || 0;
+    const unitDisc = Number(linkedQuote?.unit_discount) || 0;
+    const gst = Number(linkedQuote?.gst_percent) || 0;
+    const discountedPrice = Math.max(0, unitPrice * (1 - disc / 100) - unitDisc);
+    const orderValue = Number((qty * discountedPrice * (1 + gst / 100)).toFixed(2));
     const entryData = {
       order_no: formData.orderNo,
       customer: formData.customer,

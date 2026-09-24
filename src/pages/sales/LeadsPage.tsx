@@ -94,7 +94,7 @@ export function LeadsPage() {
     const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     setQuoteForm({
         quoteNo: qNo, customer: enq.customer || enq.company, leadNo: enq.leadNo || enq.lead_no || `LD-${enq.enquiry_no}`, quoteDate: new Date().toISOString().split('T')[0], validTill: enq.expectedDate || enq.expected_date || '', salesperson: profile?.full_name || '',
-        partName: enq.partName || enq.part_name, partNumber: enq.partNo || enq.part_no || '', description: '', quantity: (enq.quantity)?.toString() || '0', unitPrice: '', discount: '0', gst: '18',
+        partName: enq.partName || enq.part_name, partNumber: enq.partNo || enq.part_no || '', description: '', quantity: (enq.quantity)?.toString() || '0', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
         paymentTerms: '', deliveryTerms: '', remarks: ''
     });
     setQuotationTarget({ id: enq.id, contactPerson: enq.contactPerson || enq.contact_person, phone: enq.phone, email: enq.email, company: enq.customer || enq.company });
@@ -103,7 +103,7 @@ export function LeadsPage() {
 
   const [quoteForm, setQuoteForm] = useState<any>({
       quoteNo: '', customer: '', leadNo: '', quoteDate: '', validTill: '', salesperson: '',
-      partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', gst: '18',
+      partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
       paymentTerms: '', deliveryTerms: '', remarks: ''
   });
   const [leadsData, setLeadsData] = useState<any[]>([]);
@@ -263,18 +263,27 @@ export function LeadsPage() {
     setLoading(true);
 
     const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
-    const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
-    const total = q * p * (1 - d / 100) * (1 + g / 100);
+    const d = Number(quoteForm.discount) || 0; const ud = Number(quoteForm.unitDiscount) || 0; const g = Number(quoteForm.gst) || 0;
+    const discounted = Math.max(0, p * (1 - d / 100) - ud);
+    const total = q * discounted * (1 + g / 100);
     
-    const { error: quoteErr } = await supabase.from('cnc_quotations').insert([{
+    const quotePayload: any = {
       id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: quoteForm.partName,
       contact_person: quotationTarget.contactPerson, phone: quotationTarget.phone, email: quotationTarget.email,
       enquiry_no: quoteForm.leadNo || null,
       part_number: quoteForm.partNumber || 'N/A', description: quoteForm.description, unit_price: p,
+      unit_discount: ud,
       quantity: q, total_value: total, date: quoteForm.quoteDate || null, valid_till: quoteForm.validTill || null, status: 'Sent',
       salesperson: quoteForm.salesperson, discount_percent: d, gst_percent: g,
       payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: quotationTarget.id
-    }]);
+    };
+
+    let { error: quoteErr } = await supabase.from('cnc_quotations').insert([quotePayload]);
+    if (quoteErr && (quoteErr.message?.includes('unit_discount') || quoteErr.code === '42703')) {
+      const { unit_discount, ...fallback } = quotePayload;
+      const res = await supabase.from('cnc_quotations').insert([fallback]);
+      quoteErr = res.error;
+    }
 
     if (!quoteErr) {
       // Update lead
@@ -483,11 +492,13 @@ export function LeadsPage() {
               <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
               <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
               <FormField label="Discount %"><input type="number" className={inputClass} value={quoteForm.discount} onChange={e=>setQuoteForm({...quoteForm, discount: e.target.value})} /></FormField>
+              <FormField label="Unit Discount (₹)"><input type="number" className={inputClass} placeholder="0.00" value={quoteForm.unitDiscount || ''} onChange={e=>setQuoteForm({...quoteForm, unitDiscount: e.target.value})} /></FormField>
               <FormField label="GST %"><input type="number" className={inputClass} value={quoteForm.gst} onChange={e=>setQuoteForm({...quoteForm, gst: e.target.value})} /></FormField>
               <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-slate-100 font-bold`} value={(() => {
                 const q = Number(quoteForm.quantity) || 0; const p = Number(quoteForm.unitPrice) || 0;
-                const d = Number(quoteForm.discount) || 0; const g = Number(quoteForm.gst) || 0;
-                return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
+                const d = Number(quoteForm.discount) || 0; const ud = Number(quoteForm.unitDiscount) || 0; const g = Number(quoteForm.gst) || 0;
+                const discounted = Math.max(0, p * (1 - d / 100) - ud);
+                return (q * discounted * (1 + g / 100)).toFixed(2);
               })()} disabled /></FormField>
             </div>
             <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4">Additional Details</h4>
