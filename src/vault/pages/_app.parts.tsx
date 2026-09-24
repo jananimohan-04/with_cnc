@@ -250,7 +250,7 @@ function UploadToPartDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-white border border-slate-200 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900">
             <UploadCloud className="w-5 h-5 text-indigo-600" />
@@ -754,7 +754,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
           Add Part & Drawing
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-slate-200 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900">
             <Box className="w-5 h-5 text-indigo-600" />
@@ -1365,7 +1365,7 @@ function PartsPage() {
                   Share Selected
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="bg-white border border-slate-200 shadow-2xl">
                 <DialogHeader>
                   <DialogTitle>Share Documents via Google Drive</DialogTitle>
                   <DialogDescription>

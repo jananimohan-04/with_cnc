@@ -62,8 +62,7 @@ export const navSections: NavSection[] = [
   {
     label: 'Logistics',
     items: [
-      { label: 'Delivery Tracking', icon: Package, page: 'operations/delivery' },
-      { label: 'Delivery Challan', icon: FileText, page: 'operations/challan' },
+      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery' },
     ],
   },
   {
@@ -108,7 +107,7 @@ export const pageTitles: Record<string, string> = {
   'sales/customers': 'Customers',
   'sales/quotations': 'Quotations',
   'sales/orders': 'Sales Orders',
-  'operations/delivery': 'Delivery Tracking',
+  'operations/delivery': 'Delivery Challan',
   'engineering/bom': 'Bill of Materials',
   'engineering/work-instructions': 'Work Instructions',
   'engineering/cnc-vault': 'Part and Drawings',

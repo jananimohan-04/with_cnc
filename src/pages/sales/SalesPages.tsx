@@ -683,7 +683,7 @@ export function SalesOrdersPage() {
     }
 
     if (!error) {
-      alert("Delivery tracking created! You can track it in the Operations > Delivery Tracking page.");
+      alert("Delivery challan created! You can track it in the Operations > Delivery Challan page.");
       setDeliveryTarget(null);
       setDeliveryForm(resetDeliveryForm());
     } else {
@@ -812,5 +812,4 @@ export function SalesOrdersPage() {
     </div>
   );
 }
-
 

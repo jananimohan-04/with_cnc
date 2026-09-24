@@ -144,6 +144,7 @@ function MainLayout() {
             
             {/* Operations */}
             <Route path="/operations/delivery" element={<DeliveriesPage />} />
+            <Route path="/operations/challan" element={<Navigate to="/operations/delivery" replace />} />
             <Route path="/finance/invoices" element={<InvoicesPage />} />
             <Route path="/finance/bank-entries" element={<BankCashPage />} />
             
