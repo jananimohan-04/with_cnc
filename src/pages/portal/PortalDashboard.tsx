@@ -59,7 +59,7 @@ function ProfileSetup({ session, onComplete }: { session: any; onComplete: () =>
     }]).select().single();
     if (error) { alert('Error: ' + error.message); setSaving(false); return; }
 
-    const leadNo = `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const leadNo = `${Math.floor(1000 + Math.random() * 9000)}`;
     const { error: leadError } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(),
       enquiry_no: leadNo,
@@ -147,7 +147,7 @@ function NewEnquiryForm({ profile, onClose, onSaved }: { profile: any; onClose: 
   const handleSubmit = async () => {
     if (!form.partName || !form.quantity) return;
     setSaving(true);
-    const enquiryNo = 'PROJ-' + Math.floor(1000 + Math.random() * 9000);
+    const enquiryNo = `${Math.floor(1000 + Math.random() * 9000)}`;
     const { error } = await supabase.from('cnc_enquiries').insert([{
       id: crypto.randomUUID(),
       enquiry_no: enquiryNo,

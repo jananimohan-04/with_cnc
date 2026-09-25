@@ -9,6 +9,7 @@ import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { downloadBrandedDocument } from '@/lib/brandedDocument';
 
 const PAGE = 10;
 const cash = (v: string | number | null | undefined) => formatINR(v, { decimals: 'auto' });
@@ -182,6 +183,22 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
     const items = (selected.items || []).map((x,i) => '<tr><td>'+(i+1)+'</td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.quantity)+'</td><td>'+cash(x.rate)+'</td><td>'+cash(x.amount)+'</td></tr>').join('');
     printHtml(selected.invoice_no, '<h1>ARGUS CNC</h1><h2>Tax Invoice</h2><p>'+escapeHtml(selected.invoice_no)+' · '+escapeHtml(formatDate(selected.invoice_date))+'</p><p>Bill To: '+escapeHtml(selected.customer_name||'')+'</p><table><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>'+items+'</tbody></table><h3>Total: '+cash(selected.total)+'</h3>');
   };
+  const downloadInvoice = async () => {
+    if (!selected) { setError('Select an invoice first.'); return; }
+    try {
+      await downloadBrandedDocument({
+        companyName: company?.company_name || 'ARGUS CNC', title: selected.invoice_type || 'Tax Invoice',
+        documentNo: selected.invoice_no, date: selected.invoice_date,
+        details: [['Bill To', selected.customer_name], ['Billing Address', selected.billing_address],
+          ['GSTIN', selected.customer_gstin], ['PO No', selected.po_no], ['Delivery Challan', selected.dc_no],
+          ['Due Date', selected.due_date ? formatDate(selected.due_date) : ''], ['Payment Terms', selected.payment_terms], ['Status', selected.status]],
+        columns: ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'GST %', 'Amount'],
+        rows: (selected.items || []).map((item, index) => [index + 1, item.description, item.hsn || '—', item.quantity, item.unit || '—', cash(item.rate), item.gst_rate || '—', cash(item.amount)]),
+        totals: [['Basic Value', cash(selected.basic_value)], ['CGST', cash(selected.cgst)], ['SGST', cash(selected.sgst)],
+          ['IGST', cash(selected.igst)], ['Received', cash(selected.received)], ['Balance', cash(selected.balance)], ['Total', cash(selected.total)]],
+      });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to generate the invoice PDF.'); }
+  };
   const cancelInvoice = async () => {
     if (!selected) return; const reason = window.prompt('Reason for cancellation:'); if (!reason?.trim()) return;
     setBusy(true); try { await financeApi.cancelInvoice(selected.id, reason); await reload(); setSelected(await financeApi.invoice(selected.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to cancel invoice.'); } finally { setBusy(false); }
@@ -218,7 +235,7 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
         <div className="grid grid-cols-2 gap-y-1 border-y py-2"><span>Invoice No</span><b>{selected.invoice_no}</b><span>Date</span><b>{formatDate(selected.invoice_date)}</b><span>Customer</span><b>{selected.customer_name}</b><span>PO / DC</span><b>{selected.po_no||'-'} / {selected.dc_no||'-'}</b></div>
         <table className="w-full"><thead><tr className="bg-slate-50"><th className="p-1 text-left">Item</th><th className="p-1 text-right">Qty</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">Amount</th></tr></thead><tbody>{(selected.items||[]).map(i=><tr key={i.id} className="border-t"><td className="p-1">{i.description}</td><td className="p-1 text-right">{i.quantity} {i.unit||''}</td><td className="p-1 text-right">{cash(i.rate)}</td><td className="p-1 text-right">{cash(i.amount)}</td></tr>)}</tbody></table>
         <Total label="Basic Value" value={cash(selected.basic_value)}/><Total label="CGST / SGST / IGST" value={cash(selected.cgst)+' / '+cash(selected.sgst)+' / '+cash(selected.igst)}/><Total label="Received" value={cash(selected.received)}/><Total label="Balance" value={cash(selected.balance)} bold/><Total label="Total" value={cash(selected.total)} bold/>
-        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
+        <div className="flex flex-wrap gap-1.5 border-t pt-3"><Button size="sm" variant="secondary" onClick={()=>void downloadInvoice()}><Download size={13}/> Download PDF</Button><Button size="sm" variant="secondary" onClick={printInvoice}><Printer size={13}/> Print</Button><Button size="sm" onClick={()=>void recordReceipt()} disabled={Number(selected.balance)<=0||selected.cancelled}><CreditCard size={13}/> Receipt</Button><Button size="sm" variant="secondary" onClick={startEdit} disabled={Number(selected.received)!==0||selected.cancelled||selected.invoice_type==='Credit Note'}>Edit</Button>{selected.invoice_type==='Sales Invoice'&&!selected.cancelled&&(<><Button size="sm" variant="secondary" onClick={()=>void createCreditNote()}>Credit Note</Button><Button size="sm" variant="danger" onClick={()=>void cancelInvoice()}>Cancel</Button></>)}</div>
       </div>}</Card>
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Customers</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>

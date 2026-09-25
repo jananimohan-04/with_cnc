@@ -11,6 +11,15 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
+  const openAttachment = async (attachment: { path: string; name: string }) => {
+    const { data, error } = await supabase.storage.from('inventory-images').createSignedUrl(attachment.path, 60);
+    if (error || !data?.signedUrl) {
+      alert(`Unable to open ${attachment.name}: ${error?.message || 'File unavailable'}`);
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
   useEffect(() => {
     fetchRecords();
   }, []);
@@ -111,6 +120,18 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
                 <FormField label="Part Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
                 <FormField label="Quantity"><input className={inputClass} value={selectedRecord.quantity ?? ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedRecord.status || ''} disabled /></FormField>
+                {Array.isArray(selectedRecord.attachments) && selectedRecord.attachments.length > 0 && (
+                  <div className="col-span-2">
+                    <span className="mb-2 block text-xs font-semibold uppercase text-slate-500">Attachments</span>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedRecord.attachments.map((attachment: { path: string; name: string }, index: number) => (
+                        <button key={`${attachment.path}-${index}`} type="button" onClick={() => openAttachment(attachment)} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-brand-700 hover:bg-brand-50">
+                          <FileText className="h-4 w-4" />{attachment.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

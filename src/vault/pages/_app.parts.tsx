@@ -798,7 +798,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                 onValueChange={handleProjectSelect}
               >
                 <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Select a Project (e.g. PROJ-5397)..." />
+                  <SelectValue placeholder="Select a Project (e.g. 5397)..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   <SelectItem value="none">-- None (Enter Custom Part Manually) --</SelectItem>

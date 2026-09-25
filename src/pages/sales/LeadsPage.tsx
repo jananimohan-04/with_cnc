@@ -6,6 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { generateUniqueProjectNo } from '@/lib/projectNumber';
 
 export function LeadsPage() {
   const { profile, company } = useAuth();
@@ -110,8 +111,8 @@ export function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
-  const resetForm = () => ({
-    leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+  const resetForm = (leads = leadsData) => ({
+    leadNo: generateUniqueProjectNo(leads),
     customer: '', contacts: [{ person: '', phone: '', email: '' }], city: '', gst: '', enquiringFor: '', 
     partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', source: 'Direct', status: 'New', notes: ''
   });
@@ -168,7 +169,14 @@ export function LeadsPage() {
             existing.allEnquiries.push(d);
           }
         });
-        setLeadsData(Array.from(groupedMap.values()));
+        const leadsList = Array.from(groupedMap.values());
+        setLeadsData(leadsList);
+        setFormData(prev => {
+          if (!prev.leadNo || prev.leadNo.startsWith('PROJ-')) {
+            return { ...prev, leadNo: generateUniqueProjectNo(data) };
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -382,7 +390,7 @@ export function LeadsPage() {
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. PROJ-5397 or Custom Project Name" /></FormField>
+          <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Project Name" /></FormField>
           <div className="relative">
             <FormField label="Company Name" required>
               <input 

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { Plus, Trash2, Eye, UploadCloud , Edit2 } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
@@ -13,8 +13,28 @@ import { InwardModule } from './InwardModule';
 import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
+import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
+import { generateUniqueProjectNo } from '@/lib/projectNumber';
 
 export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
+
+async function uploadEnquiryProductFile(companyId: string, file: File) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
+  const path = `${companyId}/enquiries/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from('inventory-images').upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) throw new Error(`Unable to upload ${file.name}: ${error.message}`);
+  return path;
+}
+
+async function uploadInwardAttachment(companyId: string, inwardId: string, file: File) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
+  const path = `${companyId}/inwards/${inwardId}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from('inventory-images').upload(path, file, {
+    contentType: file.type || 'application/octet-stream', upsert: false,
+  });
+  if (error) throw new Error(`Unable to upload ${file.name}: ${error.message}`);
+  return { name: file.name, path, size: file.size, type: file.type || 'application/octet-stream' };
+}
 
 export interface KanbanCard {
   id: string;
@@ -186,6 +206,14 @@ export function SalesPipelinePage() {
     setLoading(false);
   };
 
+  const openProductFile = async (path: string) => {
+    const tab = window.open('', '_blank');
+    if (!tab) { alert('Allow pop-ups to open the product attachment.'); return; }
+    const { data, error } = await supabase.storage.from('inventory-images').createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { tab.close(); alert(error?.message || 'Unable to open the product attachment.'); return; }
+    tab.location.href = data.signedUrl;
+  };
+
   const renderRecordData = (title: string, raw: any, showItems: boolean = true) => {
     if (!raw) return null;
     return (
@@ -244,6 +272,7 @@ export function SalesPipelinePage() {
                         {item.partName || '-'} 
                         <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span>
                         {item.status && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.status === 'Inwarded' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{item.status}</span>}
+                        {Array.isArray(item.filePaths) && item.filePaths.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{item.filePaths.map((path: string) => <button key={path} type="button" className="inline-flex items-center gap-1 text-[10px] text-blue-700 hover:underline" onClick={e => { e.stopPropagation(); void openProductFile(path); }}><FileText size={11}/>{path.split('/').pop()}</button>)}</div>}
                       </td>
                       <td className="px-4 py-3">{item.quantity}</td>
                       <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
@@ -298,8 +327,43 @@ export function SalesPipelinePage() {
     );
   };
 
-  const resetEnquiryForm = () => ({
-    leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+  const pipelineDocumentInput = (kind: 'dc' | 'invoice') => {
+    const record = viewModalData?.[kind];
+    if (!record) return null;
+    const invoice = kind === 'invoice';
+    const items = Array.isArray(record.items) ? record.items : [];
+    return {
+      companyName: company?.company_name || 'ARGUS CNC',
+      title: invoice ? (record.invoice_type || 'Tax Invoice') : 'Delivery Challan',
+      documentNo: invoice ? (record.invoice_no || record.inv_no || '') : (record.delivery_no || record.dc_no || record.challan_no || ''),
+      date: invoice ? (record.invoice_date || record.date) : (record.delivery_date || record.date),
+      details: invoice
+        ? [['Bill To', record.customer_name || record.customer], ['Billing Address', record.billing_address], ['GSTIN', record.customer_gstin], ['PO No', record.po_no], ['Delivery Challan', record.dc_no], ['Payment Terms', record.payment_terms], ['Status', record.status]]
+        : [['Customer', record.customer_name || record.customer], ['Address', record.delivery_address], ['Sales Order', record.sales_order_no || record.order_no], ['Vehicle', record.vehicle_no], ['Transport', record.transport], ['Remarks', record.remarks]],
+      columns: invoice ? ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'] : ['#', 'Part / Description', 'Quantity', 'Unit'],
+      rows: items.length
+        ? items.map((item: any, index: number) => invoice
+          ? [index + 1, item.description || item.partName || item.part_name || '', item.hsn || '—', item.quantity ?? item.qty ?? '', item.unit || '', formatINR(Number(item.rate ?? item.unitPrice ?? 0)), formatINR(Number(item.amount ?? (Number(item.quantity ?? item.qty ?? 0) * Number(item.rate ?? item.unitPrice ?? 0))))]
+          : [index + 1, item.partName || item.part_name || item.description || record.part_name || '', item.quantity ?? item.qty ?? record.dispatch_qty ?? record.quantity ?? '', item.unit || ''])
+        : [[1, record.part_name || record.description || '—', record.quantity || record.dispatch_qty || '', record.unit || '']],
+      ...(invoice ? { totals: [['Basic Value', formatINR(Number(record.basic_value || record.subtotal || 0))], ['CGST', formatINR(Number(record.cgst || 0))], ['SGST', formatINR(Number(record.sgst || 0))], ['IGST', formatINR(Number(record.igst || 0))], ['Total', formatINR(Number(record.total || record.total_value || record.value || 0))]] as [string, string][] } : {}),
+    };
+  };
+  const downloadPipelineDocument = async (kind: 'dc' | 'invoice') => {
+    const input = pipelineDocumentInput(kind);
+    try { if (input) await downloadBrandedDocument(input); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Unable to generate the document PDF.'); }
+  };
+  const viewPipelineDocument = async (kind: 'dc' | 'invoice') => {
+    const input = pipelineDocumentInput(kind);
+    try { if (input) await viewBrandedDocument(input); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Unable to preview the document PDF.'); }
+  };
+
+  const [rawLeadsList, setRawLeadsList] = useState<any[]>([]);
+
+  const resetEnquiryForm = (leads = rawLeadsList) => ({
+    leadNo: generateUniqueProjectNo(leads),
     company: '', partName: '', partNumber: '', quantity: '', expectedDate: '', source: 'Direct',
     estimatedValue: '', receivedDate: new Date().toISOString().split('T')[0],
     contacts: [{ person: '', phone: '', email: '' }],
@@ -329,7 +393,7 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     try {
-    // Fetch all leads to build a lookup map for Project Names (PROJ-XXXX)
+    // Fetch all leads to build a lookup map for Project Names
     const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
     
@@ -337,12 +401,25 @@ export function SalesPipelinePage() {
     const compMap = new Map();
     
     if (allLeads) {
+      setRawLeadsList(allLeads);
       allLeads.forEach(l => {
         leadMap.set(l.id, l.lead_no || l.enquiry_no);
         const comp = l.customer;
         if (comp && !compMap.has(comp)) {
            compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email });
         }
+      });
+      setNewLeadForm((prev: any) => {
+        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-')) {
+          return { ...prev, leadNo: generateUniqueProjectNo(allLeads) };
+        }
+        return prev;
+      });
+      setEnquiryForm((prev: any) => {
+        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-')) {
+          return { ...prev, leadNo: generateUniqueProjectNo(allLeads) };
+        }
+        return prev;
       });
     }
     setKnownCompanies(Array.from(compMap.values()));
@@ -740,6 +817,7 @@ export function SalesPipelinePage() {
             partName: p.partName || p.part_name || '',
             partNumber: p.partNumber || p.part_number || '',
             quantity: (p.quantity || p.qty || '0').toString(),
+            filePaths: Array.isArray(p.filePaths) ? p.filePaths : [],
             unitPrice: '',
             discount: '0',
             unitDiscount: '0',
@@ -962,12 +1040,30 @@ export function SalesPipelinePage() {
     const total = q * p * (1 - d / 100) * (1 + g / 100);
     const cStr = getContactStrings(inwardForm);
 
+    const inwardId = crypto.randomUUID();
+    let attachments: Array<{ name: string; path: string; size: number; type: string }> = [];
+    try {
+      const files: File[] = inwardForm.files || [];
+      if (files.some(file => file.size > 50 * 1024 * 1024)) {
+        alert('Each attachment must be 50 MB or smaller.');
+        return;
+      }
+      if (files.length && !company?.id) {
+        alert('Select a company before uploading attachments.');
+        return;
+      }
+      attachments = await Promise.all(files.map(file => uploadInwardAttachment(company!.id, inwardId, file)));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to upload attachments.');
+      return;
+    }
+
     const { error } = await supabase.from('cnc_inwards').insert([{
-        id: crypto.randomUUID(), inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
+        id: inwardId, inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
         contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
         sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate || null,
         party_name: inwardForm.partyName, remarks: inwardForm.remarks, part_name: inwardForm.partName,
-        part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending'
+        part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending', attachments
       }]);
       
       if (!error) {
@@ -1173,11 +1269,21 @@ export function SalesPipelinePage() {
   };
 
   const [showNewLead, setShowNewLead] = useState(false);
-  const [newLeadForm, setNewLeadForm] = useState({
-    leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+  const [newLeadForm, setNewLeadForm] = useState<any>({
+    leadNo: generateUniqueProjectNo(rawLeadsList),
     company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
-    items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: [] as File[]
+    items: [{ productName: '', quantity: '', files: [] as File[] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
   });
+
+  const openNewLeadModal = () => {
+    const nextNo = generateUniqueProjectNo(rawLeadsList);
+    setNewLeadForm({
+      leadNo: nextNo,
+      company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
+      items: [{ productName: '', quantity: '', files: [] as File[] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
+    });
+    setShowNewLead(true);
+  };
 
   const [customerList, setCustomerList] = useState<any[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -1195,17 +1301,31 @@ export function SalesPipelinePage() {
       alert("Please enter a company name.");
       return;
     }
+    const enteredProducts = (newLeadForm.items || []).filter((item: any) => String(item.productName || item.partName || '').trim());
+    if (!enteredProducts.length) { alert('Please enter at least one product name.'); return; }
+    if (enteredProducts.some((item: any) => Number(item.quantity) < 0)) { alert('Product quantities cannot be negative.'); return; }
+    if (enteredProducts.some((item: any) => (item.files || []).length) && !company?.id) {
+      alert('Select a company before uploading product files.');
+      return;
+    }
     setLoading(true);
     try {
       const cStr = getContactStrings(newLeadForm);
-      
-      const itemsToSave = (newLeadForm.items && newLeadForm.items.length > 0 && newLeadForm.items[0].partName) 
-        ? newLeadForm.items 
-        : [{ partName: newLeadForm.partName || 'TBD', quantity: newLeadForm.quantity || '0' }];
+      const itemsToSave = await Promise.all(enteredProducts.map(async (item: any) => {
+        const uploadedPaths = company?.id
+          ? await Promise.all((item.files || []).map((file: File) => uploadEnquiryProductFile(company.id!, file)))
+          : [];
+        return {
+          productName: String(item.productName || item.partName).trim(),
+          partName: String(item.productName || item.partName).trim(),
+          quantity: item.quantity || '0',
+          filePaths: [...(item.filePaths || []), ...uploadedPaths],
+        };
+      }));
         
       const firstItem = itemsToSave[0];
-      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Parts (${itemsToSave.length})` : firstItem.partName;
-      const projNo = newLeadForm.leadNo?.trim() || `PROJ-${Math.floor(1000 + Math.random() * 9000)}`;
+      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Products (${itemsToSave.length})` : firstItem.productName;
+      const projNo = newLeadForm.leadNo?.trim() || generateUniqueProjectNo(rawLeadsList);
       const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
       
       const payload: any = {
@@ -1258,10 +1378,12 @@ export function SalesPipelinePage() {
         }
 
         setShowNewLead(false);
+        const updatedLeads = [...rawLeadsList, { lead_no: projNo, enquiry_no: projNo }];
+        setRawLeadsList(updatedLeads);
         setNewLeadForm({
-          leadNo: `PROJ-${Math.floor(1000 + Math.random() * 9000)}`,
+          leadNo: generateUniqueProjectNo(updatedLeads),
           company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', contacts: [{ person: '', phone: '', email: '' }],
-          items: [{ partName: '', quantity: '' }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', files: []
+          items: [{ productName: '', quantity: '', files: [] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
         });
         await fetchPipeline();
       } else {
@@ -1291,7 +1413,7 @@ export function SalesPipelinePage() {
             <input type="text" placeholder="Search by customer, part, document no..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 bg-slate-50" />
             <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           </div>
-          <button onClick={() => setShowNewLead(true)} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
+          <button onClick={openNewLeadModal} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
             New <svg className="w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </button>
@@ -1310,6 +1432,16 @@ export function SalesPipelinePage() {
           { title: 'Invoices', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Invoice' }
         ].map(stat => {
            const count = cards.filter(c => c.stage === stat.stage).length;
+           const stageColors: Record<string, { tile: string; icon: string }> = {
+             Enquiry: { tile: 'bg-blue-50 border-blue-300 hover:border-blue-500', icon: 'bg-blue-100 text-blue-700' },
+             Quotation: { tile: 'bg-violet-50 border-violet-300 hover:border-violet-500', icon: 'bg-violet-100 text-violet-700' },
+             'Sales Order': { tile: 'bg-emerald-50 border-emerald-300 hover:border-emerald-500', icon: 'bg-emerald-100 text-emerald-700' },
+             Inward: { tile: 'bg-amber-50 border-amber-300 hover:border-amber-500', icon: 'bg-amber-100 text-amber-700' },
+             'Finished Goods': { tile: 'bg-cyan-50 border-cyan-300 hover:border-cyan-500', icon: 'bg-cyan-100 text-cyan-700' },
+             DC: { tile: 'bg-rose-50 border-rose-300 hover:border-rose-500', icon: 'bg-rose-100 text-rose-700' },
+             Invoice: { tile: 'bg-indigo-50 border-indigo-300 hover:border-indigo-500', icon: 'bg-indigo-100 text-indigo-700' },
+           };
+           const stageColor = stageColors[stat.stage] ?? stageColors.Enquiry;
            return (
              <div key={stat.title} onClick={() => { 
                if (stat.stage === 'Enquiry') setActiveView('enquiry_list'); 
@@ -1319,12 +1451,12 @@ export function SalesPipelinePage() {
                else if (stat.stage === 'Finished Goods') setActiveView('fg_list'); 
                else if (stat.stage === 'DC') setActiveView('dc_list'); 
                else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
-             }} className={`bg-white rounded-xl p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-brand-300 cursor-pointer hover:border-brand-500 flex items-center justify-between hover:-translate-y-1 transition-transform`}>
+             }} className={`${stageColor.tile} rounded-xl p-4 shadow-sm border cursor-pointer flex items-center justify-between hover:-translate-y-1 transition-transform`}>
                <div>
                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
                  <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
                </div>
-               <div className={`w-10 h-10 rounded-full bg-${stat.color}-50 flex items-center justify-center text-${stat.color}-500`}>
+               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${stageColor.icon}`}>
                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
                </div>
              </div>
@@ -1411,13 +1543,13 @@ export function SalesPipelinePage() {
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
-            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' },
-            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700' },
-            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700' },
-            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700' },
-            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700' },
-            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700' },
-            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700' }
+            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-blue-100 border-blue-300 hover:bg-blue-100/80', code: 'bg-blue-200 text-blue-900', amount: 'text-blue-900' },
+            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700', card: 'bg-violet-100 border-violet-300 hover:bg-violet-100/80', code: 'bg-violet-200 text-violet-900', amount: 'text-violet-900' },
+            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700', card: 'bg-emerald-100 border-emerald-300 hover:bg-emerald-100/80', code: 'bg-emerald-200 text-emerald-900', amount: 'text-emerald-900' },
+            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700', card: 'bg-amber-100 border-amber-300 hover:bg-amber-100/80', code: 'bg-amber-200 text-amber-900', amount: 'text-amber-900' },
+            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700', card: 'bg-cyan-100 border-cyan-300 hover:bg-cyan-100/80', code: 'bg-cyan-200 text-cyan-900', amount: 'text-cyan-900' },
+            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700', card: 'bg-rose-100 border-rose-300 hover:bg-rose-100/80', code: 'bg-rose-200 text-rose-900', amount: 'text-rose-900' },
+            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-indigo-100 border-indigo-300 hover:bg-indigo-100/80', code: 'bg-indigo-200 text-indigo-900', amount: 'text-indigo-900' }
           ].map(stage => {
             const stageCards = cards.filter(c => c.stage === stage.id && (customerFilter === 'All Customers' || c.customer === customerFilter));
             return (
@@ -1436,7 +1568,7 @@ export function SalesPipelinePage() {
                 
                 <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
                   onClick={() => {
-                    if (stage.id === 'Enquiry') setShowNewLead(true);
+                    if (stage.id === 'Enquiry') openNewLeadModal();
                     else if (stage.id === 'Quotation') {
                       setQuoteForm({
                         quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
@@ -1486,10 +1618,10 @@ export function SalesPipelinePage() {
                       onDragStart={(e) => handleDragStart(e, card)}
                         onDragEnd={() => setDraggedCard(null)} 
                       onClick={() => openViewModal(card)}
-                      className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
+                      className={`${stage.card} rounded-xl p-3.5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group`}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <span className="text-[11px] font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{card.refNo}</span>
+                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         <span className="text-[10px] text-slate-500 font-medium">{card.date || 'No Date'}</span>
                       </div>
                       
@@ -1499,7 +1631,7 @@ export function SalesPipelinePage() {
                       <div className="flex justify-between items-end">
                         <div>
                           {card.value > 0 ? (
-                             <p className="text-sm font-bold text-slate-800">₹{Number(card.value).toLocaleString('en-IN')}</p>
+                             <p className={`text-sm font-bold ${stage.amount}`}>₹{Number(card.value).toLocaleString('en-IN')}</p>
                           ) : (
                              <p className="text-xs font-medium text-slate-600">{card.qty} pcs</p>
                           )}
@@ -1600,7 +1732,7 @@ export function SalesPipelinePage() {
             Quick Links
           </h3>
           <div className="grid grid-cols-2 gap-2 relative z-10">
-            <button onClick={() => setShowNewLead(true)} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Enquiry</button>
+            <button onClick={openNewLeadModal} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Enquiry</button>
             <button onClick={() => setActiveView('quotation_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Quotation</button>
             <button onClick={() => setActiveView('sales_order_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Sales Order</button>
             <button onClick={() => setActiveView('inward_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Inward</button>
@@ -1626,7 +1758,7 @@ export function SalesPipelinePage() {
               className={inputClass} 
               value={newLeadForm.leadNo} 
               onChange={e => setNewLeadForm({ ...newLeadForm, leadNo: e.target.value })} 
-              placeholder="e.g. PROJ-5397 or Custom Project Name" 
+              placeholder="e.g. 1840 or Custom Project Name" 
             />
           </FormField>
           <div className="relative">
@@ -1714,23 +1846,36 @@ export function SalesPipelinePage() {
           <FormField label="Address"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
           <div className="col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products / Parts Required *</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
               <div className="space-y-2">
-                {(newLeadForm.items || [{ partName: '', quantity: '' }]).map((item, idx) => (
-                  <div key={idx} className="flex gap-4 items-start">
-                    <div className="flex-1">
-                      <input className={inputClass} placeholder="Part Name" value={item.partName} onChange={e => {
+                {(newLeadForm.items || [{ productName: '', quantity: '', files: [] }]).map((item: any, idx: number) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div>
+                      <input className={inputClass} placeholder="Product Name" value={item.productName ?? item.partName ?? ''} onChange={e => {
                         const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx] = { ...newItems[idx], partName: e.target.value };
-                        setNewLeadForm({...newLeadForm, items: newItems, partName: newItems[0].partName});
+                        newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
+                        setNewLeadForm({...newLeadForm, items: newItems, partName: newItems[0].productName});
                       }} />
                     </div>
-                    <div className="w-32">
+                    <div>
                       <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
                         const newItems = [...(newLeadForm.items || [])];
                         newItems[idx] = { ...newItems[idx], quantity: e.target.value };
                         setNewLeadForm({...newLeadForm, items: newItems, quantity: newItems[0].quantity});
                       }} />
+                    </div>
+                    <div>
+                      <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                        <UploadCloud size={15}/>{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
+                        <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+                          const selectedFiles = Array.from(e.currentTarget.files || []);
+                          const newItems = [...(newLeadForm.items || [])];
+                          newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
+                          setNewLeadForm({...newLeadForm, items: newItems});
+                          e.currentTarget.value = '';
+                        }} />
+                      </label>
+                      {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...newLeadForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setNewLeadForm({...newLeadForm, items: newItems}); }}>Remove</button></div>)}</div>}
                     </div>
                     {idx > 0 && (
                       <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
@@ -1743,10 +1888,10 @@ export function SalesPipelinePage() {
                   </div>
                 ))}
                 <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
-                  setNewLeadForm({...newLeadForm, items: [...(newLeadForm.items || []), { partName: '', quantity: '' }]});
+                  setNewLeadForm({...newLeadForm, items: [...(newLeadForm.items || []), { productName: '', quantity: '', files: [] }]});
                 }}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  Add Another Part
+                  Add Another Product
                 </button>
               </div>
             </div>
@@ -1755,45 +1900,6 @@ export function SalesPipelinePage() {
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
             </select>
           </FormField>
-          <div className="col-span-2 mt-2">
-            <FormField label="Attach Drawings / PDF / Images">
-              <div>
-                <div 
-                  className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer" 
-                  onClick={() => document.getElementById('lead-upload')?.click()}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => {
-                    e.preventDefault();
-                    if (e.dataTransfer.files) {
-                      setNewLeadForm({...newLeadForm, files: [...newLeadForm.files, ...Array.from(e.dataTransfer.files)]});
-                    }
-                  }}
-                >
-                  <UploadCloud size={24} className="text-slate-400 mb-2" />
-                  <span className="text-sm font-medium text-slate-700">Click to upload or drag and drop</span>
-                  <span className="text-xs text-slate-500 mt-1">All formats supported (CAD, 3D, PDF, Images)</span>
-                  <input type="file" id="lead-upload" className="hidden" multiple accept="*" onChange={(e) => {
-                    if (e.target.files) {
-                      setNewLeadForm({...newLeadForm, files: [...newLeadForm.files, ...Array.from(e.target.files)]});
-                    }
-                  }} />
-                </div>
-                {newLeadForm.files.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {newLeadForm.files.map((f: File, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-2 border border-slate-200 rounded text-sm bg-white">
-                        <span className="truncate">{f.name}</span>
-                        <button className="text-red-500 hover:text-red-700 px-2" onClick={(e) => {
-                          e.stopPropagation();
-                          setNewLeadForm({...newLeadForm, files: newLeadForm.files.filter((_, idx) => idx !== i)});
-                        }}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </FormField>
-          </div>
         </div>
       </Modal>
 
@@ -2007,7 +2113,7 @@ export function SalesPipelinePage() {
             <FormField label="Reference No."><input className={inputClass} value={inwardForm.referenceNo} onChange={e=>setInwardForm({...inwardForm, referenceNo: e.target.value})} placeholder="e.g. DC/Invoice No" /></FormField>
             <FormField label="Inward Date" required><input type="date" className={inputClass} value={inwardForm.inwardDate} onChange={e=>setInwardForm({...inwardForm, inwardDate: e.target.value})} /></FormField>
             <FormField label="Party / Customer"><input className={inputClass} value={inwardForm.partyName || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, partyName: e.target.value})} /></FormField>
-            <FormField label="Upload Ref Image"><input type="file" className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" /></FormField>
+            <FormField label="Upload Files (images, PDFs, documents)"><input type="file" multiple accept="*/*" onChange={e=>setInwardForm({...inwardForm, files: Array.from(e.target.files || [])})} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />{inwardForm.files?.length > 0 && <span className="mt-1 block text-xs text-slate-500">{inwardForm.files.map((file: File) => file.name).join(', ')}</span>}</FormField>
             <div className="col-span-3">
               <FormField label="Remarks"><input className={inputClass} value={inwardForm.remarks} onChange={e=>setInwardForm({...inwardForm, remarks: e.target.value})} /></FormField>
             </div>
@@ -2104,7 +2210,7 @@ export function SalesPipelinePage() {
           <FormField label="GST (%)"><input type="number" className={inputClass} value={soForm.gst || ''} onChange={e=>setSoForm({...soForm, gst: e.target.value})} /></FormField>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<><Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`Pipeline History: ${viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
              {renderRecordData('Invoice', viewModalData?.invoice)}
