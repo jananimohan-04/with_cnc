@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -388,7 +389,44 @@ export function SalesPipelinePage() {
   });
 
   const [knownCompanies, setKnownCompanies] = useState<any[]>([]);
-  const [companySearchFocused, setCompanySearchFocused] = useState(false);
+  const [customerList, setCustomerList] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchCustomers() {
+      const { data } = await supabase.from('cnc_customers').select('*');
+      if (data) setCustomerList(data);
+    }
+    fetchCustomers();
+  }, []);
+
+  const allKnownCompanies = useMemo(() => {
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string }>();
+    (customerList || []).forEach((c: any) => {
+      const name = c.name?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          company: name,
+          contact_person: c.contact || '',
+          phone: c.phone || '',
+          email: c.email || '',
+          city: c.city || ''
+        });
+      }
+    });
+    (knownCompanies || []).forEach((c: any) => {
+      const name = c.company?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          company: name,
+          contact_person: (c.contact_person || '').split(' | ')[0] || '',
+          phone: (c.phone || '').split(' | ')[0] || '',
+          email: (c.email || '').split(' | ')[0] || '',
+          city: c.city || ''
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
+  }, [customerList, knownCompanies]);
 
   const fetchPipeline = async () => {
     setLoading(true);
@@ -573,7 +611,7 @@ export function SalesPipelinePage() {
   const handleCompanyChange = (val: string) => {
     setEnquiryForm((prev: any) => {
       const form = { ...prev, company: val };
-      const matched = knownCompanies.find(c => c.company === val);
+      const matched = allKnownCompanies.find(c => c.company.toLowerCase() === val.toLowerCase());
       if (matched) {
         form.contacts = parseContacts(matched);
       }
@@ -1285,16 +1323,7 @@ export function SalesPipelinePage() {
     setShowNewLead(true);
   };
 
-  const [customerList, setCustomerList] = useState<any[]>([]);
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
-  useEffect(() => {
-    async function fetchCustomers() {
-      const { data } = await supabase.from('cnc_customers').select('*');
-      if (data) setCustomerList(data);
-    }
-    fetchCustomers();
-  }, []);
 
   const saveNewLead = async () => {
     if (!newLeadForm.company) {
@@ -1761,75 +1790,25 @@ export function SalesPipelinePage() {
               placeholder="e.g. 1840 or Custom Unique Number" 
             />
           </FormField>
-          <div className="relative">
-            <FormField label="Company Name" required>
-              <input 
-                className={inputClass} 
-                value={newLeadForm.company} 
-                onChange={e => {
-                  setNewLeadForm({...newLeadForm, company: e.target.value});
-                  setShowCustomerDropdown(true);
-                }} 
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                placeholder="e.g. Acme Corp"
-                autoComplete="off"
-              />
-            </FormField>
-            {(() => {
-              const compMap = new Map();
-              const combined: any[] = [];
-              customerList.forEach(c => {
-                const k = c.name?.toLowerCase();
-                if (k && !compMap.has(k)) {
-                  compMap.set(k, true);
-                  combined.push({ id: c.id, name: c.name, contact: c.contact, phone: c.phone, email: c.email, city: c.city });
-                }
-              });
-              // Use knownCompanies which contains all pipeline leads (including lost/completed)
-                knownCompanies.forEach(c => {
-                  const k = c.company?.toLowerCase();
-                  if (k && !compMap.has(k)) {
-                    compMap.set(k, true);
-                    const p = (c.contact_person || '').split(' | ')[0] || '';
-                    const ph = (c.phone || '').split(' | ')[0] || '';
-                    const em = (c.email || '').split(' | ')[0] || '';
-                    combined.push({ id: k, name: c.company, contact: p, phone: ph, email: em, city: '' });
-                  }
-                });
-              const matches = newLeadForm.company ? combined.filter(c => c.name.toLowerCase().includes(newLeadForm.company.toLowerCase())) : [];
-              
-              if (!showCustomerDropdown || !newLeadForm.company) return null;
-              
-              return (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
-                  {matches.length > 0 ? (
-                    matches.map(c => (
-                      <div 
-                        key={c.id} 
-                        className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
-                        onMouseDown={(e) => {
-                          e.preventDefault(); 
-                          setNewLeadForm({
-                            ...newLeadForm,
-                            company: c.name,
-                            contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
-                            city: c.city || ''
-                          });
-                          setShowCustomerDropdown(false);
-                        }}
-                      >
-                        <div className="font-semibold text-sm text-slate-800">{c.name}</div>
-                        <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
+          <CustomerAutocomplete
+            label="Company Name"
+            required
+            value={newLeadForm.company}
+            onChange={val => setNewLeadForm(prev => ({ ...prev, company: val }))}
+            onSelectCustomer={c => {
+              setNewLeadForm(prev => ({
+                ...prev,
+                company: c.company,
+                contacts: (c.contact_person || c.phone || c.email)
+                  ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
+                  : prev.contacts,
+                city: c.city || prev.city
+              }));
+            }}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="e.g. Acme Corp"
+          />
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
@@ -1907,37 +1886,16 @@ export function SalesPipelinePage() {
       <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Unique Number" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
-          <div className="relative">
-            <FormField label="Company Name" required>
-              <input 
-                className={inputClass} 
-                value={enquiryForm.company} 
-                onChange={e => handleCompanyChange(e.target.value)}
-                onFocus={() => setCompanySearchFocused(true)}
-                onBlur={() => setTimeout(() => setCompanySearchFocused(false), 200)}
-                placeholder="Type or select company..." 
-              />
-              {companySearchFocused && knownCompanies.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 top-[100%] mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                  {knownCompanies.filter(c => c.company.toLowerCase().includes(enquiryForm.company.toLowerCase())).map((c, i) => (
-                    <div 
-                      key={i} 
-                      className="px-3 py-2 text-sm text-slate-700 hover:bg-brand-50 cursor-pointer"
-                      onClick={() => {
-                        handleCompanyChange(c.company);
-                        setCompanySearchFocused(false);
-                      }}
-                    >
-                      {c.company}
-                    </div>
-                  ))}
-                  {knownCompanies.filter(c => c.company.toLowerCase().includes(enquiryForm.company.toLowerCase())).length === 0 && (
-                     <div className="px-3 py-2 text-sm text-slate-500 italic">Press enter to add new</div>
-                  )}
-                </div>
-              )}
-            </FormField>
-          </div>
+          <CustomerAutocomplete
+            label="Company Name"
+            required
+            value={enquiryForm.company}
+            onChange={val => handleCompanyChange(val)}
+            onSelectCustomer={c => handleCompanyChange(c.company)}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select company..."
+          />
           
           <div className="col-span-2 mt-2 pt-2">
              <ContactsList form={enquiryForm} setForm={setEnquiryForm} />
@@ -2009,7 +1967,24 @@ export function SalesPipelinePage() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             <FormField label="Quotation No." required><input className={inputClass} value={quoteForm.quoteNo} disabled /></FormField>
-            <FormField label="Customer" required><input className={inputClass} value={quoteForm.customer || ''} disabled={!!quotationModalTarget?.raw?.id} onChange={e=>setQuoteForm({...quoteForm, customer: e.target.value})} /></FormField>
+            <CustomerAutocomplete
+              label="Customer"
+              required
+              value={quoteForm.customer || ''}
+              onChange={val => setQuoteForm((prev: any) => ({ ...prev, customer: val }))}
+              onSelectCustomer={c => {
+                setQuoteForm((prev: any) => ({
+                  ...prev,
+                  customer: c.company,
+                  contacts: (c.contact_person || c.phone || c.email)
+                    ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
+                    : prev.contacts
+                }));
+              }}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select customer..."
+            />
             <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
             <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
             <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
@@ -2112,7 +2087,23 @@ export function SalesPipelinePage() {
             <FormField label="Sales Order Reference"><input className={inputClass} value={inwardForm.salesOrderRef || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, salesOrderRef: e.target.value})} /></FormField>
             <FormField label="Reference No."><input className={inputClass} value={inwardForm.referenceNo} onChange={e=>setInwardForm({...inwardForm, referenceNo: e.target.value})} placeholder="e.g. DC/Invoice No" /></FormField>
             <FormField label="Inward Date" required><input type="date" className={inputClass} value={inwardForm.inwardDate} onChange={e=>setInwardForm({...inwardForm, inwardDate: e.target.value})} /></FormField>
-            <FormField label="Party / Customer"><input className={inputClass} value={inwardForm.partyName || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, partyName: e.target.value})} /></FormField>
+            <CustomerAutocomplete
+              label="Party / Customer"
+              value={inwardForm.partyName || ''}
+              onChange={val => setInwardForm((prev: any) => ({ ...prev, partyName: val }))}
+              onSelectCustomer={c => {
+                setInwardForm((prev: any) => ({
+                  ...prev,
+                  partyName: c.company,
+                  contacts: (c.contact_person || c.phone || c.email)
+                    ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
+                    : prev.contacts
+                }));
+              }}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select party / customer..."
+            />
             <FormField label="Upload Files (images, PDFs, documents)"><input type="file" multiple accept="*/*" onChange={e=>setInwardForm({...inwardForm, files: Array.from(e.target.files || [])})} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />{inwardForm.files?.length > 0 && <span className="mt-1 block text-xs text-slate-500">{inwardForm.files.map((file: File) => file.name).join(', ')}</span>}</FormField>
             <div className="col-span-3">
               <FormField label="Remarks"><input className={inputClass} value={inwardForm.remarks} onChange={e=>setInwardForm({...inwardForm, remarks: e.target.value})} /></FormField>
@@ -2141,7 +2132,14 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
-          <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} onChange={e=>setFgForm({...fgForm, customer: e.target.value})} /></FormField>
+          <CustomerAutocomplete
+            label="Project / Customer"
+            value={fgForm.customer || ''}
+            onChange={val => setFgForm((prev: any) => ({ ...prev, customer: val }))}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select customer..."
+          />
           <FormField label="Product Name"><input className={inputClass} value={fgForm.partName || ''} onChange={e=>setFgForm({...fgForm, partName: e.target.value})} /></FormField>
           {fgModalTarget?.raw?.id ? (
             <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
@@ -2157,7 +2155,15 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
-          <FormField label="Party Name" required><input className={inputClass} value={dcForm.partyName || ''} onChange={e=>setDcForm({...dcForm, partyName: e.target.value})} /></FormField>
+          <CustomerAutocomplete
+            label="Party Name"
+            required
+            value={dcForm.partyName || ''}
+            onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select party..."
+          />
           <FormField label="PO / WO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
           <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
           <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
@@ -2177,7 +2183,15 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
           <FormField label="Invoice No (optional)" ><input className={inputClass} value={invoiceForm.invoiceNo || ''} onChange={e=>setInvoiceForm({...invoiceForm, invoiceNo: e.target.value})} placeholder="Auto-number if blank" /></FormField>
-          <FormField label="Party Name" required><input className={inputClass} value={invoiceForm.partyName || ''} onChange={e=>setInvoiceForm({...invoiceForm, partyName: e.target.value})} /></FormField>
+          <CustomerAutocomplete
+            label="Party Name"
+            required
+            value={invoiceForm.partyName || ''}
+            onChange={val => setInvoiceForm((prev: any) => ({ ...prev, partyName: val }))}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select party..."
+          />
           <FormField label="DC Number"><input className={inputClass} value={invoiceForm.dcNumber || ''} onChange={e=>setInvoiceForm({...invoiceForm, dcNumber: e.target.value})} /></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={invoiceForm.date || ''} onChange={e=>setInvoiceForm({...invoiceForm, date: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
@@ -2200,7 +2214,15 @@ export function SalesPipelinePage() {
       <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="lg" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Order No" required><input className={inputClass} value={soForm.orderNo || ''} onChange={e=>setSoForm({...soForm, orderNo: e.target.value})} /></FormField>
-          <FormField label="Customer" required><input className={inputClass} value={soForm.customer || ''} onChange={e=>setSoForm({...soForm, customer: e.target.value})} /></FormField>
+          <CustomerAutocomplete
+            label="Customer"
+            required
+            value={soForm.customer || ''}
+            onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="Type or select customer..."
+          />
           <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
           <FormField label="Product Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>

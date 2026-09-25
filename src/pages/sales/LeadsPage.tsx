@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Eye, Edit, ArrowRightCircle, XCircle, FileText, RefreshCcw } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
@@ -7,6 +7,7 @@ import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 
 export function LeadsPage() {
   const { profile, company } = useAuth();
@@ -129,6 +130,35 @@ export function LeadsPage() {
     const { data } = await supabase.from('cnc_customers').select('*');
     if (data) setCustomerList(data);
   }
+
+  const allKnownCompanies = useMemo(() => {
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string }>();
+    (customerList || []).forEach((c: any) => {
+      const name = c.name?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          company: name,
+          contact_person: c.contact || '',
+          phone: c.phone || '',
+          email: c.email || '',
+          city: c.city || ''
+        });
+      }
+    });
+    (leadsData || []).forEach((l: any) => {
+      const name = (l.company || l.customer)?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          company: name,
+          contact_person: l.contactPerson || l.contact_person || '',
+          phone: l.phone || '',
+          email: l.email || '',
+          city: l.city || ''
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
+  }, [customerList, leadsData]);
 
   async function fetchLeads() {
     try {
@@ -391,70 +421,25 @@ export function LeadsPage() {
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Unique Number" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
-          <div className="relative">
-            <FormField label="Company Name" required>
-              <input 
-                className={inputClass} 
-                value={formData.customer} 
-                onChange={e => {
-                  setFormData({...formData, customer: e.target.value});
-                  setShowCustomerDropdown(true);
-                }} 
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                autoComplete="off"
-              />
-            </FormField>
-            {(() => {
-              const compMap = new Map();
-              const combined: any[] = [];
-              customerList.forEach(c => {
-                const k = c.name?.toLowerCase();
-                if (k && !compMap.has(k)) {
-                  compMap.set(k, true);
-                  combined.push({ id: c.id, name: c.name, contact: c.contact, phone: c.phone, email: c.email, city: c.city });
-                }
-              });
-              leadsData.forEach(l => {
-                const k = l.company?.toLowerCase();
-                if (k && !compMap.has(k)) {
-                  compMap.set(k, true);
-                  combined.push({ id: l.id, name: l.company, contact: l.contactPerson, phone: l.phone, email: l.email, city: l.city });
-                }
-              });
-              const matches = formData.customer ? combined.filter(c => c.name.toLowerCase().includes(formData.customer.toLowerCase())) : [];
-              
-              if (!showCustomerDropdown || !formData.customer) return null;
-              
-              return (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
-                  {matches.length > 0 ? (
-                    matches.map(c => (
-                      <div 
-                        key={c.id} 
-                        className="px-4 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
-                        onMouseDown={(e) => {
-                          e.preventDefault(); 
-                          setFormData({
-                            ...formData,
-                            customer: c.name,
-                            contacts: [{ person: c.contact || '', phone: c.phone || '', email: c.email || '' }],
-                            city: c.city || ''
-                          });
-                          setShowCustomerDropdown(false);
-                        }}
-                      >
-                        <div className="font-semibold text-sm text-slate-800">{c.name}</div>
-                        <div className="text-xs text-slate-500">{c.city ? `${c.city} • ` : ''}{c.contact || 'No contact info'}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-3 text-sm text-slate-500 italic">No matching companies</div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
+          <CustomerAutocomplete
+            label="Company Name"
+            required
+            value={formData.customer}
+            onChange={val => setFormData(prev => ({ ...prev, customer: val }))}
+            onSelectCustomer={c => {
+              setFormData(prev => ({
+                ...prev,
+                customer: c.company,
+                contacts: (c.contact_person || c.phone || c.email)
+                  ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
+                  : prev.contacts,
+                city: c.city || prev.city
+              }));
+            }}
+            companies={allKnownCompanies}
+            inputClass={inputClass}
+            placeholder="e.g. Acme Corp"
+          />
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
@@ -485,7 +470,21 @@ export function LeadsPage() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
               <FormField label="Quotation No." required><input className={inputClass} value={quoteForm.quoteNo} disabled /></FormField>
-              <FormField label="Customer" required><input className={inputClass} value={quoteForm.customer} disabled /></FormField>
+              <CustomerAutocomplete
+                label="Customer"
+                required
+                value={quoteForm.customer || ''}
+                onChange={val => setQuoteForm((prev: any) => ({ ...prev, customer: val }))}
+                onSelectCustomer={c => {
+                  setQuoteForm((prev: any) => ({
+                    ...prev,
+                    customer: c.company
+                  }));
+                }}
+                companies={allKnownCompanies}
+                inputClass={inputClass}
+                placeholder="Type or select customer..."
+              />
               <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
               <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
               <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
