@@ -38,6 +38,50 @@ async function uploadInwardAttachment(companyId: string, inwardId: string, file:
   return { name: file.name, path, size: file.size, type: file.type || 'application/octet-stream' };
 }
 
+export function formatLeadProductDisplay(raw: any): string {
+  if (!raw) return 'N/A';
+  
+  // 1. Check for items array (Quotation, Sales Order, etc.)
+  let items: any[] = [];
+  if (Array.isArray(raw.items) && raw.items.length > 0) {
+    items = raw.items;
+  } else if (raw.description) {
+    try {
+      const parsed = typeof raw.description === 'string' ? JSON.parse(raw.description) : raw.description;
+      if (Array.isArray(parsed) && parsed.length > 0) items = parsed;
+    } catch {}
+  }
+  
+  if (items.length > 0) {
+    const names = items.map((i: any) => String(i.partName || i.productName || i.part_name || i.description || '').trim()).filter(Boolean);
+    if (names.length === 1) return names[0];
+    if (names.length > 1) {
+      return `${names.join(', ')} (${names.length} Products)`;
+    }
+  }
+
+  // 2. Check for enquiring_for / enquiringFor (Enquiry / Lead)
+  let enquiringItems: any[] = [];
+  try {
+    const ef = raw.enquiring_for ?? raw.enquiringFor;
+    const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+    if (Array.isArray(parsed) && parsed.length > 0) enquiringItems = parsed;
+  } catch {}
+  
+  if (enquiringItems.length > 0) {
+    const names = enquiringItems.map((i: any) => String(i.productName || i.product_name || i.partName || i.part_name || '').trim()).filter(Boolean);
+    if (names.length === 1) return names[0];
+    if (names.length > 1) {
+      return `${names.join(', ')} (${names.length} Products)`;
+    }
+  }
+  
+  // 3. Fallback to part_name or partName string
+  const pName = String(raw.part_name || raw.partName || raw.part || raw.product_name || '').trim();
+  if (pName && !pName.startsWith('Multiple Products')) return pName;
+  return pName || 'N/A';
+}
+
 function enquiryProductOptions(enquiries: any[], leadNo?: string) {
   return (enquiries || []).filter((enquiry: any) => !leadNo || enquiry.lead_no === leadNo || enquiry.enquiry_no === leadNo)
     .flatMap((enquiry: any) => {
@@ -248,8 +292,12 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {Object.entries(raw).map(([key, value]) => {
             if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
+            if (title === 'Enquiry' && (key === 'status' || key === 'estimated_value' || key === 'received_date' || key === 'pipeline_stage')) return null;
+            if (title === 'Quotation' && (key === 'valid_till' || key === 'valid_until' || key === 'status' || key === 'created_at' || key === 'part_number' || key === 'part_no')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             if (key === 'lead_no') formattedKey = 'Unique Number';
+            if (key === 'part_name') formattedKey = 'Product Name';
+            const displayVal = key === 'part_name' ? formatLeadProductDisplay(raw) : value;
             return (
               <div key={key}>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
@@ -257,18 +305,18 @@ export function SalesPipelinePage() {
                    <input 
                      type="text" 
                      className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                     defaultValue={String(value)}
+                     defaultValue={String(displayVal)}
                      onBlur={(e) => {
-                       if (e.target.value !== String(value)) {
+                       if (e.target.value !== String(displayVal)) {
                          handleInlineEdit(title, raw.id, key, e.target.value);
                        }
                      }}
                    />
                 ) : (
                    <span className="text-sm text-slate-800 font-medium break-words">
-                     {['value', 'total_value'].includes(key) && Number.isFinite(Number(value))
-                       ? Number(value).toFixed(2)
-                       : String(value)}
+                     {['value', 'total_value'].includes(key) && Number.isFinite(Number(displayVal))
+                       ? Number(displayVal).toFixed(2)
+                       : String(displayVal)}
                    </span>
                 )}
               </div>
@@ -425,31 +473,33 @@ export function SalesPipelinePage() {
 
   const allKnownCompanies = useMemo(() => {
     const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; gst?: string }>();
-    (customerList || []).forEach((c: any) => {
-      const name = c.name?.trim();
-      if (name && !map.has(name.toLowerCase())) {
-        map.set(name.toLowerCase(), {
-          company: name,
-          contact_person: c.contact || '',
-          phone: c.phone || '',
-          email: c.email || '',
-          city: c.city || '',
-          gst: c.gst || ''
-        });
-      }
-    });
     (knownCompanies || []).forEach((c: any) => {
       const name = c.company?.trim();
-      if (name && !map.has(name.toLowerCase())) {
-        map.set(name.toLowerCase(), {
-          company: name,
-          contact_person: (c.contact_person || '').split(' | ')[0] || '',
-          phone: (c.phone || '').split(' | ')[0] || '',
-          email: (c.email || '').split(' | ')[0] || '',
-          city: c.city || '',
-          gst: c.gst || ''
-        });
-      }
+      if (!name) return;
+      const key = name.toLowerCase();
+      const existing = map.get(key);
+      map.set(key, {
+        company: name,
+        contact_person: c.contact_person || existing?.contact_person || '',
+        phone: c.phone || existing?.phone || '',
+        email: c.email || existing?.email || '',
+        city: c.city || existing?.city || '',
+        gst: c.gst || existing?.gst || ''
+      });
+    });
+    (customerList || []).forEach((c: any) => {
+      const name = c.name?.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      const existing = map.get(key);
+      map.set(key, {
+        company: name,
+        contact_person: existing?.contact_person || c.contact || '',
+        phone: existing?.phone || c.phone || '',
+        email: existing?.email || c.email || '',
+        city: existing?.city || c.city || '',
+        gst: existing?.gst || c.gst || c.gstin || c.gst_number || ''
+      });
     });
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, knownCompanies]);
@@ -468,9 +518,17 @@ export function SalesPipelinePage() {
       setRawLeadsList(allLeads);
       allLeads.forEach(l => {
         leadMap.set(l.id, l.lead_no || l.enquiry_no);
-        const comp = l.customer;
-        if (comp && !compMap.has(comp)) {
-           compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email, gst: l.gst || '', city: l.city || '' });
+        const comp = l.customer?.trim();
+        if (comp) {
+           const existing = compMap.get(comp);
+           compMap.set(comp, {
+             company: comp,
+             contact_person: existing?.contact_person || l.contact_person || '',
+             phone: existing?.phone || l.phone || '',
+             email: existing?.email || l.email || '',
+             gst: existing?.gst || l.gst || '',
+             city: existing?.city || l.city || ''
+           });
         }
       });
       setNewLeadForm((prev: any) => {
@@ -506,7 +564,7 @@ export function SalesPipelinePage() {
     const { data: allOrders, error: ordersErr } = await supabase.from('cnc_sales_orders').select('*');
     if (ordersErr) console.error("Error fetching sales orders:", ordersErr);
     const orderMap = new Map();
-    if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, quoteMap.get(o.quotation_id) || o.lead_no || o.order_no));
+    if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, o.lead_no || quoteMap.get(o.quotation_id) || o.order_no));
     const orders = allOrders?.filter(o => ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status));
 
     const { data: inwards, error: inwardErr } = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
@@ -518,19 +576,19 @@ export function SalesPipelinePage() {
 
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
-      refNo: leadMap.get(l.id), customer: l.customer, part: l.part_name,
+      refNo: leadMap.get(l.id), customer: l.customer, part: formatLeadProductDisplay(l),
       qty: l.quantity, value: l.estimated_value, date: l.expected_date, status: l.status, raw: l
     }));
 
     if (quotes) quotes.forEach(q => newCards.push({
       id: `quote_${q.id}`, stage: 'Quotation', type: 'quotation',
-      refNo: quoteMap.get(q.id) || q.enquiry_no || q.quote_no, customer: q.customer || q.customer_name, part: q.part_name,
+      refNo: quoteMap.get(q.id) || q.enquiry_no || q.quote_no, customer: q.customer || q.customer_name, part: formatLeadProductDisplay(q),
       qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.date || q.quote_date, status: q.status, raw: q
     }));
 
     if (orders) orders.forEach(o => newCards.push({
       id: `order_${o.id}`, stage: 'Sales Order', type: 'order',
-      refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: o.part_name || (o.items?.[0]?.partName),
+      refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: formatLeadProductDisplay(o),
       qty: o.quantity || (o.items?.[0]?.quantity), value: Number(o.total_value ?? o.value) || 0, date: o.delivery_date, status: o.status, raw: o
     }));
 
@@ -1019,13 +1077,21 @@ export function SalesPipelinePage() {
       
       const totalVal = card.value || 0;
 
+      const nowStamp = new Date();
+      const monNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const stampSuffix = `${String(nowStamp.getDate()).padStart(2, '0')}${monNames[nowStamp.getMonth()]}${String(nowStamp.getFullYear()).slice(-2)}-${String(nowStamp.getHours() % 12 || 12).padStart(2, '0')}${String(nowStamp.getMinutes()).padStart(2, '0')}${nowStamp.getHours() >= 12 ? 'PM' : 'AM'}`;
+      const baseUnique = (card.refNo || '').trim();
+      const stampedLeadNo = baseUnique
+        ? (/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/.test(baseUnique) ? baseUnique : `${baseUnique}-${stampSuffix}`)
+        : stampSuffix;
+
       const { error } = await supabase.from('cnc_sales_orders').insert([{
         id: crypto.randomUUID(),
         order_no: oNo, customer: card.customer, customer_id: card.raw.customer_id || null, quote_no: card.raw.quote_no || '',
         contact_person: card.raw.contact_person, phone: card.raw.phone, email: card.raw.email,
         billing_address: '', delivery_address: '',
         shipping_contact: '', shipping_phone: '',
-        lead_no: card.refNo || '', order_date: new Date().toISOString().split('T')[0],
+        lead_no: stampedLeadNo, order_date: new Date().toISOString().split('T')[0],
         customer_po_no: '', customer_po_date: null,
         items: finalItems,
 
@@ -1142,7 +1208,8 @@ export function SalesPipelinePage() {
     }, 0);
     
     const firstItem = items[0];
-    const partNameStr = items.length > 1 ? `Multiple Products (${items.length})` : (firstItem.partName || 'TBD');
+    const itemNamesList = items.map((i: any) => String(i.partName || i.productName || i.description || '').trim()).filter(Boolean).join(', ');
+    const partNameStr = items.length > 1 ? `${itemNamesList} (${items.length} Products)` : (firstItem.partName || 'TBD');
 
     const quotePayload: any = {
       id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: partNameStr,
@@ -1453,7 +1520,8 @@ export function SalesPipelinePage() {
       }));
         
       const firstItem = itemsToSave[0];
-      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Products (${itemsToSave.length})` : firstItem.productName;
+      const productNamesList = itemsToSave.map((it: any) => it.productName).join(', ');
+      const multiplePartsString = itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName;
       const projNo = newLeadForm.leadNo?.trim() || generateUniqueProjectNo(rawLeadsList);
       const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
       
@@ -1905,7 +1973,18 @@ export function SalesPipelinePage() {
             label="Company Name"
             required
             value={newLeadForm.company}
-            onChange={val => setNewLeadForm(prev => ({ ...prev, company: val }))}
+            onChange={val => {
+              const matched = allKnownCompanies.find(c => c.company.toLowerCase() === val.trim().toLowerCase());
+              setNewLeadForm(prev => ({
+                ...prev,
+                company: val,
+                contacts: matched && (matched.contact_person || matched.phone || matched.email)
+                  ? [{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]
+                  : prev.contacts,
+                city: matched?.city || prev.city,
+                gst: matched?.gst || prev.gst
+              }));
+            }}
             onSelectCustomer={c => {
               setNewLeadForm(prev => ({
                 ...prev,

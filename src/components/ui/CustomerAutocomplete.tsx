@@ -7,6 +7,7 @@ export interface CustomerOption {
   phone?: string;
   email?: string;
   city?: string;
+  gst?: string;
 }
 
 export interface CustomerAutocompleteProps {

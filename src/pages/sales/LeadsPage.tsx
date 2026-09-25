@@ -8,6 +8,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { formatLeadProductDisplay } from './SalesPipelinePage';
 
 async function uploadLeadProductFile(companyId: string | undefined | null, file: File) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
@@ -144,30 +145,34 @@ export function LeadsPage() {
   }
 
   const allKnownCompanies = useMemo(() => {
-    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string }>();
-    (customerList || []).forEach((c: any) => {
-      const name = c.name?.trim();
-      if (name && !map.has(name.toLowerCase())) {
-        map.set(name.toLowerCase(), {
-          company: name,
-          contact_person: c.contact || '',
-          phone: c.phone || '',
-          email: c.email || '',
-          city: c.city || ''
-        });
-      }
-    });
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; gst?: string }>();
     (leadsData || []).forEach((l: any) => {
       const name = (l.company || l.customer)?.trim();
-      if (name && !map.has(name.toLowerCase())) {
-        map.set(name.toLowerCase(), {
-          company: name,
-          contact_person: l.contactPerson || l.contact_person || '',
-          phone: l.phone || '',
-          email: l.email || '',
-          city: l.city || ''
-        });
-      }
+      if (!name) return;
+      const key = name.toLowerCase();
+      const existing = map.get(key);
+      map.set(key, {
+        company: name,
+        contact_person: l.contactPerson || l.contact_person || existing?.contact_person || '',
+        phone: l.phone || existing?.phone || '',
+        email: l.email || existing?.email || '',
+        city: l.city || existing?.city || '',
+        gst: l.gst || existing?.gst || ''
+      });
+    });
+    (customerList || []).forEach((c: any) => {
+      const name = c.name?.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      const existing = map.get(key);
+      map.set(key, {
+        company: name,
+        contact_person: existing?.contact_person || c.contact || '',
+        phone: existing?.phone || c.phone || '',
+        email: existing?.email || c.email || '',
+        city: existing?.city || c.city || '',
+        gst: existing?.gst || c.gst || c.gstin || c.gst_number || ''
+      });
     });
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, leadsData]);
@@ -326,7 +331,8 @@ export function LeadsPage() {
       }));
 
       const firstItem = itemsToSave[0];
-      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Products (${itemsToSave.length})` : firstItem.productName;
+      const productNamesList = itemsToSave.map((it: any) => it.productName).join(', ');
+      const multiplePartsString = itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName;
       const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
 
       const entryData: any = {
@@ -463,7 +469,7 @@ export function LeadsPage() {
     { key: 'leadNo', label: 'Unique Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
     { key: 'company', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.company}</span> },
     { key: 'contactPerson', label: 'Contact', render: (r) => <div><p className="text-sm">{r.contactPerson}</p><p className="text-xs text-slate-500">{r.phone}</p></div> },
-    { key: 'partName', label: 'Requirement', render: (r) => <div><p className="text-sm font-medium text-slate-700">{r.partName}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
+    { key: 'partName', label: 'Product Name', render: (r) => <div><p className="text-sm font-medium text-slate-700">{formatLeadProductDisplay(r)}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
     { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source}</Badge> },
     { key: 'status', label: 'Status Summary', render: (r) => (
       <div className="flex flex-wrap gap-1 max-w-[150px]">
@@ -526,7 +532,18 @@ export function LeadsPage() {
             label="Company Name"
             required
             value={formData.customer}
-            onChange={val => setFormData(prev => ({ ...prev, customer: val }))}
+            onChange={val => {
+              const matched = allKnownCompanies.find(c => c.company.toLowerCase() === val.trim().toLowerCase());
+              setFormData(prev => ({
+                ...prev,
+                customer: val,
+                contacts: matched && (matched.contact_person || matched.phone || matched.email)
+                  ? [{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]
+                  : prev.contacts,
+                city: matched?.city || prev.city,
+                gst: matched?.gst || prev.gst
+              }));
+            }}
             onSelectCustomer={c => {
               setFormData(prev => ({
                 ...prev,
@@ -534,7 +551,8 @@ export function LeadsPage() {
                 contacts: (c.contact_person || c.phone || c.email)
                   ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
                   : prev.contacts,
-                city: c.city || prev.city
+                city: c.city || prev.city,
+                gst: c.gst || prev.gst
               }));
             }}
             companies={allKnownCompanies}
