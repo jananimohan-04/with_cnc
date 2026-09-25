@@ -38,6 +38,28 @@ async function uploadInwardAttachment(companyId: string, inwardId: string, file:
   return { name: file.name, path, size: file.size, type: file.type || 'application/octet-stream' };
 }
 
+function enquiryProductOptions(enquiries: any[], leadNo?: string) {
+  return (enquiries || []).filter((enquiry: any) => !leadNo || enquiry.lead_no === leadNo || enquiry.enquiry_no === leadNo)
+    .flatMap((enquiry: any) => {
+      let items: any[] = [];
+      try {
+        const parsed = typeof enquiry.enquiring_for === 'string' ? JSON.parse(enquiry.enquiring_for) : enquiry.enquiring_for;
+        if (Array.isArray(parsed)) items = parsed;
+      } catch { /* older enquiry may have a plain text product name */ }
+      if (!items.length && enquiry.part_name && !String(enquiry.part_name).startsWith('Multiple Products')) {
+        items = [{ productName: enquiry.part_name, quantity: enquiry.quantity }];
+      }
+      return items.map((item: any, index: number) => ({
+        key: `${enquiry.id}:${index}`,
+        name: String(item.productName || item.product_name || item.partName || item.part_name || '').trim(),
+        quantity: item.quantity ?? item.qty ?? '',
+        enquiryId: enquiry.id,
+        leadNo: enquiry.lead_no || enquiry.enquiry_no,
+        customer: enquiry.customer || '',
+      })).filter((item: any) => item.name);
+    });
+}
+
 export interface KanbanCard {
   id: string;
   stage: Stage;
@@ -181,7 +203,7 @@ export function SalesPipelinePage() {
         const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
         const { error: inwErr } = await supabase.from('cnc_inwards').insert([{
           id: crypto.randomUUID(), inward_no: iNo, category: 'CUSTOMER DC',
-          project_name: order.lead_no || '',
+          project_name: order.lead_no || '', product_name: order.part_name || item.productName || item.partName || '',
           sales_order_ref: order.order_no, reference_no: '',
           inward_date: new Date().toISOString().split('T')[0],
           party_name: order.customer || '', remarks: 'Auto-generated from part-wise action',
@@ -383,9 +405,10 @@ export function SalesPipelinePage() {
 
   
 
+  const emptyInwardPart = () => ({ partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', files: [] as File[] });
   const [inwardForm, setInwardForm] = useState<any>({
-    inwardNo: '', category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
-    partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18',
+    inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
+    productName: '', productKey: '', productOptions: [], enquiryId: '', parts: [emptyInwardPart()],
     contacts: [{ person: '', phone: '', email: '' }]
   });
 
@@ -401,7 +424,7 @@ export function SalesPipelinePage() {
   }, []);
 
   const allKnownCompanies = useMemo(() => {
-    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string }>();
+    const map = new Map<string, { company: string; contact_person?: string; phone?: string; email?: string; city?: string; gst?: string }>();
     (customerList || []).forEach((c: any) => {
       const name = c.name?.trim();
       if (name && !map.has(name.toLowerCase())) {
@@ -410,7 +433,8 @@ export function SalesPipelinePage() {
           contact_person: c.contact || '',
           phone: c.phone || '',
           email: c.email || '',
-          city: c.city || ''
+          city: c.city || '',
+          gst: c.gst || ''
         });
       }
     });
@@ -422,7 +446,8 @@ export function SalesPipelinePage() {
           contact_person: (c.contact_person || '').split(' | ')[0] || '',
           phone: (c.phone || '').split(' | ')[0] || '',
           email: (c.email || '').split(' | ')[0] || '',
-          city: c.city || ''
+          city: c.city || '',
+          gst: c.gst || ''
         });
       }
     });
@@ -433,7 +458,7 @@ export function SalesPipelinePage() {
     setLoading(true);
     try {
     // Fetch all leads to build a lookup map for Unique Numbers
-    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for');
+    const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for, gst, city');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
     
     const leadMap = new Map();
@@ -445,7 +470,7 @@ export function SalesPipelinePage() {
         leadMap.set(l.id, l.lead_no || l.enquiry_no);
         const comp = l.customer;
         if (comp && !compMap.has(comp)) {
-           compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email });
+           compMap.set(comp, { company: comp, contact_person: l.contact_person, phone: l.phone, email: l.email, gst: l.gst || '', city: l.city || '' });
         }
       });
       setNewLeadForm((prev: any) => {
@@ -511,7 +536,7 @@ export function SalesPipelinePage() {
 
     if (inwards && !inwardErr) inwards.forEach(i => newCards.push({
       id: `inward_${i.id}`, stage: 'Inward', type: 'inward',
-      refNo: orderMap.get(i.sales_order_ref) || i.inward_no, customer: i.party_name, part: i.part_name,
+      refNo: orderMap.get(i.sales_order_ref) || i.inward_no, customer: i.party_name, part: i.product_name ? `${i.product_name} · ${i.part_name}` : i.part_name,
       qty: i.quantity, value: i.total_amount, date: i.inward_date, status: i.status, raw: i
     }));
 
@@ -1021,10 +1046,12 @@ export function SalesPipelinePage() {
         alert("Error creating sales order: " + error.message);
       }
     } else if (card.type === 'order' && toStage === 'Inward') {
-      const iNo = `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+      const products = enquiryProductOptions(rawLeadsList, card.refNo);
+      const selectedProduct = products[0];
       setInwardForm({
-        inwardNo: iNo, category: 'CUSTOMER DC', projectName: card.refNo || '', salesOrderRef: card.raw.order_no || '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
-        partName: card.part, partNumber: card.raw.part_number || '', quantity: card.qty?.toString() || '0', price: '', discount: '0', gst: '18',
+        inwardNo: '', category: 'GOODS PURCHASE', projectName: card.refNo || '', salesOrderRef: card.raw.order_no || '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
+        productName: selectedProduct?.name || '', productKey: selectedProduct?.key || '', productOptions: products, enquiryId: selectedProduct?.enquiryId || '',
+        parts: [emptyInwardPart()],
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
@@ -1147,48 +1174,53 @@ export function SalesPipelinePage() {
 
   const saveInward = async () => {
     if (!inwardModalTarget) return;
-    const q = Number(inwardForm.quantity) || 0; const p = Number(inwardForm.price) || 0;
-    const d = Number(inwardForm.discount) || 0; const g = Number(inwardForm.gst) || 0;
-    const total = q * p * (1 - d / 100) * (1 + g / 100);
     const cStr = getContactStrings(inwardForm);
-
-    const inwardId = crypto.randomUUID();
-    let attachments: Array<{ name: string; path: string; size: number; type: string }> = [];
-    try {
-      const files: File[] = inwardForm.files || [];
-      if (files.some(file => file.size > 50 * 1024 * 1024)) {
-        alert('Each attachment must be 50 MB or smaller.');
-        return;
-      }
-      if (files.length && !company?.id) {
-        alert('Select a company before uploading attachments.');
-        return;
-      }
-      attachments = await Promise.all(files.map(file => uploadInwardAttachment(company!.id, inwardId, file)));
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to upload attachments.');
+    const selectedParts = (inwardForm.parts || []).filter((part: any) => String(part.partName || '').trim());
+    if (!inwardForm.productName) { alert('Select an enquired product first.'); return; }
+    if (!selectedParts.length) { alert('Add at least one part to inward for this product.'); return; }
+    if (selectedParts.some((part: any) => Number(part.quantity) <= 0)) { alert('Enter a quantity greater than zero for each inward part.'); return; }
+    if (selectedParts.some((part: any) => (part.files || []).some((file: File) => file.size > 50 * 1024 * 1024))) {
+      alert('Each attachment must be 50 MB or smaller.');
+      return;
+    }
+    if (selectedParts.some((part: any) => (part.files || []).length) && !company?.id) {
+      alert('Select a company before uploading attachments.');
       return;
     }
 
-    const { error } = await supabase.from('cnc_inwards').insert([{
-        id: inwardId, inward_no: inwardForm.inwardNo, category: inwardForm.category, project_name: inwardForm.projectName,
-        contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-        sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo, inward_date: inwardForm.inwardDate || null,
-        party_name: inwardForm.partyName, remarks: inwardForm.remarks, part_name: inwardForm.partName,
-        part_number: inwardForm.partNumber, quantity: q, price: p, discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending', attachments
-      }]);
-      
-      if (!error) {
-         // Customer inward is the customer's material (job work), so it is not added to company stock.
-      }
-    if (error) alert("Error creating inward: " + error.message);
-    else {
-      if (inwardModalTarget.raw?.id) {
+    try {
+      const rows = await Promise.all(selectedParts.map(async (part: any) => {
+        const inwardId = crypto.randomUUID();
+        const attachments = await Promise.all((part.files || []).map((file: File) => uploadInwardAttachment(company!.id, inwardId, file)));
+        const q = Number(part.quantity) || 0;
+        const p = Number(part.price) || 0;
+        const d = Number(part.discount) || 0;
+        const g = Number(part.gst) || 0;
+        const total = q * p * (1 - d / 100) * (1 + g / 100);
+        return {
+          id: inwardId,
+          inward_no: `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          category: inwardForm.category, product_name: inwardForm.productName, enquiry_id: inwardForm.enquiryId || null,
+          project_name: inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
+          sales_order_ref: inwardForm.salesOrderRef, reference_no: inwardForm.referenceNo,
+          inward_date: inwardForm.inwardDate || null, party_name: inwardForm.partyName, remarks: inwardForm.remarks,
+          part_name: part.partName, part_number: part.partNumber, quantity: q, price: p,
+          discount_percent: d, gst_percent: g, total_amount: total, status: 'Pending', attachments,
+        };
+      }));
+      const { error } = await supabase.from('cnc_inwards').insert(rows);
+      if (error) throw error;
+    } catch (error) {
+      alert(`Unable to create inward entries: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    // Customer inward is the customer's material (job work), so it is not added to company stock.
+    if (inwardModalTarget.raw?.id && inwardModalTarget.type === 'order') {
         const { error: soErr } = await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id);
         if (soErr) console.error("Failed to update sales order status:", soErr);
-      }
-      setInwardModalTarget(null); fetchPipeline();
     }
+    setInwardModalTarget(null);
+    fetchPipeline();
   };
 
   const saveFinishedGoods = async () => {
@@ -1372,12 +1404,6 @@ export function SalesPipelinePage() {
     const newItems = [...(quoteForm.items || [])];
     newItems[index] = { ...newItems[index], [field]: value };
     setQuoteForm({ ...quoteForm, items: newItems });
-  };
-
-  const calcInwardTotal = () => {
-    const q = Number(inwardForm.quantity) || 0; const p = Number(inwardForm.price) || 0;
-    const d = Number(inwardForm.discount) || 0; const g = Number(inwardForm.gst) || 0;
-    return (q * p * (1 - d / 100) * (1 + g / 100)).toFixed(2);
   };
 
   const [showNewLead, setShowNewLead] = useState(false);
@@ -1697,9 +1723,9 @@ export function SalesPipelinePage() {
                       setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Inward') {
                       setInwardForm({
-                        inwardNo: `INW-2026-${Math.floor(1000 + Math.random() * 9000)}`, category: 'CUSTOMER DC', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
-                        partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18',
-                        contacts: [{ person: '', phone: '', email: '' }]
+                        category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
+                        productName: '', productOptions: enquiryProductOptions(rawLeadsList), enquiryId: '',
+                        parts: [emptyInwardPart()], contacts: [{ person: '', phone: '', email: '' }]
                       });
                       setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Finished Goods') {
@@ -1887,7 +1913,8 @@ export function SalesPipelinePage() {
                 contacts: (c.contact_person || c.phone || c.email)
                   ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
                   : prev.contacts,
-                city: c.city || prev.city
+                city: c.city || prev.city,
+                gst: c.gst || prev.gst
               }));
             }}
             companies={allKnownCompanies}
@@ -2157,7 +2184,16 @@ export function SalesPipelinePage() {
       <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
-            <FormField label="Inward No." required><input className={inputClass} value={inwardForm.inwardNo} disabled /></FormField>
+            <FormField label="Product from Enquiry" required>
+              <select className={inputClass} value={inwardForm.productKey || ''} onChange={e=>{
+                const selected = inwardForm.productOptions.find((option: any) => option.key === e.target.value);
+                setInwardForm({...inwardForm, productName: selected?.name || '', productKey: selected?.key || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '', partyName: selected?.customer || inwardForm.partyName});
+              }}>
+                <option value="">Select an enquired product</option>
+                {inwardForm.productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}</option>)}
+              </select>
+              {inwardForm.productOptions.length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
+            </FormField>
             <FormField label="Category" required>
               <select className={inputClass} value={inwardForm.category} onChange={e=>setInwardForm({...inwardForm, category: e.target.value})}>
                 <option>EXPENSES</option>
@@ -2189,7 +2225,6 @@ export function SalesPipelinePage() {
               inputClass={inputClass}
               placeholder="Type or select party / customer..."
             />
-            <FormField label="Upload Files (images, PDFs, documents)"><input type="file" multiple accept="*/*" onChange={e=>setInwardForm({...inwardForm, files: Array.from(e.target.files || [])})} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />{inwardForm.files?.length > 0 && <span className="mt-1 block text-xs text-slate-500">{inwardForm.files.map((file: File) => file.name).join(', ')}</span>}</FormField>
             <div className="col-span-3">
               <FormField label="Remarks"><input className={inputClass} value={inwardForm.remarks} onChange={e=>setInwardForm({...inwardForm, remarks: e.target.value})} /></FormField>
             </div>
@@ -2197,15 +2232,24 @@ export function SalesPipelinePage() {
           
           <ContactsList form={inwardForm} setForm={setInwardForm} />
 
-          <h4 className="font-semibold text-sm text-slate-800">Product Details</h4>
-          <div className="grid grid-cols-3 gap-4">
-            <FormField label="Product Name" required><input className={inputClass} value={inwardForm.partName} onChange={e=>setInwardForm({...inwardForm, partName: e.target.value})} /></FormField>
-            
-            <FormField label="Quantity" required><input type="number" className={inputClass} value={inwardForm.quantity} onChange={e=>setInwardForm({...inwardForm, quantity: e.target.value})} /></FormField>
-            <FormField label="Price" required><input type="number" className={inputClass} value={inwardForm.price} onChange={e=>setInwardForm({...inwardForm, price: e.target.value})} /></FormField>
-            <FormField label="Discount %"><input type="number" className={inputClass} value={inwardForm.discount} onChange={e=>setInwardForm({...inwardForm, discount: e.target.value})} /></FormField>
-            <FormField label="GST %"><input type="number" className={inputClass} value={inwardForm.gst} onChange={e=>setInwardForm({...inwardForm, gst: e.target.value})} /></FormField>
-            <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-slate-100 font-bold`} value={calcInwardTotal()} disabled /></FormField>
+          <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each row creates a separate inward record under this product.</p></div>
+            <Button variant="secondary" onClick={() => setInwardForm({...inwardForm, parts: [...inwardForm.parts, emptyInwardPart()]})}><Plus size={14}/> Add Inward</Button>
+          </div>
+          <div className="space-y-4">
+            {(inwardForm.parts || []).map((part: any, index: number) => <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField label="Part Name" required><input className={inputClass} value={part.partName} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, partName:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="Part Number"><input className={inputClass} value={part.partNumber} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, partNumber:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="Quantity" required><input type="number" min="0" className={inputClass} value={part.quantity} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, quantity:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="Price" required><input type="number" min="0" className={inputClass} value={part.price} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, price:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="Discount %"><input type="number" min="0" className={inputClass} value={part.discount} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, discount:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="GST %"><input type="number" min="0" className={inputClass} value={part.gst} onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, gst:e.target.value}; setInwardForm({...inwardForm, parts});}} /></FormField>
+                <FormField label="Total Amount (Rs.)"><input className={`${inputClass} bg-white font-bold`} value={(Number(part.quantity)||0)*(Number(part.price)||0)*(1-(Number(part.discount)||0)/100)*(1+(Number(part.gst)||0)/100)} disabled /></FormField>
+                <FormField label="Attach Images / PDFs / Documents"><input type="file" multiple accept="*/*" onChange={e=>{const parts=[...inwardForm.parts]; parts[index]={...part, files:[...(part.files||[]), ...Array.from(e.target.files||[])]}; setInwardForm({...inwardForm, parts}); e.currentTarget.value='';}} className="block w-full text-xs text-slate-500 file:mr-2 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:font-semibold file:text-brand-700" />{part.files?.length > 0 && <span className="mt-1 block truncate text-xs text-slate-500">{part.files.map((file: File) => file.name).join(', ')}</span>}</FormField>
+              </div>
+            </div>)}
           </div>
         </div>
       </Modal>
