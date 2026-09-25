@@ -4,7 +4,7 @@ import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
@@ -16,6 +16,7 @@ import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
+import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
 
 export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
@@ -592,10 +593,42 @@ export function SalesPipelinePage() {
     setRecentActivities(activities.slice(0, 5));
   };
 
+  const [seeding, setSeeding] = useState(false);
+
+  const handleResetAndSeed = async (silent = false) => {
+    if (!silent && !window.confirm("Are you sure you want to delete all existing pipeline data and generate 5 real-time dummy records for each of the 7 stages?")) {
+      return;
+    }
+    setSeeding(true);
+    setLoading(true);
+    try {
+      await resetAndSeedAllPipelineData(company?.id);
+      await fetchPipeline();
+      await fetchRecentActivities();
+      if (!silent) {
+        alert("Pipeline successfully cleared and seeded with 5 real-time records per stage!");
+      }
+    } catch (err: any) {
+      console.error("Seeder error:", err);
+      if (!silent) {
+        alert("Error while resetting pipeline: " + (err?.message || "Unknown error"));
+      }
+    } finally {
+      setSeeding(false);
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchPipeline();
-    fetchRecentActivities();
-  }, []);
+    const SEED_KEY = 'pipeline_data_seeded_5_records_v1';
+    if (!localStorage.getItem(SEED_KEY)) {
+      localStorage.setItem(SEED_KEY, 'true');
+      handleResetAndSeed(true);
+    } else {
+      fetchPipeline();
+      fetchRecentActivities();
+    }
+  }, [company?.id]);
 
   const parseContacts = (raw: any) => {
     if (!raw) return [{ person: '', phone: '', email: '' }];
@@ -1442,6 +1475,15 @@ export function SalesPipelinePage() {
             <input type="text" placeholder="Search by customer, part, document no..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 bg-slate-50" />
             <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           </div>
+          <button
+            onClick={() => handleResetAndSeed(false)}
+            disabled={seeding}
+            className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Delete all existing data and add 5 dummy real-time data in every pipeline stage"
+          >
+            <RefreshCcw size={14} className={seeding ? 'animate-spin' : ''} />
+            {seeding ? 'Resetting Pipeline...' : 'Reset & Seed 5 Data Per Stage'}
+          </button>
           <button onClick={openNewLeadModal} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
             New <svg className="w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
