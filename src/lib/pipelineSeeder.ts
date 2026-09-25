@@ -158,44 +158,47 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       source: 'Direct',
       status: 'New',
       pipeline_stage: 'Enquiry',
+      created_at: '2026-09-24T09:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       lead_no: '1002',
       enquiry_no: '1002',
-      customer: 'Larsen & Toubro Precision',
-      part_name: 'Hydraulic Manifold Block - Al 7075-T6',
-      part_no: 'HMB-7075-B2',
-      quantity: 50,
-      estimated_value: 360000,
-      expected_date: '2026-10-18',
-      received_date: '2026-09-23',
-      contact_person: 'K. Sundaram',
-      phone: '+91 94432 55678',
-      email: 'k.sundaram@larsentoubro.com',
-      source: 'Email',
-      status: 'Contacted',
-      pipeline_stage: 'Enquiry',
-      ...(companyId ? { company_id: companyId } : {})
-    },
-    {
-      id: crypto.randomUUID(),
-      lead_no: '1003',
-      enquiry_no: '1003',
       customer: 'Mahindra Aerospace Pvt Ltd',
       part_name: 'Aerospace Actuator Mounting Bracket',
       part_no: 'AERO-BRK-M4',
       quantity: 120,
       estimated_value: 580000,
       expected_date: '2026-10-22',
-      received_date: '2026-09-22',
+      received_date: '2026-09-23',
       contact_person: 'Ananya Sen',
       phone: '+91 98201 33445',
       email: 'ananya.sen@mahindra-aero.com',
       source: 'Website',
+      status: 'Contacted',
+      pipeline_stage: 'Enquiry',
+      created_at: '2026-09-23T10:00:00Z',
+      ...(companyId ? { company_id: companyId } : {})
+    },
+    {
+      id: crypto.randomUUID(),
+      lead_no: '1003',
+      enquiry_no: '1003',
+      customer: 'Larsen & Toubro Precision',
+      part_name: 'Hydraulic Manifold Block - Al 7075-T6',
+      part_no: 'HMB-7075-B2',
+      quantity: 50,
+      estimated_value: 360000,
+      expected_date: '2026-10-18',
+      received_date: '2026-09-22',
+      contact_person: 'K. Sundaram',
+      phone: '+91 94432 55678',
+      email: 'k.sundaram@larsentoubro.com',
+      source: 'Email',
       status: 'Qualified',
       pipeline_stage: 'Enquiry',
+      created_at: '2026-09-22T11:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -215,6 +218,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       source: 'Referral',
       status: 'Under Review',
       pipeline_stage: 'Enquiry',
+      created_at: '2026-09-21T12:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -234,12 +238,14 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       source: 'Direct',
       status: 'New',
       pipeline_stage: 'Enquiry',
+      created_at: '2026-09-20T14:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
   const { error: enqErr } = await supabase.from('cnc_enquiries').insert(dummyEnquiries);
   if (enqErr) console.error('[Seeder] Error inserting enquiries:', enqErr);
+  else console.log('[Seeder] 5 Enquiries inserted successfully');
 
   // Step 4: Seed Stage 2 - 5 QUOTATIONS
   const dummyQuotations = [
@@ -247,116 +253,156 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       id: crypto.randomUUID(),
       quote_no: 'QT-2026-501',
       customer: 'Tata Advanced Systems Ltd',
-      customer_id: 'CUST-001',
       contact_person: 'Rajesh Verma',
       phone: '+91 98450 11223',
       email: 'r.verma@tataadvanced.com',
+      enquiry_no: '1001',
+      lead_id: dummyEnquiries[0].id,
       part_name: 'CNC Milled Missile Fin Assembly',
       part_number: 'FIN-ASM-01',
       quantity: 30,
       unit_price: 17000,
       discount_percent: 0,
-      unit_discount: 0,
       gst_percent: 18,
       total_value: 601800,
-      quote_date: '2026-09-23',
+      date: '2026-09-23',
       valid_till: '2026-10-30',
       salesperson: 'Janani Mohan',
+      payment_terms: 'Net 30 Days',
+      delivery_terms: 'Ex-Works',
       status: 'Sent',
+      created_at: '2026-09-23T09:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       quote_no: 'QT-2026-502',
-      customer: 'Larsen & Toubro Precision',
-      customer_id: 'CUST-003',
-      contact_person: 'K. Sundaram',
-      phone: '+91 94432 55678',
-      email: 'k.sundaram@larsentoubro.com',
-      part_name: 'Heavy Duty CNC Spindle Housing',
-      part_number: 'SPN-HSG-02',
-      quantity: 15,
-      unit_price: 52333,
+      customer: 'Mahindra Aerospace Pvt Ltd',
+      contact_person: 'Ananya Sen',
+      phone: '+91 98201 33445',
+      email: 'ananya.sen@mahindra-aero.com',
+      enquiry_no: '1002',
+      lead_id: dummyEnquiries[1].id,
+      part_name: 'Titanium Bulkhead Fitting',
+      part_number: 'BLK-FIT-02',
+      quantity: 60,
+      unit_price: 8166,
       discount_percent: 0,
-      unit_discount: 0,
       gst_percent: 18,
-      total_value: 926300,
-      quote_date: '2026-09-22',
-      valid_till: '2026-11-05',
+      total_value: 578200,
+      date: '2026-09-23',
+      valid_till: '2026-10-28',
       salesperson: 'Janani Mohan',
-      status: 'Under Review',
+      payment_terms: 'Net 30 Days',
+      delivery_terms: 'FOB',
+      status: 'Sent',
+      created_at: '2026-09-23T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       quote_no: 'QT-2026-503',
-      customer: 'Mahindra Aerospace Pvt Ltd',
-      customer_id: 'CUST-002',
-      contact_person: 'Ananya Sen',
-      phone: '+91 98201 33445',
-      email: 'ananya.sen@mahindra-aero.com',
-      part_name: 'Titanium Bulkhead Fitting',
-      part_number: 'BLK-FIT-03',
-      quantity: 60,
-      unit_price: 8166,
+      customer: 'Larsen & Toubro Precision',
+      contact_person: 'K. Sundaram',
+      phone: '+91 94432 55678',
+      email: 'k.sundaram@larsentoubro.com',
+      enquiry_no: '1003',
+      lead_id: dummyEnquiries[2].id,
+      part_name: 'Heavy Duty CNC Spindle Housing',
+      part_number: 'SPN-HSG-03',
+      quantity: 15,
+      unit_price: 52333,
       discount_percent: 0,
-      unit_discount: 0,
       gst_percent: 18,
-      total_value: 578200,
-      quote_date: '2026-09-24',
-      valid_till: '2026-10-28',
+      total_value: 926300,
+      date: '2026-09-24',
+      valid_till: '2026-11-05',
       salesperson: 'Janani Mohan',
-      status: 'Sent',
+      payment_terms: 'Net 45 Days',
+      delivery_terms: 'Ex-Works',
+      status: 'Under Review',
+      created_at: '2026-09-24T11:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       quote_no: 'QT-2026-504',
       customer: 'Godrej Precision Engineering',
-      customer_id: 'CUST-004',
       contact_person: 'Vikram Deshmukh',
       phone: '+91 97112 88990',
       email: 'v.deshmukh@godrej.com',
+      enquiry_no: '1004',
+      lead_id: dummyEnquiries[3].id,
       part_name: 'Precision Cryogenic Valve Body',
       part_number: 'CRYO-VLV-04',
       quantity: 45,
       unit_price: 13777,
       discount_percent: 0,
-      unit_discount: 0,
       gst_percent: 18,
       total_value: 731600,
-      quote_date: '2026-09-25',
+      date: '2026-09-24',
       valid_till: '2026-11-10',
       salesperson: 'Janani Mohan',
+      payment_terms: 'Net 30 Days',
+      delivery_terms: 'Ex-Works',
       status: 'Draft',
+      created_at: '2026-09-24T12:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       quote_no: 'QT-2026-505',
       customer: 'Bharat Forge Advanced Technologies',
-      customer_id: 'CUST-005',
       contact_person: 'Amit Kulkarni',
       phone: '+91 99224 44556',
       email: 'amit.kulkarni@bharatforge.com',
+      enquiry_no: '1005',
+      lead_id: dummyEnquiries[4].id,
       part_name: 'Hardened Spline Shaft - EN36C',
       part_number: 'SPL-SFT-05',
       quantity: 100,
       unit_price: 3750,
       discount_percent: 0,
-      unit_discount: 0,
       gst_percent: 18,
       total_value: 442500,
-      quote_date: '2026-09-24',
+      date: '2026-09-25',
       valid_till: '2026-11-02',
       salesperson: 'Janani Mohan',
+      payment_terms: 'Net 30 Days',
+      delivery_terms: 'Ex-Works',
       status: 'Sent',
+      created_at: '2026-09-25T14:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
-  const { error: quoteErr } = await supabase.from('cnc_quotations').insert(dummyQuotations);
-  if (quoteErr) console.error('[Seeder] Error inserting quotations:', quoteErr);
+  let { error: quoteErr } = await supabase.from('cnc_quotations').insert(dummyQuotations);
+  if (quoteErr) {
+    console.warn('[Seeder] Full quotation insert failed, retrying with minimal schema:', quoteErr);
+    const minimalQuotes = dummyQuotations.map(q => ({
+      id: q.id,
+      quote_no: q.quote_no,
+      customer: q.customer,
+      part_name: q.part_name,
+      quantity: q.quantity,
+      unit_price: q.unit_price,
+      total_value: q.total_value,
+      date: q.date,
+      valid_till: q.valid_till,
+      status: q.status,
+      enquiry_no: q.enquiry_no,
+      created_at: q.created_at,
+      ...(companyId ? { company_id: companyId } : {})
+    }));
+    const retry = await supabase.from('cnc_quotations').insert(minimalQuotes);
+    if (retry.error) {
+      console.error('[Seeder] Quotation retry failed:', retry.error);
+    } else {
+      console.log('[Seeder] 5 Quotations inserted via fallback');
+    }
+  } else {
+    console.log('[Seeder] 5 Quotations inserted successfully');
+  }
 
   // Step 5: Seed Stage 3 - 5 SALES ORDERS
   const dummySalesOrders = [
@@ -377,6 +423,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       order_date: '2026-09-20',
       delivery_date: '2026-10-20',
       status: 'Confirmed',
+      created_at: '2026-09-20T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -396,6 +443,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       order_date: '2026-09-21',
       delivery_date: '2026-10-24',
       status: 'In Production',
+      created_at: '2026-09-21T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -415,6 +463,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       order_date: '2026-09-22',
       delivery_date: '2026-10-29',
       status: 'Confirmed',
+      created_at: '2026-09-22T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -434,6 +483,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       order_date: '2026-09-23',
       delivery_date: '2026-11-04',
       status: 'In Production',
+      created_at: '2026-09-23T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -453,12 +503,14 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       order_date: '2026-09-24',
       delivery_date: '2026-10-27',
       status: 'Confirmed',
+      created_at: '2026-09-24T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
   const { error: soErr } = await supabase.from('cnc_sales_orders').insert(dummySalesOrders);
   if (soErr) console.error('[Seeder] Error inserting sales orders:', soErr);
+  else console.log('[Seeder] 5 Sales Orders inserted successfully');
 
   // Step 6: Seed Stage 4 - 5 INWARDS
   const dummyInwards = [
@@ -478,6 +530,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       total_amount: 240000,
       inward_date: '2026-09-22',
       status: 'Received',
+      created_at: '2026-09-22T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -496,6 +549,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       total_amount: 175000,
       inward_date: '2026-09-23',
       status: 'Inspected',
+      created_at: '2026-09-23T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -514,6 +568,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       total_amount: 410000,
       inward_date: '2026-09-23',
       status: 'Received',
+      created_at: '2026-09-23T11:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -532,6 +587,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       total_amount: 680000,
       inward_date: '2026-09-24',
       status: 'Inspected',
+      created_at: '2026-09-24T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -550,12 +606,14 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       total_amount: 290000,
       inward_date: '2026-09-25',
       status: 'Received',
+      created_at: '2026-09-25T10:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
   const { error: inwErr } = await supabase.from('cnc_inwards').insert(dummyInwards);
   if (inwErr) console.error('[Seeder] Error inserting inwards:', inwErr);
+  else console.log('[Seeder] 5 Inwards inserted successfully');
 
   // Step 7: Seed Stage 5 - 5 FINISHED GOODS (cnc_work_orders)
   const dummyFinishedGoods = [
@@ -648,6 +706,7 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
 
   const { error: woErr } = await supabase.from('cnc_work_orders').insert(dummyFinishedGoods);
   if (woErr) console.error('[Seeder] Error inserting finished goods:', woErr);
+  else console.log('[Seeder] 5 Finished Goods inserted successfully');
 
   // Step 8: Seed Stage 6 - 5 DELIVERY CHALLANS
   const dummyDeliveries = [
@@ -655,7 +714,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-601',
       customer_name: 'Tata Advanced Systems Ltd',
-      customer_id: 'CUST-001',
       sales_order_no: 'SO-2026-301',
       part_name: 'Radar Gimbal Support Bracket',
       quantity: 50,
@@ -663,14 +721,13 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       delivery_date: '2026-09-24',
       vehicle_no: 'KA-04-AB-1234',
       status: 'Pending',
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-24T14:30:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-602',
       customer_name: 'Mahindra Aerospace Pvt Ltd',
-      customer_id: 'CUST-002',
       sales_order_no: 'SO-2026-302',
       part_name: 'Cockpit Control Lever Assembly',
       quantity: 75,
@@ -678,14 +735,13 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       delivery_date: '2026-09-24',
       vehicle_no: 'KA-51-MD-9876',
       status: 'Pending',
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-24T15:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-603',
       customer_name: 'Larsen & Toubro Precision',
-      customer_id: 'CUST-003',
       sales_order_no: 'SO-2026-303',
       part_name: 'Underwater Enclosure Flange',
       quantity: 20,
@@ -693,14 +749,13 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       delivery_date: '2026-09-25',
       vehicle_no: 'TN-38-LT-4567',
       status: 'Pending',
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T11:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-604',
       customer_name: 'Godrej Precision Engineering',
-      customer_id: 'CUST-004',
       sales_order_no: 'SO-2026-304',
       part_name: 'Precision Sensor Housing - Inconel 718',
       quantity: 35,
@@ -708,14 +763,13 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       delivery_date: '2026-09-25',
       vehicle_no: 'MH-02-GD-3321',
       status: 'Pending',
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T11:30:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-605',
       customer_name: 'Bharat Forge Advanced Technologies',
-      customer_id: 'CUST-005',
       sales_order_no: 'SO-2026-305',
       part_name: 'Drive Pinion Gear Blank',
       quantity: 150,
@@ -723,13 +777,31 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       delivery_date: '2026-09-25',
       vehicle_no: 'MH-12-BF-7788',
       status: 'Pending',
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T12:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
-  const { error: dcErr } = await supabase.from('cnc_deliveries').insert(dummyDeliveries);
-  if (dcErr) console.error('[Seeder] Error inserting deliveries:', dcErr);
+  let { error: dcErr } = await supabase.from('cnc_deliveries').insert(dummyDeliveries);
+  if (dcErr) {
+    console.warn('[Seeder] Full delivery insert failed, trying minimal:', dcErr);
+    const minDeliveries = dummyDeliveries.map(d => ({
+      id: d.id,
+      delivery_no: d.delivery_no,
+      customer_name: d.customer_name,
+      part_name: d.part_name,
+      quantity: d.quantity,
+      delivery_date: d.delivery_date,
+      status: d.status,
+      created_at: d.created_at,
+      ...(companyId ? { company_id: companyId } : {})
+    }));
+    const retryDc = await supabase.from('cnc_deliveries').insert(minDeliveries);
+    if (retryDc.error) console.error('[Seeder] DC retry failed:', retryDc.error);
+    else console.log('[Seeder] 5 Deliveries inserted via fallback');
+  } else {
+    console.log('[Seeder] 5 Deliveries inserted successfully');
+  }
 
   // Step 9: Seed Stage 7 - 5 INVOICES
   const dummyInvoices = [
@@ -738,16 +810,20 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       invoice_no: 'INV-2026-801',
       invoice_type: 'Sales Invoice',
       customer_name: 'Tata Advanced Systems Ltd',
-      customer_id: 'CUST-001',
       part_name: 'Radar Gimbal Support Bracket',
       quantity: 50,
+      basic_value: 850000,
+      taxable_value: 850000,
+      cgst: 76500,
+      sgst: 76500,
+      igst: 0,
       amount: 1003000,
-      total_amount: 1003000,
       invoice_date: '2026-09-25',
       dc_no: 'DC-2026-601',
-      status: 'Issued',
+      sales_order_no: 'SO-2026-301',
+      status: 'Sent',
       pipeline_completed_at: null,
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T14:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -755,16 +831,20 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       invoice_no: 'INV-2026-802',
       invoice_type: 'Sales Invoice',
       customer_name: 'Mahindra Aerospace Pvt Ltd',
-      customer_id: 'CUST-002',
       part_name: 'Cockpit Control Lever Assembly',
       quantity: 75,
+      basic_value: 435000,
+      taxable_value: 435000,
+      cgst: 39150,
+      sgst: 39150,
+      igst: 0,
       amount: 513300,
-      total_amount: 513300,
       invoice_date: '2026-09-25',
       dc_no: 'DC-2026-602',
-      status: 'Issued',
+      sales_order_no: 'SO-2026-302',
+      status: 'Sent',
       pipeline_completed_at: null,
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T14:15:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -772,16 +852,20 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       invoice_no: 'INV-2026-803',
       invoice_type: 'Sales Invoice',
       customer_name: 'Larsen & Toubro Precision',
-      customer_id: 'CUST-003',
       part_name: 'Underwater Enclosure Flange',
       quantity: 20,
+      basic_value: 920000,
+      taxable_value: 920000,
+      cgst: 82800,
+      sgst: 82800,
+      igst: 0,
       amount: 1085600,
-      total_amount: 1085600,
       invoice_date: '2026-09-25',
       dc_no: 'DC-2026-603',
-      status: 'Issued',
+      sales_order_no: 'SO-2026-303',
+      status: 'Sent',
       pipeline_completed_at: null,
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T14:30:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -789,16 +873,20 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       invoice_no: 'INV-2026-804',
       invoice_type: 'Sales Invoice',
       customer_name: 'Godrej Precision Engineering',
-      customer_id: 'CUST-004',
       part_name: 'Precision Sensor Housing - Inconel 718',
       quantity: 35,
+      basic_value: 1150000,
+      taxable_value: 1150000,
+      cgst: 103500,
+      sgst: 103500,
+      igst: 0,
       amount: 1357000,
-      total_amount: 1357000,
       invoice_date: '2026-09-25',
       dc_no: 'DC-2026-604',
-      status: 'Issued',
+      sales_order_no: 'SO-2026-304',
+      status: 'Sent',
       pipeline_completed_at: null,
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T14:45:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
@@ -806,23 +894,67 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       invoice_no: 'INV-2026-805',
       invoice_type: 'Sales Invoice',
       customer_name: 'Bharat Forge Advanced Technologies',
-      customer_id: 'CUST-005',
       part_name: 'Drive Pinion Gear Blank',
       quantity: 150,
+      basic_value: 560000,
+      taxable_value: 560000,
+      cgst: 50400,
+      sgst: 50400,
+      igst: 0,
       amount: 660800,
-      total_amount: 660800,
       invoice_date: '2026-09-25',
       dc_no: 'DC-2026-605',
-      status: 'Issued',
+      sales_order_no: 'SO-2026-305',
+      status: 'Sent',
       pipeline_completed_at: null,
-      created_at: new Date().toISOString(),
+      created_at: '2026-09-25T15:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
-  const { error: invErr } = await supabase.from('cnc_invoices').insert(dummyInvoices);
-  if (invErr) console.error('[Seeder] Error inserting invoices:', invErr);
+  let { error: invErr } = await supabase.from('cnc_invoices').insert(dummyInvoices);
+  if (invErr) {
+    console.warn('[Seeder] Full invoice insert failed, trying minimal:', invErr);
+    const minInvoices = dummyInvoices.map(i => ({
+      id: i.id,
+      invoice_no: i.invoice_no,
+      customer_name: i.customer_name,
+      part_name: i.part_name,
+      quantity: i.quantity,
+      amount: i.amount,
+      invoice_date: i.invoice_date,
+      dc_no: i.dc_no,
+      status: 'Pending',
+      created_at: i.created_at,
+      ...(companyId ? { company_id: companyId } : {})
+    }));
+    const retryInv = await supabase.from('cnc_invoices').insert(minInvoices);
+    if (retryInv.error) console.error('[Seeder] Invoice retry failed:', retryInv.error);
+    else console.log('[Seeder] 5 Invoices inserted via fallback');
+  } else {
+    console.log('[Seeder] 5 Invoices inserted successfully');
+    
+    // Also try adding invoice items for Finance page compatibility
+    try {
+      const invoiceItems = dummyInvoices.map(inv => ({
+        id: crypto.randomUUID(),
+        invoice_id: inv.id,
+        description: inv.part_name,
+        quantity: inv.quantity,
+        unit: 'PCS',
+        rate: Math.round(inv.basic_value / inv.quantity),
+        gst_rate: 18,
+        amount: inv.amount,
+        created_at: inv.created_at,
+        ...(companyId ? { company_id: companyId } : {})
+      }));
+      await supabase.from('cnc_invoice_items').insert(invoiceItems);
+      console.log('[Seeder] Invoice items inserted successfully');
+    } catch (itemErr) {
+      console.warn('[Seeder] Could not insert invoice items (optional):', itemErr);
+    }
+  }
 
-  console.log('[Seeder] Seeding finished successfully!');
+  console.log('[Seeder] All 7 pipeline stages seeded with 5 real-time dummy records successfully!');
   return { success: true };
 }

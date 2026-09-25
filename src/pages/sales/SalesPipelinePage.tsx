@@ -468,7 +468,7 @@ export function SalesPipelinePage() {
     const { data: allQuotes, error: quotesErr } = await supabase.from('cnc_quotations').select('*');
     if (quotesErr) console.error("Error fetching quotations:", quotesErr);
     const quoteMap = new Map();
-    if (allQuotes) allQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.quote_no));
+    if (allQuotes) allQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.enquiry_no || q.quote_no));
     const quotes = allQuotes?.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
 
     const { data: allOrders, error: ordersErr } = await supabase.from('cnc_sales_orders').select('*');
@@ -492,8 +492,8 @@ export function SalesPipelinePage() {
 
     if (quotes) quotes.forEach(q => newCards.push({
       id: `quote_${q.id}`, stage: 'Quotation', type: 'quotation',
-      refNo: quoteMap.get(q.id), customer: q.customer || q.customer_name, part: q.part_name,
-      qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.quote_date, status: q.status, raw: q
+      refNo: quoteMap.get(q.id) || q.enquiry_no || q.quote_no, customer: q.customer || q.customer_name, part: q.part_name,
+      qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.date || q.quote_date, status: q.status, raw: q
     }));
 
     if (orders) orders.forEach(o => newCards.push({
@@ -522,15 +522,19 @@ export function SalesPipelinePage() {
       });
     }
 
+    const dcMap = new Map();
     if (dcs) {
       dcs.forEach(d => {
-         newCards.push({ id: d.id, stage: 'DC', type: 'dc', refNo: d.delivery_no || `DC-${d.id.substring(0,4)}`, customer: d.customer_name || d.party_name || 'Customer', part: d.part_name, qty: d.quantity, value: 0, date: d.delivery_date, status: d.status, raw: d });
+         const ref = orderMap.get(d.sales_order_no) || d.delivery_no || `DC-${d.id.substring(0,4)}`;
+         if (d.delivery_no) dcMap.set(d.delivery_no, ref);
+         newCards.push({ id: d.id, stage: 'DC', type: 'dc', refNo: ref, customer: d.customer_name || d.party_name || 'Customer', part: d.part_name, qty: d.quantity, value: 0, date: d.delivery_date, status: d.status, raw: d });
       });
     }
 
     if (invoicesData && invoicesData.length > 0) {
       invoicesData.filter((inv: any) => !inv.pipeline_completed_at).forEach(inv => {
-         newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: inv.invoice_no || `INV-${inv.id.substring(0,4)}`, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
+         const ref = orderMap.get(inv.sales_order_no) || (inv.dc_no && dcMap.get(inv.dc_no)) || inv.invoice_no || `INV-${inv.id.substring(0,4)}`;
+         newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: ref, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
     }
 
@@ -620,7 +624,7 @@ export function SalesPipelinePage() {
   };
 
   useEffect(() => {
-    const SEED_KEY = 'pipeline_data_seeded_5_records_v1';
+    const SEED_KEY = 'pipeline_data_seeded_5_records_v2';
     if (!localStorage.getItem(SEED_KEY)) {
       localStorage.setItem(SEED_KEY, 'true');
       handleResetAndSeed(true);
@@ -1622,7 +1626,9 @@ export function SalesPipelinePage() {
             { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700', card: 'bg-rose-100 border-rose-300 hover:bg-rose-100/80', code: 'bg-rose-200 text-rose-900', amount: 'text-rose-900' },
             { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-indigo-100 border-indigo-300 hover:bg-indigo-100/80', code: 'bg-indigo-200 text-indigo-900', amount: 'text-indigo-900' }
           ].map(stage => {
-            const stageCards = cards.filter(c => c.stage === stage.id && (customerFilter === 'All Customers' || c.customer === customerFilter));
+            const stageCards = cards
+              .filter(c => c.stage === stage.id && (customerFilter === 'All Customers' || c.customer === customerFilter))
+              .sort((a, b) => (a.refNo || '').localeCompare(b.refNo || '', undefined, { numeric: true }));
             return (
               <div key={stage.id} 
                 className={`w-[280px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
