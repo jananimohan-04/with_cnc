@@ -258,7 +258,7 @@ export function SalesPipelinePage() {
               <table className="w-full text-sm text-left">
                 <thead className="text-[10px] text-slate-500 bg-slate-50 uppercase border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-2">Part Name / No</th>
+                    <th className="px-4 py-2">Product Name / No</th>
                     <th className="px-4 py-2">Qty</th>
                     <th className="px-4 py-2">Unit Price</th>
                     <th className="px-4 py-2">Total</th>
@@ -340,7 +340,7 @@ export function SalesPipelinePage() {
       details: invoice
         ? [['Bill To', record.customer_name || record.customer], ['Billing Address', record.billing_address], ['GSTIN', record.customer_gstin], ['PO No', record.po_no], ['Delivery Challan', record.dc_no], ['Payment Terms', record.payment_terms], ['Status', record.status]]
         : [['Customer', record.customer_name || record.customer], ['Address', record.delivery_address], ['Sales Order', record.sales_order_no || record.order_no], ['Vehicle', record.vehicle_no], ['Transport', record.transport], ['Remarks', record.remarks]],
-      columns: invoice ? ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'] : ['#', 'Part / Description', 'Quantity', 'Unit'],
+      columns: invoice ? ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'] : ['#', 'Product / Description', 'Quantity', 'Unit'],
       rows: items.length
         ? items.map((item: any, index: number) => invoice
           ? [index + 1, item.description || item.partName || item.part_name || '', item.hsn || '—', item.quantity ?? item.qty ?? '', item.unit || '', formatINR(Number(item.rate ?? item.unitPrice ?? 0)), formatINR(Number(item.amount ?? (Number(item.quantity ?? item.qty ?? 0) * Number(item.rate ?? item.unitPrice ?? 0))))]
@@ -1003,7 +1003,7 @@ export function SalesPipelinePage() {
     }, 0);
     
     const firstItem = items[0];
-    const partNameStr = items.length > 1 ? `Multiple Parts (${items.length})` : (firstItem.partName || 'TBD');
+    const partNameStr = items.length > 1 ? `Multiple Products (${items.length})` : (firstItem.partName || 'TBD');
 
     const quotePayload: any = {
       id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: partNameStr,
@@ -1947,7 +1947,7 @@ export function SalesPipelinePage() {
              <h4 className="font-semibold text-sm text-slate-800 mb-4">Enquiry Details</h4>
           </div>
           
-          <FormField label="Part Name" required><input className={inputClass} value={enquiryForm.partName} onChange={e => setEnquiryForm({...enquiryForm, partName: e.target.value})} /></FormField>
+          <FormField label="Product Name" required><input className={inputClass} value={enquiryForm.partName} onChange={e => setEnquiryForm({...enquiryForm, partName: e.target.value})} /></FormField>
           
           <FormField label="Quantity"><input type="number" className={inputClass} value={enquiryForm.quantity} onChange={e => setEnquiryForm({...enquiryForm, quantity: e.target.value})} /></FormField>
           <FormField label="Estimated Value (Rs.)"><input type="number" className={inputClass} value={enquiryForm.estimatedValue} onChange={e => setEnquiryForm({...enquiryForm, estimatedValue: e.target.value})} /></FormField>
@@ -2017,15 +2017,15 @@ export function SalesPipelinePage() {
           </div>
           <ContactsList form={quoteForm} setForm={setQuoteForm} />
           
-          {/* Part-wise Items Table */}
+          {/* Product-wise Items Table */}
           <div className="border-t border-slate-100 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Parts / Items Breakdown</h4>
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Products / Items Breakdown</h4>
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Part Name</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">Qty</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
@@ -2040,7 +2040,7 @@ export function SalesPipelinePage() {
                     <tr key={item.id || idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
                       <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
                       <td className="px-3 py-2">
-                        <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Part name" value={item.partName || ''} onChange={e => updateQuoteItem(idx, 'partName', e.target.value)} />
+                        <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" value={item.partName || ''} onChange={e => updateQuoteItem(idx, 'partName', e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
                         <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.quantity || ''} onChange={e => updateQuoteItem(idx, 'quantity', e.target.value)} />
@@ -2060,7 +2060,7 @@ export function SalesPipelinePage() {
                       <td className="px-3 py-2 text-right font-semibold text-slate-700">₹{calcItemTotal(item)}</td>
                       <td className="px-3 py-2 text-center">
                         {(quoteForm.items || []).length > 1 && (
-                          <button onClick={() => { const newItems = [...quoteForm.items]; newItems.splice(idx, 1); setQuoteForm({...quoteForm, items: newItems}); }} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove part">
+                          <button onClick={() => { const newItems = [...quoteForm.items]; newItems.splice(idx, 1); setQuoteForm({...quoteForm, items: newItems}); }} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove product">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                           </button>
                         )}
@@ -2078,7 +2078,7 @@ export function SalesPipelinePage() {
               </table>
             </div>
             <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-              <span className="text-lg">+</span> Add Another Part
+              <span className="text-lg">+</span> Add Another Product
             </button>
           </div>
 
@@ -2121,9 +2121,9 @@ export function SalesPipelinePage() {
           
           <ContactsList form={inwardForm} setForm={setInwardForm} />
 
-          <h4 className="font-semibold text-sm text-slate-800">Part Details</h4>
+          <h4 className="font-semibold text-sm text-slate-800">Product Details</h4>
           <div className="grid grid-cols-3 gap-4">
-            <FormField label="Part Name" required><input className={inputClass} value={inwardForm.partName} onChange={e=>setInwardForm({...inwardForm, partName: e.target.value})} /></FormField>
+            <FormField label="Product Name" required><input className={inputClass} value={inwardForm.partName} onChange={e=>setInwardForm({...inwardForm, partName: e.target.value})} /></FormField>
             
             <FormField label="Quantity" required><input type="number" className={inputClass} value={inwardForm.quantity} onChange={e=>setInwardForm({...inwardForm, quantity: e.target.value})} /></FormField>
             <FormField label="Price" required><input type="number" className={inputClass} value={inwardForm.price} onChange={e=>setInwardForm({...inwardForm, price: e.target.value})} /></FormField>
@@ -2142,7 +2142,7 @@ export function SalesPipelinePage() {
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
           <FormField label="Project / Customer"><input className={inputClass} value={fgForm.customer || ''} onChange={e=>setFgForm({...fgForm, customer: e.target.value})} /></FormField>
-          <FormField label="Part Name"><input className={inputClass} value={fgForm.partName || ''} onChange={e=>setFgForm({...fgForm, partName: e.target.value})} /></FormField>
+          <FormField label="Product Name"><input className={inputClass} value={fgForm.partName || ''} onChange={e=>setFgForm({...fgForm, partName: e.target.value})} /></FormField>
           {fgModalTarget?.raw?.id ? (
             <FormField label="Max Available Quantity (from Inward)"><input type="number" className={`${inputClass} bg-slate-100 font-bold`} value={fgForm.orderQty || ''} disabled /></FormField>
           ) : (
@@ -2162,9 +2162,9 @@ export function SalesPipelinePage() {
           <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
           <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Part Details</h4>
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details</h4>
             <div className="grid grid-cols-3 gap-4">
-              <FormField label="Part Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
+              <FormField label="Product Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
               <FormField label="Quantity" required><input type="number" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
               <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
             </div>
@@ -2203,7 +2203,7 @@ export function SalesPipelinePage() {
           <FormField label="Customer" required><input className={inputClass} value={soForm.customer || ''} onChange={e=>setSoForm({...soForm, customer: e.target.value})} /></FormField>
           <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
-          <FormField label="Part Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>
+          <FormField label="Product Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>
           
           <FormField label="Quantity" required><input type="number" className={inputClass} value={soForm.quantity || ''} onChange={e=>setSoForm({...soForm, quantity: e.target.value})} /></FormField>
           <FormField label="Unit Price" required><input type="number" className={inputClass} value={soForm.price || ''} onChange={e=>setSoForm({...soForm, price: e.target.value})} /></FormField>

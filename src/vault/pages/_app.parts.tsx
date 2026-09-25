@@ -753,25 +753,25 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
       <DialogTrigger asChild>
         <Button className="bg-indigo-600 hover:bg-indigo-700 shadow-sm">
           <Plus className="w-4 h-4 mr-2" />
-          Add Part & Drawing
+          Add Product & Drawing
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-slate-200 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900">
             <Box className="w-5 h-5 text-indigo-600" />
-            Add New Part & Document
+            Add New Product & Document
           </DialogTitle>
           <DialogDescription>
-            Register a manufactured part and immediately attach its engineering drawing or document.
+            Register a manufactured product and immediately attach its engineering drawing or document.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 py-3">
-          {/* Part Details */}
+          {/* Product Details */}
           <div className="space-y-3">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              1. Part Information
+              1. Product Information
             </div>
 
             {/* Project Selection from All Leads */}
@@ -801,13 +801,13 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                   <SelectValue placeholder="Select a Project (e.g. 5397)..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
-                  <SelectItem value="none">-- None (Enter Custom Part Manually) --</SelectItem>
+                  <SelectItem value="none">-- None (Enter Custom Product Manually) --</SelectItem>
                   {projectList.map(proj => (
                     <SelectItem key={proj.projectName} value={proj.projectName}>
                       <span className="font-semibold text-slate-800">{proj.projectName}</span>
                       {proj.customer && <span className="text-slate-500 ml-1.5 text-xs">({proj.customer})</span>}
                       <span className="text-indigo-600 ml-1.5 text-xs font-medium">
-                        · {proj.parts.length} {proj.parts.length === 1 ? 'part' : 'parts'}
+                        · {proj.parts.length} {proj.parts.length === 1 ? 'product' : 'products'}
                       </span>
                     </SelectItem>
                   ))}
@@ -819,7 +819,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                   {selectedProject.customer && (
                     <span>• Company: <strong className="text-slate-800">{selectedProject.customer}</strong></span>
                   )}
-                  <span>• {selectedProject.parts.length} part(s) available</span>
+                  <span>• {selectedProject.parts.length} product(s) available</span>
                 </div>
               )}
             </div>
@@ -827,14 +827,14 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold">Part Name *</Label>
+                  <Label className="text-xs font-semibold">Product Name *</Label>
                   {selectedProject && selectedProject.parts.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setCustomPartMode(!customPartMode)}
                       className="text-[10px] text-indigo-600 hover:text-indigo-800 underline font-medium"
                     >
-                      {customPartMode ? `Pick from project parts (${selectedProject.parts.length})` : "Type custom name"}
+                      {customPartMode ? `Pick from project products (${selectedProject.parts.length})` : "Type custom name"}
                     </button>
                   )}
                 </div>
@@ -845,7 +845,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                     onValueChange={handlePartSelectFromDropdown}
                   >
                     <SelectTrigger className="bg-white">
-                      <SelectValue placeholder="Select Part from Project..." />
+                      <SelectValue placeholder="Select Product from Project..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
                       {selectedProject.parts.map((p, idx) => (
@@ -855,7 +855,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                         </SelectItem>
                       ))}
                       <SelectItem value="__custom__" className="text-indigo-600 font-semibold border-t border-slate-100">
-                        + Type Custom Part Name...
+                        + Type Custom Product Name...
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -1343,9 +1343,9 @@ function PartsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Parts & Drawings</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Products & Drawings</h2>
           <p className="text-muted-foreground mt-1">
-            Create engineering parts and directly upload or manage their documents.
+            Create engineering products and directly upload or manage their documents.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1482,7 +1482,7 @@ function PartsPage() {
           <TableHeader className="bg-slate-50">
             <TableRow>
               <TableHead className="w-10"></TableHead>
-              <TableHead>Part Number / Name</TableHead>
+              <TableHead>Product / Part Number / Name</TableHead>
               <TableHead>Drawing Number</TableHead>
               <TableHead>Party</TableHead>
               <TableHead>Attached Documents</TableHead>
@@ -1494,7 +1494,7 @@ function PartsPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-slate-500">
-                  Loading parts and drawings...
+                  Loading products and drawings...
                 </TableCell>
               </TableRow>
             ) : !filteredParts || filteredParts.length === 0 ? (
@@ -1502,7 +1502,7 @@ function PartsPage() {
                 <TableCell colSpan={7} className="h-32 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center">
                     <Box className="w-8 h-8 text-slate-300 mb-2" />
-                    <p>No parts found.</p>
+                    <p>No products found.</p>
                   </div>
                 </TableCell>
               </TableRow>

@@ -67,7 +67,7 @@ export function DeliveryChallanModule({ onBack }: { onBack: () => void }) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">DC No</th>
                 <th className="p-3 font-semibold">Customer</th>
-                <th className="p-3 font-semibold">Part Name</th>
+                <th className="p-3 font-semibold">Product Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
@@ -108,7 +108,7 @@ export function DeliveryChallanModule({ onBack }: { onBack: () => void }) {
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="DC No"><input className={inputClass} value={selectedRecord.delivery_no || ''} disabled /></FormField>
                 <FormField label="Customer"><input className={inputClass} value={selectedRecord.customer_name || ''} disabled /></FormField>
-                <FormField label="Part Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
+                <FormField label="Product Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
                 <FormField label="Quantity"><input className={inputClass} value={selectedRecord.dispatch_qty ?? selectedRecord.quantity ?? ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedRecord.status || ''} disabled /></FormField>
               </div>

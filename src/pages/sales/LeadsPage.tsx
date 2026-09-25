@@ -470,7 +470,7 @@ export function LeadsPage() {
           </div>
           <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
-          <FormField label="Product / Part Required" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
+          <FormField label="Product Required" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
           <FormField label="Quantity"><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="Source">
             <select className={inputClass} value={formData.source} onChange={e => setFormData({...formData, source: e.target.value})}>
@@ -494,8 +494,8 @@ export function LeadsPage() {
             
             <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
             <div className="grid grid-cols-3 gap-4">
-              <FormField label="Part / Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
-              <FormField label="Part Number"><input className={inputClass} value={quoteForm.partNumber} onChange={e=>setQuoteForm({...quoteForm, partNumber: e.target.value})} /></FormField>
+              <FormField label="Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
+              <FormField label="Product Number"><input className={inputClass} value={quoteForm.partNumber} onChange={e=>setQuoteForm({...quoteForm, partNumber: e.target.value})} /></FormField>
               <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>
               <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
               <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
@@ -561,7 +561,7 @@ export function LeadsPage() {
                       <thead className="bg-emerald-100/50 border-b border-emerald-200">
                         <tr>
                           <th className="text-left px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Invoice</th>
-                          <th className="text-left px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Part</th>
+                          <th className="text-left px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Product</th>
                           <th className="text-center px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Qty</th>
                           <th className="text-right px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Amount (₹)</th>
                           <th className="text-right px-4 py-2 text-[10px] font-bold text-emerald-700 uppercase">Date</th>
@@ -620,7 +620,7 @@ export function LeadsPage() {
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-1">
                         <div>
-                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Part Number</p>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Product Number</p>
                           <p className="font-medium text-slate-700 truncate">{h.partNo || 'N/A'}</p>
                         </div>
                         <div>

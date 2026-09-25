@@ -47,7 +47,7 @@ export const navSections: NavSection[] = [
   {
     label: 'Engineering',
     items: [
-      { label: 'Part and Drawings', icon: FileText, page: 'engineering/cnc-vault' },
+      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault' },
     ],
   },
   {
@@ -110,7 +110,7 @@ export const pageTitles: Record<string, string> = {
   'operations/delivery': 'Delivery Challan',
   'engineering/bom': 'Bill of Materials',
   'engineering/work-instructions': 'Work Instructions',
-  'engineering/cnc-vault': 'Part and Drawings',
+  'engineering/cnc-vault': 'Products and Drawings',
   'production/planning': 'Production Planning',
   'production/work-orders': 'Work Orders',
   'production/job-cards': 'Job Cards',

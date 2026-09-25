@@ -85,7 +85,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
                 <th className="p-3 font-semibold">Enquiry No</th>
                 <th className="p-3 font-semibold">Date</th>
                 <th className="p-3 font-semibold">Customer</th>
-                <th className="p-3 font-semibold">Part / Description</th>
+                <th className="p-3 font-semibold">Product / Description</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
@@ -124,7 +124,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
                 <FormField label="Date"><input className={inputClass} value={selectedEnquiry.received_date?.split('T')[0] || selectedEnquiry.created_at?.split('T')[0] || ''} disabled /></FormField>
                 <FormField label="Customer"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedEnquiry.customer || ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedEnquiry.status || 'New'} disabled /></FormField>
-                <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={selectedEnquiry.part_name || selectedEnquiry.enquiring_for || ''} disabled /></FormField></div>
+                <div className="col-span-2"><FormField label="Product / Description"><input className={inputClass} value={selectedEnquiry.part_name || selectedEnquiry.enquiring_for || ''} disabled /></FormField></div>
                 <FormField label="Quantity"><input className={inputClass} value={selectedEnquiry.quantity || ''} disabled /></FormField>
                 <FormField label="Estimated Value"><input className={inputClass} value={selectedEnquiry.estimated_value || ''} disabled /></FormField>
                 <FormField label="Assigned To"><input className={inputClass} value="Admin" disabled /></FormField>

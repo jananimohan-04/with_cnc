@@ -521,8 +521,8 @@ export function BOMPage() {
               <tr className="border-b border-slate-100 bg-slate-50/30">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Level</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Unique Number</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Part No</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Part Name</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Part No</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product Name</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">UOM</th>
@@ -579,8 +579,8 @@ export function BOMPage() {
               {projects.map((p, i) => <option key={i} value={p}>{p}</option>)}
             </select>
           </FormField>
-          <FormField label="Part Number" required><input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} placeholder="e.g. BA-TB-204-A" /></FormField>
-          <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="Component Name" /></FormField>
+          <FormField label="Product / Part Number" required><input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} placeholder="e.g. BA-TB-204-A" /></FormField>
+          <FormField label="Product Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="Product Name" /></FormField>
           <FormField label="Material"><input className={inputClass} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})} placeholder="Material Grade" /></FormField>
           <FormField label="Quantity" required><input type="number" step="0.01" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="UOM">

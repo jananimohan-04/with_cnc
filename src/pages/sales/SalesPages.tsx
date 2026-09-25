@@ -381,7 +381,7 @@ export function QuotationsPage() {
     { key: 'quoteNo', label: 'Quote No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.quoteNo}</span> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
     { key: 'enquiryNo', label: 'Enquiry', render: (r) => <span className="font-mono text-xs text-slate-500">{r.enquiryNo}</span> },
-    { key: 'partName', label: 'Part', sortable: true },
+    { key: 'partName', label: 'Product', sortable: true },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right' },
     { key: 'unitPrice', label: 'Unit Price', sortable: true, align: 'right', render: (r) => <span>₹{r.unitPrice.toLocaleString('en-IN')}</span> },
     { key: 'totalValue', label: 'Total Value', sortable: true, align: 'right', render: (r) => <span className="font-semibold text-slate-700">₹{(r.totalValue / 100000).toFixed(1)}L</span> },
@@ -431,7 +431,7 @@ export function QuotationsPage() {
               {formData.enquiryNo && !enquiryOptions.some(e => e.enquiry_no === formData.enquiryNo) && <option value={formData.enquiryNo}>{formData.enquiryNo}</option>}
             </select>
           </FormField>
-          <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
+          <FormField label="Product Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
           <FormField label="Quantity" required><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="Unit Price (₹)" required><input type="number" className={inputClass} value={formData.unitPrice} onChange={e => setFormData({...formData, unitPrice: e.target.value})} /></FormField>
           <FormField label="Valid Till" required><input type="date" className={inputClass} value={formData.validTill} onChange={e => setFormData({...formData, validTill: e.target.value})} /></FormField>
@@ -451,7 +451,7 @@ export function QuotationsPage() {
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
             <div><p className="text-slate-500 mb-1">Customer</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
-            <div><p className="text-slate-500 mb-1">Part Name</p><p className="font-medium text-slate-800">{viewTarget.partName}</p></div>
+            <div><p className="text-slate-500 mb-1">Product Name</p><p className="font-medium text-slate-800">{viewTarget.partName}</p></div>
             <div><p className="text-slate-500 mb-1">Enquiry No</p><p className="font-mono text-slate-700">{viewTarget.enquiryNo}</p></div>
             <div><p className="text-slate-500 mb-1">Quantity</p><p className="text-slate-800">{viewTarget.quantity}</p></div>
             <div><p className="text-slate-500 mb-1">Unit Price</p><p className="text-slate-800">₹{viewTarget.unitPrice.toLocaleString('en-IN')}</p></div>
@@ -700,7 +700,7 @@ export function SalesOrdersPage() {
   const columns: Column<SalesOrderRow>[] = [
     { key: 'orderNo', label: 'Order No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.orderNo}</span> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
-    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p><p className="text-xs text-slate-400">{r.partNo}</p></div> },
+    { key: 'partName', label: 'Product', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p><p className="text-xs text-slate-400">{r.partNo}</p></div> },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right' },
     { key: 'delivered', label: 'Delivered', align: 'right', render: (r) => <span className={r.delivered === r.quantity ? 'text-green-600 font-medium' : 'text-slate-500'}>{r.delivered}/{r.quantity}</span> },
     { key: 'value', label: 'Value', sortable: true, align: 'right', render: (r) => <span className="font-semibold text-slate-700">₹{(r.value / 100000).toFixed(1)}L</span> },

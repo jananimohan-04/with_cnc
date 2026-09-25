@@ -76,7 +76,7 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Inward No</th>
                 <th className="p-3 font-semibold">Party</th>
-                <th className="p-3 font-semibold">Part Name</th>
+                <th className="p-3 font-semibold">Product Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
@@ -117,7 +117,7 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Inward No"><input className={inputClass} value={selectedRecord.inward_no || ''} disabled /></FormField>
                 <FormField label="Party"><input className={inputClass} value={selectedRecord.party_name || ''} disabled /></FormField>
-                <FormField label="Part Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
+                <FormField label="Product Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
                 <FormField label="Quantity"><input className={inputClass} value={selectedRecord.quantity ?? ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedRecord.status || ''} disabled /></FormField>
                 {Array.isArray(selectedRecord.attachments) && selectedRecord.attachments.length > 0 && (
