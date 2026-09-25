@@ -376,6 +376,11 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
     }
   ];
 
+  // Save to local cache so pipeline can immediately render even if DB has issues
+  try {
+    localStorage.setItem('cnc_seeded_quotations', JSON.stringify(dummyQuotations));
+  } catch (e) {}
+
   let { error: quoteErr } = await supabase.from('cnc_quotations').insert(dummyQuotations);
   if (quoteErr) {
     console.warn('[Seeder] Full quotation insert failed, retrying with minimal schema:', quoteErr);
@@ -416,7 +421,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       phone: '+91 98450 11223',
       email: 'r.verma@tataadvanced.com',
       part_name: 'Radar Gimbal Support Bracket',
-      part_number: 'RDR-GMB-01',
       quantity: 50,
       value: 850000,
       total_value: 850000,
@@ -436,7 +440,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       phone: '+91 98201 33445',
       email: 'ananya.sen@mahindra-aero.com',
       part_name: 'Cockpit Control Lever Assembly',
-      part_number: 'CKP-LEV-02',
       quantity: 75,
       value: 435000,
       total_value: 435000,
@@ -456,7 +459,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       phone: '+91 94432 55678',
       email: 'k.sundaram@larsentoubro.com',
       part_name: 'Underwater Enclosure Flange',
-      part_number: 'UND-ENC-03',
       quantity: 20,
       value: 920000,
       total_value: 920000,
@@ -476,7 +478,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       phone: '+91 97112 88990',
       email: 'v.deshmukh@godrej.com',
       part_name: 'Precision Sensor Housing - Inconel 718',
-      part_number: 'SNS-HSG-04',
       quantity: 35,
       value: 1150000,
       total_value: 1150000,
@@ -496,7 +497,6 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       phone: '+91 99224 44556',
       email: 'amit.kulkarni@bharatforge.com',
       part_name: 'Drive Pinion Gear Blank',
-      part_number: 'DRV-PIN-05',
       quantity: 150,
       value: 560000,
       total_value: 560000,
@@ -713,92 +713,118 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-601',
-      customer_name: 'Tata Advanced Systems Ltd',
+      sales_order_id: dummySalesOrders[0].id,
       sales_order_no: 'SO-2026-301',
+      customer_id: dummySalesOrders[0].customer_id,
+      customer_name: 'Tata Advanced Systems Ltd',
       part_name: 'Radar Gimbal Support Bracket',
       quantity: 50,
       dispatch_qty: 50,
       delivery_date: '2026-09-24',
       vehicle_no: 'KA-04-AB-1234',
       status: 'Pending',
-      created_at: '2026-09-24T14:30:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-602',
-      customer_name: 'Mahindra Aerospace Pvt Ltd',
+      sales_order_id: dummySalesOrders[1].id,
       sales_order_no: 'SO-2026-302',
+      customer_id: dummySalesOrders[1].customer_id,
+      customer_name: 'Mahindra Aerospace Pvt Ltd',
       part_name: 'Cockpit Control Lever Assembly',
       quantity: 75,
       dispatch_qty: 75,
       delivery_date: '2026-09-24',
       vehicle_no: 'KA-51-MD-9876',
       status: 'Pending',
-      created_at: '2026-09-24T15:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-603',
-      customer_name: 'Larsen & Toubro Precision',
+      sales_order_id: dummySalesOrders[2].id,
       sales_order_no: 'SO-2026-303',
+      customer_id: dummySalesOrders[2].customer_id,
+      customer_name: 'Larsen & Toubro Precision',
       part_name: 'Underwater Enclosure Flange',
       quantity: 20,
       dispatch_qty: 20,
       delivery_date: '2026-09-25',
       vehicle_no: 'TN-38-LT-4567',
       status: 'Pending',
-      created_at: '2026-09-25T11:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-604',
-      customer_name: 'Godrej Precision Engineering',
+      sales_order_id: dummySalesOrders[3].id,
       sales_order_no: 'SO-2026-304',
+      customer_id: dummySalesOrders[3].customer_id,
+      customer_name: 'Godrej Precision Engineering',
       part_name: 'Precision Sensor Housing - Inconel 718',
       quantity: 35,
       dispatch_qty: 35,
       delivery_date: '2026-09-25',
       vehicle_no: 'MH-02-GD-3321',
       status: 'Pending',
-      created_at: '2026-09-25T11:30:00Z',
       ...(companyId ? { company_id: companyId } : {})
     },
     {
       id: crypto.randomUUID(),
       delivery_no: 'DC-2026-605',
-      customer_name: 'Bharat Forge Advanced Technologies',
+      sales_order_id: dummySalesOrders[4].id,
       sales_order_no: 'SO-2026-305',
+      customer_id: dummySalesOrders[4].customer_id,
+      customer_name: 'Bharat Forge Advanced Technologies',
       part_name: 'Drive Pinion Gear Blank',
       quantity: 150,
       dispatch_qty: 150,
       delivery_date: '2026-09-25',
       vehicle_no: 'MH-12-BF-7788',
       status: 'Pending',
-      created_at: '2026-09-25T12:00:00Z',
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
 
+  // Save to local cache so pipeline can immediately render even if DB rejects or has latency
+  try {
+    localStorage.setItem('cnc_seeded_deliveries', JSON.stringify(dummyDeliveries));
+  } catch (e) {}
+
   let { error: dcErr } = await supabase.from('cnc_deliveries').insert(dummyDeliveries);
   if (dcErr) {
-    console.warn('[Seeder] Full delivery insert failed, trying minimal:', dcErr);
-    const minDeliveries = dummyDeliveries.map(d => ({
-      id: d.id,
-      delivery_no: d.delivery_no,
-      customer_name: d.customer_name,
-      part_name: d.part_name,
-      quantity: d.quantity,
-      delivery_date: d.delivery_date,
-      status: d.status,
-      created_at: d.created_at,
-      ...(companyId ? { company_id: companyId } : {})
-    }));
-    const retryDc = await supabase.from('cnc_deliveries').insert(minDeliveries);
-    if (retryDc.error) console.error('[Seeder] DC retry failed:', retryDc.error);
-    else console.log('[Seeder] 5 Deliveries inserted via fallback');
+    console.warn('[Seeder] Full delivery insert failed, trying without customer_id:', dcErr);
+    const noCustDeliveries = dummyDeliveries.map(({ customer_id, ...rest }) => rest);
+    const retry1 = await supabase.from('cnc_deliveries').insert(noCustDeliveries);
+    if (retry1.error) {
+      console.warn('[Seeder] Without customer_id failed, trying without sales_order_id:', retry1.error);
+      const noSoDeliveries = dummyDeliveries.map(({ customer_id, sales_order_id, ...rest }) => rest);
+      const retry2 = await supabase.from('cnc_deliveries').insert(noSoDeliveries);
+      if (retry2.error) {
+        console.warn('[Seeder] Without sales_order_id failed, trying minimal:', retry2.error);
+        const minDeliveries = dummyDeliveries.map(d => ({
+          id: d.id,
+          delivery_no: d.delivery_no,
+          customer_name: d.customer_name,
+          part_name: d.part_name,
+          quantity: d.quantity,
+          delivery_date: d.delivery_date,
+          status: d.status,
+          ...(companyId ? { company_id: companyId } : {})
+        }));
+        const retry3 = await supabase.from('cnc_deliveries').insert(minDeliveries);
+        if (retry3.error) {
+          console.error('[Seeder] All delivery DB inserts failed, relying on local cache fallback:', retry3.error);
+        } else {
+          console.log('[Seeder] 5 Deliveries inserted via minimal schema fallback');
+        }
+      } else {
+        console.log('[Seeder] 5 Deliveries inserted via no-sales_order_id fallback');
+      }
+    } else {
+      console.log('[Seeder] 5 Deliveries inserted via no-customer_id fallback');
+    }
   } else {
     console.log('[Seeder] 5 Deliveries inserted successfully');
   }
@@ -911,6 +937,11 @@ export async function resetAndSeedAllPipelineData(companyId?: string | null) {
       ...(companyId ? { company_id: companyId } : {})
     }
   ];
+
+  // Save to local cache so pipeline can immediately render even if DB has issues
+  try {
+    localStorage.setItem('cnc_seeded_invoices', JSON.stringify(dummyInvoices));
+  } catch (e) {}
 
   let { error: invErr } = await supabase.from('cnc_invoices').insert(dummyInvoices);
   if (invErr) {
