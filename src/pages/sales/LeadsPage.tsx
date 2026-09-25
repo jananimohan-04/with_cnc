@@ -329,7 +329,7 @@ export function LeadsPage() {
   };
 
   const columns: Column<any>[] = [
-    { key: 'leadNo', label: 'Project Name', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
+    { key: 'leadNo', label: 'Unique Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
     { key: 'company', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.company}</span> },
     { key: 'contactPerson', label: 'Contact', render: (r) => <div><p className="text-sm">{r.contactPerson}</p><p className="text-xs text-slate-500">{r.phone}</p></div> },
     { key: 'partName', label: 'Requirement', render: (r) => <div><p className="text-sm font-medium text-slate-700">{r.partName}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
@@ -390,7 +390,7 @@ export function LeadsPage() {
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Project Name" /></FormField>
+          <FormField label="Unique Number" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
           <div className="relative">
             <FormField label="Company Name" required>
               <input 

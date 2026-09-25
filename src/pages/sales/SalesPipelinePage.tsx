@@ -225,7 +225,7 @@ export function SalesPipelinePage() {
           {Object.entries(raw).map(([key, value]) => {
             if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            if (key === 'lead_no') formattedKey = 'Project Name';
+            if (key === 'lead_no') formattedKey = 'Unique Number';
             return (
               <div key={key}>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
@@ -393,7 +393,7 @@ export function SalesPipelinePage() {
   const fetchPipeline = async () => {
     setLoading(true);
     try {
-    // Fetch all leads to build a lookup map for Project Names
+    // Fetch all leads to build a lookup map for Unique Numbers
     const { data: allLeads, error: leadsErr } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage, customer, part_name, quantity, estimated_value, expected_date, contact_person, phone, email, enquiring_for');
     if (leadsErr) console.error("Error fetching leads:", leadsErr);
     
@@ -1753,12 +1753,12 @@ export function SalesPipelinePage() {
       {/* New Lead Modal */}
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Lead" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required>
+          <FormField label="Unique Number" required>
             <input 
               className={inputClass} 
               value={newLeadForm.leadNo} 
               onChange={e => setNewLeadForm({ ...newLeadForm, leadNo: e.target.value })} 
-              placeholder="e.g. 1840 or Custom Project Name" 
+              placeholder="e.g. 1840 or Custom Unique Number" 
             />
           </FormField>
           <div className="relative">
@@ -1906,7 +1906,7 @@ export function SalesPipelinePage() {
       {/* Enquiry Modal */}
       <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Project Name" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} /></FormField>
+          <FormField label="Unique Number" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
           <div className="relative">
             <FormField label="Company Name" required>
               <input 
@@ -2108,7 +2108,7 @@ export function SalesPipelinePage() {
                 <option>SERVICE PURCHASE</option>
               </select>
             </FormField>
-            <FormField label="Project Name"><input className={inputClass} value={inwardForm.projectName} onChange={e=>setInwardForm({...inwardForm, projectName: e.target.value})} /></FormField>
+            <FormField label="Unique Number"><input className={inputClass} value={inwardForm.projectName} onChange={e=>setInwardForm({...inwardForm, projectName: e.target.value})} /></FormField>
             <FormField label="Sales Order Reference"><input className={inputClass} value={inwardForm.salesOrderRef || ''} disabled={!!inwardModalTarget?.raw?.id} onChange={e=>setInwardForm({...inwardForm, salesOrderRef: e.target.value})} /></FormField>
             <FormField label="Reference No."><input className={inputClass} value={inwardForm.referenceNo} onChange={e=>setInwardForm({...inwardForm, referenceNo: e.target.value})} placeholder="e.g. DC/Invoice No" /></FormField>
             <FormField label="Inward Date" required><input type="date" className={inputClass} value={inwardForm.inwardDate} onChange={e=>setInwardForm({...inwardForm, inwardDate: e.target.value})} /></FormField>
