@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Eye, Edit, ArrowRightCircle, XCircle, FileText, RefreshCcw } from 'lucide-react';
+import { Eye, Edit, ArrowRightCircle, XCircle, FileText, RefreshCcw, UploadCloud, Plus, Trash2 } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
@@ -8,6 +8,17 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+
+async function uploadLeadProductFile(companyId: string | undefined | null, file: File) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
+  const cId = companyId || 'general';
+  const path = `${cId}/enquiries/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from('inventory-images').upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) {
+    console.warn(`Storage upload warning for ${file.name}:`, error);
+  }
+  return path;
+}
 
 export function LeadsPage() {
   const { profile, company } = useAuth();
@@ -115,6 +126,7 @@ export function LeadsPage() {
   const resetForm = (leads = leadsData) => ({
     leadNo: generateUniqueProjectNo(leads),
     customer: '', contacts: [{ person: '', phone: '', email: '' }], city: '', gst: '', enquiringFor: '', 
+    items: [{ productName: '', quantity: '', files: [] as File[], filePaths: [] as string[] }],
     partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: '', source: 'Direct', status: 'New', notes: ''
   });
   const [formData, setFormData] = useState(resetForm());
@@ -216,7 +228,39 @@ export function LeadsPage() {
     }
   }
 
+  const openProductFile = async (path: string) => {
+    if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http')) {
+      window.open(path, '_blank');
+      return;
+    }
+    const tab = window.open('', '_blank');
+    if (!tab) { alert('Allow pop-ups to open the attachment.'); return; }
+    const { data, error } = await supabase.storage.from('inventory-images').createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) {
+      tab.close();
+      alert(error?.message || 'Unable to open attachment.');
+      return;
+    }
+    tab.location.href = data.signedUrl;
+  };
+
   const handleEditClick = (r: any) => {
+    let parsedItems = [{ productName: r.partName || '', quantity: r.quantity?.toString() || '', files: [] as File[], filePaths: [] as string[] }];
+    try {
+      const raw = r.enquiringFor ?? r.enquiring_for;
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsedItems = parsed.map((p: any) => ({
+            productName: p.productName || p.partName || '',
+            quantity: (p.quantity || '').toString(),
+            files: [] as File[],
+            filePaths: Array.isArray(p.filePaths) ? p.filePaths : []
+          }));
+        }
+      }
+    } catch {}
+
     setFormData({
       leadNo: r.leadNo,
       customer: r.company,
@@ -228,6 +272,7 @@ export function LeadsPage() {
       city: r.city || '',
       gst: r.gst || '',
       enquiringFor: r.enquiringFor ?? r.enquiring_for ?? '',
+      items: parsedItems,
       partName: r.partName,
       partNo: r.partNo || '',
       quantity: r.quantity?.toString() || '',
@@ -242,13 +287,48 @@ export function LeadsPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.customer || !formData.partName) {
-      alert("Please enter customer name and product/part name.");
+    if (!formData.customer?.trim()) {
+      alert("Please enter company name.");
+      return;
+    }
+    const enteredProducts = (formData.items || []).filter((item: any) => String(item.productName || item.partName || '').trim());
+    let finalItems = enteredProducts;
+    if (!finalItems.length && formData.partName?.trim()) {
+      finalItems = [{ productName: formData.partName.trim(), quantity: formData.quantity || '0', files: [], filePaths: [] }];
+    }
+    if (!finalItems.length) {
+      alert("Please enter at least one product name.");
+      return;
+    }
+    if (finalItems.some((item: any) => Number(item.quantity) < 0)) {
+      alert("Product quantities cannot be negative.");
       return;
     }
     
     setLoading(true);
     try {
+      const companyId = company?.id;
+      const itemsToSave = await Promise.all(finalItems.map(async (item: any) => {
+        let uploadedPaths: string[] = [];
+        if ((item.files || []).length > 0) {
+          try {
+            uploadedPaths = await Promise.all((item.files || []).map((file: File) => uploadLeadProductFile(companyId, file)));
+          } catch (upErr: any) {
+            console.warn("Storage upload warning:", upErr);
+          }
+        }
+        return {
+          productName: String(item.productName || item.partName).trim(),
+          partName: String(item.productName || item.partName).trim(),
+          quantity: item.quantity || '0',
+          filePaths: [...(item.filePaths || []), ...uploadedPaths],
+        };
+      }));
+
+      const firstItem = itemsToSave[0];
+      const multiplePartsString = itemsToSave.length > 1 ? `Multiple Products (${itemsToSave.length})` : firstItem.productName;
+      const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
+
       const entryData: any = {
         lead_no: formData.leadNo,
         customer: formData.customer,
@@ -257,18 +337,18 @@ export function LeadsPage() {
         email: formData.contacts.map((c: any) => c.email).join(' | '),
         city: formData.city,
         gst: formData.gst,
-        enquiring_for: formData.enquiringFor,
-        part_name: formData.partName,
-        part_no: formData.partNo,
-        quantity: Number(formData.quantity) || 0,
+        enquiring_for: JSON.stringify(itemsToSave),
+        part_name: multiplePartsString,
+        part_no: formData.partNo || 'N/A',
+        quantity: totalQty,
         estimated_value: Number(formData.estimatedValue) || 0,
         expected_date: formData.expectedDate || null,
         source: formData.source,
         status: formData.status
       };
 
-      if (company?.id) {
-        entryData.company_id = company.id;
+      if (companyId) {
+        entryData.company_id = companyId;
       }
 
       const { error } = editId
@@ -285,6 +365,27 @@ export function LeadsPage() {
         alert('Failed to save lead: ' + error.message);
         return;
       }
+
+      // Auto-sync customer to cnc_customers if not yet existing
+      try {
+        const custExists = customerList.some(c => c.name?.toLowerCase() === formData.customer.toLowerCase());
+        if (!custExists) {
+          const custPayload: any = {
+            id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+            name: formData.customer,
+            contact: formData.contacts?.[0]?.person || null,
+            phone: formData.contacts?.[0]?.phone || null,
+            email: formData.contacts?.[0]?.email || null,
+            city: formData.city || null,
+            status: 'Active'
+          };
+          if (companyId) custPayload.company_id = companyId;
+          await supabase.from('cnc_customers').insert([custPayload]);
+        }
+      } catch (cErr) {
+        console.warn('Customer auto-insert error:', cErr);
+      }
+
       await fetchLeads();
       setShowAdd(false);
       setEditId(null);
@@ -418,7 +519,7 @@ export function LeadsPage() {
 
       <DataTable data={leadsData} columns={columns} searchKeys={['company', 'partName', 'leadNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Lead" />
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Unique Number" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
           <CustomerAutocomplete
@@ -455,8 +556,143 @@ export function LeadsPage() {
           </div>
           <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
-          <FormField label="Product Required" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
-          <FormField label="Quantity"><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
+
+          {/* Multiple Products Required with Image / File upload */}
+          <div className="col-span-2">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
+            <div className="space-y-2">
+              {(formData.items || [{ productName: '', quantity: '', files: [], filePaths: [] }]).map((item: any, idx: number) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_7rem_minmax(14rem,0.9fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div>
+                    <input
+                      className={inputClass}
+                      placeholder="Product Name *"
+                      value={item.productName ?? item.partName ?? ''}
+                      onChange={e => {
+                        const newItems = [...(formData.items || [])];
+                        newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
+                        setFormData({ ...formData, items: newItems, partName: newItems[0].productName });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="number"
+                      min="0"
+                      className={inputClass}
+                      placeholder="Qty"
+                      value={item.quantity}
+                      onChange={e => {
+                        const newItems = [...(formData.items || [])];
+                        newItems[idx] = { ...newItems[idx], quantity: e.target.value };
+                        setFormData({ ...formData, items: newItems, quantity: newItems[0].quantity });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 transition-colors">
+                      <UploadCloud size={15} />
+                      {(item.files || []).length || (item.filePaths || []).length
+                        ? `${(item.files || []).length + (item.filePaths || []).length} file(s) selected`
+                        : 'Upload image / file / PDF'}
+                      <input
+                        type="file"
+                        multiple
+                        accept="*/*"
+                        className="hidden"
+                        onChange={e => {
+                          const selectedFiles = Array.from(e.currentTarget.files || []);
+                          const newItems = [...(formData.items || [])];
+                          newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
+                          setFormData({ ...formData, items: newItems });
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {/* Render newly chosen files */}
+                    {(item.files || []).length > 0 && (
+                      <div className="mt-1 space-y-1">
+                        {item.files.map((file: File, fileIdx: number) => {
+                          const isImg = file.type.startsWith('image/');
+                          return (
+                            <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600 bg-white p-1.5 rounded border border-slate-200">
+                              <div className="flex items-center gap-1.5 truncate">
+                                {isImg ? (
+                                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-5 h-5 object-cover rounded flex-shrink-0" />
+                                ) : (
+                                  <FileText size={13} className="text-slate-400 flex-shrink-0" />
+                                )}
+                                <span className="truncate">{file.name}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-rose-600 hover:text-rose-800 text-xs px-1 font-medium"
+                                onClick={() => {
+                                  const newItems = [...formData.items];
+                                  newItems[idx] = { ...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx) };
+                                  setFormData({ ...formData, items: newItems });
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Render previously uploaded filePaths */}
+                    {Array.isArray(item.filePaths) && item.filePaths.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {item.filePaths.map((path: string, pIdx: number) => (
+                          <span key={path} className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                            <FileText size={11} />
+                            <span className="truncate max-w-[120px]">{path.split('/').pop()}</span>
+                            <button
+                              type="button"
+                              className="text-red-500 hover:text-red-700 ml-1 text-xs"
+                              onClick={() => {
+                                const newItems = [...formData.items];
+                                newItems[idx] = { ...newItems[idx], filePaths: newItems[idx].filePaths.filter((_: string, j: number) => j !== pIdx) };
+                                setFormData({ ...formData, items: newItems });
+                              }}
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {idx > 0 && (
+                    <button
+                      type="button"
+                      className="p-2 text-red-500 hover:bg-red-50 rounded mt-1 transition-colors"
+                      title="Remove Product"
+                      onClick={() => {
+                        const newItems = formData.items.filter((_: any, i: number) => i !== idx);
+                        setFormData({ ...formData, items: newItems });
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2 transition-colors py-1 px-2 rounded hover:bg-brand-50"
+                onClick={() => {
+                  setFormData({
+                    ...formData,
+                    items: [...(formData.items || []), { productName: '', quantity: '', files: [], filePaths: [] }]
+                  });
+                }}
+              >
+                <Plus size={14} /> Add Another Product
+              </button>
+            </div>
+          </div>
+
           <FormField label="Source">
             <select className={inputClass} value={formData.source} onChange={e => setFormData({...formData, source: e.target.value})}>
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
@@ -634,9 +870,47 @@ export function LeadsPage() {
                           <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Phone</p>
                           <p className="font-medium text-slate-700 truncate">{h.phone ? h.phone.split(' | ')[0] : 'N/A'}</p>
                         </div>
-                        <div className="col-span-2">
-                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Enquiring For</p>
-                          <p className="font-medium text-slate-700 line-clamp-2">{h.enquiringFor || 'N/A'}</p>
+                        <div className="col-span-4 mt-2 border-t border-slate-100 pt-2">
+                          <p className="text-slate-500 text-[11px] font-bold uppercase mb-2">Products / Requirements</p>
+                          {(() => {
+                            let parsed: any[] = [];
+                            try {
+                              if (h.enquiringFor) {
+                                const p = typeof h.enquiringFor === 'string' ? JSON.parse(h.enquiringFor) : h.enquiringFor;
+                                if (Array.isArray(p)) parsed = p;
+                              }
+                            } catch {}
+                            if (parsed.length > 0) {
+                              return (
+                                <div className="space-y-2">
+                                  {parsed.map((item: any, pIdx: number) => (
+                                    <div key={pIdx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-800">{item.productName || item.partName || 'Product'}</span>
+                                        <span className="text-slate-500 font-medium">· Qty: {item.quantity || '-'}</span>
+                                      </div>
+                                      {Array.isArray(item.filePaths) && item.filePaths.length > 0 && (
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          {item.filePaths.map((fPath: string, fIdx: number) => (
+                                            <button
+                                              key={fIdx}
+                                              type="button"
+                                              onClick={() => void openProductFile(fPath)}
+                                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded text-blue-600 hover:text-blue-800 hover:border-blue-300 font-medium transition-colors"
+                                            >
+                                              <FileText size={11} />
+                                              <span className="truncate max-w-[120px]">{fPath.split('/').pop()}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            return <p className="font-medium text-slate-700">{h.enquiringFor || h.partName || 'N/A'}</p>;
+                          })()}
                         </div>
                         {h.estimatedValue > 0 && (
                           <div className="col-span-2">
