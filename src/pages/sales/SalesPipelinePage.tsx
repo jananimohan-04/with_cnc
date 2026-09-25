@@ -282,6 +282,67 @@ export function SalesPipelinePage() {
     tab.location.href = data.signedUrl;
   };
 
+  const getItemFileEntries = (item: any): { name: string; path: string }[] => {
+    const out: { name: string; path: string }[] = [];
+    (item?.filePaths || []).forEach((fp: any) => {
+      if (!fp) return;
+      if (typeof fp === 'string') out.push({ name: fp.split('/').pop() || fp, path: fp });
+      else if (typeof fp === 'object' && (fp.path || fp.url)) out.push({ name: fp.name || String(fp.path || fp.url).split('/').pop(), path: fp.path || fp.url });
+    });
+    return out;
+  };
+
+  const handleItemFileUpload = async (title: string, raw: any, itemIndex: number, files: FileList | File[]) => {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    if (!company?.id) { alert('Select a company before uploading product files.'); return; }
+    setLoading(true);
+    try {
+      if (title === 'Inward') {
+        const uploaded = await Promise.all(list.map(f => uploadInwardAttachment(company.id!, raw.id, f)));
+        const nextAttachments = [...(raw.attachments || []), ...uploaded];
+        const { error } = await supabase.from('cnc_inwards').update({ attachments: nextAttachments }).eq('id', raw.id);
+        if (error) throw error;
+        setViewModalData((prev: any) => prev ? { ...prev, inward: { ...prev.inward, attachments: nextAttachments } } : prev);
+      } else {
+        const uploadedPaths = await Promise.all(list.map(f => uploadEnquiryProductFile(company.id!, f)));
+        const keyMap: any = { 'Enquiry': 'enquiry', 'Quotation': 'quotation', 'Sales Order': 'order' };
+        const fieldMap: any = { 'Enquiry': 'enquiring_for', 'Quotation': 'description', 'Sales Order': 'items' };
+        const tableMap: any = { 'Enquiry': 'cnc_enquiries', 'Quotation': 'cnc_quotations', 'Sales Order': 'cnc_sales_orders' };
+        const stateKey = keyMap[title];
+        const field = fieldMap[title];
+        const table = tableMap[title];
+        if (!stateKey || !field || !table) { alert('File upload is supported for Enquiry, Quotation, Sales Order and Inward.'); return; }
+        let currentItems: any[] = [];
+        if (title === 'Sales Order') {
+          currentItems = Array.isArray(raw.items) ? raw.items : [];
+        } else {
+          const rawVal = raw[field];
+          try {
+            const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+            currentItems = Array.isArray(parsed) ? parsed : (Array.isArray(raw.items) ? raw.items : []);
+          } catch { currentItems = Array.isArray(raw.items) ? raw.items : []; }
+        }
+        const nextItems = currentItems.map((it: any, idx: number) =>
+          idx === itemIndex ? { ...it, filePaths: [...(it.filePaths || []), ...uploadedPaths] } : it
+        );
+        const payloadVal = title === 'Sales Order' ? nextItems : JSON.stringify(nextItems);
+        const { error } = await supabase.from(table).update({ [field]: payloadVal }).eq('id', raw.id);
+        if (error) throw error;
+        setViewModalData((prev: any) => {
+          if (!prev || !prev[stateKey]) return prev;
+          const updated = { ...prev[stateKey], [field]: payloadVal, items: nextItems };
+          return { ...prev, [stateKey]: updated };
+        });
+      }
+      fetchPipeline();
+    } catch (err: any) {
+      alert(err?.message || 'File upload failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderRecordData = (title: string, raw: any, showItems: boolean = true) => {
     if (!raw) return null;
     return (
@@ -291,7 +352,7 @@ export function SalesPipelinePage() {
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {Object.entries(raw).map(([key, value]) => {
-            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
+            if (key === 'id' || key.endsWith('_id') || value === null || value === '' || key === 'items' || key === 'contacts' || key === 'attachments' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || ((key === 'part_no' || key === 'part_number') && value === 'N/A')) return null;
             if (title === 'Enquiry' && (key === 'status' || key === 'estimated_value' || key === 'received_date' || key === 'pipeline_stage')) return null;
             if (title === 'Quotation' && (key === 'valid_till' || key === 'valid_until' || key === 'status' || key === 'created_at' || key === 'part_number' || key === 'part_no')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -334,36 +395,64 @@ export function SalesPipelinePage() {
                     <th className="px-4 py-2">Qty</th>
                     <th className="px-4 py-2">Unit Price</th>
                     <th className="px-4 py-2">Total</th>
-                    {title === 'Sales Order' && <th className="px-4 py-2 text-right">Action</th>}
+                    {(title === 'Sales Order' || viewEditMode) && <th className="px-4 py-2 text-right">Action</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {raw.items.map((item: any, i: number) => (
+                  {raw.items.map((item: any, i: number) => {
+                    const fileEntries = getItemFileEntries(item);
+                    return (
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-3 font-medium text-slate-800">
-                        {item.partName || '-'} 
-                        <span className="text-xs text-slate-400 block font-normal">{item.partNumber}</span>
+                        {item.partName || item.productName || '-'} 
+                        <span className="text-xs text-slate-400 block font-normal">{item.partNumber || item.part_number}</span>
                         {item.status && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.status === 'Inwarded' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{item.status}</span>}
-                        {Array.isArray(item.filePaths) && item.filePaths.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{item.filePaths.map((path: string) => <button key={path} type="button" className="inline-flex items-center gap-1 text-[10px] text-blue-700 hover:underline" onClick={e => { e.stopPropagation(); void openProductFile(path); }}><FileText size={11}/>{path.split('/').pop()}</button>)}</div>}
+                        {fileEntries.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{fileEntries.map(fe => <button key={fe.path} type="button" className="inline-flex items-center gap-1 text-[10px] text-blue-700 hover:underline" onClick={e => { e.stopPropagation(); void openProductFile(fe.path); }}><FileText size={11}/>{fe.name}</button>)}</div>}
                       </td>
                       <td className="px-4 py-3">{item.quantity}</td>
                       <td className="px-4 py-3">{formatINR(item.unitPrice || 0)}</td>
                       <td className="px-4 py-3 font-bold text-brand-600">{formatINR((item.quantity||0) * (item.unitPrice||0))}</td>
-                      {title === 'Sales Order' && (
+                      {(title === 'Sales Order' || viewEditMode) && (
                         <td className="px-4 py-3 text-right">
-                          {!item.status && (
-                            <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-2">
+                            {title === 'Sales Order' && !item.status && (
                               <button onClick={() => handleItemAction(raw, i, 'inward')} className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded border border-emerald-200" title="Available (Inward)">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                               </button>
-                            </div>
-                          )}
+                            )}
+                            {viewEditMode && (title === 'Enquiry' || title === 'Quotation' || title === 'Sales Order') && (
+                              <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Upload image / file / PDF for this product">
+                                <UploadCloud size={13} /> Upload
+                                <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, i, e.currentTarget.files); e.currentTarget.value = ''; }} />
+                              </label>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {title === 'Inward' && Array.isArray(raw.attachments) && raw.attachments.length > 0 && (
+          <div className="bg-white rounded-lg border border-slate-200 mt-4">
+            <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Attached Files</h4>
+            <div className="p-3 flex flex-wrap gap-2">
+              {raw.attachments.map((att: any, ai: number) => {
+                const p = typeof att === 'string' ? att : (att.path || att.url || '');
+                const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
+                if (!p) return null;
+                return <button key={`${p}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
+              })}
+              {viewEditMode && (
+                <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                  <UploadCloud size={13} /> Upload image / file / PDF
+                  <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, 0, e.currentTarget.files); e.currentTarget.value = ''; }} />
+                </label>
+              )}
             </div>
           </div>
         )}
@@ -1026,7 +1115,9 @@ export function SalesPipelinePage() {
             unitPrice: '',
             discount: '0',
             unitDiscount: '0',
-            gst: '18'
+            gst: '18',
+            files: [],
+            filePaths: []
           }];
 
       setQuoteForm({
@@ -1057,7 +1148,8 @@ export function SalesPipelinePage() {
          unitPrice: p.toString(),
          discount: (card.raw.discount_percent || 0).toString(),
          unitDiscount: (card.raw.unit_discount || 0).toString(),
-         gst: (card.raw.gst_percent || 18).toString()
+         gst: (card.raw.gst_percent || 18).toString(),
+         filePaths: Array.isArray((card.raw as any).filePaths) ? (card.raw as any).filePaths : []
       };
       
       let itemsArr: any[] = [];
@@ -1065,11 +1157,12 @@ export function SalesPipelinePage() {
       let finalItems = [];
       if (itemsArr && Array.isArray(itemsArr) && itemsArr.length > 0) {
         finalItems = itemsArr.map(i => ({
-          id: crypto.randomUUID(), partName: i.partName, partNumber: i.partNumber || '', description: '',
+          id: crypto.randomUUID(), partName: i.partName || i.productName || '', partNumber: i.partNumber || i.part_number || '', description: '',
           quantity: i.quantity?.toString() || '0', unitPrice: (i.unitPrice || p).toString(),
           discount: (i.discount || card.raw.discount_percent || 0).toString(),
           unitDiscount: (i.unitDiscount || card.raw.unit_discount || 0).toString(),
-          gst: (i.gst || card.raw.gst_percent || 18).toString()
+          gst: (i.gst || card.raw.gst_percent || 18).toString(),
+          filePaths: Array.isArray(i.filePaths) ? i.filePaths : []
         }));
       } else {
         finalItems = [item];
@@ -1193,11 +1286,32 @@ export function SalesPipelinePage() {
     if (!quoteForm.customer) { alert("Please enter the customer."); return; }
 
     // Use multi-part items if available, fallback to single-part legacy fields
-    const items = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
+    const rawItems = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
       partName: quoteForm.partName || '', partNumber: quoteForm.partNumber || '',
       quantity: quoteForm.quantity || '0', unitPrice: quoteForm.unitPrice || '0',
-      discount: quoteForm.discount || '0', unitDiscount: quoteForm.unitDiscount || '0', gst: quoteForm.gst || '18'
+      discount: quoteForm.discount || '0', unitDiscount: quoteForm.unitDiscount || '0', gst: quoteForm.gst || '18',
+      files: [], filePaths: []
     }];
+
+    if (rawItems.some((it: any) => (it.files || []).length) && !company?.id) {
+      alert('Select a company before uploading product files.');
+      return;
+    }
+    setLoading(true);
+    let items: any[] = rawItems;
+    try {
+      items = await Promise.all(rawItems.map(async (it: any) => {
+        const uploaded = company?.id
+          ? await Promise.all((it.files || []).map((f: File) => uploadEnquiryProductFile(company.id!, f)))
+          : [];
+        const { files, ...rest } = it;
+        return { ...rest, filePaths: [...(it.filePaths || []), ...uploaded] };
+      }));
+    } catch (err: any) {
+      setLoading(false);
+      alert(err?.message || 'File upload failed.');
+      return;
+    }
 
     const totalQty = items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0);
     const totalValue = items.reduce((sum: number, i: any) => {
@@ -1229,13 +1343,13 @@ export function SalesPipelinePage() {
       error = retry.error;
     }
 
-    if (error) alert("Error: " + error.message);
+    if (error) { alert("Error: " + error.message); setLoading(false); }
     else {
       if (leadId) {
         const { error: enqErr } = await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', leadId);
         if (enqErr) console.error("Failed to update enquiry status:", enqErr);
       }
-      setQuotationModalTarget(null); fetchPipeline();
+      setQuotationModalTarget(null); fetchPipeline(); setLoading(false);
     }
   };
 
@@ -1610,15 +1724,6 @@ export function SalesPipelinePage() {
             <input type="text" placeholder="Search by customer, part, document no..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 bg-slate-50" />
             <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           </div>
-          <button
-            onClick={() => handleResetAndSeed(false)}
-            disabled={seeding}
-            className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Delete all existing data and add 5 dummy real-time data in every pipeline stage"
-          >
-            <RefreshCcw size={14} className={seeding ? 'animate-spin' : ''} />
-            {seeding ? 'Resetting Pipeline...' : 'Reset & Seed 5 Data Per Stage'}
-          </button>
           <button onClick={openNewLeadModal} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
             New <svg className="w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -2198,7 +2303,8 @@ export function SalesPipelinePage() {
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
                     <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
-                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Action</th>
+                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">File</th>
+                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2225,6 +2331,28 @@ export function SalesPipelinePage() {
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-slate-700">₹{calcItemTotal(item)}</td>
                       <td className="px-3 py-2 text-center">
+                        <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                          <UploadCloud size={13} />{((item.files || []).length + (item.filePaths || []).length) ? `${(item.files || []).length + (item.filePaths || []).length} file(s)` : 'Upload'}
+                          <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
+                            const selected = Array.from(e.currentTarget.files || []);
+                            const newItems = [...(quoteForm.items || [])];
+                            newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selected] };
+                            setQuoteForm({ ...quoteForm, items: newItems });
+                            e.currentTarget.value = '';
+                          }} />
+                        </label>
+                        {((item.files || []).length > 0 || (item.filePaths || []).length > 0) && (
+                          <div className="mt-1 space-y-1 text-left">
+                            {(item.files || []).map((f: File, fi: number) => (
+                              <div key={`n-${fi}`} className="flex items-center justify-between gap-1 text-[10px] text-slate-600"><span className="truncate">{f.name}</span><button type="button" className="text-rose-600" onClick={() => { const n = [...quoteForm.items]; n[idx] = { ...n[idx], files: n[idx].files.filter((_: File, j: number) => j !== fi) }; setQuoteForm({ ...quoteForm, items: n }); }}>x</button></div>
+                            ))}
+                            {(item.filePaths || []).map((p: string, pi: number) => (
+                              <div key={`e-${pi}`} className="truncate text-[10px] text-emerald-700">{String(p).split('/').pop()}</div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
                         {(quoteForm.items || []).length > 1 && (
                           <button onClick={() => { const newItems = [...quoteForm.items]; newItems.splice(idx, 1); setQuoteForm({...quoteForm, items: newItems}); }} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove product">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -2238,12 +2366,12 @@ export function SalesPipelinePage() {
                   <tr>
                     <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
                     <td className="px-3 py-2 text-right font-bold text-base text-brand-700">₹{calcQuoteTotal()}</td>
-                    <td></td>
+                    <td colSpan={2}></td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18', files: [], filePaths: [] }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
               <span className="text-lg">+</span> Add Another Product
             </button>
           </div>
