@@ -203,6 +203,7 @@ function MainLayout() {
             <Route path="/costing/tooling" element={<ToolingCostPage />} />
             <Route path="/costing/overhead" element={<OverheadCostPage />} />
             <Route path="/costing/job-costing" element={<JobCostingPage />} />
+            <Route path="/costing/job_costing" element={<JobCostingPage />} />
             <Route path="/costing/quote-costing" element={<QuoteCostingPage />} />
 
             {/* Accounts */}
