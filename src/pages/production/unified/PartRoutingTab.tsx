@@ -14,7 +14,6 @@ export function PartRoutingTab() {
   }, []);
 
   const columns: Column<any>[] = [
-    { key: 'parent_part_no', label: 'Part No', sortable: true },
     { key: 'op_no', label: 'Op No', sortable: true },
     { key: 'operation', label: 'Process', sortable: true },
     { key: 'machine', label: 'Machine', sortable: true },
@@ -25,7 +24,7 @@ export function PartRoutingTab() {
 
   return (
     <div className="p-4">
-      <DataTable data={routings} columns={columns} searchKeys={['parent_part_no', 'operation', 'machine']} />
+      <DataTable data={routings} columns={columns} searchKeys={['operation', 'machine']} />
     </div>
   );
 }

@@ -162,8 +162,8 @@ export function DeliveriesPage() {
         ['Driver Contact', r.driver_contact],
         ['Remarks', r.remarks],
       ],
-      columns: ['#', 'Part / Description', 'Quantity', 'Unit'],
-      rows: [[1, r.part_name || so?.part_name || '—', qty, '']],
+      columns: ['#', 'Description', 'Quantity', 'Unit'],
+      rows: [[1, r.part_name || so?.part_name || '—', qty, r.unit || 'pcs']],
     });
   };
 

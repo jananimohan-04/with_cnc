@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argus CNC ERP — Project Workflow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+  header { padding: 28px 36px 10px; }
+  header h1 { margin: 0; font-size: 24px; }
+  header p { color: #94a3b8; margin: 6px 0 0; font-size: 14px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 36px; font-size: 13px; color: #cbd5e1; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .c-core { background: #2563eb; } .c-stock { background: #059669; }
+  .c-money { background: #b45309; } .c-master { background: #6d28d9; }
+  .c-sys { background: #475569; }
+  .wrap { background: #fff; margin: 10px 24px 24px; border-radius: 14px; padding: 20px; overflow-x: auto; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 36px 40px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 18px 20px; }
+  .card h2 { margin: 0 0 10px; font-size: 16px; }
+  .card table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .card th { text-align: left; color: #93c5fd; padding: 6px 8px; border-bottom: 1px solid #334155; }
+  .card td { padding: 6px 8px; border-bottom: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
+  code { background: #0f172a; padding: 1px 6px; border-radius: 6px; font-size: 12px; color: #fcd34d; }
+  footer { padding: 0 36px 30px; color: #64748b; font-size: 12px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Argus CNC ERP — End-to-End Workflow</h1>
+  <p>Frontend: Vite React (root) + TanStack portal &amp; CNC Vault &nbsp;|&nbsp; Backend: Supabase Postgres + RLS + RPC &nbsp;|&nbsp; <code>src/App.tsx</code> router, <code>SalesPipelinePage.tsx</code> orchestrator</p>
+</header>
+<div class="legend">
+  <span><span class="chip c-core">Core order flow</span> lead → cash</span>
+  <span><span class="chip c-stock">Stock / production</span></span>
+  <span><span class="chip c-money">Money</span></span>
+  <span><span class="chip c-master">Masters</span></span>
+  <span><span class="chip c-sys">System</span></span>
+</div>
+
+<div class="wrap">
+<pre class="mermaid">
+flowchart TD
+  A["1. Sign in (Google OAuth)\nsupabase.auth → rpc erp_get_session\nAuthContext → ErpGate"] --> B["Dashboard\nKPIs, machines, trends"]
+  B --> L["2. LEAD / ENQUIRY\ncnc_enquiries (New)\nLeadsPage + Pipeline"]
+  L --> Q["3. QUOTATION\ncnc_quotations (Sent)\nQuotationModule"]
+  Q -->|Converted / Accepted| SO["4. SALES ORDER\ncnc_sales_orders (Confirmed)\nSalesOrderModule"]
+  SO --> IW["5. INWARD (material check)\ncnc_inwards (Pending→Received→Processed)\nInwardModule"]
+  IW -->|Waiting for Parts / Inwarded| WO["6. PRODUCTION\ncnc_work_orders Planning→In Progress→Completed\n+ cnc_job_cards per operation"]
+  WO --> FG["7. FINISHED GOODS\ncompleted &gt; 0\nFinishedGoodsModule"]
+  FG -->|Dispatched| DC["8. DELIVERY CHALLAN\ncnc_deliveries (Pending)\nOperations/DeliveriesPage"]
+  DC -->|Billed| INV["9. INVOICE\ncnc_invoices + cnc_invoice_items\nInvoicesPage (GST, round-off)"]
+  INV --> PAY["10. RECEIPT / PAYMENT\ncnc_bank_transactions (IN)\nBankCashPage"]
+  PAY --> DONE["11. COMPLETE\npipeline_completed_at set\n→ cnc_purchase_history\nEnquiry = Converted"]
+
+  ENG["ENGINEERING masters\ncnc_parts, drawings,\ncnc_bom, cnc_routing\nCNC Vault (documents)"] -. feeds BOM/routing .-> WO
+  STK["INVENTORY\ncnc_raw_materials, cnc_stock_movements\nmaterial requests, adjustments"] -. issue / receipt .-> WO
+  PUR["PURCHASING\nsuppliers, requisitions,\norders, GRN (goods-receipt)"] -. GRN inward .-> STK
+  DC -. "qty guard: order.remaining\n& FG stock" .-> DC
+  INV -. "erp_save_invoice\nerp_cancel / credit_note" .-> PAY
+  PAY -. "erp_add_bank_entry\ntransfer / reconcile" .-> LED["ACCOUNTS + JOURNALS\nchart_of_accounts,\njournal_entries"]
+  WO -. costing .-> CST["COSTING\nmaterial/machine/labour/\ntooling/overhead, job-costing"]
+  QLT["QUALITY (stub)\ninspections / NCR empty"] -.- WO
+  MNT["MAINTENANCE\ncnc_machines live\n(Running/Idle/Breakdown)"] -.- WO
+  ADM["ADMIN + REPORTS\nusers, companies, roles,\naudit-logs, sales/stock/\nproduction reports"] -.- B
+  POR["CUSTOMER PORTAL\n/portal (separate session)"] -.- SO
+
+  style L fill:#2563eb,stroke:#1e40af,color:#fff
+  style Q fill:#2563eb,stroke:#1e40af,color:#fff
+  style SO fill:#2563eb,stroke:#1e40af,color:#fff
+  style IW fill:#2563eb,stroke:#1e40af,color:#fff
+  style WO fill:#059669,stroke:#065f46,color:#fff
+  style FG fill:#059669,stroke:#065f46,color:#fff
+  style DC fill:#2563eb,stroke:#1e40af,color:#fff
+  style INV fill:#b45309,stroke:#92400e,color:#fff
+  style PAY fill:#b45309,stroke:#92400e,color:#fff
+  style DONE fill:#16a34a,stroke:#14532d,color:#fff
+</pre>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Stage → Table → Status transition</h2>
+    <table>
+      <tr><th>Stage</th><th>Table</th><th>Status</th></tr>
+      <tr><td>Enquiry</td><td><code>cnc_enquiries</code></td><td>New → Quoted → Converted / Lost</td></tr>
+      <tr><td>Quotation</td><td><code>cnc_quotations</code></td><td>Sent / Draft → Converted, Accepted</td></tr>
+      <tr><td>Sales Order</td><td><code>cnc_sales_orders</code></td><td>Confirmed → Waiting for Parts → Inwarded → Partially Delivered / Delivered</td></tr>
+      <tr><td>Inward</td><td><code>cnc_inwards</code></td><td>Pending / Received → Processed (Deleted = exit)</td></tr>
+      <tr><td>Production</td><td><code>cnc_work_orders</code> + <code>cnc_job_cards</code></td><td>Planning → In Progress → Completed → Dispatched</td></tr>
+      <tr><td>Delivery</td><td><code>cnc_deliveries</code></td><td>Pending → Delivered → Billed (Returned possible)</td></tr>
+      <tr><td>Invoice</td><td><code>cnc_invoices</code> + <code>cnc_invoice_items</code></td><td>Pending / Partially Paid / Paid, then <code>pipeline_completed_at</code></td></tr>
+      <tr><td>Receipt</td><td><code>cnc_bank_transactions</code></td><td>Pending → Cleared; direction IN</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Supporting domains</h2>
+    <table>
+      <tr><th>Domain</th><th>What happens</th></tr>
+      <tr><td>Engineering</td><td>Parts, drawings, BOM (<code>cnc_bom</code>), routing (<code>cnc_routing</code>), work instructions, CNC Vault documents</td></tr>
+      <tr><td>Inventory</td><td>Raw materials / parts, <code>cnc_stock_movements</code> ledger, material requests per BOM × WO qty, adjustments, low-stock → purchase requisition</td></tr>
+      <tr><td>Purchasing</td><td>Suppliers → requisitions → orders → GRN → stock inward</td></tr>
+      <tr><td>Production</td><td>Planning (WO-YYMM-###) → scheduling (JC-####, op_no +10) → live tracking → FG entry</td></tr>
+      <tr><td>Finance</td><td><code>erp_save_invoice</code> (GST split), cancel / credit-note, receipts allocate to invoices, bank transfer + reconcile</td></tr>
+      <tr><td>System</td><td>Multi-company RLS (<code>erp_get_session</code>), roles, audit logs, reports (sales / stock / production / cost)</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>Generated from codebase analysis: src/App.tsx, navigation.ts, SalesPipelinePage, Inward/Quotation/SalesOrder/FinishedGoods/DeliveryChallan/Invoice modules, inventory/production/finance pages, supabase/migrations. Link keys: quotations.lead_id → sales_orders.quotation_id → inwards.sales_order_ref → work_orders.sales_order → deliveries.sales_order_no → invoices.dc_no.</footer>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+</body>
+</html>

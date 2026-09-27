@@ -233,7 +233,7 @@ function UploadToPartDialog({
 
       clearInterval(interval);
       setUploadProgress(100);
-      toast.success(`Document uploaded successfully for Part ${part.part_number}!`);
+      toast.success(`Document uploaded successfully for ${part.part_name || "this part"}!`);
       
       // Reset & close
       setFile(null);
@@ -255,7 +255,7 @@ function UploadToPartDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900">
             <UploadCloud className="w-5 h-5 text-indigo-600" />
-            Upload Document for Part: <span className="text-indigo-600 font-mono">{part?.part_number}</span>
+            Upload Document for Part: <span className="text-indigo-600 font-mono">{part?.part_name}</span>
           </DialogTitle>
           <DialogDescription>
             Directly upload engineering drawings, CAD models, or programs associated with this part.
@@ -266,7 +266,7 @@ function UploadToPartDialog({
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs flex items-center justify-between text-slate-600">
             <div>
               <span className="font-semibold text-slate-800">Part: </span>
-              {part.part_name || part.part_number}
+              {part.part_name || "—"}
             </div>
             <div>
               <span className="font-semibold text-slate-800">Party: </span>
@@ -319,7 +319,7 @@ function UploadToPartDialog({
               <Input 
                 value={docNumber} 
                 onChange={e => setDocNumber(e.target.value)} 
-                placeholder={part?.part_number || "DOC-1001"} 
+                placeholder="DOC-1001" 
               />
             </div>
             <div className="space-y-1.5">
@@ -851,7 +851,6 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                       {selectedProject.parts.map((p, idx) => (
                         <SelectItem key={idx} value={p.partName}>
                           <span className="font-medium text-slate-800">{p.partName}</span>
-                          {p.partNumber && <span className="text-slate-400 text-xs ml-2">({p.partNumber})</span>}
                         </SelectItem>
                       ))}
                       <SelectItem value="__custom__" className="text-indigo-600 font-semibold border-t border-slate-100">
@@ -1444,7 +1443,7 @@ function PartsPage() {
         <div className="flex-1 relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
           <Input
-            placeholder="Search parts by number, name, drawing..."
+            placeholder="Search parts by name, drawing..."
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -1482,7 +1481,7 @@ function PartsPage() {
           <TableHeader className="bg-slate-50">
             <TableRow>
               <TableHead className="w-10"></TableHead>
-              <TableHead>Product / Part Number / Name</TableHead>
+              <TableHead>Product / Name</TableHead>
               <TableHead>Drawing Number</TableHead>
               <TableHead>Party</TableHead>
               <TableHead>Attached Documents</TableHead>
@@ -1526,14 +1525,14 @@ function PartsPage() {
                         </Button>
                       </TableCell>
 
-                      {/* Part Number & Name */}
+                      {/* Product name */}
                       <TableCell>
                         <div className="font-bold text-indigo-600 flex items-center gap-1.5">
                           <Box className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span>{part.part_number}</span>
+                          <span>{part.part_name || "—"}</span>
                         </div>
                         <div className="text-xs text-slate-500 truncate max-w-[220px] ml-5">
-                          {part.part_name || "—"}
+                          {part.drawing_number || "—"}
                         </div>
                       </TableCell>
 
@@ -1620,7 +1619,7 @@ function PartsPage() {
                               <div className="flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-indigo-600" />
                                 <span className="font-bold text-sm text-slate-800">
-                                  Documents & Drawings for {part.part_number}
+                                  Documents & Drawings for {part.part_name || "this product"}
                                 </span>
                                 <Badge variant="outline" className="text-xs bg-slate-50">
                                   {partDocs.length} {partDocs.length === 1 ? "file" : "files"}

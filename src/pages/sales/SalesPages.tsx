@@ -700,7 +700,7 @@ export function SalesOrdersPage() {
   const columns: Column<SalesOrderRow>[] = [
     { key: 'orderNo', label: 'Order No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.orderNo}</span> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
-    { key: 'partName', label: 'Product', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p><p className="text-xs text-slate-400">{r.partNo}</p></div> },
+    { key: 'partName', label: 'Product', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p></div> },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right' },
     { key: 'delivered', label: 'Delivered', align: 'right', render: (r) => <span className={r.delivered === r.quantity ? 'text-green-600 font-medium' : 'text-slate-500'}>{r.delivered}/{r.quantity}</span> },
     { key: 'value', label: 'Value', sortable: true, align: 'right', render: (r) => <span className="font-semibold text-slate-700">₹{(r.value / 100000).toFixed(1)}L</span> },
@@ -732,7 +732,7 @@ export function SalesOrdersPage() {
         <StatCard label="Delivered" value={deliveredCount.toString()} icon={<FileText size={20} />} trend="100%" trendUp accent="success" />
         <StatCard label="Order Value" value={`₹${(totalValue / 100000).toFixed(1)}L`} icon={<FileText size={20} />} accent="navy" />
       </div>
-      <DataTable data={ordersData} columns={columns} searchKeys={['orderNo', 'customer', 'partName', 'partNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'Inwarded', value: 'Inwarded' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }]} />
+      <DataTable data={ordersData} columns={columns} searchKeys={['orderNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Sales Order" filterOptions={[{ label: 'Confirmed', value: 'Confirmed' }, { label: 'Inwarded', value: 'Inwarded' }, { label: 'In Production', value: 'In Production' }, { label: 'Partially Delivered', value: 'Partially Delivered' }, { label: 'Delivered', value: 'Delivered' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Sales Order" : "New Sales Order"} subtitle={editId ? "Update sales order details" : "Create a sales order from an accepted quotation"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Order' : 'Create Order'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
@@ -750,7 +750,6 @@ export function SalesOrdersPage() {
             </select>
           </FormField>
           <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
-          <FormField label="Part Number"><input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} /></FormField>
           <FormField label="Quantity" required><input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={formData.deliveryDate} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} /></FormField>
           {editId && (
@@ -769,7 +768,6 @@ export function SalesOrdersPage() {
             <div><p className="text-slate-500 mb-1">Customer</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
             <div><p className="text-slate-500 mb-1">Part Name</p><p className="font-medium text-slate-800">{viewTarget.partName}</p></div>
-            <div><p className="text-slate-500 mb-1">Part No</p><p className="font-mono text-slate-700">{viewTarget.partNo}</p></div>
             <div><p className="text-slate-500 mb-1">Quantity</p><p className="text-slate-800">{viewTarget.quantity}</p></div>
             <div><p className="text-slate-500 mb-1">Delivered</p><p className="text-slate-800">{viewTarget.delivered}</p></div>
             <div><p className="text-slate-500 mb-1">Total Value</p><p className="font-semibold text-slate-800">₹{viewTarget.value.toLocaleString('en-IN')}</p></div>

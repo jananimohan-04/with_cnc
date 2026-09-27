@@ -215,10 +215,12 @@ function DocumentDetailPage() {
                     <div className="text-sm text-slate-500">Party / Customer</div>
                     <div className="font-medium">{doc.parties?.name || "Internal"}</div>
                   </div>
-                  <div>
-                    <div className="text-sm text-slate-500">Part Number</div>
-                    <div className="font-medium">{doc.part_number || "—"}</div>
-                  </div>
+                  {(doc as any)?.parts?.part_name && (
+                    <div>
+                      <div className="text-sm text-slate-500">Linked Product</div>
+                      <div className="font-medium">{(doc as any).parts.part_name}</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm text-slate-500">Drawing Number</div>
                     <div className="font-medium">{doc.drawing_number || "—"}</div>

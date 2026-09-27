@@ -14,7 +14,7 @@ function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-P
 
   const columns: Column<Inspection>[] = [
     { key: 'inspectionNo', label: 'Report No', sortable: true, render: (r) => <span className="font-mono text-xs text-brand-700 font-semibold">{r.inspectionNo}</span> },
-    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="font-medium text-sm text-slate-800">{r.partName}</p><p className="text-xs text-slate-400 font-mono">{r.partNo}</p></div> },
+    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="font-medium text-sm text-slate-800">{r.partName}</p></div> },
     { key: 'workOrder', label: 'Work Order / Ref', sortable: true, render: (r) => <span className="font-mono text-xs">{r.workOrder}</span> },
     { key: 'qtyInspected', label: 'Inspected', align: 'right', render: (r) => <span className="text-sm font-semibold text-slate-700">{r.qtyInspected}</span> },
     { key: 'qtyAccepted', label: 'Accepted', align: 'right', render: (r) => <span className="text-sm font-semibold text-green-600">{r.qtyAccepted}</span> },
@@ -32,7 +32,7 @@ function InspectionList({ type, title, description }: { type: 'Incoming' | 'In-P
         <StatCard label="Passed" value={data.filter(d => d.status === 'Pass').length.toString()} icon={<CheckCircle2 size={20} />} accent="success" />
         <StatCard label="Failed / Rework" value={data.filter(d => d.status === 'Fail' || d.status === 'Rework').length.toString()} icon={<AlertTriangle size={20} />} accent="error" />
       </div>
-      <DataTable data={data} columns={columns} searchKeys={['inspectionNo', 'partName', 'partNo', 'workOrder']} emptyMessage="No inspection records yet" />
+      <DataTable data={data} columns={columns} searchKeys={['inspectionNo', 'partName', 'workOrder']} emptyMessage="No inspection records yet" />
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function FinalInspectionPage() {
 export function NCRPage() {
   const columns: Column<NCR>[] = [
     { key: 'ncrNo', label: 'NCR No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-red-600">{r.ncrNo}</span> },
-    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="font-medium text-sm text-slate-800">{r.partName}</p><p className="text-xs text-slate-400 font-mono">{r.partNo}</p></div> },
+    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="font-medium text-sm text-slate-800">{r.partName}</p></div> },
     { key: 'workOrder', label: 'Work Order', render: (r) => <span className="font-mono text-xs text-slate-600">{r.workOrder}</span> },
     { key: 'defectType', label: 'Defect', render: (r) => <span className="text-sm font-medium text-slate-700">{r.defectType}</span> },
     { key: 'severity', label: 'Severity', sortable: true, render: (r) => <Badge variant={r.severity === 'Critical' ? 'error' : r.severity === 'Major' ? 'warning' : 'neutral'}>{r.severity}</Badge> },

@@ -62,7 +62,7 @@ export function Topbar({
   const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
   const searchHint = currentPage.startsWith('inventory')
-    ? 'Search by Part No, Item Name, Category, Supplier...'
+    ? 'Search by Item Name, Category, Supplier...'
     : 'Search anything (customer, project, part, invoice...)';
   // Pages that support it read ?q= (e.g. Inventory); others simply ignore it.
   const submitSearch = () => {

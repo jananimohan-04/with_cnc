@@ -303,7 +303,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
                     <td className="px-6 py-4 font-mono text-xs font-bold text-brand-700">{wo.wo_no}</td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-semibold text-slate-800 group-hover:text-brand-600 transition-colors">{wo.part_name}</p>
-                      <p className="text-[10px] font-bold text-slate-400 font-mono tracking-wider mt-0.5">{wo.part_no}</p>
                     </td>
                     <td className="px-6 py-4 w-48">
                       <div className="flex items-center gap-3">

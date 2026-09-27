@@ -748,7 +748,6 @@ export function LeadsPage() {
             <h4 className="font-semibold text-sm text-slate-800">Item Details</h4>
             <div className="grid grid-cols-3 gap-4">
               <FormField label="Product Name" required><input className={inputClass} value={quoteForm.partName} onChange={e=>setQuoteForm({...quoteForm, partName: e.target.value})} /></FormField>
-              <FormField label="Product Number"><input className={inputClass} value={quoteForm.partNumber} onChange={e=>setQuoteForm({...quoteForm, partNumber: e.target.value})} /></FormField>
               <FormField label="Description"><input className={inputClass} value={quoteForm.description} onChange={e=>setQuoteForm({...quoteForm, description: e.target.value})} /></FormField>
               <FormField label="Quantity" required><input type="number" className={inputClass} value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm, quantity: e.target.value})} /></FormField>
               <FormField label="Unit Price" required><input type="number" className={inputClass} value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm, unitPrice: e.target.value})} /></FormField>
@@ -872,10 +871,6 @@ export function LeadsPage() {
                       </div>
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-1">
-                        <div>
-                          <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Product Number</p>
-                          <p className="font-medium text-slate-700 truncate">{h.partNo || 'N/A'}</p>
-                        </div>
                         <div>
                           <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Quantity</p>
                           <p className="font-medium text-slate-700">{h.quantity}</p>

@@ -25,4 +25,4 @@ export function JobCostingPage() {
   return <ProjectCostingPage />;
 }
 
-export function QuoteCostingPage() { return <CostingStub title="Quotation Costing" description="Pre-production cost estimation for enquiries" />; }
+export { QuoteCostingPage } from './QuoteCostingPage';

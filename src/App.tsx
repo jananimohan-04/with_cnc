@@ -27,6 +27,7 @@ import {
 } from './pages/production/ProductionPages';
 import { FinishedGoodsPage } from './pages/production/unified/FinishedGoodsPage';
 import { SchedulingPage } from './pages/production/unified/SchedulingPage';
+import { ProcessMasterPage } from './pages/production/unified/ProcessMasterPage';
 
 import {
   SalesPipelinePage,
@@ -163,6 +164,7 @@ function MainLayout() {
             <Route path="/production/cnc-operations" element={<CNCOperationsPage />} />
             <Route path="/production/shop-floor" element={<ShopFloorPage />} />
             <Route path="/production/tracking" element={<ProductionTrackingPage />} />
+            <Route path="/production/process-master" element={<ProcessMasterPage />} />
             <Route path="/production/finished-goods" element={<FinishedGoodsPage />} />
 
             {/* Inventory */}

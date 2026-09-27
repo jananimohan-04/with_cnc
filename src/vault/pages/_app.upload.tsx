@@ -37,7 +37,6 @@ function UploadWizardPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string>("root");
   const [partId, setPartId] = useState<string>("");
   const [isNewPart, setIsNewPart] = useState(false);
-  const [newPartNumber, setNewPartNumber] = useState("");
   
   const [docNumber, setDocNumber] = useState("");
   const [docName, setDocName] = useState("");
@@ -82,10 +81,6 @@ function UploadWizardPage() {
       return;
     }
     if (currentStep === 1) {
-      if (isNewPart && !newPartNumber) {
-        toast.error("Please enter a part number for the new part.");
-        return;
-      }
       if (!isNewPart && !partId) {
         toast.error("Please select an existing part or create a new one.");
         return;
@@ -201,12 +196,13 @@ function UploadWizardPage() {
       const googleDriveFileId = driveUpload.fileId;
       const googleDriveFolderId = driveUpload.folderId;
 
-      // 2. Part handling
+      // 2. Part handling (part number auto-generated internally; no user input)
+      const autoNewPartNumber = docName.trim() || drawingNumber.trim() || `PRT-${Date.now().toString().slice(-6)}`;
       let finalPartId = partId;
       if (isNewPart) {
         const newPart = await createPart({
           party_id: partyId,
-          part_number: newPartNumber,
+          part_number: autoNewPartNumber,
           part_name: docName,
         });
         finalPartId = newPart.id;
@@ -232,7 +228,7 @@ function UploadWizardPage() {
           document_number: docNumber,
           document_name: docName,
           drawing_number: drawingNumber,
-          part_number: isNewPart ? newPartNumber : parts?.find(p => p.id === partId)?.part_number,
+          part_number: isNewPart ? autoNewPartNumber : parts?.find(p => p.id === partId)?.part_number,
           document_type: docType,
           current_version: 1,
           status: status as DocStatus,
@@ -455,7 +451,7 @@ function UploadWizardPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {parts?.map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.part_number} {p.part_name ? `- ${p.part_name}` : ''}</SelectItem>
+                        <SelectItem key={p.id} value={p.id}>{p.part_name || 'Unnamed product'}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -465,14 +461,9 @@ function UploadWizardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>New Part Number <span className="text-red-500">*</span></Label>
-                    <Input 
-                      value={newPartNumber} 
-                      onChange={e => setNewPartNumber(e.target.value)} 
-                      placeholder="e.g. PN-10045" 
-                    />
-                  </div>
+                  <p className="text-sm text-slate-500">
+                    A new product will be created automatically using the document name. No product code entry is needed.
+                  </p>
                 </div>
               )}
             </div>

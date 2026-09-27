@@ -148,7 +148,7 @@ export function ProductionOrderDetails({ order, refresh }: { order: any, onClose
               <div className="text-slate-500">Project / Customer</div><div className="font-medium text-slate-800">{order.customer}</div>
               <div className="text-slate-500">Sales Order</div><div className="text-slate-800">{order.sales_order || '-'}</div>
               <div className="text-slate-500">Part Name</div><div className="font-medium text-slate-800">{order.part_name}</div>
-              <div className="text-slate-500">Part No / Rev</div><div className="text-slate-800">{order.part_no} / {order.drawing_revision || 'R0'}</div>
+              <div className="text-slate-500">Drawing / Rev</div><div className="text-slate-800">{order.drawing_revision || 'R0'}</div>
               <div className="text-slate-500">Target Qty</div><div className="font-bold text-slate-800">{qty} Nos</div>
               <div className="text-slate-500">Dates</div><div className="text-slate-800">{order.start_date} to {order.due_date}</div>
             </div>

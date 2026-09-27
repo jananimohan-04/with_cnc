@@ -168,7 +168,6 @@ export function PartsPage() {
   };
 
   const columns: Column<PartMaster>[] = [
-    { key: 'partNo', label: 'Part No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.partNo}</span> },
     { key: 'partName', label: 'Part Name', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.partName}</span> },
     { key: 'drawingNo', label: 'Drawing No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.drawingNo}</span> },
     { key: 'revision', label: 'Rev', sortable: true, align: 'center', render: (r) => <Badge variant="info">{r.revision}</Badge> },
@@ -202,11 +201,10 @@ export function PartsPage() {
         <StatCard label="Prototypes" value={prototypeCount.toString()} icon={<Boxes size={20} />} accent="warning" />
         <StatCard label="Obsolete" value={obsoleteCount.toString()} icon={<Boxes size={20} />} accent="neutral" />
       </div>
-      <DataTable data={partsData} columns={columns} searchKeys={['partNo', 'partName', 'drawingNo', 'material']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Part" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Prototype', value: 'Prototype' }, { label: 'Obsolete', value: 'Obsolete' }]} />
+      <DataTable data={partsData} columns={columns} searchKeys={['partName', 'drawingNo', 'material']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Part" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Prototype', value: 'Prototype' }, { label: 'Obsolete', value: 'Obsolete' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Part" : "New Part Master"} subtitle={editId ? "Update part specifications" : "Register a new part in the system"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave} disabled={loading}>{editId ? 'Update Part' : 'Save Part'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Part Number" required><input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} /></FormField>
           <FormField label="Part Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} /></FormField>
           <FormField label="Drawing Number"><input className={inputClass} value={formData.drawingNo} onChange={e => setFormData({...formData, drawingNo: e.target.value})} placeholder="DWG-XX-000-R0" /></FormField>
           <FormField label="Revision" required><input className={inputClass} value={formData.revision} onChange={e => setFormData({...formData, revision: e.target.value})} /></FormField>
@@ -238,7 +236,7 @@ export function PartsPage() {
         </div>
       </Modal>
 
-      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Part Specifications" subtitle={viewTarget?.partNo}>
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Part Specifications" subtitle={viewTarget?.partName}>
         {viewTarget && (
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
             <div><p className="text-slate-500 mb-1">Part Name</p><p className="font-semibold text-slate-800">{viewTarget.partName}</p></div>
@@ -271,7 +269,7 @@ export function PartsPage() {
           }
         }} 
         title="Delete Part" 
-        message={`Delete part ${deleteTarget?.partNo}? This action cannot be undone and will affect BOMs.`} 
+        message={`Delete part ${deleteTarget?.partName}? This action cannot be undone and will affect BOMs.`} 
         confirmLabel="Delete" 
         danger 
       />
@@ -434,14 +432,16 @@ export function BOMPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.partNo || !formData.partName) return;
+    if (!formData.partName) return;
     if (!parentPartNo) return alert('Select a parent part first.');
+
+    const effectivePartNo = formData.partNo || `${formData.partName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 12) || 'PART'}-${Math.floor(100 + Math.random() * 900)}`;
 
     const entryData = {
       parent_part_no: parentPartNo,
       level: Number(formData.level) || 1,
       project_name: formData.projectName,
-      part_no: formData.partNo,
+      part_no: effectivePartNo,
       part_name: formData.partName,
       material: formData.material,
       quantity: Number(formData.quantity) || 1,
@@ -484,8 +484,8 @@ export function BOMPage() {
 
   const handleExport = () => {
     const csvContent = "data:text/csv;charset=utf-8," + 
-      "Level,Part No,Part Name,Material,Quantity,UOM,Make/Buy,Operation\n" +
-      bomData.map(e => `${e.level},"${e.partNo}","${e.partName}","${e.material}",${e.quantity},${e.unit},${e.make},"${e.operation}"`).join("\n");
+      "Level,Part Name,Material,Quantity,UOM,Make/Buy,Operation\n" +
+      bomData.map(e => `${e.level},"${e.partName}","${e.material}",${e.quantity},${e.unit},${e.make},"${e.operation}"`).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -501,7 +501,7 @@ export function BOMPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name} (${parentPart.part_no})` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
+      <PageHeader title="Bill of Materials" description={parentPart ? `Multi-level BOM for ${parentPart.part_name}` : 'Multi-level BOM — select a parent part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Component</Button><Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExport}>Export</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="BOM Levels" value={maxLevel.toString()} icon={<Boxes size={20} />} accent="brand" />
         <StatCard label="Total Components" value={bomData.length.toString()} icon={<Boxes size={20} />} accent="accent" />
@@ -512,7 +512,7 @@ export function BOMPage() {
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">BOM Structure{parentPart ? ` — ${parentPart.part_name}` : ''}</h3>
-            {parentPart && <p className="text-xs text-slate-500 mt-0.5">Part No: {parentPart.part_no} • Rev: {parentPart.revision || '—'} • Material: {parentPart.material || '—'}</p>}
+            {parentPart && <p className="text-xs text-slate-500 mt-0.5">Rev: {parentPart.revision || '—'} • Material: {parentPart.material || '—'}</p>}
           </div>
         </div>
         <div className="overflow-x-auto scrollbar-thin">
@@ -521,8 +521,7 @@ export function BOMPage() {
               <tr className="border-b border-slate-100 bg-slate-50/30">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Level</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Unique Number</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Part No</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product Name</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Component</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">UOM</th>
@@ -540,7 +539,6 @@ export function BOMPage() {
                     </div>
                   </td>
                   <td className="px-5 py-3"><span className="text-slate-700">{item.projectName || '—'}</span></td>
-                  <td className="px-5 py-3 font-mono text-xs text-slate-700">{item.partNo}</td>
                   <td className="px-5 py-3"><span className={item.level === 0 ? 'font-semibold text-slate-800' : 'text-slate-700'}>{item.partName}</span></td>
                   <td className="px-5 py-3 text-sm text-slate-600">{item.material || '—'}</td>
                   <td className="px-5 py-3 text-right font-medium text-slate-700">{item.quantity}</td>
@@ -558,7 +556,7 @@ export function BOMPage() {
               ))}
               {bomData.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-8 text-center text-slate-500">{parentPartNo ? 'No components found.' : 'Select a parent part to view its BOM.'}</td>
+                  <td colSpan={9} className="px-5 py-8 text-center text-slate-500">{parentPartNo ? 'No components found.' : 'Select a parent part to view its BOM.'}</td>
                 </tr>
               )}
             </tbody>
@@ -579,7 +577,6 @@ export function BOMPage() {
               {projects.map((p, i) => <option key={i} value={p}>{p}</option>)}
             </select>
           </FormField>
-          <FormField label="Product / Part Number" required><input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} placeholder="e.g. BA-TB-204-A" /></FormField>
           <FormField label="Product Name" required><input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="Product Name" /></FormField>
           <FormField label="Material"><input className={inputClass} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})} placeholder="Material Grade" /></FormField>
           <FormField label="Quantity" required><input type="number" step="0.01" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} /></FormField>
@@ -597,7 +594,7 @@ export function BOMPage() {
         </div>
       </Modal>
 
-      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View BOM Component" subtitle={viewTarget?.partNo}>
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View BOM Component" subtitle={viewTarget?.partName}>
         {viewTarget && (
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
             <div><p className="text-slate-500 mb-1">Part Name</p><p className="font-semibold text-slate-800">{viewTarget.partName}</p></div>
@@ -770,7 +767,7 @@ export function RoutingPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Process Routing" description={parentPart ? `Manufacturing routing for ${parentPart.part_name} (${parentPart.part_no})` : 'Manufacturing routing — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Operation</Button></div>} />
+      <PageHeader title="Process Routing" description={parentPart ? `Manufacturing routing for ${parentPart.part_name}` : 'Manufacturing routing — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Operation</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Operations" value={routingData.length.toString()} icon={<Cog size={20} />} accent="brand" />
         <StatCard label="Total Setup Time" value={`${(totalSetupTime / 60).toFixed(1)} hr`} icon={<Cog size={20} />} accent="accent" />
@@ -781,7 +778,7 @@ export function RoutingPage() {
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Operation Sequence</h3>
-            {parentPart && <p className="text-xs text-slate-500 mt-0.5">Part: {parentPart.part_no} • {parentPart.part_name} • {parentPart.material || '—'}</p>}
+            {parentPart && <p className="text-xs text-slate-500 mt-0.5">{parentPart.part_name} • {parentPart.material || '—'}</p>}
           </div>
         </div>
         <div className="divide-y divide-slate-50">
@@ -975,7 +972,7 @@ export function WorkInstructionsPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Work Instructions" description={parentPart ? `Step-by-step manufacturing instructions for ${parentPart.part_name} (${parentPart.part_no})` : 'Step-by-step manufacturing instructions — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Instruction</Button></div>} />
+      <PageHeader title="Work Instructions" description={parentPart ? `Step-by-step manufacturing instructions for ${parentPart.part_name}` : 'Step-by-step manufacturing instructions — select a part'} actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<ParentPartSelect parts={parentParts} value={parentPartNo} onChange={setParentPartNo} /><Button size="sm" icon={<Plus size={14} />} disabled={!parentPartNo} onClick={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }}>Add Instruction</Button></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Instructions" value={totalInstructions.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="Total Steps" value={totalSteps.toString()} icon={<FileText size={20} />} accent="accent" />

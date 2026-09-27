@@ -51,6 +51,19 @@ type CostingDetail = {
     work_order: string;
     request_no: string;
   }[];
+  services: {
+    id: string;
+    date: string;
+    type: string;
+    reference: string;
+    item: string;
+    quantity: string;
+    unit: string;
+    rate: string;
+    amount: string;
+    work_order: string;
+    request_no: string;
+  }[];
   work_orders: {
     id: string;
     wo_no: string;
@@ -83,14 +96,9 @@ const money = (v: string | number | null | undefined) =>
   v == null || v === '' ? '—' : formatINR(v, { decimals: 'auto' });
 
 const tabs = [
-  'Cost Summary',
   'Process Costing',
   'Material Cost',
   'Machine & Labour',
-  'Outside Process',
-  'Tooling & Consumables',
-  'Overhead',
-  'Comparison',
 ];
 
 // Helper to check if category is Goods Purchase
@@ -99,6 +107,16 @@ const isGoodsPurchaseCategory = (cat: string | null | undefined) => {
   const s = String(cat).trim().toUpperCase();
   return s.includes('GOODS PURCHASE') || s.includes('GOODS_PURCHASE') || s === 'PURCHASE';
 };
+
+// Helper to check if category is Service Purchase (routed to Machine & Labour)
+const isServicePurchaseCategory = (cat: string | null | undefined) => {
+  if (!cat) return false;
+  const s = String(cat).trim().toUpperCase();
+  return s.includes('SERVICE PURCHASE') || s.includes('SERVICE_PURCHASE') || s === 'SERVICE';
+};
+
+const isPurchaseCategory = (cat: string | null | undefined) =>
+  isGoodsPurchaseCategory(cat) || isServicePurchaseCategory(cat);
 
 export function ProjectCostingPage() {
   const { company } = useAuth();
@@ -109,11 +127,21 @@ export function ProjectCostingPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ProjectRow | null>(null);
   const [report, setReport] = useState<CostingDetail | null>(null);
-  const [tab, setTab] = useState('Cost Summary');
+  const [tab, setTab] = useState('Material Cost');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const pageSize = 10;
+  // Process Master rates for valuing production operations (missing table tolerated).
+  const [procRates, setProcRates] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from('cnc_processes').select('*').order('process_code')
+      .then(({ data, error: e }) => { if (!cancelled && !e) setProcRates(data ?? []); })
+      .catch(() => { /* rates stay empty; operations show unmatched */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Auto-upgrade seeded dummy inwards if needed
   const autoSyncSeededInwards = async () => {
@@ -153,8 +181,8 @@ export function ProjectCostingPage() {
         .select('wo_no, sales_order, customer, part_name');
 
       if (inwardRows && inwardRows.length > 0) {
-        const goodsPurchaseInwards = inwardRows.filter((inv: any) =>
-          isGoodsPurchaseCategory(inv.category)
+        const purchaseInwards = inwardRows.filter((inv: any) =>
+          isPurchaseCategory(inv.category)
         );
 
         rows = rows.map((proj) => {
@@ -174,7 +202,7 @@ export function ProjectCostingPage() {
             if (w.wo_no) matchingWo.add(w.wo_no.toLowerCase());
           });
 
-          const matchingInwards = goodsPurchaseInwards.filter((inv: any) => {
+          const matchingInwards = purchaseInwards.filter((inv: any) => {
             const soRef = (inv.sales_order_ref || '').trim().toLowerCase();
             const projRef = (inv.project_name || '').trim().toLowerCase();
             const partyRef = (inv.party_name || '').trim().toLowerCase();
@@ -190,15 +218,23 @@ export function ProjectCostingPage() {
           });
 
           if (matchingInwards.length > 0) {
-            const goodsPurchaseTotal = matchingInwards.reduce((sum: number, inv: any) => {
+            const purchaseTotal = matchingInwards.reduce((sum: number, inv: any) => {
               const qty = Number(inv.quantity) || 0;
               const price = Number(inv.price) || 0;
               const tot = Number(inv.total_amount) || qty * price;
               return sum + tot;
             }, 0);
 
+            const kinds = Array.from(
+              new Set(
+                matchingInwards.map((inv: any) =>
+                  isServicePurchaseCategory(inv.category) ? 'service purchase' : 'goods purchase'
+                )
+              )
+            );
+
             const baseCost = Number(proj.actual_cost) || 0;
-            const combinedCost = baseCost > 0 ? baseCost + goodsPurchaseTotal : goodsPurchaseTotal;
+            const combinedCost = baseCost > 0 ? baseCost + purchaseTotal : purchaseTotal;
             const salesVal = Number(proj.sales_value) || 0;
             const profit = salesVal ? (salesVal - combinedCost).toFixed(2) : null;
             const profitPct =
@@ -210,8 +246,8 @@ export function ProjectCostingPage() {
               ...proj,
               actual_cost: combinedCost.toFixed(2),
               cost_source: proj.cost_source
-                ? `${proj.cost_source} + goods purchase`
-                : 'goods purchase inward',
+                ? `${proj.cost_source} + ${kinds.join(' + ')}`
+                : `${kinds.join(' + ')} inward`,
               profit,
               profit_pct: profitPct,
             };
@@ -267,13 +303,13 @@ export function ProjectCostingPage() {
         operations: [],
       };
 
-      // 1. Fetch Goods Purchase inwards
+      // 1. Fetch purchase inwards (goods -> material, service -> machine & labour)
       const { data: inwardRows } = await supabase
         .from('cnc_inwards')
         .select('*');
 
-      const goodsPurchaseInwards = (inwardRows || []).filter((inv: any) =>
-        isGoodsPurchaseCategory(inv.category)
+      const purchaseInwards = (inwardRows || []).filter((inv: any) =>
+        isPurchaseCategory(inv.category)
       );
 
       // Build match keys
@@ -290,7 +326,7 @@ export function ProjectCostingPage() {
       const currParty = (p.party_name || '').trim().toLowerCase();
       const currPart = (p.part_name || '').trim().toLowerCase();
 
-      const matchedInwards = goodsPurchaseInwards.filter((inv: any) => {
+      const matchedInwards = purchaseInwards.filter((inv: any) => {
         const soRef = (inv.sales_order_ref || '').trim().toLowerCase();
         const projRef = (inv.project_name || '').trim().toLowerCase();
         const partyRef = (inv.party_name || '').trim().toLowerCase();
@@ -303,17 +339,17 @@ export function ProjectCostingPage() {
         return false;
       });
 
-      // Format inward materials
-      const inwardMaterials = matchedInwards.map((inv: any) => {
+      // Format inward rows: goods purchase -> material, service purchase -> machine & labour
+      const toCostRow = (inv: any, type: string) => {
         const qty = Number(inv.quantity) || 0;
         const rate = Number(inv.price) || (qty > 0 ? (Number(inv.total_amount) || 0) / qty : 0);
         const amount = Number(inv.total_amount) || qty * rate;
         return {
           id: inv.id || crypto.randomUUID(),
           date: inv.inward_date || inv.created_at || todayISO(),
-          type: 'Goods Purchase',
+          type,
           reference: inv.reference_no ? `${inv.inward_no} (${inv.reference_no})` : inv.inward_no,
-          item: inv.part_name || inv.product_name || 'Goods Purchase Item',
+          item: inv.part_name || inv.product_name || `${type} Item`,
           quantity: String(qty),
           unit: 'pcs',
           rate: String(rate),
@@ -321,13 +357,21 @@ export function ProjectCostingPage() {
           work_order: inv.project_name || p.project_name,
           request_no: inv.inward_no,
         };
-      });
+      };
+
+      const inwardMaterials = matchedInwards
+        .filter((inv: any) => isGoodsPurchaseCategory(inv.category))
+        .map((inv: any) => toCostRow(inv, 'Goods Purchase'));
+      const serviceRows = matchedInwards
+        .filter((inv: any) => isServicePurchaseCategory(inv.category))
+        .map((inv: any) => toCostRow(inv, 'Service Purchase'));
 
       const allMaterials = [...(baseReport.materials || []), ...inwardMaterials];
       const totalMaterialCost = allMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
       const inwardAmount = inwardMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+      const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 
-      // Update categories breakdown for Cost Summary & Comparison tabs
+      // Update categories breakdown (used by export/print)
       let updatedCategories = [...(baseReport.categories || [])];
       const matCatIdx = updatedCategories.findIndex((c) => /material/i.test(c.category));
       if (matCatIdx >= 0) {
@@ -342,10 +386,26 @@ export function ProjectCostingPage() {
           amount: totalMaterialCost.toFixed(2),
         });
       }
+      if (serviceAmount > 0) {
+        const svcCatIdx = updatedCategories.findIndex((c) => /service/i.test(c.category));
+        if (svcCatIdx >= 0) {
+          const existingAmt = Number(updatedCategories[svcCatIdx].amount) || 0;
+          updatedCategories[svcCatIdx] = {
+            ...updatedCategories[svcCatIdx],
+            amount: (existingAmt + serviceAmount).toFixed(2),
+          };
+        } else {
+          updatedCategories.push({
+            category: 'Service Cost',
+            amount: serviceAmount.toFixed(2),
+          });
+        }
+      }
 
       // Compute combined actual cost and margin
       const baseActual = Number(baseReport.project?.actual_cost) || 0;
-      const combinedActual = (baseActual > 0 ? baseActual + inwardAmount : totalMaterialCost) || null;
+      const purchaseAmount = inwardAmount + serviceAmount;
+      const combinedActual = (baseActual > 0 ? baseActual + purchaseAmount : totalMaterialCost + serviceAmount) || null;
       const salesVal = Number(baseReport.project?.sales_value || p.sales_value) || null;
       const profit =
         salesVal !== null && combinedActual !== null ? (salesVal - combinedActual).toFixed(2) : null;
@@ -354,17 +414,22 @@ export function ProjectCostingPage() {
           ? (((salesVal - combinedActual) * 100) / salesVal).toFixed(2)
           : null;
 
+      const purchaseKinds = [
+        ...(inwardAmount > 0 ? ['goods purchase'] : []),
+        ...(serviceAmount > 0 ? ['service purchase'] : []),
+      ];
       const costSource = baseReport.project?.cost_source
-        ? inwardAmount > 0
-          ? `${baseReport.project.cost_source} + goods purchase`
+        ? purchaseKinds.length > 0
+          ? `${baseReport.project.cost_source} + ${purchaseKinds.join(' + ')}`
           : baseReport.project.cost_source
-        : inwardAmount > 0
-        ? 'goods purchase inward'
+        : purchaseKinds.length > 0
+        ? `${purchaseKinds.join(' + ')} inward`
         : null;
 
       const finalDetail: CostingDetail = {
         ...baseReport,
         materials: allMaterials,
+        services: [...(baseReport.services || []), ...serviceRows],
         categories: updatedCategories,
         project: {
           ...baseReport.project,
@@ -402,12 +467,6 @@ export function ProjectCostingPage() {
   const totalActual = project?.actual_cost ?? project?.product_cost ?? project?.process_cost ?? null;
   const profit = project?.profit ?? null;
   const profitPct = project?.profit_pct ?? null;
-  const maxCategory = Math.max(1, ...categoryRows.map((x) => Number(x.amount)));
-  const categoryForTab = useMemo(() => {
-    if (tab === 'Tooling & Consumables') return categoryRows.filter((x) => /tool|consum|fixture/i.test(x.category));
-    if (tab === 'Overhead') return categoryRows.filter((x) => /overhead|admin|factory/i.test(x.category));
-    return categoryRows;
-  }, [categoryRows, tab]);
 
   const exportReport = () => {
     if (!report) return;
@@ -478,11 +537,40 @@ export function ProjectCostingPage() {
     return (report?.materials || []).reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
   }, [report?.materials]);
 
+  const totalServiceAmount = useMemo(() => {
+    return (report?.services || []).reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+  }, [report?.services]);
+  // Production operations valued with live Process Master rates (process costing
+  // = production operations). Operations without a matching master rate show
+  // hours only and are excluded from the total.
+  const processOps = useMemo(() => {
+    const byName = new Map((procRates ?? []).map((p: any) => [String(p.process_name ?? '').toLowerCase(), p]));
+    return (report?.operations || []).map((x: any) => {
+      const p = byName.get(String(x.operation ?? '').toLowerCase());
+      const qty = Number(x.qty_completed) > 0 ? Number(x.qty_completed) : Number(x.qty_planned) || 0;
+      const hours = Math.max(0, ((Number(x.setup_time) || 0) + qty * (Number(x.cycle_time) || 0)) / 60);
+      const rate = Number(p?.cost_per_hour) || 0;
+      const compSetup = (Number(p?.cost_per_component) || 0) + (Number(p?.setup_cost) || 0);
+      return {
+        ...x,
+        hours: Math.round(hours * 100) / 100,
+        rate,
+        compSetup,
+        cost: hours * rate + compSetup,
+        matched: !!p && rate > 0,
+      };
+    });
+  }, [report?.operations, procRates]);
+
+  const processOpsTotal = useMemo(() => {
+    return processOps.reduce((sum, x) => sum + (x.matched ? x.cost : 0), 0);
+  }, [processOps]);
+
   return (
     <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
       <PageHeader
         title="Project Costing"
-        description="Cost analysis from existing project costs, production records, inventory movements and goods purchase inwards."
+        description="Cost analysis from existing project costs, production records, inventory movements, goods purchase inwards (material) and service purchase inwards (machine & labour)."
         actions={
           <>
             <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportReport} disabled={!report}>
@@ -562,67 +650,61 @@ export function ProjectCostingPage() {
             <Card className="p-12 text-center text-sm text-slate-500">Select a project or work order to view its costing.</Card>
           ) : (
             <>
-              <Card className="p-4">
-                <div className="flex flex-wrap justify-between gap-4">
-                  <div>
+              <Card className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="min-w-[180px] max-w-[320px]">
                     <div className="text-[10px] uppercase tracking-wide text-slate-500">Project / Work Order</div>
-                    <h2 className="text-lg font-bold">{selected.project_name}</h2>
-                    <div className="text-sm text-slate-600">{selected.part_name} · {selected.party_name}</div>
-                    {jobs.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {jobs.map((w) => (
-                          <Badge key={w.id} variant={statusToVariant(w.status)}>
-                            {w.wo_no} · {w.status}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
+                    <h2 className="text-base font-bold leading-tight truncate" title={selected.project_name}>{selected.project_name}</h2>
+                    <div className="text-xs text-slate-600 truncate" title={`${selected.part_name} · ${selected.party_name}`}>{selected.part_name} · {selected.party_name}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-slate-500">Sales Order Value</div>
-                    <div className="font-bold">{money(project?.sales_value)}</div>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Sales Order Value</div>
+                      <div className="text-sm font-bold">{money(project?.sales_value)}</div>
+                    </div>
+                    <div title={project?.planned_cost ? 'From planned_workings' : 'No estimate source recorded'}>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Planned Cost</div>
+                      <div className="text-sm font-bold">{money(project?.planned_cost)}</div>
+                    </div>
+                    <div title={project?.cost_source || 'No cost source recorded'}>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Recorded Actual Cost</div>
+                      <div className="text-sm font-bold">{money(totalActual)}</div>
+                    </div>
+                    <div title="Linked sales order only">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Sales Value</div>
+                      <div className="text-sm font-bold">{money(project?.sales_value)}</div>
+                    </div>
+                    <div title={profitPct !== null && profitPct !== undefined ? profitPct + '%' : 'Not available'}>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">Margin on Recorded Cost</div>
+                      <div className="text-sm font-bold">{money(profit)}</div>
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-                  <Metric
-                    title="Planned Cost"
-                    value={money(project?.planned_cost)}
-                    note={project?.planned_cost ? 'From planned_workings' : 'No estimate source recorded'}
-                  />
-                  <Metric
-                    title="Recorded Actual Cost"
-                    value={money(totalActual)}
-                    note={project?.cost_source || 'No cost source recorded'}
-                  />
-                  <Metric
-                    title="Sales Value"
-                    value={money(project?.sales_value)}
-                    note="Linked sales order only"
-                  />
-                  <Metric
-                    title="Margin on Recorded Cost"
-                    value={money(profit)}
-                    note={profitPct !== null && profitPct !== undefined ? profitPct + '%' : 'Not available'}
-                  />
-                </div>
-                <div className="mt-4 border rounded-lg p-3 bg-slate-50">
-                  <div className="flex justify-between text-xs">
-                    <b>Production Progress</b>
-                    <span>
-                      {quantity
-                        ? completed +
-                          ' completed · ' +
-                          Math.max(0, quantity - completed - rejected) +
-                          ' pending · ' +
-                          rejected +
-                          ' rejected'
-                        : 'No linked work order quantities'}
-                    </span>
+                {jobs.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {jobs.map((w) => (
+                      <Badge key={w.id} variant={statusToVariant(w.status)}>
+                        {w.wo_no} · {w.status}
+                      </Badge>
+                    ))}
                   </div>
-                  <div className="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <b className="text-[11px] whitespace-nowrap">Production Progress</b>
+                  <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                     <div className="h-full bg-emerald-500" style={{ width: progress + '%' }} />
                   </div>
-                  <div className="text-right text-xs mt-1 font-semibold">{progress.toFixed(1)}%</div>
+                  <span className="text-[11px] text-slate-500 whitespace-nowrap">
+                    {quantity
+                      ? completed +
+                        ' completed · ' +
+                        Math.max(0, quantity - completed - rejected) +
+                        ' pending · ' +
+                        rejected +
+                        ' rejected'
+                      : 'No linked work order quantities'}
+                  </span>
+                  <span className="text-[11px] font-semibold">{progress.toFixed(1)}%</span>
                 </div>
               </Card>
 
@@ -645,94 +727,15 @@ export function ProjectCostingPage() {
                 <Card className="p-12 text-center text-sm text-slate-500">Loading costing records...</Card>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {(tab === 'Cost Summary' || tab === 'Comparison') && (
+                  {tab === 'Process Costing' && (
                     <Card className="overflow-hidden">
                       <div className="p-3 border-b bg-slate-50">
                         <h3 className="font-bold text-sm">
-                          {tab === 'Comparison' ? 'Planned vs Actual' : 'Cost Breakdown'}
-                        </h3>
-                      </div>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500">
-                            <th className="p-2 text-left">Cost Head</th>
-                            <th className="p-2 text-right">Planned</th>
-                            <th className="p-2 text-right">Recorded Actual</th>
-                            <th className="p-2 text-right">Variance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {categoryForTab.map((x) => (
-                            <tr key={x.category} className="border-t">
-                              <td className="p-2 font-medium">{x.category}</td>
-                              <td className="p-2 text-right">—</td>
-                              <td className="p-2 text-right font-medium">{money(x.amount)}</td>
-                              <td className="p-2 text-right">—</td>
-                            </tr>
-                          ))}
-                          {!categoryForTab.length && (
-                            <tr>
-                              <td colSpan={4} className="p-6 text-center text-slate-500">
-                                {project?.planned_cost
-                                  ? 'Planned amount is available at project level; category estimates are not configured.'
-                                  : 'No categorized cost records for this project.'}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t bg-slate-50 font-bold">
-                            <td className="p-2">Recorded Total</td>
-                            <td className="p-2 text-right">{money(project?.planned_cost)}</td>
-                            <td className="p-2 text-right text-brand-700">{money(totalActual)}</td>
-                            <td className="p-2 text-right">—</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </Card>
-                  )}
-
-                  {(tab === 'Cost Summary' || tab === 'Comparison') && (
-                    <Card className="p-4">
-                      <h3 className="font-bold text-sm mb-3">Recorded Cost Distribution</h3>
-                      {categoryRows.length ? (
-                        categoryRows.map((x, i) => (
-                          <div key={x.category} className="mb-3">
-                            <div className="flex justify-between text-xs">
-                              <span>{x.category}</span>
-                              <b>{money(x.amount)}</b>
-                            </div>
-                            <div className="h-2 rounded bg-slate-100 mt-1">
-                              <div
-                                className={
-                                  'h-full rounded ' +
-                                  ['bg-blue-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500'][
-                                    i % 6
-                                  ]
-                                }
-                                style={{ width: Math.max(1, (Number(x.amount) / maxCategory) * 100) + '%' }}
-                              />
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-xs text-slate-500">No cost distribution is available.</div>
-                      )}
-                      <div className="border-t pt-3 mt-3 text-xs text-slate-500">
-                        Distribution uses {project?.cost_source || 'the available recorded cost source'}; linked detail rows are not added twice.
-                      </div>
-                    </Card>
-                  )}
-
-                  {(tab === 'Process Costing' || tab === 'Outside Process') && (
-                    <Card className="overflow-hidden xl:col-span-2">
-                      <div className="p-3 border-b bg-slate-50">
-                        <h3 className="font-bold text-sm">
-                          {tab === 'Outside Process' ? 'Outside Process Cost' : 'Process Wise Costing'}
+                          Process Wise Costing
                         </h3>
                       </div>
                       <div className="overflow-auto">
-                        <table className="w-full min-w-[700px] text-xs">
+                        <table className="w-full text-xs">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500">
                               <th className="p-2 text-left">Process</th>
@@ -769,7 +772,81 @@ export function ProjectCostingPage() {
                     </Card>
                   )}
 
-                  {tab === 'Material Cost' && (
+                                    {tab === 'Process Costing' && (
+                    <Card className="overflow-hidden">
+                      <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Production Operations — Process Master Rates</h3>
+                          <p className="text-[10px] text-slate-500">
+                            Job card operations valued with live Process Master rates. Process Cost = (Time x Cost/Hour) + Cost/Component + Setup Cost.
+                          </p>
+                        </div>
+                        {processOpsTotal > 0 && (
+                          <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
+                            Total Process: {money(processOpsTotal.toFixed(2))}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500">
+                              <th className="p-2">Job</th>
+                              <th className="p-2 text-left">Operation / Process</th>
+                              <th className="p-2">Machine / Operator</th>
+                              <th className="p-2 text-right">Hours</th>
+                              <th className="p-2 text-right">Rate / Hour</th>
+                              <th className="p-2 text-right">Comp + Setup</th>
+                              <th className="p-2 text-right">Process Cost</th>
+                              <th className="p-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {processOps.map((x) => (
+                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2 font-mono text-[11px]">{x.job_no}</td>
+                                <td className="p-2 font-medium text-slate-800">
+                                  {x.operation || '—'}
+                                  {!x.matched && (
+                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                      No master rate
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-2">{x.machine} / {x.operator || '—'}</td>
+                                <td className="p-2 text-right">{x.hours}</td>
+                                <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
+                                <td className="p-2 text-right">{x.matched ? money(x.compSetup) : '—'}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
+                                <td className="p-2">{x.status || '—'}</td>
+                              </tr>
+                            ))}
+                            {!processOps.length && (
+                              <tr>
+                                <td colSpan={8} className="p-8 text-center text-slate-500">
+                                  No linked job card records.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                          {processOpsTotal > 0 && (
+                            <tfoot>
+                              <tr className="border-t bg-slate-50/90 font-bold">
+                                <td colSpan={6} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">
+                                  Total Process Cost (Operations)
+                                </td>
+                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">
+                                  {money(processOpsTotal.toFixed(2))}
+                                </td>
+                                <td />
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+{tab === 'Material Cost' && (
                     <Card className="overflow-hidden xl:col-span-2">
                       <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                         <div>
@@ -850,80 +927,79 @@ export function ProjectCostingPage() {
 
                   {tab === 'Machine & Labour' && (
                     <Card className="overflow-hidden xl:col-span-2">
-                      <div className="p-3 border-b bg-slate-50">
-                        <h3 className="font-bold text-sm">Production Operations</h3>
-                        <p className="text-[10px] text-slate-500">
-                          Machine and operator hours/rates are not stored in the current job card schema, so monetary costs are not estimated here.
-                        </p>
+                      <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Service Purchase Cost</h3>
+                          <p className="text-[10px] text-slate-500">
+                            Source: Service Purchase inward entries linked to this project or work order.
+                          </p>
+                        </div>
+                        {report?.services && report.services.length > 0 && (
+                          <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
+                            Total Service: {money(totalServiceAmount.toFixed(2))}
+                          </Badge>
+                        )}
                       </div>
                       <div className="overflow-auto">
-                        <table className="w-full min-w-[650px] text-xs">
+                        <table className="w-full min-w-[700px] text-xs">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500">
-                              <th className="p-2">Job</th>
-                              <th className="p-2 text-left">Operation</th>
-                              <th className="p-2">Machine / Operator</th>
-                              <th className="p-2 text-right">Planned Qty</th>
-                              <th className="p-2 text-right">Completed</th>
-                              <th className="p-2 text-right">Cycle / Setup record</th>
-                              <th className="p-2">Status</th>
+                              <th className="p-2 text-left">Date</th>
+                              <th className="p-2 text-left">Item / Service</th>
+                              <th className="p-2 text-left">Source</th>
+                              <th className="p-2 text-left">Inward / Request Ref</th>
+                              <th className="p-2 text-right">Quantity</th>
+                              <th className="p-2 text-center">Unit</th>
+                              <th className="p-2 text-right">Rate</th>
+                              <th className="p-2 text-right">Amount</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {(report?.operations || []).map((x) => (
-                              <tr key={x.id} className="border-t">
-                                <td className="p-2">{x.job_no}</td>
-                                <td className="p-2">{x.operation}</td>
-                                <td className="p-2">{x.machine} / {x.operator || '—'}</td>
-                                <td className="p-2 text-right">{x.qty_planned || '—'}</td>
-                                <td className="p-2 text-right">{x.qty_completed || '—'}</td>
-                                <td className="p-2 text-right">{x.cycle_time || '—'} / {x.setup_time || '—'}</td>
-                                <td className="p-2">{x.status || '—'}</td>
+                            {(report?.services || []).map((x) => (
+                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2">{formatDate(x.date)}</td>
+                                <td className="p-2 font-medium text-slate-800">{x.item}</td>
+                                <td className="p-2">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                                    {x.type || 'Service'}
+                                  </span>
+                                </td>
+                                <td className="p-2 font-mono text-[11px] text-slate-600">
+                                  {x.reference || x.request_no}
+                                </td>
+                                <td className="p-2 text-right font-medium">{x.quantity}</td>
+                                <td className="p-2 text-center text-slate-500">{x.unit || 'pcs'}</td>
+                                <td className="p-2 text-right">{money(x.rate)}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{money(x.amount)}</td>
                               </tr>
                             ))}
-                            {!report?.operations?.length && (
+                            {!report?.services?.length && (
                               <tr>
-                                <td colSpan={7} className="p-8 text-center text-slate-500">
-                                  No linked job card records.
+                                <td colSpan={8} className="p-8 text-center text-slate-500">
+                                  No linked service purchase inward records.
                                 </td>
                               </tr>
                             )}
                           </tbody>
+                          {report?.services && report.services.length > 0 && (
+                            <tfoot>
+                              <tr className="border-t bg-slate-50/90 font-bold">
+                                <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">
+                                  Total Service Cost
+                                </td>
+                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">
+                                  {money(totalServiceAmount.toFixed(2))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
                     </Card>
                   )}
 
-                  {(tab === 'Tooling & Consumables' || tab === 'Overhead') && (
-                    <Card className="overflow-hidden xl:col-span-2">
-                      <div className="p-3 border-b bg-slate-50">
-                        <h3 className="font-bold text-sm">{tab}</h3>
-                      </div>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-slate-50">
-                            <th className="p-2 text-left">Cost Head</th>
-                            <th className="p-2 text-right">Recorded Actual</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {categoryForTab.map((x) => (
-                            <tr key={x.category} className="border-t">
-                              <td className="p-2">{x.category}</td>
-                              <td className="p-2 text-right">{money(x.amount)}</td>
-                            </tr>
-                          ))}
-                          {!categoryForTab.length && (
-                            <tr>
-                              <td colSpan={2} className="p-8 text-center text-slate-500">
-                                No {tab.toLowerCase()} cost records are configured for this project.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </Card>
-                  )}
+                  
+
                 </div>
               )}
             </>
@@ -931,15 +1007,5 @@ export function ProjectCostingPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Metric({ title, value, note }: { title: string; value: string; note: string }) {
-  return (
-    <Card className="p-3">
-      <div className="text-[10px] text-slate-500">{title}</div>
-      <div className="text-sm font-bold truncate">{value}</div>
-      <div className="mt-1 text-[10px] text-slate-400 truncate">{note}</div>
-    </Card>
   );
 }

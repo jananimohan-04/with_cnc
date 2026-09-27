@@ -184,8 +184,7 @@ export function FinishedGoodsPage() {
   };
 
   const filteredRecords = records.filter(r => {
-    const matchesSearch = (r.part_no?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                          (r.part_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const matchesSearch = (r.part_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesProject = projectFilter === 'All Projects' || r.sales_order === projectFilter;
     const matchesCustomer = customerFilter === 'All Customers' || r.customer === customerFilter;
     const matchesStatus = statusFilter === 'All' ? true : 
@@ -212,10 +211,7 @@ export function FinishedGoodsPage() {
     : 'Filtered orders';
 
   const columns: Column<any>[] = [
-    { 
-      key: 'part_no', 
-      label: 'Part No', 
-      render: (r) => (
+    { key: 'part_name', label: 'Part Name', render: (r) => (
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-slate-200">
             {r.imgUrl ? (
@@ -224,11 +220,10 @@ export function FinishedGoodsPage() {
               <Package size={16} className="text-slate-400" />
             )}
           </div>
-          <span className="font-semibold text-slate-700 whitespace-nowrap">{r.part_no || 'N/A'}</span>
+          <span className="text-slate-600 whitespace-nowrap">{r.part_name || 'N/A'}</span>
         </div>
       )
     },
-    { key: 'part_name', label: 'Part Name', render: (r) => <span className="text-slate-600 whitespace-nowrap">{r.part_name || 'N/A'}</span> },
     { 
       key: 'project', 
       label: 'Project',
@@ -401,7 +396,7 @@ export function FinishedGoodsPage() {
             </select>
           </div>
           <div className="md:col-span-1">
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Part Name / Part No</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">Part Name</label>
             <input 
               type="text" 
               placeholder="Search..."
@@ -443,7 +438,7 @@ export function FinishedGoodsPage() {
           <DataTable
             data={filteredRecords}
             columns={columns}
-            searchKeys={['part_no', 'part_name', 'wo_no', 'sales_order', 'customer', 'status']}
+            searchKeys={['part_name', 'wo_no', 'sales_order', 'customer', 'status']}
             emptyMessage={loading ? 'Loading finished goods...' : 'No finished goods found'}
           />
         </div>
@@ -499,7 +494,6 @@ export function FinishedGoodsPage() {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">Part Details</label>
-                <div className="text-sm font-semibold text-slate-800">{showViewModal.part_no}</div>
                 <div className="text-sm text-slate-600">{showViewModal.part_name}</div>
               </div>
               <div>
@@ -577,7 +571,7 @@ export function FinishedGoodsPage() {
           <div className="space-y-4">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-sm text-slate-600 space-y-2">
               <div className="flex justify-between"><span>Production Order:</span> <span className="font-medium text-slate-800">{showEditModal.wo_no}</span></div>
-              <div className="flex justify-between"><span>Part:</span> <span className="font-medium text-slate-800">{showEditModal.part_no} - {showEditModal.part_name}</span></div>
+              <div className="flex justify-between"><span>Part:</span> <span className="font-medium text-slate-800">{showEditModal.part_name}</span></div>
               <div className="flex justify-between"><span>Target Qty:</span> <span className="font-medium text-slate-800">{showEditModal.orderedQty}</span></div>
             </div>
 

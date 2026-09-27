@@ -204,7 +204,7 @@ export function OldProductionPlanningPage() {
               {woData.filter((w) => w.status === 'Planning' || w.status === 'In Progress').map((w) => (
                 <tr key={w.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{w.woNo}</td>
-                  <td className="px-4 py-3"><p className="text-sm text-slate-700">{w.partName}</p><p className="text-xs text-slate-400">{w.partNo}</p></td>
+                  <td className="px-4 py-3"><p className="text-sm text-slate-700">{w.partName}</p></td>
                   <td className="px-4 py-3 text-sm text-slate-600">{w.customer}</td>
                   <td className="px-4 py-3 text-right text-sm font-medium text-slate-700">{w.quantity}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{w.startDate}</td>
@@ -260,7 +260,7 @@ function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => v
     <Modal open={true} onClose={onClose} title={`Work Order Details`} subtitle={wo.woNo} size="xl">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="space-y-4">
-          <div><p className="text-xs text-slate-500 uppercase tracking-wider">Part</p><p className="font-semibold text-slate-800">{wo.partName}</p><p className="text-xs text-slate-500 font-mono">{wo.partNo}</p></div>
+          <div><p className="text-xs text-slate-500 uppercase tracking-wider">Part</p><p className="font-semibold text-slate-800">{wo.partName}</p></div>
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Customer</p><p className="text-sm text-slate-700">{wo.customer}</p></div>
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Sales Order</p><p className="text-sm font-mono text-slate-700">{wo.salesOrder}</p></div>
         </div>
@@ -417,12 +417,12 @@ export function WorkOrdersPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.woNo || !formData.partNo || !formData.quantity) return;
+    if (!formData.woNo || !formData.quantity) return;
 
     const entryData = {
       wo_no: formData.woNo,
       part_name: formData.partName,
-      part_no: formData.partNo,
+      part_no: formData.partNo || 'N/A',
       customer: formData.customer,
       sales_order: formData.salesOrder,
       quantity: Number(formData.quantity) || 0,
@@ -496,7 +496,7 @@ export function WorkOrdersPage() {
 
   const columns: Column<WorkOrder & { id: string }>[] = [
     { key: 'woNo', label: 'WO Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700 font-semibold">{r.woNo}</span> },
-    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm font-medium text-slate-800">{r.partName}</p><p className="text-xs text-slate-400 font-mono">{r.partNo}</p></div> },
+    { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm font-medium text-slate-800">{r.partName}</p></div> },
     { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.customer}</span> },
     { key: 'quantity', label: 'Planned', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.quantity}</span> },
     { key: 'completed', label: 'Progress', render: (r) => <div className="flex items-center gap-2 min-w-[120px]"><ProgressBar value={r.completed} max={r.quantity} color="brand" /><span className="text-xs font-medium text-slate-600 whitespace-nowrap">{r.completed}/{r.quantity}</span></div> },
@@ -550,7 +550,7 @@ export function WorkOrdersPage() {
         <StatCard label="Completed" value={completedWOs.toString()} icon={<Package size={20} />} accent="success" />
         <StatCard label="On Hold" value={onHoldWOs.toString()} icon={<ClipboardList size={20} />} accent="warning" />
       </div>
-      <DataTable data={woData} columns={columns} searchKeys={['woNo', 'partName', 'partNo', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))} />
+      <DataTable data={woData} columns={columns} searchKeys={['woNo', 'partName', 'customer']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Work Order" filterOptions={WO_STATUSES.map(s => ({ label: s, value: s }))} />
       
       {selectedWO && <WorkOrderDetailModal wo={selectedWO} onClose={() => setSelectedWO(null)} />}
 
@@ -560,9 +560,6 @@ export function WorkOrdersPage() {
             <div className="grid grid-cols-2 gap-5">
               <FormField label="WO Number" required>
                 <input className={inputClass} value={formData.woNo} onChange={e => setFormData({...formData, woNo: e.target.value})} placeholder="WO-..." />
-              </FormField>
-              <FormField label="Part Number" required>
-                <input className={inputClass} value={formData.partNo} onChange={e => setFormData({...formData, partNo: e.target.value})} placeholder="e.g. BA-TB-204" />
               </FormField>
               <FormField label="Part Name" required>
                 <input className={inputClass} value={formData.partName} onChange={e => setFormData({...formData, partName: e.target.value})} placeholder="e.g. Turbine Bracket" />
@@ -679,7 +676,6 @@ function JobCardModal({ job, onClose }: { job: JobCardRow, onClose: () => void }
         </div>
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-6 text-sm">
-          <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Part Number:</span><span className="font-mono">{wo?.partNo || '—'}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Drawing Number:</span><span className="font-mono">{wo?.drawing || '—'}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Material:</span><span>{material}</span></div>
           <div className="flex border-b border-slate-300 pb-1"><span className="w-32 font-bold text-slate-700">Work Order:</span><span className="font-mono">{job.workOrder}</span></div>
@@ -1566,14 +1562,14 @@ export function FinishedGoodsPage() {
       </div>
       <DataTable data={finishedGoods} columns={[
         { key: 'woNo', label: 'WO No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.woNo}</span> },
-        { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p><p className="text-xs text-slate-400">{r.partNo}</p></div> },
+        { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p></div> },
         { key: 'customer', label: 'Customer', sortable: true },
         { key: 'quantity', label: 'Order Qty', align: 'right', sortable: true },
         { key: 'completed', label: 'Produced', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.completed}</span> },
         { key: 'rejected', label: 'Rejected', align: 'right', render: (r) => <span className={r.rejected > 0 ? 'text-red-500' : 'text-slate-400'}>{r.rejected}</span> },
         { key: 'accepted', label: 'Accepted (OK)', align: 'right', render: (r) => <span className="font-bold text-green-600">{r.accepted}</span> },
         { key: 'status', label: 'Status', sortable: true, render: () => <Badge variant="success">In Stock</Badge> },
-      ]} searchKeys={['woNo', 'partName', 'partNo', 'customer']} filterOptions={[{ label: 'Completed', value: 'Completed' }, { label: 'In Progress', value: 'In Progress' }]} />
+      ]} searchKeys={['woNo', 'partName', 'customer']} filterOptions={[{ label: 'Completed', value: 'Completed' }, { label: 'In Progress', value: 'In Progress' }]} />
     </div>
   );
 }

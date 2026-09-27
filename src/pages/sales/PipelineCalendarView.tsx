@@ -30,7 +30,7 @@ export function PipelineCalendarView({ cards, onView }: PipelineCalendarViewProp
   const allEvents = cards.map(c => ({
     card: c,
     date: new Date(c.raw?.next_action_date || c.date),
-    title: c.raw?.next_action || c.status || c.stage,
+    title: c.raw?.next_action || c.stage,
   })).sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const upcomingEvents = allEvents.filter(e => e.date >= new Date(new Date().setHours(0,0,0,0))).slice(0, 5);

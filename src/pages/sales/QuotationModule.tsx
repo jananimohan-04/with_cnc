@@ -162,7 +162,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                 <th className="p-3 font-semibold">Quote No</th>
                 <th className="p-3 font-semibold">Date</th>
                 <th className="p-3 font-semibold">Customer</th>
-                <th className="p-3 font-semibold">Part / Description</th>
+                <th className="p-3 font-semibold">Description</th>
                 <th className="p-3 font-semibold">Value</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
@@ -174,7 +174,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                   <td className="p-3 font-mono text-sm text-slate-800 font-medium">{quote.quote_no || 'Pending'}</td>
                   <td className="p-3 text-sm text-slate-600">{quote.date ? quote.date.split('T')[0] : (quote.created_at ? quote.created_at.split('T')[0] : '')}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm">{quote.customer}</td>
-                  <td className="p-3 text-sm text-slate-700">{quote.part_name || quote.part_number || 'N/A'}</td>
+                  <td className="p-3 text-sm text-slate-700">{quote.part_name || '—'}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">₹{quote.total_value?.toLocaleString('en-IN') || '-'}</td>
                   <td className="p-3">
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${(quote.status === 'Converted' || quote.status === 'Accepted') ?'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
@@ -220,7 +220,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                 
                 <FormField label="Validity"><input className={inputClass} value={selectedQuote.valid_till || ''} disabled /></FormField>
 
-                <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={selectedQuote.part_name || selectedQuote.part_number || selectedQuote.description || ''} disabled /></FormField></div>
+                <div className="col-span-2"><FormField label="Description"><input className={inputClass} value={selectedQuote.part_name || selectedQuote.description || '—'} disabled /></FormField></div>
                 
                 <FormField label="Quantity"><input className={inputClass} value={selectedQuote.quantity || ''} disabled /></FormField>
                 <FormField label="Rate"><input className={inputClass} value={selectedQuote.unit_price || ''} disabled /></FormField>
@@ -275,7 +275,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
             <FormField label="Date"><input className={inputClass} value={relatedEnquiry.received_date?.split('T')[0] || ''} disabled /></FormField>
             <FormField label="Customer"><input className={`${inputClass} font-semibold`} value={relatedEnquiry.customer || ''} disabled /></FormField>
             <FormField label="Status"><input className={inputClass} value={relatedEnquiry.status || ''} disabled /></FormField>
-            <div className="col-span-2"><FormField label="Part / Description"><input className={inputClass} value={relatedEnquiry.part_name || relatedEnquiry.enquiring_for || ''} disabled /></FormField></div>
+            <div className="col-span-2"><FormField label="Description"><input className={inputClass} value={relatedEnquiry.part_name || relatedEnquiry.enquiring_for || ''} disabled /></FormField></div>
             <FormField label="Quantity"><input className={inputClass} value={relatedEnquiry.quantity || ''} disabled /></FormField>
             <FormField label="Estimated Value"><input className={inputClass} value={relatedEnquiry.estimated_value || ''} disabled /></FormField>
           </div>
@@ -298,7 +298,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
               <FormField label="Enquiry Ref"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.enquiry_no || relatedEnquiry?.enquiry_no || ''} disabled /></FormField>
               
               <div className="col-span-2">
-                <FormField label="Part / Description"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.part_name || soModalTarget.part_number || ''} disabled /></FormField>
+                <FormField label="Description"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.part_name || ''} disabled /></FormField>
               </div>
               
               <FormField label="Quantity"><input type="number" name="quantity" className={inputClass} defaultValue={soModalTarget.quantity} required /></FormField>

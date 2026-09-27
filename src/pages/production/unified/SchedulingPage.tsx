@@ -22,9 +22,13 @@ export function SchedulingPage() {
   const [showAddJob, setShowAddJob] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [operations, setOperations] = useState<any[]>([]);
+  const [opsMissing, setOpsMissing] = useState(false);
   const [newJobForm, setNewJobForm] = useState({
-    workOrder: '', partName: '', partNo: '', customer: '', qty: '', 
-    machine: '', operator: '', date: currentDate.toISOString().split('T')[0], startTime: '08:00',
+    workOrder: '', operationId: '', operationSeq: '', processName: '',
+    partName: '', partNo: '', customer: '', qty: '',
+    machine: '', operator: '', setupTime: '0',
+    date: currentDate.toISOString().split('T')[0], startTime: '08:00',
     cycleTime: '15'
   });
 
@@ -56,47 +60,124 @@ export function SchedulingPage() {
   
   const handleWorkOrderSelect = (woId: string) => {
     const wo = workOrders.find(w => w.wo_no === woId);
-    if (wo) {
+    const resetOp = { operationId: '', operationSeq: '', processName: '', setupTime: '0' };
+    if (!wo) {
       setNewJobForm(prev => ({
-        ...prev,
-        workOrder: wo.wo_no,
-        partName: wo.part_name || '',
-        partNo: wo.part_no || '',
-        customer: wo.customer || '',
-        qty: wo.quantity?.toString() || ''
+        ...prev, workOrder: '', partName: '', partNo: '', customer: '', qty: '', ...resetOp,
       }));
+      return;
+    }
+    const eligible = eligibleOpsForWO(wo);
+    const base = {
+      workOrder: wo.wo_no,
+      partName: wo.part_name || '',
+      partNo: wo.part_no || '',
+      customer: wo.customer || '',
+      qty: wo.quantity?.toString() || '',
+      ...resetOp,
+    };
+    // Single eligible operation: select it immediately.
+    if (eligible.length === 1) {
+      setNewJobForm(prev => ({ ...prev, ...base, ...operationPatch(eligible[0]) }));
+    } else {
+      setNewJobForm(prev => ({ ...prev, ...base }));
     }
   };
 
+  // Patch of auto-filled fields when an operation is chosen. Customer / Product /
+  // Process / Sequence stay readonly; Target Qty defaults to the operation plan.
+  const operationPatch = (op: any) => ({
+    operationId: String(op.id),
+    operationSeq: String(op.operation_sequence ?? ''),
+    processName: op.process_name || op.process_code || '',
+    qty: op.planned_qty != null ? String(op.planned_qty) : '',
+    cycleTime: op.est_cycle_time != null ? String(op.est_cycle_time) : '15',
+    setupTime: op.setup_time != null ? String(op.setup_time) : '0',
+    machine: op.machine && machines.some((m: any) => m.code === op.machine) ? op.machine : '',
+    operator: op.operator || '',
+  });
+
+  const handleOperationSelect = (opId: string) => {
+    const wo = workOrders.find(w => w.wo_no === newJobForm.workOrder);
+    if (!wo) return;
+    const op = eligibleOpsForWO(wo).find(o => String(o.id) === opId);
+    if (!op) return;
+    setNewJobForm(prev => ({ ...prev, ...operationPatch(op) }));
+  };
+
+  const openAddJob = () => {
+    setIsNewOperator(false);
+    setNewJobForm({
+      workOrder: '', operationId: '', operationSeq: '', processName: '',
+      partName: '', partNo: '', customer: '', qty: '',
+      machine: '', operator: '', setupTime: '0',
+      date: currentDate.toISOString().split('T')[0], startTime: '08:00',
+      cycleTime: '15'
+    });
+    setShowAddJob(true);
+  };
+
+  // Work orders eligible for scheduling: active flow statuses only. Legacy
+  // Completed / Dispatched / Cancelled — and Draft orders awaiting release —
+  // never appear here.
+  const SCHEDULABLE_WO_STATUSES = ['Released', 'Planned', 'Planning', 'In Progress'];
+
+  // Operation link: cnc_job_cards has no operation_id column (and we must not add
+  // one), so a card is linked to its operation by (work_order = wo_no,
+  // op_no = operation_sequence * 10) — the same convention the Production release
+  // mirror uses. No duplicate scheduling table is created.
+  const opNoFor = (op: any) => (Number(op.operation_sequence) || 0) * 10;
+
+  const scheduledOpKeys = new Set(
+    jobs.map((j: any) => `${j.work_order}::${Number(j.op_no)}`)
+  );
+
+  const selectedWOForForm = workOrders.find(w => w.wo_no === newJobForm.workOrder) || null;
+
+  const eligibleOpsForWO = (wo: any) => {
+    if (!wo) return [];
+    return operations
+      .filter(op => String(op.work_order_id) === String(wo.id))
+      .filter(op => !['Completed', 'Cancelled'].includes(op.status))
+      .filter(op => !scheduledOpKeys.has(`${wo.wo_no}::${opNoFor(op)}`))
+      .sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
+  };
+
+  const schedulableWOs = workOrders.filter(
+    wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length > 0
+  );
+
   const handleAddJobSubmit = async () => {
-    if (!newJobForm.workOrder || !newJobForm.machine || !newJobForm.date) return alert('Please fill required fields');
+    if (!newJobForm.workOrder || !newJobForm.operationId || !newJobForm.machine || !newJobForm.date)
+      return alert('Please select a Work Order, Operation and Machine, and set the Start Date');
+    const qtyNum = Number(newJobForm.qty);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) return alert('Target Quantity must be greater than 0');
     if (saving) return;
 
-    // Create new job card
-    const d = new Date(newJobForm.date + 'T' + newJobForm.startTime);
+    const wo = workOrders.find(w => w.wo_no === newJobForm.workOrder);
+    const op = operations.find(o => String(o.id) === newJobForm.operationId);
+    // The operation may have been scheduled elsewhere since the popup opened.
+    if (!op || scheduledOpKeys.has(`${newJobForm.workOrder}::${opNoFor(op)}`))
+      return alert('This operation was already scheduled. Please choose another operation.');
 
-    // Next operation number for this work order (10, 20, 30...)
-    const existingOps = jobs
-      .filter(j => j.work_order === newJobForm.workOrder)
-      .map(j => Number(j.op_no))
-      .filter(n => Number.isFinite(n));
-    const nextOpNo = existingOps.length > 0 ? Math.max(...existingOps) + 10 : 10;
+    // Create new job card, linked to its operation by (work_order, op_no).
+    const d = new Date(newJobForm.date + 'T' + newJobForm.startTime);
 
     setSaving(true);
     const { error } = await supabase.from('cnc_job_cards').insert([{
       id: crypto.randomUUID(),
       job_no: `JC-${Math.floor(1000 + Math.random() * 9000)}`,
       work_order: newJobForm.workOrder,
-      part_name: newJobForm.partName,
-      op_no: nextOpNo,
-      operation: 'Machining',
+      part_name: newJobForm.partName || wo?.part_name || '',
+      op_no: opNoFor(op),
+      operation: op.process_name || op.process_code || 'Machining',
       machine: newJobForm.machine,
-      operator: newJobForm.operator,
-      qty_planned: Number(newJobForm.qty),
+      operator: newJobForm.operator || null,
+      qty_planned: qtyNum,
       qty_completed: 0,
       qty_rejected: 0,
-      cycle_time: Number(newJobForm.cycleTime),
-      setup_time: 30,
+      cycle_time: Number(newJobForm.cycleTime) || 0,
+      setup_time: Number(newJobForm.setupTime) || 0,
       status: 'Planned',
       // cnc_job_cards has no schedule-start column, so the scheduled start is stored in created_at
       created_at: d.toISOString()
@@ -145,9 +226,26 @@ export function SchedulingPage() {
       const uniqueOps = Array.from(new Set(jobsData.map((j: any) => j.operator).filter(Boolean)));
       setOperators(uniqueOps.map((op: any, i) => ({ id: `OP-${i}`, name: op, role: 'Operator', status: 'Available' })));
       
-      const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched")');
+      const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")');
       if (woRes.error) console.error('Failed to load work orders:', woRes.error);
       if (woRes.data) setWorkOrders(woRes.data);
+
+      // Work order operations from the Production module. Missing table (migration
+      // not applied) only disables operation selection — the calendar still works.
+      try {
+        const opsRes = await supabase.from('cnc_work_order_operations').select('*').order('operation_sequence');
+        if (opsRes.error) {
+          if ((opsRes.error as any).code === 'PGRST205') setOpsMissing(true);
+          else console.error('Failed to load work order operations:', opsRes.error);
+          setOperations([]);
+        } else {
+          setOpsMissing(false);
+          setOperations(opsRes.data || []);
+        }
+      } catch (opErr) {
+        console.error('Failed to load work order operations:', opErr);
+        setOperations([]);
+      }
       setDbError(false);
     } catch (err) {
       console.error(err);
@@ -271,7 +369,7 @@ export function SchedulingPage() {
           </div>
 
           <Button variant="secondary" className="bg-white" onClick={() => setCurrentDate(new Date())}>Today</Button>
-          <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={() => setShowAddJob(true)}><Plus size={18} /> Add Job</Button>
+          <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={openAddJob}><Plus size={18} /> Add Job</Button>
         </div>
       </div>
 
@@ -539,24 +637,53 @@ export function SchedulingPage() {
       <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Schedule New Job" size="lg" footer={
         <>
           <Button variant="secondary" onClick={() => setShowAddJob(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleAddJobSubmit} disabled={saving}>{saving ? 'Scheduling...' : 'Schedule Job'}</Button>
+          <Button variant="primary" onClick={handleAddJobSubmit} disabled={saving}>{saving ? 'Scheduling...' : 'Schedule Operation'}</Button>
         </>
       }>
         <div className="space-y-4">
+          {opsMissing && (
+            <p className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Work order operations are not provisioned yet — apply the work-order-operations migration to schedule specific operations.
+            </p>
+          )}
           <FormField label="Select Production Order" required>
             <select className={inputClass} value={newJobForm.workOrder} onChange={e => handleWorkOrderSelect(e.target.value)}>
               <option value="">-- Select Order --</option>
-              {workOrders.map(wo => (
-                <option key={wo.id} value={wo.wo_no}>{wo.wo_no} - {wo.part_name}</option>
+              {schedulableWOs.map(wo => (
+                <option key={wo.id} value={wo.wo_no}>
+                  {wo.wo_no} - {wo.part_name} - {wo.customer} - Qty {wo.quantity}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {workOrders.length > 0 && schedulableWOs.length === 0 && (
+            <p className="text-xs text-slate-500">
+              No released / planned work orders with unscheduled operations. Release a Work Order with operations in Production first.
+            </p>
+          )}
+
+          <FormField label="Select Operation" required>
+            <select
+              className={inputClass}
+              value={newJobForm.operationId}
+              onChange={e => handleOperationSelect(e.target.value)}
+              disabled={!newJobForm.workOrder}
+            >
+              <option value="">-- Select Operation --</option>
+              {selectedWOForForm && eligibleOpsForWO(selectedWOForForm).map(op => (
+                <option key={op.id} value={op.id}>
+                  Seq {op.operation_sequence} - {op.process_name || op.process_code}{op.machine ? ` (${op.machine})` : ''}
+                </option>
               ))}
             </select>
           </FormField>
 
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Customer"><input className={inputClass + ' bg-slate-50'} value={newJobForm.customer} readOnly disabled/></FormField>
-            <FormField label="Part Name"><input className={inputClass + ' bg-slate-50'} value={newJobForm.partName} readOnly disabled/></FormField>
-            <FormField label="Part Number"><input className={inputClass + ' bg-slate-50'} value={newJobForm.partNo} readOnly disabled/></FormField>
-            <FormField label="Target Quantity" required><input type="number" className={inputClass} value={newJobForm.qty} onChange={e => setNewJobForm({...newJobForm, qty: e.target.value})} /></FormField>
+            <FormField label="Product"><input className={inputClass + ' bg-slate-50'} value={newJobForm.partName} readOnly disabled/></FormField>
+            <FormField label="Process"><input className={inputClass + ' bg-slate-50'} value={newJobForm.processName} readOnly disabled placeholder="Auto-filled from operation"/></FormField>
+            <FormField label="Operation Sequence"><input className={inputClass + ' bg-slate-50'} value={newJobForm.operationSeq} readOnly disabled placeholder="Auto-filled from operation"/></FormField>
+            <FormField label="Target Quantity" required><input type="number" min="0" className={inputClass} value={newJobForm.qty} onChange={e => setNewJobForm({...newJobForm, qty: e.target.value})} /></FormField>
           </div>
 
           <div className="border-t border-slate-100 my-4 pt-4 font-semibold text-slate-700">Schedule Details</div>

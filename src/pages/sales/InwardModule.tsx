@@ -12,12 +12,15 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
   const openAttachment = async (attachment: { path: string; name: string }) => {
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) { alert('Allow pop-ups to open this attachment.'); return; }
     const { data, error } = await supabase.storage.from('inventory-images').createSignedUrl(attachment.path, 60);
     if (error || !data?.signedUrl) {
+      tab.close();
       alert(`Unable to open ${attachment.name}: ${error?.message || 'File unavailable'}`);
       return;
     }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    tab.location.href = data.signedUrl;
   };
 
   useEffect(() => {
@@ -38,8 +41,18 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
 
   const filteredRecords = records.filter(r =>
     (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.party_name || '').toLowerCase().includes(search.toLowerCase())
+    (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (r.part_name || '').toLowerCase().includes(search.toLowerCase())
   );
+  const productGroups: Array<{ key: string; label: string; records: any[] }> = Array.from(filteredRecords.reduce((groups: Map<string, { key: string; label: string; records: any[] }>, record: any) => {
+    const product = record.product_name || record.project_name || record.part_name || 'Unassigned Product';
+    const key = `${record.enquiry_id || record.project_name || ''}::${product}`;
+    const group = groups.get(key) || { key, label: product, records: [] };
+    group.records.push(record);
+    groups.set(key, group);
+    return groups;
+  }, new Map<string, { key: string; label: string; records: any[] }>()).values());
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
@@ -76,14 +89,17 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Inward No</th>
                 <th className="p-3 font-semibold">Party</th>
-                <th className="p-3 font-semibold">Product Name</th>
+                <th className="p-3 font-semibold">Part Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredRecords.map(record => (
+            {productGroups.map(group => <tbody key={group.key}>
+              <tr className="border-b border-slate-200 bg-brand-50/70">
+                <td colSpan={6} className="p-3 text-sm font-bold text-brand-800">{group.label}<span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{group.records.length} inward{group.records.length === 1 ? '' : 's'}</span></td>
+              </tr>
+              {group.records.map(record => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
@@ -95,10 +111,12 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
                   </td>
                 </tr>
               ))}
+            </tbody>)}
               {filteredRecords.length === 0 && (
+                <tbody>
                 <tr><td colSpan={6} className="text-center py-8 text-slate-500">No records found.</td></tr>
+                </tbody>
               )}
-            </tbody>
           </table>
         )}
       </div>
@@ -116,6 +134,7 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
             <div className="flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Inward No"><input className={inputClass} value={selectedRecord.inward_no || ''} disabled /></FormField>
+                <FormField label="Enquired Product"><input className={inputClass} value={selectedRecord.product_name || selectedRecord.project_name || ''} disabled /></FormField>
                 <FormField label="Party"><input className={inputClass} value={selectedRecord.party_name || ''} disabled /></FormField>
                 <FormField label="Product Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
                 <FormField label="Quantity"><input className={inputClass} value={selectedRecord.quantity ?? ''} disabled /></FormField>

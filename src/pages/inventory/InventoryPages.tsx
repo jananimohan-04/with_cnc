@@ -353,13 +353,12 @@ export function ComponentsPage() {
       <DataTable 
         data={componentsData} 
         columns={[
-          { key: 'partNo', label: 'Part No', render: (r) => <span className="font-mono text-xs">{r.partNo}</span> },
           { key: 'partName', label: 'Part Name', render: (r) => <span className="font-medium">{r.partName}</span> },
           { key: 'category', label: 'Category', render: (r) => <span className="text-sm">{r.category}</span> },
           { key: 'make', label: 'Make / Buy', render: (r) => <span className="text-sm">{r.make || '—'}</span> },
           { key: 'status', label: 'Status', render: (r) => <Badge variant={statusToVariant(r.status)} dot>{r.status}</Badge> }
         ]} 
-        searchKeys={['partNo', 'partName']} 
+        searchKeys={['partName']} 
       />
     </div>
   );

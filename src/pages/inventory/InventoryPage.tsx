@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, ShoppingCart, Package,
+  Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, Package,
   Pencil, MoreVertical, Eye, History, SlidersHorizontal, ChevronLeft, ChevronRight, Building2, Loader2,
-  ExternalLink, FileSpreadsheet, AlertCircle, Info,
+  ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import {
   inventoryApi, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
@@ -117,8 +118,15 @@ export function InventoryPage() {
   const [editing, setEditing] = useState<InventoryItemRow | 'new' | null>(null);
   const [viewing, setViewing] = useState<{ row: InventoryItemRow; tab: 'details' | 'history' } | null>(null);
   const [adjusting, setAdjusting] = useState<InventoryItemRow | null>(null);
+  const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [txn, setTxn] = useState<RecentTransaction | null>(null);
+
+  // Extra dashboard data: per-item last movement, open work orders (WIP), live status.
+  const [recentAll, setRecentAll] = useState<RecentTransaction[] | null>(null);
+  const [wipCount, setWipCount] = useState<number | null>(null);
+  const [live, setLive] = useState(false);
 
   const canManage = filters?.can_manage ?? false;
   const categories = useMemo(() => [...(filters?.categories ?? [])].sort((a, b) => a.sort_order - b.sort_order), [filters]);
@@ -205,6 +213,65 @@ export function InventoryPage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshAll]);
+
+  // ---- Per-item last movement (for the stock table) ---------------------------------------
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    inventoryApi.recent(100)
+      .then(res => { if (!cancelled) setRecentAll(res ?? []); })
+      .catch(() => { if (!cancelled) setRecentAll([]); });
+    return () => { cancelled = true; };
+  }, [companyId, refreshKey]);
+
+  const lastMovement = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of recentAll ?? []) {
+      const k = `${t.item_kind}:${t.item_id}`;
+      if (!map[k] || (t.txn_date && t.txn_date > map[k])) map[k] = t.txn_date;
+    }
+    return map;
+  }, [recentAll]);
+
+  // ---- Open work orders (WIP proxy — real count, never hardcoded) ---------------------------
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    supabase.from('cnc_work_orders').select('id', { count: 'exact', head: true })
+      .in('status', ['In Progress', 'Released'])
+      .then(({ count, error }) => { if (!cancelled && !error) setWipCount(count ?? 0); });
+    return () => { cancelled = true; };
+  }, [companyId, refreshKey]);
+
+  // ---- Realtime: the ledger is authoritative; events only trigger a silent re-read ---------
+  // A refresh re-reads from the database, so duplicate/delayed events can never
+  // double-count stock — they just schedule another read (debounced).
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { if (!cancelled) refreshAll(); }, 800);
+    };
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`inventory-${companyId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_stock_movements', filter: `company_id=eq.${companyId}` }, schedule)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_raw_materials', filter: `company_id=eq.${companyId}` }, schedule)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_parts', filter: `company_id=eq.${companyId}` }, schedule)
+        .subscribe(status => { if (!cancelled && status === 'SUBSCRIBED') setLive(true); });
+    } catch {
+      channel = null;
+    }
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      setLive(false);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [companyId, refreshAll]);
 
   // Close floating menus on outside interaction.
   useEffect(() => {
@@ -293,12 +360,19 @@ export function InventoryPage() {
   const firstShown = items && items.total > 0 ? (items.page - 1) * items.page_size + 1 : 0;
   const lastShown = items ? Math.min(items.total, (items.page - 1) * items.page_size + items.rows.length) : 0;
 
+  const byCat = summary?.by_category ?? [];
+  const catKind = (id: string) => categories.find(c => c.id === id)?.kind;
+  const rawCount = byCat.filter(c => catKind(c.category_id) !== 'MANUFACTURED').reduce((s, c) => s + (Number(c.items) || 0), 0);
+  const fgCount = byCat.filter(c => catKind(c.category_id) === 'MANUFACTURED').reduce((s, c) => s + (Number(c.items) || 0), 0);
+
   const cards = [
     { label: 'Total Items', icon: Box, tint: 'bg-blue-100 text-blue-600', value: summary ? formatQty(summary.total_items) : null },
     { label: 'Total Stock Value', icon: Layers, tint: 'bg-emerald-100 text-emerald-600', value: summary ? formatINR(summary.total_value) : null },
-    { label: 'Low Stock Items', icon: AlertTriangle, tint: 'bg-orange-100 text-orange-600', value: summary ? formatQty(summary.low_stock) : null },
+    { label: 'Raw Materials', icon: Package, tint: 'bg-orange-100 text-orange-600', value: summary ? formatQty(rawCount) : null },
+    { label: 'Work In Progress', icon: Factory, tint: 'bg-violet-100 text-violet-600', value: wipCount === null ? null : formatQty(wipCount), hint: 'Open work orders' },
+    { label: 'Finished Goods', icon: Archive, tint: 'bg-indigo-100 text-indigo-600', value: summary ? formatQty(fgCount) : null },
+    { label: 'Low Stock', icon: AlertTriangle, tint: 'bg-amber-100 text-amber-600', value: summary ? formatQty(summary.low_stock) : null },
     { label: 'Out of Stock', icon: XCircle, tint: 'bg-red-100 text-red-600', value: summary ? formatQty(summary.out_of_stock) : null },
-    { label: 'Items to Reorder', icon: ShoppingCart, tint: 'bg-violet-100 text-violet-600', value: summary ? formatQty(summary.to_reorder) : null },
   ];
 
   return (
@@ -306,10 +380,23 @@ export function InventoryPage() {
       {/* Header */}
       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Inventory</h1>
-          <p className="text-sm text-slate-500 mt-1">Track raw materials, bought-out items, tools, consumables and finished goods.</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+            Inventory
+            {live && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+              </span>
+            )}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Real-time visibility of raw materials, work-in-progress and finished goods.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {canManage && (
+            <button onClick={() => setAdjustPickerOpen(true)} className={outlineBtn}><SlidersHorizontal size={16} /> Stock Adjustment</button>
+          )}
+          {canManage && (
+            <button onClick={() => setTransferOpen(true)} className={outlineBtn}><ArrowLeftRight size={16} /> Stock Transfer</button>
+          )}
           {canManage && (
             <button onClick={() => setImportOpen(true)} className={outlineBtn}><Upload size={16} /> Import</button>
           )}
@@ -345,7 +432,7 @@ export function InventoryPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         {cards.map(c => (
           <div key={c.label} className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center gap-4">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={22} /></div>
@@ -354,6 +441,7 @@ export function InventoryPage() {
               {c.value === null
                 ? (summaryError ? <p className="text-2xl font-bold text-slate-300">—</p> : <div className="h-7 w-24 mt-1 rounded bg-slate-100 animate-pulse" />)
                 : <p className="text-2xl font-bold text-slate-900 tracking-tight truncate">{c.value}</p>}
+              {'hint' in c && c.hint && <p className="text-[11px] text-slate-400">{c.hint}</p>}
             </div>
           </div>
         ))}
@@ -411,34 +499,33 @@ export function InventoryPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-[13px]">
+            <table className="w-full min-w-[1180px] text-[13px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
                   <th className="px-2 py-3 text-left w-10">#</th>
                   <th className="px-2 py-3 text-left">Item Code</th>
-                  <th className="px-2 py-3 text-left">Item Name</th>
+                  <th className="px-2 py-3 text-left">Product / Material Name</th>
                   <th className="px-2 py-3 text-left">Category</th>
-                  <th className="px-2 py-3 text-left">Specification</th>
+                  <th className="px-2 py-3 text-left">Warehouse / Location</th>
                   <th className="px-2 py-3 text-left">Unit</th>
-                  <th className="px-2 py-3 text-right">Current Stock</th>
-                  <th className="px-2 py-3 text-right">Min Stock</th>
-                  <th className="px-2 py-3 text-right">Reorder Qty</th>
-                  <th className="px-2 py-3 text-right">Rate (₹)</th>
+                  <th className="px-2 py-3 text-right">Available Qty</th>
                   <th className="px-2 py-3 text-right">Value (₹)</th>
-                  <th className="px-2 py-3 text-left">Status</th>
+                  <th className="px-2 py-3 text-right">Reorder Level</th>
+                  <th className="px-2 py-3 text-left">Stock Status</th>
+                  <th className="px-2 py-3 text-left">Last Movement</th>
                   <th className="px-2 py-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {(itemsLoading || (!items && !itemsError)) && Array.from({ length: pageSize > 10 ? 10 : pageSize }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
-                    {Array.from({ length: 13 }).map((__, j) => (
+                    {Array.from({ length: 12 }).map((__, j) => (
                       <td key={j} className="px-2 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
                     ))}
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && (
-                  <tr><td colSpan={13} className="px-2 py-12 text-center text-slate-500">No inventory items found.</td></tr>
+                  <tr><td colSpan={12} className="px-2 py-12 text-center text-slate-500">No inventory items found.</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -456,14 +543,17 @@ export function InventoryPage() {
                       {r.item_status === 'Inactive' && <span className="ml-2 text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
                     </td>
                     <td className="px-2 py-2.5 text-slate-600 max-w-[110px] truncate" title={r.category_name ?? ''}>{r.category_name ?? '—'}</td>
-                    <td className="px-2 py-2.5 text-slate-600 max-w-[150px] truncate" title={r.specification ?? ''}>{r.specification || '—'}</td>
+                    <td className="px-2 py-2.5 text-slate-600 max-w-[140px] truncate" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
+                      {[r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—'}
+                    </td>
                     <td className="px-2 py-2.5 text-slate-600">{r.unit ?? ''}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{formatQty(r.reorder_qty)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{money(r.rate)}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
                     <td className="px-2 py-2.5"><StatusPill status={r.status} /></td>
+                    <td className="px-2 py-2.5 text-slate-600 whitespace-nowrap">
+                      {lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-2 py-2.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <button title="Edit" onClick={() => setEditing(r)}
@@ -595,6 +685,12 @@ export function InventoryPage() {
       )}
       {adjusting && canManage && (
         <AdjustStockModal row={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); refreshAll(); }} />
+      )}
+      {adjustPickerOpen && canManage && (
+        <ItemPickerModal title="Stock Adjustment — Select Item" onClose={() => setAdjustPickerOpen(false)} onPick={row => { setAdjustPickerOpen(false); setAdjusting(row); }} />
+      )}
+      {transferOpen && canManage && (
+        <TransferModal onClose={() => setTransferOpen(false)} onSaved={refreshAll} />
       )}
       {importOpen && canManage && (
         <ImportModal onClose={() => setImportOpen(false)} onImported={refreshAll} />
@@ -904,6 +1000,8 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
   const [tab, setTab] = useState(initialTab);
   const [detail, setDetail] = useState<InventoryItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -914,7 +1012,15 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
   }, [row.kind, row.id]);
 
   const it = detail?.item ?? row;
-  const movements = detail ? [...detail.movements].reverse() : null; // newest first for reading
+  const allMovements = detail ? [...detail.movements].reverse() : null; // newest first for reading
+  const movements = allMovements
+    ? allMovements.filter(m => {
+      const d = (m.txn_date ?? '').slice(0, 10);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    })
+    : null;
 
   return (
     <Modal open onClose={onClose} size="xl" title="View Item" subtitle={`${it.code} · ${it.name}`}
@@ -943,6 +1049,10 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
               ['Specification', it.specification],
               ['Unit', it.unit],
               ['Current Stock', `${formatQty(it.current_stock)} ${it.unit ?? ''}`],
+              ['Available Qty', `${formatQty(it.current_stock)} ${it.unit ?? ''}`],
+              ['Reserved Qty', '—'],
+              ['In Production Qty', '—'],
+              ['Total Qty', `${formatQty(it.current_stock)} ${it.unit ?? ''}`],
               ['Minimum Stock', formatQty(it.min_stock)],
               ['Reorder Qty', formatQty(it.reorder_qty)],
               ['Rate', formatINR(it.rate)],
@@ -952,54 +1062,80 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
               ['Status', <span className="inline-flex items-center gap-2"><StatusPill status={it.status} /> <span className="text-xs text-slate-500">{it.item_status}</span></span>],
               ['Last Updated', it.updated_at ? new Date(it.updated_at).toLocaleString('en-IN') : ''],
             ]} />
+            <p className="text-[11px] text-slate-400 mt-3">
+              Reserved and in-production quantities are not tracked separately — the ledger balance (available quantity) is authoritative.
+            </p>
           </div>
         </div>
       )}
       {tab === 'history' && (
-        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-xs font-semibold text-slate-600 border-b border-slate-200">
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-left">Reference</th>
-                <th className="px-3 py-2 text-left">Type</th>
-                <th className="px-3 py-2 text-left">Direction</th>
-                <th className="px-3 py-2 text-right">Quantity</th>
-                <th className="px-3 py-2 text-left">Unit</th>
-                <th className="px-3 py-2 text-right">Balance</th>
-                <th className="px-3 py-2 text-center">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!movements && !error && [0, 1, 2, 3].map(i => (
-                <tr key={i}><td colSpan={8} className="px-3 py-2"><div className="h-4 rounded bg-slate-100 animate-pulse" /></td></tr>
-              ))}
-              {movements && movements.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-500">No transactions found.</td></tr>
-              )}
-              {movements && movements.map(m => {
-                const route = m.reference_type ? REFERENCE_ROUTES[m.reference_type] : undefined;
-                return (
-                  <tr key={m.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-3 py-2 whitespace-nowrap">{formatDate(m.txn_date)}</td>
-                    <td className="px-3 py-2" title={m.remarks ?? ''}>
-                      {m.reference_no || (m.reference_type ? REFERENCE_LABELS[m.reference_type] ?? m.reference_type : '—')}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{m.type}</td>
-                    <td className="px-3 py-2"><DirectionBadge direction={m.direction} /></td>
-                    <td className="px-3 py-2 text-right"><SignedQty qty={m.qty} /></td>
-                    <td className="px-3 py-2">{m.unit ?? it.unit ?? ''}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">{formatQty(m.balance)}</td>
-                    <td className="px-3 py-2 text-center">
-                      {route
-                        ? <button onClick={() => onOpenSource(route)} title="Open source" className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><ExternalLink size={13} /></button>
-                        : <span className="text-slate-300">—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div>
+          <div className="flex flex-wrap items-end gap-3 mb-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">From</label>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">To</label>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={inputClass} />
+            </div>
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs font-semibold text-slate-500 hover:text-slate-700 underline pb-2">Clear dates</button>
+            )}
+          </div>
+          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+            <table className="w-full text-sm min-w-[900px]">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-semibold text-slate-600 border-b border-slate-200">
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Movement Type</th>
+                  <th className="px-3 py-2 text-left">Reference</th>
+                  <th className="px-3 py-2 text-left">Source Module</th>
+                  <th className="px-3 py-2 text-right">Quantity In</th>
+                  <th className="px-3 py-2 text-right">Quantity Out</th>
+                  <th className="px-3 py-2 text-right">Balance</th>
+                  <th className="px-3 py-2 text-left">Warehouse</th>
+                  <th className="px-3 py-2 text-left">User</th>
+                  <th className="px-3 py-2 text-center">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!movements && !error && [0, 1, 2, 3].map(i => (
+                  <tr key={i}><td colSpan={10} className="px-3 py-2"><div className="h-4 rounded bg-slate-100 animate-pulse" /></td></tr>
+                ))}
+                {movements && movements.length === 0 && (
+                  <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-500">No transactions found.</td></tr>
+                )}
+                {movements && movements.map(m => {
+                  const route = m.reference_type ? REFERENCE_ROUTES[m.reference_type] : undefined;
+                  const neg = /^\s*-/.test(m.qty ?? '');
+                  const absQty = formatQty((m.qty ?? '').replace(/-/g, ''));
+                  return (
+                    <tr key={m.id} className="border-b border-slate-100 last:border-0">
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDate(m.txn_date)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{m.type}</td>
+                      <td className="px-3 py-2" title={m.remarks ?? ''}>
+                        {m.reference_no || (m.reference_type ? REFERENCE_LABELS[m.reference_type] ?? m.reference_type : '—')}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                        {m.reference_type ? REFERENCE_LABELS[m.reference_type] ?? m.reference_type : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{neg ? '—' : `+${formatQty(m.qty)}`}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{neg ? absQty : '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium">{formatQty(m.balance)}</td>
+                      <td className="px-3 py-2 text-slate-600">{m.warehouse_name ?? '—'}</td>
+                      <td className="px-3 py-2 text-slate-600">{m.created_by || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {route
+                          ? <button onClick={() => onOpenSource(route)} title="Open source" className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><ExternalLink size={13} /></button>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </Modal>
@@ -1062,6 +1198,210 @@ function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; on
         <FormField label="Reason" required><input className={inputClass} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Physical count difference" /></FormField>
         <FormField label="Reference / Remarks"><input className={inputClass} value={reference} onChange={e => setReference(e.target.value)} /></FormField>
       </div>
+    </Modal>
+  );
+}
+
+function ItemPickerModal({ title, onPick, onClose }: {
+  title: string;
+  onPick: (row: InventoryItemRow) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<InventoryItemRow[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const search = async (term: string) => {
+    setSearching(true);
+    setError(null);
+    try {
+      const res = await inventoryApi.items({
+        categoryId: null, search: term.trim() || null, supplierId: null,
+        status: null, warehouseId: null, page: 1, pageSize: 20,
+      });
+      setResults(res.rows);
+    } catch (e) {
+      setError(errText(e));
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  useEffect(() => { search(''); }, []);
+
+  return (
+    <Modal open onClose={onClose} size="md" title={title} subtitle="Search by item code or name"
+      footer={<button onClick={onClose} className={cancelBtn}>Cancel</button>}>
+      <ModalError message={error} />
+      <div className="flex gap-2 mb-3">
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') search(q); }}
+          placeholder="Item code or name..."
+          className={`${inputClass} flex-1`}
+        />
+        <button onClick={() => search(q)} disabled={searching} className={outlineBtn}>
+          {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Search
+        </button>
+      </div>
+      <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+        {results === null && <p className="px-3 py-6 text-center text-sm text-slate-400">Searching...</p>}
+        {results !== null && results.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-500">No items found.</p>}
+        {(results ?? []).map(r => (
+          <button key={`${r.kind}:${r.id}`} onClick={() => onPick(r)}
+            className="w-full text-left px-3 py-2.5 hover:bg-slate-50 flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-semibold text-slate-800">{r.code} · {r.name}</span>
+              <span className="block text-xs text-slate-500">{r.category_name ?? ''} · {formatQty(r.current_stock)} {r.unit ?? ''}</span>
+            </span>
+            <StatusPill status={r.status} />
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+interface WarehouseOpt { id: string; code: string | null; name: string | null }
+
+function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [warehouses, setWarehouses] = useState<WarehouseOpt[] | null>(null);
+  const [item, setItem] = useState<InventoryItemRow | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  const [qty, setQty] = useState('');
+  const [reason, setReason] = useState('');
+  const [date, setDate] = useState(todayISO());
+  const [reference, setReference] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [doneRef, setDoneRef] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from('cnc_warehouses').select('id,code,name').order('name')
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) setWarehouses([]);
+        else setWarehouses((data ?? []) as WarehouseOpt[]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const whName = (id: string) => warehouses?.find(w => String(w.id) === id)?.name ?? id;
+
+  const startReview = () => {
+    if (!item) return setError('Select an item to transfer.');
+    if (!fromId || !toId) return setError('Choose the source and destination warehouses.');
+    if (fromId === toId) return setError('Source and destination must be different.');
+    if (!isPositiveQty(qty)) return setError('Enter a quantity greater than zero.');
+    if (!reason.trim()) return setError('A reason is required.');
+    if (!date) return setError('Select the date.');
+    setError(null);
+    setReviewing(true);
+  };
+
+  const confirm = async () => {
+    if (!item || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await inventoryApi.transferStock({
+        kind: item.kind, id: item.id, fromWarehouse: fromId, toWarehouse: toId,
+        qty: qty.trim(), reason: reason.trim(), reference: reference.trim(), date,
+      });
+      if (res.duplicate) {
+        setDoneRef(`${res.reference_no} (already posted — duplicate prevented)`);
+      } else {
+        setDoneRef(res.reference_no);
+      }
+      onSaved();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} size="md" title="Stock Transfer" subtitle="Move stock between warehouses — posted as two atomic ledger movements"
+      footer={doneRef
+        ? <button onClick={onClose} className={saveBtn}>Done</button>
+        : reviewing
+          ? <>
+            <button onClick={() => setReviewing(false)} disabled={saving} className={cancelBtn}>Back</button>
+            <button onClick={confirm} disabled={saving} className={saveBtn}>
+              {saving && <Loader2 size={14} className="animate-spin" />} Confirm & Transfer
+            </button>
+          </>
+          : <>
+            <button onClick={onClose} className={cancelBtn}>Cancel</button>
+            <button onClick={startReview} className={saveBtn}>Review Transfer</button>
+          </>}>
+      <ModalError message={error} />
+      {doneRef ? (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+          Transfer posted with reference <b className="font-mono">{doneRef}</b>.
+        </p>
+      ) : reviewing && item ? (
+        <div className="text-sm">
+          <DetailGrid fields={[
+            ['Item', `${item.code} · ${item.name}`],
+            ['From', whName(fromId)],
+            ['To', whName(toId)],
+            ['Quantity', `${qty.trim()} ${item.unit ?? ''}`],
+            ['Reason', reason.trim()],
+            ['Date', date],
+            ['Reference', reference.trim() || '(auto-generated)'],
+          ]} />
+          <p className="text-xs text-slate-500 mt-3">
+            This writes one Quantity-Out movement in {whName(fromId)} and one Quantity-In movement in {whName(toId)} under a single reference. Both post together or neither does.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <FormField label="Item" required>
+            <button onClick={() => setPicking(true)} className={`${inputClass} text-left ${item ? '' : 'text-slate-400'}`}>
+              {item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : 'Select item...'}
+            </button>
+          </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="From Warehouse" required>
+              <select value={fromId} onChange={e => setFromId(e.target.value)} className={inputClass}>
+                <option value="">Select...</option>
+                {(warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name ?? w.code ?? w.id}</option>)}
+              </select>
+            </FormField>
+            <FormField label="To Warehouse" required>
+              <select value={toId} onChange={e => setToId(e.target.value)} className={inputClass}>
+                <option value="">Select...</option>
+                {(warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name ?? w.code ?? w.id}</option>)}
+              </select>
+            </FormField>
+          </div>
+          {warehouses !== null && warehouses.length === 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              No warehouses found. Create them under Supply Chain → Warehouses before transferring stock.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label={`Quantity${item?.unit ? ` (${item.unit})` : ''}`} required>
+              <input className={inputClass} inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
+            </FormField>
+            <FormField label="Date" required><input type="date" className={inputClass} value={date} onChange={e => setDate(e.target.value)} /></FormField>
+          </div>
+          <FormField label="Reason" required><input className={inputClass} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Move to production store" /></FormField>
+          <FormField label="Reference (optional)"><input className={inputClass} value={reference} onChange={e => setReference(e.target.value)} placeholder="Auto-generated when blank" /></FormField>
+        </div>
+      )}
+      {picking && (
+        <ItemPickerModal title="Select Item to Transfer" onClose={() => setPicking(false)} onPick={r => { setItem(r); setPicking(false); }} />
+      )}
     </Modal>
   );
 }

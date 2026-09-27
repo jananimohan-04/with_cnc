@@ -186,10 +186,6 @@ function NewEnquiryForm({ profile, onClose, onSaved }: { profile: any; onClose: 
             <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.partName} onChange={e => setForm({...form, partName: e.target.value})} placeholder="e.g. Turbine Bracket" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Part Number</label>
-            <input className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.partNumber} onChange={e => setForm({...form, partNumber: e.target.value})} />
-          </div>
-          <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Quantity *</label>
             <input type="number" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} />
           </div>

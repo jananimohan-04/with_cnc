@@ -10,12 +10,10 @@ interface PipelineListViewProps {
 export function PipelineListView({ cards, onView }: PipelineListViewProps) {
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
   const [processFilter, setProcessFilter] = useState('All');
   const [assignedFilter, setAssignedFilter] = useState('All');
 
   const customers = Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort();
-  const statuses = Array.from(new Set(cards.map(c => c.status || c.stage))).filter(Boolean).sort();
   
   // Try to extract process from raw data, fallback to stage
   const getProcess = (c: KanbanCard) => c.raw?.process || c.raw?.category || c.stage;
@@ -31,11 +29,10 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
       (c.part || '').toLowerCase().includes(search.toLowerCase());
       
     const matchesCustomer = customerFilter === 'All' || c.customer === customerFilter;
-    const matchesStatus = statusFilter === 'All' || (c.status || c.stage) === statusFilter;
     const matchesProcess = processFilter === 'All' || getProcess(c) === processFilter;
     const matchesAssigned = assignedFilter === 'All' || getAssigned(c) === assignedFilter;
 
-    return matchesSearch && matchesCustomer && matchesStatus && matchesProcess && matchesAssigned;
+    return matchesSearch && matchesCustomer && matchesProcess && matchesAssigned;
   });
 
   return (
@@ -57,11 +54,6 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
           {customers.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
-          <option value="All">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        
         <select value={processFilter} onChange={e => setProcessFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
           <option value="All">All Processes</option>
           {processes.map(p => <option key={p} value={p}>{p}</option>)}
@@ -85,11 +77,10 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
               <th className="p-3 font-semibold">Enquiry No</th>
               <th className="p-3 font-semibold">Date</th>
               <th className="p-3 font-semibold">Customer</th>
-              <th className="p-3 font-semibold">Part / Description</th>
+              <th className="p-3 font-semibold">Description</th>
               <th className="p-3 font-semibold">Process</th>
               <th className="p-3 font-semibold text-right">Qty</th>
               <th className="p-3 font-semibold text-right">Est. Value (₹)</th>
-              <th className="p-3 font-semibold text-center">Status</th>
               <th className="p-3 font-semibold">Assigned To</th>
               <th className="p-3 font-semibold">Next Action</th>
               <th className="p-3 font-semibold">Remarks</th>
@@ -107,17 +98,6 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
                 <td className="p-3 text-sm text-slate-600">{getProcess(card)}</td>
                 <td className="p-3 text-sm text-slate-700 text-right font-medium">{card.qty}</td>
                 <td className="p-3 text-sm text-slate-700 text-right font-mono">{card.value > 0 ? `₹${card.value.toLocaleString('en-IN')}` : '-'}</td>
-                <td className="p-3 text-center">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    card.stage === 'Enquiry' ? 'bg-blue-100 text-blue-700' :
-                    card.stage === 'Quotation' ? 'bg-purple-100 text-purple-700' :
-                    card.stage === 'Sales Order' ? 'bg-emerald-100 text-emerald-700' :
-                    card.stage === 'Invoice' ? 'bg-indigo-100 text-indigo-700' :
-                    'bg-slate-100 text-slate-700'
-                  }`}>
-                    {card.status || card.stage}
-                  </span>
-                </td>
                 <td className="p-3 text-sm text-slate-600">{getAssigned(card)}</td>
                 <td className="p-3 text-xs text-slate-500 whitespace-nowrap">{card.raw?.next_action || '-'}</td>
                 <td className="p-3 text-xs text-slate-500 max-w-[150px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
@@ -138,7 +118,7 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
             ))}
             {filteredCards.length === 0 && (
               <tr>
-                <td colSpan={13} className="p-8 text-center text-slate-500">
+                <td colSpan={12} className="p-8 text-center text-slate-500">
                   No records found matching your filters.
                 </td>
               </tr>

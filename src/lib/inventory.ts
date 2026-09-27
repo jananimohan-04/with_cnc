@@ -121,6 +121,8 @@ export interface ItemMovement {
   reference_id: string | null;
   reference_no: string | null;
   remarks: string | null;
+  warehouse_id?: string | null;
+  warehouse_name?: string | null;
   created_by: string | null;
   created_at: string | null;
 }
@@ -189,6 +191,11 @@ export const inventoryApi = {
       p_kind: args.kind, p_id: args.id, p_direction: args.direction, p_qty: args.qty,
       p_reason: args.reason, p_reference: args.reference, p_date: args.date,
     }),
+  transferStock: (args: { kind: ItemKind; id: string; fromWarehouse: string; toWarehouse: string; qty: string; reason: string; reference: string; date: string }) =>
+    call<{ reference_no: string; movement_out_id: string | null; movement_in_id: string | null; duplicate: boolean; new_stock: string }>('erp_transfer_stock', {
+      p_kind: args.kind, p_id: args.id, p_from_warehouse: args.fromWarehouse, p_to_warehouse: args.toWarehouse,
+      p_qty: args.qty, p_reason: args.reason, p_reference: args.reference, p_date: args.date,
+    }),
   importItems: (rows: ImportRow[]) => call<ImportResult>('erp_import_inventory_items', { p_rows: rows }),
 };
 
@@ -220,6 +227,7 @@ export const REFERENCE_ROUTES: Record<string, string> = {
   material_request: '/inventory/requests',
   work_order: '/production/finished-goods',
   delivery: '/operations/delivery',
+  transfer: '/inventory/stock',
 };
 
 export const REFERENCE_LABELS: Record<string, string> = {
@@ -228,6 +236,7 @@ export const REFERENCE_LABELS: Record<string, string> = {
   work_order: 'Work order',
   delivery: 'Delivery',
   adjustment: 'Stock adjustment',
+  transfer: 'Stock transfer',
   opening: 'Opening stock',
   golive: 'Go-live balance',
   direct_edit: 'Direct edit',

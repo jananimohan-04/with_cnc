@@ -49,7 +49,6 @@ function DocumentRow({ doc, can, navigate, onPreview, onDownload, onOpenLocally,
       </TableCell>
       <TableCell>
         <div className="text-sm text-slate-900 truncate max-w-[200px]">{doc.document_name}</div>
-        <div className="text-xs text-slate-500">PN: {doc.part_number}</div>
       </TableCell>
       <TableCell>
         <div className="text-sm text-slate-700">{doc.parties?.name || "Internal"}</div>
@@ -815,7 +814,6 @@ function DocumentsPage() {
                                             <div>
                                             <span className="font-bold text-indigo-600 text-sm">{doc.document_number}</span>
                                             <span className="text-slate-800 text-sm font-medium ml-2">— {doc.document_name}</span>
-                                            {doc.part_number && <span className="text-xs text-slate-500 ml-2">(PN: {doc.part_number})</span>}
                                           </div>
                                         </div>
                                         <div className="flex items-center gap-2">
