@@ -2611,6 +2611,19 @@ export function SalesPipelinePage() {
           />
           <FormField label="Address"><input className={inputClass} value={newLeadForm.city} onChange={e => setNewLeadForm({...newLeadForm, city: e.target.value})} /></FormField>
           <FormField label="GST No."><input className={inputClass} value={newLeadForm.gst} onChange={e => setNewLeadForm({...newLeadForm, gst: e.target.value})} /></FormField>
+          <div className="col-span-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
+              <button type="button" onClick={() => setNewLeadForm({...newLeadForm, contacts: [...(newLeadForm.contacts || []), { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+            </div>
+            {(newLeadForm.contacts || [{ person: '', phone: '', email: '' }]).map((c: any, i: number) => (
+              <div key={i} className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input placeholder="Name" className={inputClass} value={c.person} onChange={e => { const nc = [...(newLeadForm.contacts || [])]; nc[i] = { ...nc[i], person: e.target.value }; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+                <input placeholder="Phone" className={inputClass} value={c.phone} onChange={e => { const nc = [...(newLeadForm.contacts || [])]; nc[i] = { ...nc[i], phone: e.target.value }; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+                <input placeholder="Email" className={inputClass} value={c.email} onChange={e => { const nc = [...(newLeadForm.contacts || [])]; nc[i] = { ...nc[i], email: e.target.value }; setNewLeadForm({...newLeadForm, contacts: nc}); }} />
+              </div>
+            ))}
+          </div>
           <div className="col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
               <div className="space-y-2">

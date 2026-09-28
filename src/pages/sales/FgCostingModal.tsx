@@ -254,7 +254,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   if (sheetsMissing) blockReasons.push('Costing storage is not provisioned (apply migration 20260930000000_costing_sheets.sql).');
   if (!(baseQty > 0)) blockReasons.push('Enter a quantity greater than 0.');
   if (baseQty > maxQ) blockReasons.push(`Quantity exceeds the inwarded amount (${maxQ}).`);
-  for (const w of effWarnings) blockReasons.push(w);
+  // TESTING: BOM / work-order warnings (effWarnings) do not block approval for now.
   const canApprove = blockReasons.length === 0;
 
   const addManualMat = () => {
@@ -556,32 +556,12 @@ export function FgCostingModal({ card, onClose, onMoved }: {
             </div>
           </div>
 
-          {/* 4 — warnings */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-2 border-b border-brand-100 pb-2">Section 4 — Warnings</h3>
-            {effWarnings.length === 0 ? (
-              <p className="text-sm text-emerald-700">Costing is complete — approval is available.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {effWarnings.map((w, i) => <p key={i} className="text-sm text-amber-800 flex gap-2"><AlertTriangle size={14} className="shrink-0 mt-0.5" />{w}</p>)}
-                <p className="text-xs text-slate-500">Approval is blocked until the missing data is provided (add manual lines above if masters are unavailable).</p>
-              </div>
-            )}
-            {sheetsMissing && <p className="text-xs text-amber-800 mt-2">Costing storage is not provisioned — apply migration 20260930000000_costing_sheets.sql.</p>}
-          </div>
+          {/* TESTING: Section 4 — Warnings hidden for now (BOM / work-order warnings don't block approval). */}
 
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Sheet status:</span>
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
-          {!canApprove && !loading && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-800 mb-1">Approval blocked — resolve this:</p>
-              <ul className="text-sm text-amber-800 space-y-0.5 list-disc pl-5">
-                {blockReasons.map((r, i) => <li key={i}>{r}</li>)}
-              </ul>
-            </div>
-          )}
         </div>
       )}
     </Modal>

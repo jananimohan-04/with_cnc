@@ -10,6 +10,10 @@ export function SchedulingPage() {
   const [dbError, setDbError] = useState(false);
   const [machines, setMachines] = useState<any[]>([]);
   const [operators, setOperators] = useState<any[]>([]);
+  // Machines as entered in the Process Master (cnc_processes.machine_type) —
+  // this is the source for the Schedule Details machine dropdown.
+  const [processes, setProcesses] = useState<any[]>([]);
+  const [processMachines, setProcessMachines] = useState<string[]>([]);
   const [isNewOperator, setIsNewOperator] = useState(false);
   const [jobs, setJobs] = useState<any[]>([]);
   
@@ -24,13 +28,61 @@ export function SchedulingPage() {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [operations, setOperations] = useState<any[]>([]);
   const [opsMissing, setOpsMissing] = useState(false);
+  // Work-order customer lookup across ALL orders (scheduling list is filtered).
+  const [woCustomerMap, setWoCustomerMap] = useState<Record<string, string>>({});
+  const [woIdMap, setWoIdMap] = useState<Record<string, string>>({});
+  // Edit / view state for the schedule modal.
+  const [editingJob, setEditingJob] = useState<any>(null);
+  const [viewOnly, setViewOnly] = useState(false);
+  const todayStr = currentDate.toISOString().split('T')[0];
   const [newJobForm, setNewJobForm] = useState({
     workOrder: '', operationId: '', operationSeq: '', processName: '',
     partName: '', partNo: '', customer: '', qty: '',
     machine: '', operator: '', setupTime: '0',
-    date: currentDate.toISOString().split('T')[0], startTime: '08:00',
+    date: todayStr, startTime: '08:00',
+    endDate: todayStr, endTime: '08:00',
     cycleTime: '15'
   });
+
+  // ---- schedule window helpers (no schema change: start is stored in
+  // created_at, the block length comes from setup + qty x cycle) ----
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const parseLocal = (d: string, t: string) => new Date(`${d}T${t || '00:00'}`);
+  const fmtLocalDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const fmtLocalTime = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const formDurationMins = (f: { qty: string; cycleTime: string; setupTime: string }) =>
+    (Number(f.setupTime) || 0) + (Number(f.qty) || 0) * (Number(f.cycleTime) || 0);
+  // Recompute End = Start + duration. Used whenever the start side changes.
+  const withEnd = <T extends { date: string; startTime: string; qty: string; cycleTime: string; setupTime: string; endDate: string; endTime: string }>(f: T): T => {
+    if (!f.date || !f.startTime) return f;
+    const end = parseLocal(f.date, f.startTime);
+    if (isNaN(end.getTime())) return f;
+    end.setMinutes(end.getMinutes() + Math.max(0, Math.round(formDurationMins(f))));
+    return { ...f, endDate: fmtLocalDate(end), endTime: fmtLocalTime(end) };
+  };
+  // Manual End edit: keep one source of truth by re-deriving cycle time so the
+  // saved block (setup + qty x cycle) exactly covers Start -> End.
+  const withEndEdit = <T extends { date: string; startTime: string; qty: string; cycleTime: string; setupTime: string; endDate: string; endTime: string }>(f: T): T => {
+    const start = parseLocal(f.date, f.startTime);
+    const end = parseLocal(f.endDate, f.endTime);
+    const qty = Number(f.qty) || 0;
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && qty > 0) {
+      const total = Math.round((end.getTime() - start.getTime()) / 60000);
+      if (total > 0) {
+        const cycle = Math.max(0, Math.round(((total - (Number(f.setupTime) || 0)) / qty) * 100) / 100);
+        return withEnd({ ...f, cycleTime: String(cycle) });
+      }
+    }
+    return f;
+  };
+  const windowError = (f: { date: string; startTime: string; endDate: string; endTime: string }): string | null => {
+    if (!f.date || !f.startTime || !f.endDate || !f.endTime) return 'Set the start and end date/time.';
+    const start = parseLocal(f.date, f.startTime);
+    const end = parseLocal(f.endDate, f.endTime);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'Set a valid start and end date/time.';
+    if (end.getTime() <= start.getTime()) return 'End must be after start.';
+    return null;
+  };
 
   const getActiveDates = () => {
     const d = new Date(currentDate);
@@ -40,7 +92,7 @@ export function SchedulingPage() {
       const day = d.getDay();
       const diff = d.getDate() - day + (day === 0 ? -6 : 1);
       const monday = new Date(d.setDate(diff));
-      return Array.from({ length: 6 }).map((_, i) => {
+      return Array.from({ length: 7 }).map((_, i) => {
         const date = new Date(monday);
         date.setDate(monday.getDate() + i);
         return date;
@@ -78,42 +130,59 @@ export function SchedulingPage() {
     };
     // Single eligible operation: select it immediately.
     if (eligible.length === 1) {
-      setNewJobForm(prev => ({ ...prev, ...base, ...operationPatch(eligible[0]) }));
+      setNewJobForm(prev => withEnd({ ...prev, ...base, ...operationPatch(eligible[0]) }));
     } else {
-      setNewJobForm(prev => ({ ...prev, ...base }));
+      setNewJobForm(prev => withEnd({ ...prev, ...base }));
     }
   };
 
   // Patch of auto-filled fields when an operation is chosen. Customer / Product /
   // Process / Sequence stay readonly; Target Qty defaults to the operation plan.
-  const operationPatch = (op: any) => ({
-    operationId: String(op.id),
-    operationSeq: String(op.operation_sequence ?? ''),
-    processName: op.process_name || op.process_code || '',
-    qty: op.planned_qty != null ? String(op.planned_qty) : '',
-    cycleTime: op.est_cycle_time != null ? String(op.est_cycle_time) : '15',
-    setupTime: op.setup_time != null ? String(op.setup_time) : '0',
-    machine: op.machine && machines.some((m: any) => m.code === op.machine) ? op.machine : '',
-    operator: op.operator || '',
-  });
+  // Machine comes from the Process Master: the operation's process machine_type.
+  const machineTypeForOp = (op: any): string => {
+    if (!op) return '';
+    const proc = processes.find((p: any) =>
+      (op.process_code && p.process_code === op.process_code) ||
+      (op.process_name && p.process_name === op.process_name));
+    return String(proc?.machine_type ?? '').trim();
+  };
+  const operationPatch = (op: any) => {
+    const fromMaster = machineTypeForOp(op);
+    const machine = [op.machine, fromMaster].map((v: any) => String(v ?? '').trim())
+      .find((v) => v && processMachines.some((m) => m.toLowerCase() === v.toLowerCase())) ?? '';
+    return {
+      operationId: String(op.id),
+      operationSeq: String(op.operation_sequence ?? ''),
+      processName: op.process_name || op.process_code || '',
+      qty: op.planned_qty != null ? String(op.planned_qty) : '',
+      cycleTime: op.est_cycle_time != null ? String(op.est_cycle_time) : '15',
+      setupTime: op.setup_time != null ? String(op.setup_time) : '0',
+      machine,
+      operator: op.operator || '',
+    };
+  };
 
   const handleOperationSelect = (opId: string) => {
     const wo = workOrders.find(w => w.wo_no === newJobForm.workOrder);
     if (!wo) return;
     const op = eligibleOpsForWO(wo).find(o => String(o.id) === opId);
     if (!op) return;
-    setNewJobForm(prev => ({ ...prev, ...operationPatch(op) }));
+    setNewJobForm(prev => withEnd({ ...prev, ...operationPatch(op) }));
   };
 
   const openAddJob = () => {
     setIsNewOperator(false);
-    setNewJobForm({
+    setEditingJob(null);
+    setViewOnly(false);
+    const d = currentDate.toISOString().split('T')[0];
+    setNewJobForm(withEnd({
       workOrder: '', operationId: '', operationSeq: '', processName: '',
       partName: '', partNo: '', customer: '', qty: '',
       machine: '', operator: '', setupTime: '0',
-      date: currentDate.toISOString().split('T')[0], startTime: '08:00',
+      date: d, startTime: '08:00',
+      endDate: d, endTime: '08:00',
       cycleTime: '15'
-    });
+    }));
     setShowAddJob(true);
   };
 
@@ -147,12 +216,79 @@ export function SchedulingPage() {
     wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length > 0
   );
 
+  const closeScheduleModal = () => {
+    setShowAddJob(false);
+    setEditingJob(null);
+    setViewOnly(false);
+  };
+
+  // Open the schedule modal for an existing job (edit) or readonly (view).
+  const openScheduleModal = (job: any, readonly: boolean) => {
+    const op = operations.find(o => String(o.work_order_id) === String(woIdMap[job.work_order]) && opNoFor(o) === Number(job.op_no))
+      ?? operations.find(o => opNoFor(o) === Number(job.op_no));
+    const start = job.created_at ? new Date(job.created_at) : new Date();
+    const startSafe = isNaN(start.getTime()) ? new Date() : start;
+    setIsNewOperator(false);
+    setNewJobForm(withEnd({
+      workOrder: job.work_order || '',
+      operationId: op ? String(op.id) : '',
+      operationSeq: op ? String(op.operation_sequence ?? '') : '',
+      processName: op ? (op.process_name || op.process_code || '') : (job.operation || ''),
+      partName: job.part_name || '',
+      partNo: workOrders.find(w => w.wo_no === job.work_order)?.part_no || '',
+      customer: (job.work_order && woCustomerMap[job.work_order]) || '',
+      qty: job.qty_planned != null ? String(job.qty_planned) : '',
+      machine: job.machine || '',
+      operator: job.operator && job.operator !== '—' && job.operator !== '-' ? job.operator : '',
+      setupTime: job.setup_time != null ? String(job.setup_time) : '0',
+      date: fmtLocalDate(startSafe),
+      startTime: fmtLocalTime(startSafe),
+      endDate: '',
+      endTime: '',
+      cycleTime: job.cycle_time != null ? String(job.cycle_time) : '15',
+    }));
+    setEditingJob(job);
+    setViewOnly(readonly);
+    setShowAddJob(true);
+  };
+
   const handleAddJobSubmit = async () => {
-    if (!newJobForm.workOrder || !newJobForm.operationId || !newJobForm.machine || !newJobForm.date)
-      return alert('Please select a Work Order, Operation and Machine, and set the Start Date');
     const qtyNum = Number(newJobForm.qty);
     if (!Number.isFinite(qtyNum) || qtyNum <= 0) return alert('Target Quantity must be greater than 0');
+    const winErr = windowError(newJobForm);
+    if (winErr) return alert(winErr);
     if (saving) return;
+
+    // The operation may have been scheduled elsewhere since the popup opened.
+    const d = new Date(newJobForm.date + 'T' + newJobForm.startTime);
+
+    // Edit path: update the existing job card in place.
+    if (editingJob && !viewOnly) {
+      if (!newJobForm.machine || !newJobForm.date)
+        return alert('Please select a Machine and set the Start Date');
+      setSaving(true);
+      const patch = {
+        machine: newJobForm.machine,
+        operator: newJobForm.operator || null,
+        qty_planned: qtyNum,
+        cycle_time: Number(newJobForm.cycleTime) || 0,
+        setup_time: Number(newJobForm.setupTime) || 0,
+        created_at: d.toISOString(),
+      };
+      const { error } = await supabase.from('cnc_job_cards').update(patch).eq('id', editingJob.id);
+      setSaving(false);
+      if (error) {
+        alert('Error updating job: ' + error.message);
+      } else {
+        setSelectedJob({ ...editingJob, ...patch });
+        closeScheduleModal();
+        fetchData();
+      }
+      return;
+    }
+
+    if (!newJobForm.workOrder || !newJobForm.operationId || !newJobForm.machine || !newJobForm.date)
+      return alert('Please select a Work Order, Operation and Machine, and set the Start Date');
 
     const wo = workOrders.find(w => w.wo_no === newJobForm.workOrder);
     const op = operations.find(o => String(o.id) === newJobForm.operationId);
@@ -161,8 +297,6 @@ export function SchedulingPage() {
       return alert('This operation was already scheduled. Please choose another operation.');
 
     // Create new job card, linked to its operation by (work_order, op_no).
-    const d = new Date(newJobForm.date + 'T' + newJobForm.startTime);
-
     setSaving(true);
     const { error } = await supabase.from('cnc_job_cards').insert([{
       id: crypto.randomUUID(),
@@ -187,7 +321,7 @@ export function SchedulingPage() {
     if (error) {
       alert('Error saving job: ' + error.message);
     } else {
-      setShowAddJob(false);
+      closeScheduleModal();
       fetchData();
     }
   };
@@ -222,13 +356,32 @@ export function SchedulingPage() {
       const jobsData = jobsRes.data || [];
       setJobs(jobsData);
       
-      // Derive unique operators from existing jobs
-      const uniqueOps = Array.from(new Set(jobsData.map((j: any) => j.operator).filter(Boolean)));
+      // Derive unique operators from existing jobs (skip placeholders like '—').
+      const uniqueOps = Array.from(new Set(jobsData.map((j: any) => String(j.operator ?? '').trim()).filter((n) => n && n !== '—' && n !== '-')));
       setOperators(uniqueOps.map((op: any, i) => ({ id: `OP-${i}`, name: op, role: 'Operator', status: 'Available' })));
       
       const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")');
       if (woRes.error) console.error('Failed to load work orders:', woRes.error);
       if (woRes.data) setWorkOrders(woRes.data);
+
+      // Customer names for Job Details (includes completed orders).
+      try {
+        const cmapRes = await supabase.from('cnc_work_orders').select('id,wo_no,customer');
+        if (!cmapRes.error) {
+          const cmap: Record<string, string> = {};
+          const imap: Record<string, string> = {};
+          for (const w of cmapRes.data ?? []) {
+            if (w.wo_no) {
+              cmap[w.wo_no] = (w as any).customer ?? '';
+              imap[w.wo_no] = String((w as any).id);
+            }
+          }
+          setWoCustomerMap(cmap);
+          setWoIdMap(imap);
+        }
+      } catch (cmapErr) {
+        console.error('Failed to load work order customers:', cmapErr);
+      }
 
       // Work order operations from the Production module. Missing table (migration
       // not applied) only disables operation selection — the calendar still works.
@@ -245,6 +398,30 @@ export function SchedulingPage() {
       } catch (opErr) {
         console.error('Failed to load work order operations:', opErr);
         setOperations([]);
+      }
+      // Process Master drives the Machine dropdown (machines are entered there).
+      // Missing table only empties the dropdown — the calendar still works.
+      try {
+        const procRes = await supabase.from('cnc_processes').select('process_code,process_name,machine_type,status').order('process_code');
+        if (!procRes.error) {
+          const rows = procRes.data ?? [];
+          setProcesses(rows);
+          const seen = new Set<string>();
+          const list: string[] = [];
+          for (const p of rows) {
+            if ((p.status ?? 'Active') !== 'Active') continue;
+            const mt = String(p.machine_type ?? '').trim();
+            if (mt && !seen.has(mt.toLowerCase())) { seen.add(mt.toLowerCase()); list.push(mt); }
+          }
+          setProcessMachines(list.sort((a, b) => a.localeCompare(b)));
+        } else {
+          setProcesses([]);
+          setProcessMachines([]);
+        }
+      } catch (procErr) {
+        console.error('Failed to load process master:', procErr);
+        setProcesses([]);
+        setProcessMachines([]);
       }
       setDbError(false);
     } catch (err) {
@@ -268,6 +445,15 @@ export function SchedulingPage() {
   const formatTime = (dateStr: string) => {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  // Scheduled end = start (created_at) + block length (setup + qty x cycle).
+  const formatEndTime = (job: any) => {
+    if (!job?.created_at) return '-';
+    const end = new Date(job.created_at);
+    if (isNaN(end.getTime())) return '-';
+    end.setMinutes(end.getMinutes() + Math.round(calculateDurationHours(job) * 60));
+    return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   // Unscheduled vs Scheduled Jobs
@@ -295,10 +481,14 @@ export function SchedulingPage() {
     const newStart = new Date(targetDate);
     newStart.setHours(slotHour, 0, 0, 0);
 
+    // Keep the job's existing status (only unscheduled jobs become Planned).
+    const nextStatus = draggedJob.status && !['Pending', 'New'].includes(draggedJob.status)
+      ? draggedJob.status : 'Planned';
+
     // Optimistically update
     const updatedJobs = jobs.map(j => 
       j.id === draggedJob.id 
-        ? { ...j, machine: machineCode, status: 'Planned', created_at: newStart.toISOString() } 
+        ? { ...j, machine: machineCode, status: nextStatus, created_at: newStart.toISOString() } 
         : j
     );
     setJobs(updatedJobs);
@@ -310,7 +500,7 @@ export function SchedulingPage() {
     try {
       const { error } = await supabase.from('cnc_job_cards').update({
         machine: machineCode,
-        status: 'Planned',
+        status: nextStatus,
         created_at: newStart.toISOString()
       }).eq('id', draggedJob.id);
 
@@ -319,6 +509,35 @@ export function SchedulingPage() {
     } catch (err) {
       console.error('Failed to update job schedule', err);
       alert('Error updating schedule. Reverting changes.');
+      fetchData();
+    }
+  };
+
+  // Drop onto an operator row: assign the operator (and move the start, like a machine drop).
+  const handleOperatorDrop = async (e: React.DragEvent, operatorName: string, targetDate: Date, slotHour: number) => {
+    e.preventDefault();
+    if (!draggedJob) return;
+    const newStart = new Date(targetDate);
+    newStart.setHours(slotHour, 0, 0, 0);
+    const nextStatus = draggedJob.status && !['Pending', 'New'].includes(draggedJob.status)
+      ? draggedJob.status : 'Planned';
+    setJobs(jobs.map(j =>
+      j.id === draggedJob.id
+        ? { ...j, operator: operatorName, status: nextStatus, created_at: newStart.toISOString() }
+        : j
+    ));
+    setDraggedJob(null);
+    try {
+      const { error } = await supabase.from('cnc_job_cards').update({
+        operator: operatorName,
+        status: nextStatus,
+        created_at: newStart.toISOString()
+      }).eq('id', draggedJob.id);
+      if (error) throw error;
+      fetchData();
+    } catch (err) {
+      console.error('Failed to assign operator', err);
+      alert('Error assigning operator. Reverting changes.');
       fetchData();
     }
   };
@@ -334,6 +553,43 @@ export function SchedulingPage() {
   };
 
   const getStatusColor = (status: string) => statusColors[status] || statusColors['Planned'];
+
+  // Jobs scheduled on a machine value that no longer matches the machine master
+  // (e.g. renamed in Process Master) — shown in a fallback row so nothing vanishes.
+  const unmappedJobs = scheduledJobs.filter(j => j.machine && !machines.some(m => m.code === j.machine));
+
+  // Shared schedule block for machine rows, the fallback row, and operator rows.
+  const renderScheduleBlock = (job: any, date: Date, slotHour: number, slotIdx: number) => {
+    const jobDate = new Date(job.created_at);
+    if (isNaN(jobDate.getTime())) return null;
+    const jDateStr = jobDate.toDateString();
+    const dDateStr = date.toDateString();
+    const jobHour = jobDate.getHours();
+
+    const hourSpan = view === 'Day' ? 1 : view === 'Week' ? 2 : 24;
+    const isMatch = view === 'Month' ? (jDateStr === dDateStr) : (jDateStr === dDateStr && (jobHour >= slotHour && jobHour < slotHour + hourSpan));
+    if (!isMatch) return null;
+
+    const dur = calculateDurationHours(job);
+    const spanCols = view === 'Month' ? 1 : Math.ceil(dur / hourSpan);
+    const pctWidth = spanCols * 100;
+    const leftPct = slotIdx * (100 / activeSlots.length);
+
+    return (
+      <div
+        key={job.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, job)}
+        onClick={() => setSelectedJob(job)}
+        className={`absolute top-1 bottom-1 z-10 ${getStatusColor(job.status)} border rounded p-1.5 text-[10px] sm:text-xs leading-tight overflow-hidden cursor-move shadow-sm hover:shadow-md transition-shadow`}
+        style={{ left: `${leftPct}%`, width: view === 'Month' ? 'calc(100% - 4px)' : `calc(${(pctWidth / activeSlots.length)}% - 4px)`, minWidth: view === 'Month' ? 'auto' : '80px' }}
+      >
+        <div className="font-bold truncate text-[10px] sm:text-xs">{job.work_order || job.job_no}</div>
+        {view !== 'Month' && <div className="truncate opacity-90">{job.part_name}</div>}
+        {view !== 'Month' && <div className="truncate opacity-80 mt-0.5">{formatTime(job.created_at)} - {Math.round(dur)}h</div>}
+      </div>
+    );
+  };
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-[calc(100vh-4rem)]">
@@ -430,38 +686,7 @@ export function SchedulingPage() {
                           >
                             {scheduledJobs
                               .filter(j => j.machine === machine.code)
-                              .map(job => {
-                                const jobDate = new Date(job.created_at);
-                                const jDateStr = jobDate.toDateString();
-                                const dDateStr = date.toDateString();
-                                const jobHour = jobDate.getHours();
-                                
-                                const hourSpan = view === 'Day' ? 1 : view === 'Week' ? 2 : 24;
-                                const isMatch = view === 'Month' ? (jDateStr === dDateStr) : (jDateStr === dDateStr && (jobHour >= hour && jobHour < hour + hourSpan));
-                                
-                                if (isMatch) {
-                                  const dur = calculateDurationHours(job);
-                                  const spanCols = view === 'Month' ? 1 : Math.ceil(dur / hourSpan); 
-                                  const pctWidth = spanCols * 100;
-                                  const leftPct = slotIdx * (100 / activeSlots.length);
-                                  
-                                  return (
-                                    <div 
-                                      key={job.id} 
-                                      draggable
-                                      onDragStart={(e) => handleDragStart(e, job)}
-                                      onClick={() => setSelectedJob(job)}
-                                      className={`absolute top-1 bottom-1 z-10 ${getStatusColor(job.status)} border rounded p-1.5 text-[10px] sm:text-xs leading-tight overflow-hidden cursor-move shadow-sm hover:shadow-md transition-shadow`}
-                                      style={{ left: `${leftPct}%`, width: view === 'Month' ? 'calc(100% - 4px)' : `calc(${(pctWidth / activeSlots.length)}% - 4px)`, minWidth: view === 'Month' ? 'auto' : '80px' }}
-                                    >
-                                      <div className="font-bold truncate text-[10px] sm:text-xs">{job.work_order || job.job_no}</div>
-                                      {view !== 'Month' && <div className="truncate opacity-90">{job.part_name}</div>}
-                                      {view !== 'Month' && <div className="truncate opacity-80 mt-0.5">{formatTime(job.created_at)} - {Math.round(dur)}h</div>}
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })
+                              .map(job => renderScheduleBlock(job, date, hour, slotIdx))
                             }
                           </div>
                         ))}
@@ -469,6 +694,27 @@ export function SchedulingPage() {
                     ))}
                   </div>
                 ))}
+                {unmappedJobs.length > 0 && (
+                  <div className="flex border-b border-amber-200 last:border-b-0 bg-amber-50/40 relative min-h-[70px]">
+                    <div className="w-56 flex-shrink-0 p-3 border-r border-slate-200 bg-white sticky left-0 z-10 flex flex-col justify-center">
+                      <div className="font-bold text-amber-800">Other</div>
+                      <div className="text-xs text-slate-500">Machine not in master — fix the machine value</div>
+                    </div>
+                    {activeDates.map((date) => (
+                      <div key={date.toISOString()} className={`flex-1 flex ${view === 'Month' ? 'min-w-[60px]' : view === 'Day' ? 'min-w-[1000px]' : 'min-w-[200px]'} border-r border-slate-100 last:border-r-0 relative`}>
+                        {activeSlots.map((hour, slotIdx) => (
+                          <div
+                            key={hour}
+                            className={`flex-1 border-r border-slate-50 border-dashed last:border-r-0 transition-colors min-h-[50px] ${view==='Month' ? 'p-1' : ''}`}
+                            onDragOver={handleDragOver}
+                          >
+                            {unmappedJobs.map(job => renderScheduleBlock(job, date, hour, slotIdx))}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -520,8 +766,17 @@ export function SchedulingPage() {
                     {/* Time Slots for Operator */}
                     {activeDates.map((date) => (
                       <div key={date.toISOString()} className={`flex-1 flex ${view === 'Month' ? 'min-w-[60px]' : view === 'Day' ? 'min-w-[1000px]' : 'min-w-[200px]'} border-r border-slate-100 last:border-r-0 relative`}>
-                        {activeSlots.map((hour) => (
-                          <div key={hour} className="flex-1 border-r border-slate-50 border-dashed last:border-r-0 bg-slate-50/30 min-h-[50px]">
+                        {activeSlots.map((hour, slotIdx) => (
+                          <div
+                            key={hour}
+                            className="flex-1 border-r border-slate-50 border-dashed last:border-r-0 bg-slate-50/30 min-h-[50px] hover:bg-blue-50/50 transition-colors"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleOperatorDrop(e, op.name, date, hour)}
+                          >
+                            {scheduledJobs
+                              .filter(j => j.operator === op.name)
+                              .map(job => renderScheduleBlock(job, date, hour, slotIdx))
+                            }
                           </div>
                         ))}
                       </div>
@@ -586,13 +841,16 @@ export function SchedulingPage() {
                   
                   <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm">
                     <span className="text-slate-500">Customer</span>
-                    <span className="font-medium text-slate-800">: {selectedJob.customer || workOrders.find(w => w.wo_no === selectedJob.work_order)?.customer || 'Unknown'}</span>
+                    <span className="font-medium text-slate-800">: {selectedJob.customer || woCustomerMap[selectedJob.work_order] || workOrders.find(w => w.wo_no === selectedJob.work_order)?.customer || 'Unknown'}</span>
                     
                     <span className="text-slate-500">Quantity</span>
                     <span className="font-medium text-slate-800">: {selectedJob.qty_planned} Nos</span>
                     
                     <span className="text-slate-500">Start Time</span>
                     <span className="font-medium text-slate-800">: {formatTime(selectedJob.created_at)}</span>
+
+                    <span className="text-slate-500">End Time</span>
+                    <span className="font-medium text-slate-800">: {formatEndTime(selectedJob)}</span>
                     
                     <span className="text-slate-500">Machine</span>
                     <span className="font-medium text-slate-800">: {selectedJob.machine || '-'}</span>
@@ -602,8 +860,8 @@ export function SchedulingPage() {
                   </div>
 
                   <div className="pt-3 flex gap-2">
-                    <Button variant="primary" className="flex-1 bg-blue-600 hover:bg-blue-700">Edit</Button>
-                    <Button variant="secondary" className="flex-1">View</Button>
+                    <Button variant="primary" className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => openScheduleModal(selectedJob, false)}>Edit</Button>
+                    <Button variant="secondary" className="flex-1" onClick={() => openScheduleModal(selectedJob, true)}>View</Button>
                   </div>
                 </div>
               ) : (
@@ -634,12 +892,17 @@ export function SchedulingPage() {
       </div>
 
       {/* Add Job Modal */}
-      <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Schedule New Job" size="lg" footer={
-        <>
-          <Button variant="secondary" onClick={() => setShowAddJob(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleAddJobSubmit} disabled={saving}>{saving ? 'Scheduling...' : 'Schedule Operation'}</Button>
-        </>
+      <Modal open={showAddJob} onClose={closeScheduleModal} title={viewOnly ? 'View Scheduled Job' : editingJob ? 'Edit Scheduled Job' : 'Schedule New Job'} size="lg" footer={
+        viewOnly ? (
+          <Button variant="secondary" onClick={closeScheduleModal}>Close</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={closeScheduleModal}>Cancel</Button>
+            <Button variant="primary" onClick={handleAddJobSubmit} disabled={saving}>{saving ? 'Saving...' : editingJob ? 'Save Changes' : 'Schedule Operation'}</Button>
+          </>
+        )
       }>
+        <fieldset disabled={viewOnly} className="contents">
         <div className="space-y-4">
           {opsMissing && (
             <p className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -683,7 +946,7 @@ export function SchedulingPage() {
             <FormField label="Product"><input className={inputClass + ' bg-slate-50'} value={newJobForm.partName} readOnly disabled/></FormField>
             <FormField label="Process"><input className={inputClass + ' bg-slate-50'} value={newJobForm.processName} readOnly disabled placeholder="Auto-filled from operation"/></FormField>
             <FormField label="Operation Sequence"><input className={inputClass + ' bg-slate-50'} value={newJobForm.operationSeq} readOnly disabled placeholder="Auto-filled from operation"/></FormField>
-            <FormField label="Target Quantity" required><input type="number" min="0" className={inputClass} value={newJobForm.qty} onChange={e => setNewJobForm({...newJobForm, qty: e.target.value})} /></FormField>
+            <FormField label="Target Quantity" required><input type="number" min="0" className={inputClass} value={newJobForm.qty} onChange={e => setNewJobForm(prev => withEnd({ ...prev, qty: e.target.value }))} /></FormField>
           </div>
 
           <div className="border-t border-slate-100 my-4 pt-4 font-semibold text-slate-700">Schedule Details</div>
@@ -692,10 +955,13 @@ export function SchedulingPage() {
             <FormField label="Machine" required>
               <select className={inputClass} value={newJobForm.machine} onChange={e => setNewJobForm({...newJobForm, machine: e.target.value})}>
                 <option value="">-- Select Machine --</option>
-                {machines.map(m => (
-                  <option key={m.id} value={m.code}>{m.code} - {m.name}</option>
+                {processMachines.map(m => (
+                  <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+              {processMachines.length === 0 && (
+                <p className="text-xs text-slate-500 mt-1">No machines entered in Process Master yet — add a machine type to a process first.</p>
+              )}
             </FormField>
             <FormField label="Operator">
               {isNewOperator ? (
@@ -727,11 +993,30 @@ export function SchedulingPage() {
                 </select>
               )}
             </FormField>
-            <FormField label="Start Date" required><input type="date" className={inputClass} value={newJobForm.date} onChange={e => setNewJobForm({...newJobForm, date: e.target.value})} /></FormField>
-            <FormField label="Start Time" required><input type="time" className={inputClass} value={newJobForm.startTime} onChange={e => setNewJobForm({...newJobForm, startTime: e.target.value})} /></FormField>
-            <FormField label="Est. Cycle Time (mins)"><input type="number" className={inputClass} value={newJobForm.cycleTime} onChange={e => setNewJobForm({...newJobForm, cycleTime: e.target.value})} /></FormField>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Start Date & Time" required>
+              <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
+                <input type="date" aria-label="Start date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.date} onChange={e => setNewJobForm(prev => withEnd({ ...prev, date: e.target.value }))} />
+                <div className="w-px bg-slate-300 my-1.5 shrink-0" />
+                <input type="time" aria-label="Start time" className="min-w-0 w-28 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.startTime} onChange={e => setNewJobForm(prev => withEnd({ ...prev, startTime: e.target.value }))} />
+              </div>
+            </FormField>
+            <FormField label="End Date & Time" required>
+              <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
+                <input type="date" aria-label="End date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.endDate} onChange={e => setNewJobForm(prev => withEndEdit({ ...prev, endDate: e.target.value }))} />
+                <div className="w-px bg-slate-300 my-1.5 shrink-0" />
+                <input type="time" aria-label="End time" className="min-w-0 w-28 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.endTime} onChange={e => setNewJobForm(prev => withEndEdit({ ...prev, endTime: e.target.value }))} />
+              </div>
+            </FormField>
+          </div>
+            <FormField label="Est. Cycle Time (mins)"><input type="number" className={inputClass} value={newJobForm.cycleTime} onChange={e => setNewJobForm(prev => withEnd({ ...prev, cycleTime: e.target.value }))} /></FormField>
+            {windowError(newJobForm) && (
+              <p className="text-xs font-medium text-red-600">{windowError(newJobForm)}</p>
+            )}
         </div>
+        </fieldset>
       </Modal>
 
     </div>
