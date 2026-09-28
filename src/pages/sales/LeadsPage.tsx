@@ -103,6 +103,8 @@ export function LeadsPage() {
   const [quoteSelectTarget, setQuoteSelectTarget] = useState<any[] | null>(null);
   const [lostSelectTarget, setLostSelectTarget] = useState<any[] | null>(null);
   const [revertSelectTarget, setRevertSelectTarget] = useState<any[] | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ row: any; quotes: number; orders: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openQuoteModal = (enq: any) => {
     const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -465,6 +467,89 @@ export function LeadsPage() {
     await fetchLeads();
   };
 
+  const openDeleteLead = async (r: any) => {
+    const enquiryIds: string[] = (r.allEnquiries || []).map((e: any) => String(e.id));
+    let quoteIds: string[] = [];
+    let orderCount = 0;
+    try {
+      if (enquiryIds.length > 0) {
+        const { data: quotes } = await supabase.from('cnc_quotations').select('id').in('lead_id', enquiryIds);
+        quoteIds = (quotes ?? []).map((q: any) => String(q.id));
+      }
+      if (quoteIds.length > 0) {
+        const { count } = await supabase.from('cnc_sales_orders').select('id', { count: 'exact', head: true }).in('quotation_id', quoteIds);
+        orderCount = count ?? 0;
+      }
+    } catch (e) {
+      console.warn('Delete preview lookup failed:', e);
+    }
+    setDeleteTarget({ row: { ...r, _quoteIds: quoteIds }, quotes: quoteIds.length, orders: orderCount });
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!deleteTarget || deleting) return;
+    const company: string = deleteTarget.row.company;
+    const enquiryIds: string[] = (deleteTarget.row.allEnquiries || []).map((e: any) => String(e.id));
+    const quoteIds: string[] = deleteTarget.row._quoteIds || [];
+    setDeleting(true);
+    try {
+      // Sales orders + work orders tied to these quotations.
+      let soIds: string[] = [];
+      let soNos: string[] = [];
+      let woIds: string[] = [];
+      let woNos: string[] = [];
+      let invIds: string[] = [];
+      if (quoteIds.length > 0) {
+        const { data: sos } = await supabase.from('cnc_sales_orders').select('id,order_no').in('quotation_id', quoteIds);
+        soIds = (sos ?? []).map((s: any) => String(s.id));
+        soNos = (sos ?? []).map((s: any) => String(s.order_no)).filter(Boolean);
+      }
+      if (soNos.length > 0) {
+        const { data: wos } = await supabase.from('cnc_work_orders').select('id,wo_no').in('sales_order', soNos);
+        woIds = (wos ?? []).map((w: any) => String(w.id));
+        woNos = (wos ?? []).map((w: any) => String(w.wo_no)).filter(Boolean);
+      }
+      const { data: invs } = await supabase.from('cnc_invoices').select('id').eq('customer_name', company);
+      invIds = (invs ?? []).map((i: any) => String(i.id));
+
+      // Children first.
+      if (invIds.length > 0) await supabase.from('cnc_invoice_items').delete().in('invoice_id', invIds);
+      if (quoteIds.length > 0 || soIds.length > 0) {
+        let csq: any = supabase.from('cnc_costing_sheets').delete();
+        const orParts: string[] = [];
+        if (quoteIds.length > 0) orParts.push(`quotation_id.in.(${quoteIds.join(',')})`);
+        if (soIds.length > 0) orParts.push(`sales_order_id.in.(${soIds.join(',')})`);
+        await csq.or(orParts.join(','));
+      }
+      if (soIds.length > 0 || woIds.length > 0) {
+        let wq: any = supabase.from('cnc_work_order_operations').delete();
+        const orParts: string[] = [];
+        if (soIds.length > 0) orParts.push(`sales_order_id.in.(${soIds.join(',')})`);
+        if (woIds.length > 0) orParts.push(`work_order_id.in.(${woIds.join(',')})`);
+        await wq.or(orParts.join(','));
+      }
+      if (woNos.length > 0) await supabase.from('cnc_job_cards').delete().in('work_order', woNos);
+      if (woNos.length > 0) await supabase.from('cnc_work_orders').delete().in('wo_no', woNos);
+      await supabase.from('cnc_deliveries').delete().eq('customer_name', company);
+      if (invIds.length > 0) await supabase.from('cnc_invoices').delete().in('id', invIds);
+      if (soIds.length > 0) await supabase.from('cnc_sales_orders').delete().in('id', soIds);
+      if (quoteIds.length > 0) await supabase.from('cnc_quotations').delete().in('id', quoteIds);
+      const pipeIds = [...enquiryIds, ...quoteIds, ...soIds, ...woIds];
+      if (pipeIds.length > 0) await supabase.from('cnc_pipeline_comments').delete().in('record_id', pipeIds);
+      if (enquiryIds.length > 0) await supabase.from('cnc_enquiries').delete().in('id', enquiryIds);
+      await supabase.from('cnc_customers').delete().eq('name', company);
+
+      setDeleteTarget(null);
+      await fetchLeads();
+      await fetchCustomers();
+    } catch (err: any) {
+      console.error('Failed to delete lead:', err);
+      alert('Failed to delete lead: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const columns: Column<any>[] = [
     { key: 'leadNo', label: 'Unique Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
     { key: 'company', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.company}</span> },
@@ -507,6 +592,7 @@ export function LeadsPage() {
           )}
           <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => handleEditClick(r)} title="Edit Latest Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
+          <button onClick={() => openDeleteLead(r)} title="Delete Lead" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
       );
     } }
@@ -972,6 +1058,21 @@ export function LeadsPage() {
                </div>
             ))}
          </div>
+      </Modal>
+
+      <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title="Delete Lead" size="sm" footer={<><Button variant="secondary" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button><Button disabled={deleting} onClick={confirmDeleteLead} className="bg-red-600 hover:bg-red-700 text-white border-0">{deleting ? 'Deleting...' : 'Delete'}</Button></>}>
+        {deleteTarget && (
+          <div className="text-sm text-slate-600 space-y-2">
+            <p>Delete <span className="font-bold text-slate-800">{deleteTarget.row.company}</span> and all of its data?</p>
+            <ul className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 space-y-0.5 list-disc pl-6">
+              <li>{(deleteTarget.row.allEnquiries || []).length} enquir{((deleteTarget.row.allEnquiries || []).length === 1) ? 'y' : 'ies'}</li>
+              <li>{deleteTarget.quotes} quotation(s)</li>
+              <li>{deleteTarget.orders} sales order(s) + linked work orders, deliveries & invoices</li>
+              <li>Customer record</li>
+            </ul>
+            <p className="text-xs font-semibold text-red-600">This cannot be undone.</p>
+          </div>
+        )}
       </Modal>
 
     </div>

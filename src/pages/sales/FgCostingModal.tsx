@@ -18,10 +18,25 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   costInr as inr, costNum as num, costUid as uid,
   buildMaterialLines, buildOpLines, computeTotals, computeWarnings,
+  applyMatPatch, applyOpPatch,
   buildVersionPayload, buildCostingPdfInput, parseQuoteProducts,
   type MaterialLine, type OpLine,
 } from '@/lib/costingEngine';
-import { CheckCheck, Download, Eye, Printer, Save, AlertTriangle, X, Plus, Trash2 } from 'lucide-react';
+import { CheckCheck, Download, Eye, Printer, Save, AlertTriangle, X, Plus, Trash2, Pencil } from 'lucide-react';
+
+const cellInputClass = `${inputClass} text-xs !px-2 !py-1 w-full min-w-[3.5rem] tabular-nums`;
+
+function EditNum({ value, onChange, aria }: { value: string | number; onChange: (v: string) => void; aria: string }) {
+  return <input type="number" aria-label={aria} value={value} onChange={(e) => onChange(e.target.value)} className={cellInputClass} />;
+}
+
+const ManualTag = () => (
+  <span className="ml-1 text-[10px] font-bold uppercase text-brand-600 bg-brand-50 border border-brand-200 rounded px-1">Manual</span>
+);
+
+const panelTitleClass = 'text-[10px] font-bold uppercase tracking-widest mb-1';
+const cellTh = 'text-left py-1.5 pr-2 font-bold text-slate-500 uppercase text-[10px] whitespace-nowrap';
+const cellTd = 'py-1.5 pr-2 tabular-nums whitespace-nowrap';
 
 export function FgCostingModal({ card, onClose, onMoved }: {
   card: any;
@@ -59,6 +74,12 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const [extraOps, setExtraOps] = useState<OpLine[]>([]);
   const [newMat, setNewMat] = useState({ code: '', name: '', qty: '', unit: 'Nos', rate: '' });
   const [newOp, setNewOp] = useState({ process: '', machine: '', hours: '', mRate: '', lHours: '', lRate: '' });
+  // Per-section edit mode + patches over auto lines (masters are never modified;
+  // patched lines are flagged manual so adjustments stay visible).
+  const [editMats, setEditMats] = useState(false);
+  const [editOps, setEditOps] = useState(false);
+  const [matPatches, setMatPatches] = useState<Record<string, MaterialLine>>({});
+  const [opPatches, setOpPatches] = useState<Record<string, OpLine>>({});
 
   const [versions, setVersions] = useState<any[]>([]);
   const [sheetsMissing, setSheetsMissing] = useState(false);
@@ -189,11 +210,29 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     () => buildOpLines(woOps, jobCards, processes, wos),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [woOps, jobCards, processes, wos]);
-  const matLines = useMemo(() => [...autoMats, ...extraMats], [autoMats, extraMats]);
+  const matLines = useMemo(() => [...autoMats.map((m) => matPatches[m.key] ?? m), ...extraMats], [autoMats, extraMats, matPatches]);
   const opLines = useMemo(() => {
     const startSeq = autoOps.length > 0 ? Math.max(...autoOps.map((o) => o.seq)) : 0;
-    return [...autoOps, ...extraOps.map((o, i) => ({ ...o, seq: startSeq + i + 1 }))];
-  }, [autoOps, extraOps]);
+    const base = [...autoOps.map((o) => opPatches[o.key] ?? o), ...extraOps.map((o, i) => ({ ...o, seq: startSeq + i + 1 }))];
+    return base;
+  }, [autoOps, extraOps, opPatches]);
+
+  const patchMat = (key: string, patch: Partial<MaterialLine>) => {
+    if (extraMats.some((m) => m.key === key)) {
+      setExtraMats((ls) => applyMatPatch(ls, key, patch));
+    } else {
+      const base = matPatches[key] ?? autoMats.find((m) => m.key === key);
+      if (base) setMatPatches((prev) => ({ ...prev, [key]: applyMatPatch([prev[key] ?? base], key, patch)[0] }));
+    }
+  };
+  const patchOp = (key: string, patch: Partial<OpLine>) => {
+    if (extraOps.some((o) => o.key === key)) {
+      setExtraOps((ls) => applyOpPatch(ls, key, patch));
+    } else {
+      const base = opPatches[key] ?? autoOps.find((o) => o.key === key);
+      if (base) setOpPatches((prev) => ({ ...prev, [key]: applyOpPatch([prev[key] ?? base], key, patch)[0] }));
+    }
+  };
 
   const buildPendingMat = (): MaterialLine | null => {
     if (!newMat.name.trim() || !(num(newMat.qty) > 0)) return null;
@@ -212,15 +251,18 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     const mRate = num(newOp.mRate);
     const lh = num(newOp.lHours);
     const lRate = num(newOp.lRate);
+    const mc = mh * mRate;
+    const lc = lh * lRate;
     return {
       key: uid(), seq: existingCount + 1,
       process_code: '', process_name: newOp.process.trim(),
       machine: newOp.machine.trim(), operator: '',
-      machine_hours: mh, machine_rate: mRate, machine_cost: mh * mRate,
-      labour_hours: lh, labour_rate: lRate, labour_cost: lh * lRate,
+      machine_hours: mh, machine_rate: mRate, machine_cost: mc,
+      labour_hours: lh, labour_rate: lRate, labour_cost: lc,
       cycle_time: 0, setup_time: 0,
       cost_per_hour: mRate, cost_per_component: 0, setup_cost: 0,
-      process_cost: mh * mRate,
+      // Machine cost is considered process cost.
+      process_cost: mc + lc,
       manual: true, warn_machine: mh > 0 && mRate <= 0, warn_labour: lh > 0 && lRate <= 0,
     };
   };
@@ -246,6 +288,10 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const approvedNum = approvedInput.trim() === '' ? null : num(approvedInput);
   const effectiveApproved = approvedNum ?? totals.calculated;
   const adjustment = effectiveApproved - totals.calculated;
+  // Comparison: quotation (quoted) vs project cost (manufacturing cost).
+  const projectCost = totals.material + totals.process;
+  const costDiff = effQuoteTotal - projectCost;
+  const costDiffPct = effQuoteTotal > 0 ? (costDiff / effQuoteTotal) * 100 : null;
   const nextVersion = (versions[0]?.version ?? 0) + 1;
   const blockReasons: string[] = [];
   if (loading) blockReasons.push('Costing data is still loading.');
@@ -278,6 +324,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     quote, so,
     product: { code, name: productName, qty: baseQty, unitPrice: qUnitEff },
     productCode: code, baseQty,
+    inwardNo: inward.inward_no ?? '',
     status: versions[0]?.status ?? 'Draft',
     matLines: effMatLines, opLines: effOpLines, totals,
     approved: effectiveApproved, latestVersion: versions[0] ?? null, userName,
@@ -288,7 +335,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     printHtml(`Finished Goods Costing - ${inward.inward_no ?? ''}`, `
       <h2>${companyName} — Finished Goods / Costing (${inward.inward_no ?? ''})</h2>
       <p>Inward: ${inward.inward_no ?? ''} | SO: ${so?.order_no ?? ''} | Customer: ${card?.customer ?? ''} | Product: ${productName} (${code || '—'}) | Qty: ${baseQty}</p>
-      <p>Quotation ${inr(totals.quotation)} | Material ${inr(totals.material)} | Machine ${inr(totals.machine)} | Labour ${inr(totals.labour)} | Process ${inr(totals.process)}</p>
+      <p>Project Costing ${inr(totals.calculated)} | Material ${inr(totals.material)} | Machine & Labour ${inr(totals.machineLabour)} | Process ${inr(totals.process)}</p>
       <h3>Calculated ${inr(totals.calculated)} | Approved ${inr(effectiveApproved)} | Adjustment ${adjustment >= 0 ? '+' : ''}${inr(adjustment)}</h3>
       <table><thead><tr><th>Material</th><th>Qty</th><th>Total</th></tr></thead>
       <tbody>${effMatLines.map((m) => row([m.material_name, `${m.req_qty} ${m.unit}`, inr(m.total)])).join('')}</tbody></table>
@@ -444,16 +491,21 @@ export function FgCostingModal({ card, onClose, onMoved }: {
             </div>
           </div>
 
-          {/* 1b — quotation details (editable overrides, sheet-only) */}
+          {/* comparison workspace: quotation vs project costing */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          {/* LEFT — quotation (reference only, master never modified) */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">
-              Quotation Details {quoteManual && <span className="ml-1 text-brand-700 bg-brand-50 border border-brand-200 rounded px-1">Manual</span>}
-            </h3>
+            <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Quotation</h3>
+            <p className="text-[11px] text-slate-400 mt-1 mb-3">Customer quoted price</p>
             {!quote ? (
               <p className="text-sm text-slate-400">No quotation linked to this inward — costing starts from materials and operations only.</p>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quote No</p><p className="font-mono font-semibold">{quote.quote_no}</p></div>
+                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Sales Order No</p><p className="font-mono font-semibold">{so?.order_no ?? inward.sales_order_ref ?? '—'}</p></div>
+                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p><p className="font-semibold">{quote.customer || card?.customer || '—'}</p></div>
+                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{productName || '—'}</p></div>
+                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product Code</p><p className="font-mono font-semibold">{code || product?.code || '—'}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quoted Qty</p><p className="font-semibold">{quote.quantity}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Unit Price</p><p className="font-semibold">{inr(quote.unit_price)}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Discount / GST</p><p className="font-semibold">{num(quote.discount_percent)}% / {num(quote.gst_percent)}%</p></div>
@@ -465,51 +517,94 @@ export function FgCostingModal({ card, onClose, onMoved }: {
                   <p className="text-[10px] uppercase tracking-wider text-slate-400">Unit Price Override (₹)</p>
                   <input type="number" min="0" value={quoteUnit} onChange={(e) => setQuoteUnit(e.target.value)} placeholder={String(quote.unit_price ?? '')} className={inputClass} />
                 </div>
-                <div className="md:col-span-2"><p className="text-[10px] uppercase tracking-wider text-slate-400">Effective Quotation Price</p><p className="font-bold tabular-nums">{inr(effQuoteTotal)}</p></div>
+                <div className="col-span-2 rounded-lg bg-brand-50/60 border border-brand-100 px-3 py-2 flex items-center justify-between">
+                  <p className="text-[10px] uppercase tracking-wider text-brand-700 font-bold">Quotation Total {quoteManual && <span className="ml-1 text-brand-700 bg-white border border-brand-200 rounded px-1">Manual</span>}</p>
+                  <p className="font-bold tabular-nums text-lg text-brand-800">{inr(effQuoteTotal)}</p>
+                </div>
               </div>
             )}
-            <p className="text-[11px] text-slate-400 mt-2">Overrides affect this sheet only (discount/tax ratio preserved) — the quotation master is never modified.</p>
+            <p className="text-[11px] text-slate-400 mt-2">Reference values — overrides affect this sheet only (discount/tax ratio preserved). The quotation master is never modified.</p>
           </div>
 
-          {/* 2 — cost breakdown */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 2 — Cost Breakdown</h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-              {([['Quotation Price', totals.quotation], ['Material Cost', totals.material], ['Machine Cost', totals.machine], ['Labour Cost', totals.labour], ['Process Cost', totals.process]] as [string, number][]).map(([l, v]) => (
-                <div key={l} className="border border-slate-200 rounded-lg px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-400">{l}</p>
-                  <p className="font-bold tabular-nums">{inr(v)}</p>
-                </div>
-              ))}
+          {/* RIGHT — project costing (actual estimated manufacturing cost) */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-5">
+            <div>
+              <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Project Costing</h3>
+              <p className="text-[11px] text-slate-400 mt-1">Actual estimated manufacturing cost</p>
             </div>
-            <p className="text-[11px] text-slate-400 mt-2">
-              {matLines.length} material line(s) · {opLines.length} operation(s)
-              {versions[0] ? ` · Latest saved version V${versions[0].version} (${versions[0].status})` : ' · Not saved yet'}
-            </p>
-            {/* manual lines */}
-            {(extraMats.length > 0 || extraOps.length > 0) && (
-              <div className="mt-2 space-y-1">
-                {extraMats.map((m) => (
-                  <p key={m.key} className="text-xs flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase text-brand-600 bg-brand-50 border border-brand-200 rounded px-1">Manual</span>
-                    {m.material_name} · {m.req_qty} {m.unit} · {inr(m.total)}
-                    <button onClick={() => setExtraMats((ls) => ls.filter((x) => x.key !== m.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
-                  </p>
-                ))}
-                {extraOps.map((o) => (
-                  <p key={o.key} className="text-xs flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase text-brand-600 bg-brand-50 border border-brand-200 rounded px-1">Manual</span>
-                    {o.process_name} · {o.machine_hours}h · {inr(o.machine_cost + o.labour_cost + o.process_cost)}
-                    <button onClick={() => setExtraOps((ls) => ls.filter((x) => x.key !== o.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
-                  </p>
-                ))}
+
+            {/* 1 — process costing */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">1. Process Costing</h4>
+                <button type="button" onClick={() => setEditOps((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
+                  <Pencil size={11} />{editOps ? 'Done' : 'Edit'}
+                </button>
               </div>
-            )}
-            <p className="text-[11px] text-slate-500 mt-2">
-              No masters found? Type the values below — totals update live, and anything still typed-in is included automatically on Save/Approve.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-              <div className="border border-dashed border-slate-300 rounded-lg p-2.5">
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>#</th><th className={cellTh}>Operation / Process</th><th className={cellTh}>Machine</th><th className={cellTh}>Qty</th><th className={cellTh}>Cycle</th><th className={cellTh}>₹/Hr</th><th className={cellTh}>Setup</th><th className={cellTh}>Comp</th><th className={`${cellTh} text-right`}>Process Cost</th></tr></thead>
+                  <tbody>
+                    {effOpLines.length === 0 && (<tr><td colSpan={9} className="py-3 text-center text-slate-400">No operations yet — add one below.</td></tr>)}
+                    {effOpLines.map((o) => (
+                      <tr key={o.key} className="border-t border-slate-100">
+                        <td className={cellTd}>{o.seq}</td>
+                        <td className={`${cellTd} font-medium text-slate-700`}>{o.process_name || o.process_code || '—'}{o.manual && <ManualTag />}</td>
+                        <td className={cellTd}>{o.machine || '—'}</td>
+                        <td className={cellTd}>{baseQty}</td>
+                        <td className={cellTd}>{o.cycle_time}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Cost per hour" value={o.cost_per_hour} onChange={(v) => patchOp(o.key, { cost_per_hour: v, machine_rate: v })} /> : inr(o.cost_per_hour)}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Setup cost" value={o.setup_cost} onChange={(v) => patchOp(o.key, { setup_cost: v })} /> : inr(o.setup_cost)}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Cost per component" value={o.cost_per_component} onChange={(v) => patchOp(o.key, { cost_per_component: v })} /> : inr(o.cost_per_component)}</td>
+                        <td className={`${cellTd} text-right font-bold`}>{inr(o.process_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-sm">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Process Cost</span>
+                <span className="font-bold tabular-nums">{inr(totals.process)}</span>
+              </div>
+            </div>
+
+            {/* 2 — material cost */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">2. Material Cost</h4>
+                <button type="button" onClick={() => setEditMats((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
+                  <Pencil size={11} />{editMats ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>Material</th><th className={cellTh}>Req Qty</th><th className={cellTh}>Unit</th><th className={cellTh}>Unit Cost</th><th className={`${cellTh} text-right`}>Total</th>{editMats && <th className={cellTh} />}</tr></thead>
+                  <tbody>
+                    {effMatLines.length === 0 && (<tr><td colSpan={6} className="py-3 text-center text-slate-400">No material lines yet — add one below.</td></tr>)}
+                    {effMatLines.map((m) => (
+                      <tr key={m.key} className="border-t border-slate-100">
+                        <td className={`${cellTd} font-medium text-slate-700`}>{m.material_name || '—'}{m.manual && <ManualTag />}</td>
+                        <td className={cellTd}>{editMats ? <EditNum aria="Required qty" value={m.req_qty} onChange={(v) => patchMat(m.key, { req_qty: v })} /> : m.req_qty}</td>
+                        <td className={cellTd}>{m.unit}</td>
+                        <td className={cellTd}>{editMats ? <EditNum aria="Unit cost" value={m.unit_cost} onChange={(v) => patchMat(m.key, { unit_cost: v })} /> : inr(m.unit_cost)}</td>
+                        <td className={`${cellTd} text-right font-bold`}>{inr(m.total)}</td>
+                        {editMats && (
+                          <td className={cellTd}>
+                            {extraMats.some((x) => x.key === m.key) && (
+                              <button onClick={() => setExtraMats((ls) => ls.filter((x) => x.key !== m.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-sm">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Material Cost</span>
+                <span className="font-bold tabular-nums">{inr(totals.material)}</span>
+              </div>
+              <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add material line</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input value={newMat.name} onChange={(e) => setNewMat({ ...newMat, name: e.target.value })} placeholder="Material name *" className={`${inputClass} text-xs`} />
@@ -519,7 +614,42 @@ export function FgCostingModal({ card, onClose, onMoved }: {
                 </div>
                 <Button size="sm" variant="secondary" icon={<Plus size={13} />} onClick={addManualMat} className="mt-2">Add material to costing</Button>
               </div>
-              <div className="border border-dashed border-slate-300 rounded-lg p-2.5">
+            </div>
+
+            {/* 3 — machine & labour */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">3. Machine &amp; Labour</h4>
+                <button type="button" onClick={() => setEditOps((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded px-2 py-0.5 bg-brand-50/50">
+                  <Pencil size={11} />{editOps ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50"><tr><th className={cellTh}>Machine</th><th className={cellTh}>Mc Hrs</th><th className={cellTh}>Mc Rate</th><th className={cellTh}>Mc Cost</th><th className={cellTh}>Operator</th><th className={cellTh}>Lab Hrs</th><th className={cellTh}>Lab Rate</th><th className={`${cellTh} text-right`}>Lab Cost</th></tr></thead>
+                  <tbody>
+                    {effOpLines.length === 0 && (<tr><td colSpan={8} className="py-3 text-center text-slate-400">No operations yet — add one below.</td></tr>)}
+                    {effOpLines.map((o) => (
+                      <tr key={o.key} className="border-t border-slate-100">
+                        <td className={`${cellTd} font-medium text-slate-700`}>{o.machine || '—'}{o.manual && <ManualTag />}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Machine hours" value={o.machine_hours} onChange={(v) => patchOp(o.key, { machine_hours: v })} /> : Math.round(o.machine_hours * 100) / 100}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Machine rate" value={o.machine_rate} onChange={(v) => patchOp(o.key, { machine_rate: v, cost_per_hour: v })} /> : inr(o.machine_rate)}</td>
+                        <td className={`${cellTd} font-semibold`}>{inr(o.machine_cost)}</td>
+                        <td className={cellTd}>{o.operator || '—'}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Labour hours" value={o.labour_hours} onChange={(v) => patchOp(o.key, { labour_hours: v })} /> : Math.round(o.labour_hours * 100) / 100}</td>
+                        <td className={cellTd}>{editOps ? <EditNum aria="Labour rate" value={o.labour_rate} onChange={(v) => patchOp(o.key, { labour_rate: v })} /> : inr(o.labour_rate)}</td>
+                        <td className={`${cellTd} text-right font-semibold`}>{inr(o.labour_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-1.5 space-y-0.5 text-sm">
+                <div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Machine Cost</span><span className="font-bold tabular-nums">{inr(totals.machine)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.labour)}</span></div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-1"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Total Machine &amp; Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.machineLabour)}</span></div>
+              </div>
+              <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add operation line</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input value={newOp.process} onChange={(e) => setNewOp({ ...newOp, process: e.target.value })} placeholder="Process *" className={`${inputClass} text-xs`} />
@@ -531,7 +661,44 @@ export function FgCostingModal({ card, onClose, onMoved }: {
                 </div>
                 <Button size="sm" variant="secondary" icon={<Plus size={13} />} onClick={addManualOp} className="mt-2">Add operation to costing</Button>
               </div>
+              {extraOps.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {extraOps.map((o) => (
+                    <p key={o.key} className="text-xs flex items-center gap-2">
+                      <ManualTag />
+                      {o.process_name} · {o.machine_hours}h · {inr(o.machine_cost + o.labour_cost)}
+                      <button onClick={() => setExtraOps((ls) => ls.filter((x) => x.key !== o.key))} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
+          </div>
+
+          {/* cost summary — quotation vs project cost */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Cost Summary — Quotation vs Project Cost</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mt-3">
+              <div className="border border-slate-200 rounded-lg px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Quotation Total</p>
+                <p className="font-bold tabular-nums text-lg">{inr(effQuoteTotal)}</p>
+              </div>
+              <div className="border border-slate-200 rounded-lg px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Project Cost</p>
+                <p className="font-bold tabular-nums text-lg">{inr(projectCost)}</p>
+                <p className="text-[11px] text-slate-400">Material {inr(totals.material)} + Process {inr(totals.process)}</p>
+              </div>
+              <div className={`border rounded-lg px-3 py-2 ${costDiff < 0 ? 'border-red-200 bg-red-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Cost Difference</p>
+                <p className={`font-bold tabular-nums text-lg ${costDiff < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{costDiff >= 0 ? '+' : ''}{inr(costDiff)}{costDiffPct == null ? '' : ` (${costDiffPct >= 0 ? '+' : ''}${costDiffPct.toFixed(1)}%)`}</p>
+                <p className="text-[11px] text-slate-400">Quotation − Project Cost{costDiffPct == null ? '' : ' · (Diff ÷ Quotation) × 100'}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-2">
+              {effMatLines.length} material line(s) · {effOpLines.length} operation(s)
+              {versions[0] ? ` · Latest saved version V${versions[0].version} (${versions[0].status})` : ' · Not saved yet'}
+            </p>
           </div>
 
           {/* 3 — final price */}

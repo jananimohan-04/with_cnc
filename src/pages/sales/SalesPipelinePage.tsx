@@ -269,6 +269,23 @@ export function SalesPipelinePage() {
           setLoading(false);
           return;
         }
+        // CUSTOMER DC flows to Production as a Draft work order (manual release).
+        try {
+          await createDraftWorkOrdersForInwards([{
+            inward: {
+              category: 'CUSTOMER DC',
+              sales_order_ref: order.order_no,
+              party_name: order.customer || '',
+              part_name: item.partName || '-',
+              part_number: item.partNumber || '',
+              inward_date: new Date().toISOString().split('T')[0],
+            },
+            qty: Number(item.quantity) || 0,
+            customer: order.customer || '',
+          }]);
+        } catch (woErr) {
+          console.error('Draft work order auto-create failed:', woErr);
+        }
     }
     
     const { error } = await supabase.from('cnc_sales_orders').update({
@@ -899,12 +916,6 @@ export function SalesPipelinePage() {
     const { data: allQuotes, error: quotesErr } = await supabase.from('cnc_quotations').select('*');
     if (quotesErr) console.error("Error fetching quotations:", quotesErr);
     let resolvedQuotes: any[] = allQuotes && allQuotes.length > 0 ? allQuotes : [];
-    if (resolvedQuotes.length === 0) {
-      try {
-        const localQuotes = JSON.parse(localStorage.getItem('cnc_seeded_quotations') || '[]');
-        if (localQuotes && localQuotes.length > 0) resolvedQuotes = localQuotes;
-      } catch (e) {}
-    }
     const quoteMap = new Map();
     resolvedQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.enquiry_no || q.quote_no));
     const quotes = resolvedQuotes.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
@@ -968,42 +979,11 @@ export function SalesPipelinePage() {
     const { data: dcs, error: dcErr } = await supabase.from('cnc_deliveries').select('*');
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);
     let effectiveDcs: any[] = dcs && dcs.length > 0 ? dcs : [];
-    if (effectiveDcs.length === 0) {
-      try {
-        const localDcs = JSON.parse(localStorage.getItem('cnc_seeded_deliveries') || '[]');
-        if (localDcs && localDcs.length > 0) effectiveDcs = localDcs;
-      } catch (e) {}
-    }
-    if (effectiveDcs.length === 0) {
-      effectiveDcs = [
-        { id: 'dc-fallback-1', delivery_no: 'DC-2026-601', sales_order_no: 'SO-2026-301', customer_name: 'Tata Advanced Systems Ltd', part_name: 'Radar Gimbal Support Bracket', quantity: 50, dispatch_qty: 50, delivery_date: '2026-09-24', vehicle_no: 'KA-04-AB-1234', status: 'Pending' },
-        { id: 'dc-fallback-2', delivery_no: 'DC-2026-602', sales_order_no: 'SO-2026-302', customer_name: 'Mahindra Aerospace Pvt Ltd', part_name: 'Cockpit Control Lever Assembly', quantity: 75, dispatch_qty: 75, delivery_date: '2026-09-24', vehicle_no: 'KA-51-MD-9876', status: 'Pending' },
-        { id: 'dc-fallback-3', delivery_no: 'DC-2026-603', sales_order_no: 'SO-2026-303', customer_name: 'Larsen & Toubro Precision', part_name: 'Underwater Enclosure Flange', quantity: 20, dispatch_qty: 20, delivery_date: '2026-09-25', vehicle_no: 'TN-38-LT-4567', status: 'Pending' },
-        { id: 'dc-fallback-4', delivery_no: 'DC-2026-604', sales_order_no: 'SO-2026-304', customer_name: 'Godrej Precision Engineering', part_name: 'Precision Sensor Housing - Inconel 718', quantity: 35, dispatch_qty: 35, delivery_date: '2026-09-25', vehicle_no: 'MH-02-GD-3321', status: 'Pending' },
-        { id: 'dc-fallback-5', delivery_no: 'DC-2026-605', sales_order_no: 'SO-2026-305', customer_name: 'Bharat Forge Advanced Technologies', part_name: 'Drive Pinion Gear Blank', quantity: 150, dispatch_qty: 150, delivery_date: '2026-09-25', vehicle_no: 'MH-12-BF-7788', status: 'Pending' }
-      ];
-    }
 
     let invoicesData: any[] = [];
     const { data: invs, error: invErr } = await supabase.from('cnc_invoices').select('*');
     if (invErr) console.error("Error fetching invoices:", invErr);
     else if (invs && invs.length > 0) invoicesData = invs;
-    if (invoicesData.length === 0) {
-      try {
-        const localInvs = JSON.parse(localStorage.getItem('cnc_seeded_invoices') || '[]');
-        if (localInvs && localInvs.length > 0) invoicesData = localInvs;
-      } catch (e) {}
-    }
-    if (invoicesData.length === 0) {
-      invoicesData = [
-        { id: 'inv-fallback-1', invoice_no: 'INV-2026-801', customer_name: 'Tata Advanced Systems Ltd', part_name: 'Radar Gimbal Support Bracket', quantity: 50, amount: 1003000, invoice_date: '2026-09-25', dc_no: 'DC-2026-601', sales_order_no: 'SO-2026-301', status: 'Sent' },
-        { id: 'inv-fallback-2', invoice_no: 'INV-2026-802', customer_name: 'Mahindra Aerospace Pvt Ltd', part_name: 'Cockpit Control Lever Assembly', quantity: 75, amount: 513300, invoice_date: '2026-09-25', dc_no: 'DC-2026-602', sales_order_no: 'SO-2026-302', status: 'Sent' },
-        { id: 'inv-fallback-3', invoice_no: 'INV-2026-803', customer_name: 'Larsen & Toubro Precision', part_name: 'Underwater Enclosure Flange', quantity: 20, amount: 1085600, invoice_date: '2026-09-25', dc_no: 'DC-2026-603', sales_order_no: 'SO-2026-303', status: 'Sent' },
-        { id: 'inv-fallback-4', invoice_no: 'INV-2026-804', customer_name: 'Godrej Precision Engineering', part_name: 'Precision Sensor Housing - Inconel 718', quantity: 35, amount: 1357000, invoice_date: '2026-09-25', dc_no: 'DC-2026-604', sales_order_no: 'SO-2026-304', status: 'Sent' },
-        { id: 'inv-fallback-5', invoice_no: 'INV-2026-805', customer_name: 'Bharat Forge Advanced Technologies', part_name: 'Drive Pinion Gear Blank', quantity: 150, amount: 660800, invoice_date: '2026-09-25', dc_no: 'DC-2026-605', sales_order_no: 'SO-2026-305', status: 'Sent' }
-      ];
-    }
-
     if (fgs) {
       fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
          newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: orderMap.get(w.sales_order) || w.sales_order || w.wo_no || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name, qty: w.completed, value: 0, date: w.created_at ? w.created_at.split('T')[0] : '', status: w.status, raw: w });
@@ -1110,14 +1090,10 @@ export function SalesPipelinePage() {
   };
 
   useEffect(() => {
-    const SEED_KEY = 'pipeline_data_seeded_5_records_v3';
-    if (!localStorage.getItem(SEED_KEY)) {
-      localStorage.setItem(SEED_KEY, 'true');
-      handleResetAndSeed(true);
-    } else {
-      fetchPipeline();
-      fetchRecentActivities();
-    }
+    // Auto-seed permanently disabled: it used to wipe pipeline tables and
+    // re-insert dummy companies on first visit, resurrecting deleted leads.
+    fetchPipeline();
+    fetchRecentActivities();
   }, [company?.id]);
 
   const parseContacts = (raw: any) => {
@@ -1727,6 +1703,50 @@ export function SalesPipelinePage() {
     }
   };
 
+  // Inwards of these categories flow to Production as Draft work orders
+  // (released manually there). 'NEW PROJECT' is the legacy label of NEW PART.
+  const PRODUCTION_CATEGORIES = ['CUSTOMER DC', 'DC', 'NO DC', 'NEW PART', 'NEW PROJECT'];
+  const isProductionCategory = (c: any) => PRODUCTION_CATEGORIES.includes(String(c || '').trim().toUpperCase());
+
+  const createDraftWorkOrdersForInwards = async (entries: { inward: any; qty: number; customer: string }[]) => {
+    const eligible = entries.filter(e => isProductionCategory(e.inward.category) && (Number(e.qty) || 0) > 0);
+    if (!eligible.length) return 0;
+    const { data: existing } = await supabase.from('cnc_work_orders').select('wo_no,sales_order,part_name,quantity');
+    const usedNos = new Set((existing ?? []).map((w: any) => w.wo_no));
+    const keyOf = (so: string, part: string, q: number) => `${so}||${part}||${q}`;
+    const seen = new Set((existing ?? []).map((w: any) => keyOf(w.sales_order ?? '', w.part_name ?? '', Number(w.quantity) || 0)));
+    const d = new Date();
+    const prefix = `WO-${d.getFullYear().toString().slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-`;
+    const nextNo = () => {
+      for (let i = 0; i < 50; i++) {
+        const c = `${prefix}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        if (!usedNos.has(c)) { usedNos.add(c); return c; }
+      }
+      const f = `${prefix}${Date.now().toString().slice(-3)}`;
+      usedNos.add(f);
+      return f;
+    };
+    let created = 0;
+    for (const e of eligible) {
+      const soRef = e.inward.sales_order_ref || '';
+      const k = keyOf(soRef, e.inward.part_name || '', Number(e.qty) || 0);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const { error } = await supabase.from('cnc_work_orders').insert([{
+        id: crypto.randomUUID(), wo_no: nextNo(),
+        sales_order: soRef,
+        customer: e.customer || e.inward.party_name || '',
+        part_name: e.inward.part_name || '-', part_no: e.inward.part_number || 'N/A',
+        quantity: Number(e.qty) || 0, completed: 0, rejected: 0,
+        start_date: e.inward.inward_date || null, due_date: e.inward.inward_date || null,
+        status: 'Draft', priority: 'Normal',
+      }]);
+      if (!error) created++;
+      else console.error('Failed to auto-create draft work order:', error);
+    }
+    return created;
+  };
+
   const saveInward = async () => {
     if (!inwardModalTarget) return;
     const cStr = getContactStrings(inwardForm);
@@ -1792,6 +1812,16 @@ export function SalesPipelinePage() {
         throw res.error;
       }
       if (!saved) throw lastError;
+      // Eligible categories (DC / NO DC / NEW PART) flow to Production as
+      // Draft work orders, released manually from the Production page.
+      try {
+        await createDraftWorkOrdersForInwards(rows.map(r => ({
+          inward: r, qty: r.quantity,
+          customer: (inwardModalTarget as any)?.customer || inwardForm.partyName || '',
+        })));
+      } catch (woErr) {
+        console.error('Draft work order auto-create failed:', woErr);
+      }
       if (dropped.includes('product_name')) {
         // Preserve the product link inside remarks (parsed back on display)
         // until the migration adds the real column.
@@ -2941,7 +2971,7 @@ export function SalesPipelinePage() {
                 <select className={inputClass} value={inwardForm.category} onChange={e=>setInwardForm({...inwardForm, category: e.target.value})}>
                   <option>EXPENSES</option>
                   <option>CUSTOMER DC</option>
-                  <option>NEW PROJECT</option>
+                  <option>NEW PART</option>
                   <option>NO DC</option>
                   <option>GOODS PURCHASE</option>
                   <option>SERVICE PURCHASE</option>
@@ -2990,7 +3020,7 @@ export function SalesPipelinePage() {
                     <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
                       <option>EXPENSES</option>
                       <option>CUSTOMER DC</option>
-                      <option>NEW PROJECT</option>
+                      <option>NEW PART</option>
                       <option>NO DC</option>
                       <option>GOODS PURCHASE</option>
                       <option>SERVICE PURCHASE</option>

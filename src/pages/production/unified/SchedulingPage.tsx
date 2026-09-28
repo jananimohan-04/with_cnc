@@ -356,9 +356,14 @@ export function SchedulingPage() {
       const jobsData = jobsRes.data || [];
       setJobs(jobsData);
       
-      // Derive unique operators from existing jobs (skip placeholders like '—').
-      const uniqueOps = Array.from(new Set(jobsData.map((j: any) => String(j.operator ?? '').trim()).filter((n) => n && n !== '—' && n !== '-')));
-      setOperators(uniqueOps.map((op: any, i) => ({ id: `OP-${i}`, name: op, role: 'Operator', status: 'Available' })));
+      // Operators come only from job history (never login users).
+      // Skip placeholders like '—'.
+      const opNames = new Map<string, string>();
+      for (const j of jobsData) {
+        const n = String(j.operator ?? '').trim();
+        if (n && n !== '—' && n !== '-' && !opNames.has(n.toLowerCase())) opNames.set(n.toLowerCase(), n);
+      }
+      setOperators(Array.from(opNames.values()).map((name, i) => ({ id: `OP-${i}`, name, role: 'Operator', status: 'Available' })));
       
       const woRes = await supabase.from('cnc_work_orders').select('*').not('status', 'in', '("Completed","Dispatched","Cancelled")');
       if (woRes.error) console.error('Failed to load work orders:', woRes.error);
@@ -554,9 +559,23 @@ export function SchedulingPage() {
 
   const getStatusColor = (status: string) => statusColors[status] || statusColors['Planned'];
 
-  // Jobs scheduled on a machine value that no longer matches the machine master
-  // (e.g. renamed in Process Master) — shown in a fallback row so nothing vanishes.
-  const unmappedJobs = scheduledJobs.filter(j => j.machine && !machines.some(m => m.code === j.machine));
+  // Board rows follow the Process Master (same source as the dropdown).
+  // A row enriches itself from the machine master when the value matches a code.
+  const boardMachines = processMachines.map((mt, i) => {
+    const m = machines.find((x: any) => x.code === mt)
+      ?? machines.find((x: any) => String(x.code ?? '').toLowerCase() === mt.toLowerCase());
+    return {
+      id: m?.id ?? `PM-${i}`,
+      code: mt,
+      name: m?.name ?? mt,
+      type: m?.type ?? '',
+      status: m?.status ?? '',
+    };
+  });
+
+  // Jobs scheduled on a machine value that no longer matches the Process Master
+  // — shown in a fallback row so nothing vanishes.
+  const unmappedJobs = scheduledJobs.filter(j => j.machine && !boardMachines.some(m => m.code === j.machine));
 
   // Shared schedule block for machine rows, the fallback row, and operator rows.
   const renderScheduleBlock = (job: any, date: Date, slotHour: number, slotIdx: number) => {
@@ -662,12 +681,15 @@ export function SchedulingPage() {
                   ))}
                 </div>
 
-                {/* Machine Rows */}
-                {machines.map(machine => (
+                {/* Machine Rows (Process Master machines only) */}
+                {boardMachines.length === 0 && unmappedJobs.length === 0 && (
+                  <div className="p-6 text-center text-sm text-slate-500">No machines entered in Process Master yet — add a machine type to a process first.</div>
+                )}
+                {boardMachines.map(machine => (
                   <div key={machine.id} className="flex border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors relative min-h-[70px]">
                     <div className="w-56 flex-shrink-0 p-3 border-r border-slate-200 bg-white sticky left-0 z-10 flex flex-col justify-center">
                       <div className="font-bold text-slate-800">{machine.code}</div>
-                      <div className="text-xs text-slate-500">{machine.name} - {machine.type}</div>
+                      <div className="text-xs text-slate-500">{machine.type ? `${machine.name} - ${machine.type}` : machine.name}</div>
                       <div className="flex items-center gap-1.5 mt-1">
                         <div className={`w-2 h-2 rounded-full ${machine.status === 'Running' ? 'bg-emerald-500' : machine.status === 'Maintenance' ? 'bg-amber-500' : 'bg-slate-400'}`}></div>
                         <span className="text-[11px] font-medium text-slate-600">{machine.status}</span>

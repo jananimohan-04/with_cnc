@@ -108,6 +108,8 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
     const mh = hoursOf(setupMin, qty, cycleMin);
     const mRate = costNum(p?.cost_per_hour);
     const lh = operator ? mh : 0;
+    const machineCost = mh * mRate;
+    const labourCost = 0;
     ops.push({
       key: costUid(),
       seq,
@@ -117,16 +119,17 @@ export function buildOpLines(woOps: any[], jobCards: any[], processes: any[], wo
       operator,
       machine_hours: mh,
       machine_rate: mRate,
-      machine_cost: mh * mRate,
+      machine_cost: machineCost,
       labour_hours: lh,
       labour_rate: 0,
-      labour_cost: 0,
+      labour_cost: labourCost,
       cycle_time: costNum(cycleMin),
       setup_time: costNum(setupMin),
       cost_per_hour: mRate,
       cost_per_component: costNum(p?.cost_per_component),
       setup_cost: costNum(p?.setup_cost),
-      process_cost: mh * mRate + costNum(p?.cost_per_component) + costNum(p?.setup_cost),
+      // Machine cost is considered process cost: process = machine + labour + extras.
+      process_cost: machineCost + labourCost + costNum(p?.cost_per_component) + costNum(p?.setup_cost),
       manual: false,
       warn_machine: mh > 0 && mRate <= 0,
       warn_labour: lh > 0,
@@ -162,9 +165,12 @@ export function computeTotals(matLines: MaterialLine[], opLines: OpLine[], quote
   const material = matLines.reduce((s, m) => s + costNum(m.total), 0);
   const machine = opLines.reduce((s, o) => s + costNum(o.machine_cost), 0);
   const labour = opLines.reduce((s, o) => s + costNum(o.labour_cost), 0);
-  const process = opLines.reduce((s, o) => s + costNum(o.process_cost), 0);
+  const extras = opLines.reduce((s, o) => s + costNum(o.cost_per_component) + costNum(o.setup_cost), 0);
+  // Machine cost is considered process cost: process = machine + labour + extras,
+  // so the total adds process only once (no double count).
+  const process = machine + labour + extras;
   const quotation = costNum(quoteTotal);
-  return { material, machine, labour, machineLabour: machine + labour, process, quotation, calculated: quotation + material + machine + labour + process };
+  return { material, machine, labour, machineLabour: machine + labour, process, quotation, calculated: quotation + material + process };
 }
 
 export function computeWarnings(args: {
@@ -198,7 +204,7 @@ export function applyOpPatch(lines: OpLine[], key: string, patch: Partial<OpLine
     const n = { ...o, ...patch, manual: true };
     n.machine_cost = costNum(n.machine_hours) * costNum(n.machine_rate);
     n.labour_cost = costNum(n.labour_hours) * costNum(n.labour_rate);
-    n.process_cost = costNum(n.machine_hours) * costNum(n.cost_per_hour) + costNum(n.cost_per_component) + costNum(n.setup_cost);
+    n.process_cost = n.machine_cost + n.labour_cost + costNum(n.cost_per_component) + costNum(n.setup_cost);
     n.warn_machine = costNum(n.machine_hours) > 0 && costNum(n.machine_rate) <= 0;
     n.warn_labour = costNum(n.labour_hours) > 0 && costNum(n.labour_rate) <= 0;
     return n;
@@ -256,12 +262,14 @@ export function buildVersionPayload(args: {
 export function buildCostingPdfInput(args: {
   companyName: string; documentNo: string; date: string;
   quote: any; so: any; product: ProductOption | null; productCode: string; baseQty: number;
+  inwardNo?: string;
   status: string; matLines: MaterialLine[]; opLines: OpLine[]; totals: CostingTotals;
   approved: number | null; latestVersion: any; userName: string;
 }): CostingDocumentInput {
-  const { companyName, documentNo, date, quote, so, product, productCode, baseQty, status,
+  const { companyName, documentNo, date, quote, so, product, productCode, baseQty, inwardNo, status,
     matLines, opLines, totals, approved, latestVersion, userName } = args;
   const adj = approved == null ? 0 : approved - totals.calculated;
+  const approvedBy = latestVersion?.status === 'Approved' ? (latestVersion?.created_by ?? userName ?? '') : '—';
   return {
     companyName,
     documentNo,
@@ -274,6 +282,7 @@ export function buildCostingPdfInput(args: {
     ],
     infoRight: [
       ['Product Code', productCode || ''],
+      ...(inwardNo ? [['Inward No', inwardNo] as [string, string]] : []),
       ['Quantity', String(baseQty)],
       ['Costing Date', date],
       ['Status', status],
@@ -301,12 +310,10 @@ export function buildCostingPdfInput(args: {
       rate: costPdfInr(o.cost_per_hour), comp: costPdfInr(o.cost_per_component), cost: costPdfInr(o.process_cost),
     })),
     summary: [
-      ['Quotation Price', costPdfInr(totals.quotation)],
+      ['Project Costing', costPdfInr(totals.calculated)],
       ['Material Cost', costPdfInr(totals.material)],
-      ['Machine Cost', costPdfInr(totals.machine)],
-      ['Labour Cost', costPdfInr(totals.labour)],
+      ['Machine & Labour', costPdfInr(totals.machineLabour)],
       ['Process Cost', costPdfInr(totals.process)],
-      ['Calculated Final Price', costPdfInr(totals.calculated)],
       ['Approved Final Price', approved == null ? '—' : costPdfInr(approved)],
       ['Adjustment', `${adj >= 0 ? '+' : ''}${costPdfInr(adj)}`],
     ],
@@ -316,6 +323,10 @@ export function buildCostingPdfInput(args: {
       ['Created By', latestVersion?.created_by ?? userName ?? ''],
       ['Calculated Price', costPdfInr(latestVersion?.calculated_price ?? totals.calculated)],
       ['Approved Price', latestVersion?.approved_price != null ? costPdfInr(latestVersion.approved_price) : '—'],
+      ['Prepared By', latestVersion?.created_by ?? userName ?? ''],
+      ['Approved By', approvedBy],
+      ['Date', date],
+      ['Signature', ''],
     ],
   };
 }
