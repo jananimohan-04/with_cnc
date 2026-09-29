@@ -69,6 +69,7 @@ import {
 import {
   ProductionReportsPage, SalesReportsPage, InventoryReportsPage, QualityReportsPage, MachineUtilizationReportsPage, CostAnalysisReportsPage
 } from './pages/reports/ReportsPages';
+import { QuantityTrackingPage } from './pages/reports/QuantityTrackingPage';
 
 import {
   UsersPage, CompaniesPage, RolesPage, PermissionsPage, SettingsPage, AuditLogsPage
@@ -216,6 +217,7 @@ function MainLayout() {
 
             {/* Reports */}
             <Route path="/reports/production" element={<ProductionReportsPage />} />
+            <Route path="/reports/order-tracking" element={<QuantityTrackingPage />} />
             <Route path="/reports/sales" element={<SalesReportsPage />} />
             <Route path="/reports/inventory" element={<InventoryReportsPage />} />
             <Route path="/reports/quality" element={<QualityReportsPage />} />

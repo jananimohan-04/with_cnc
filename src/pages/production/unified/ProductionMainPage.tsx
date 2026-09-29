@@ -7,7 +7,8 @@ import { SummaryCards } from './SummaryCards';
 import { ProductionOrdersTab } from './ProductionOrdersTab';
 import { PartRoutingTab } from './PartRoutingTab';
 import { LiveProductionTab } from './LiveProductionTab';
-import { JobCardTab, WIPTab, CompletedTab, ReportsTab } from './OtherTabs';
+import { JobCardsTab } from './JobCardsTab';
+import { WIPTab, CompletedTab, ReportsTab } from './OtherTabs';
 
 export function ProductionMainPage() {
   const TABS = [
@@ -82,7 +83,7 @@ export function ProductionMainPage() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
           {activeTab === 'Part Routing' && <PartRoutingTab />}
           {activeTab === 'Live Production' && <LiveProductionTab workOrders={workOrders} />}
-          {activeTab === 'Job Card' && <JobCardTab workOrders={workOrders} />}
+          {activeTab === 'Job Card' && <JobCardsTab workOrders={workOrders} />}
           {activeTab === 'WIP' && <WIPTab workOrders={workOrders} />}
           {activeTab === 'Completed' && <CompletedTab workOrders={workOrders} />}
           {activeTab === 'Reports' && <ReportsTab workOrders={workOrders} />}

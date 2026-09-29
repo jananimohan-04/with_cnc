@@ -95,6 +95,7 @@ export const navSections: NavSection[] = [
     label: 'System',
     items: [
       { label: 'Reports', icon: BarChart3, page: 'reports/production' },
+      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking' },
       { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'] },
       { label: 'Settings', icon: Settings, page: 'admin/settings' },
@@ -153,6 +154,7 @@ export const pageTitles: Record<string, string> = {
   'costing/job-costing': 'Project Costing',
   'costing/quote-costing': 'Quotation Costing',
   'reports/production': 'Production Reports',
+  'reports/order-tracking': 'Order Quantity Tracking',
   'reports/sales': 'Sales Reports',
   'reports/inventory': 'Inventory Reports',
   'reports/quality': 'Quality Reports',

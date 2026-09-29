@@ -7,11 +7,13 @@
 // always performed (insert Completed work order + mark inward rows Processed).
 // Cancel writes nothing and the card stays put.
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
+import { fetchOrderQty, recordProductionBatch, type OrderQtySummary } from '@/lib/orderQuantities';
+import { insertTolerant } from '@/lib/partRouting';
 import { downloadCostingDocument, viewCostingDocument } from '@/lib/brandedDocument';
 import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,20 +40,77 @@ const panelTitleClass = 'text-[10px] font-bold uppercase tracking-widest mb-1';
 const cellTh = 'text-left py-1.5 pr-2 font-bold text-slate-500 uppercase text-[10px] whitespace-nowrap';
 const cellTd = 'py-1.5 pr-2 tabular-nums whitespace-nowrap';
 
+/** Ensure a cnc_parts row exists so the stock trigger can post FG receipts.
+ *  Best-effort: failures only mean the trigger skips (never blocks a flow). */
+async function ensurePart(pno: string, pname: string): Promise<string> {
+  try {
+    const clean = String(pno ?? '').trim();
+    if (!clean) return '';
+    const ex = await supabase.from('cnc_parts').select('id').eq('part_no', clean).limit(1);
+    if (!ex.error && (ex.data ?? []).length > 0) return clean;
+    try {
+      await insertTolerant('cnc_parts', [{ part_no: clean, part_name: pname || clean, stock_qty: 0 }]);
+    } catch { /* parts master unavailable; trigger will skip */ }
+    return clean;
+  } catch {
+    return '';
+  }
+}
+
+/** Point N/A/blank work-order part numbers at their product names so the
+ *  stock trigger posts their completed deltas (self-heal for older approvals). */
+async function healWorkOrderPartNos(salesOrderRef: string): Promise<void> {
+  try {
+    if (!salesOrderRef) return;
+    const old = await supabase.from('cnc_work_orders').select('id,part_name,part_no').eq('sales_order', salesOrderRef);
+    if (old.error) return;
+    for (const w of (old.data ?? []) as any[]) {
+      const pn = String(w?.part_no ?? '');
+      if (pn !== '' && pn.toUpperCase() !== 'N/A') continue;
+      const nm = String(w?.part_name ?? '').trim();
+      if (!nm) continue;
+      await ensurePart(nm, nm);
+      try {
+        await supabase.from('cnc_work_orders').update({ part_no: nm }).eq('id', w.id);
+      } catch { /* backfill best-effort */ }
+    }
+  } catch { /* backfill best-effort */ }
+}
+
 export function FgCostingModal({ card, onClose, onMoved }: {
   card: any;
   onClose: () => void;
   onMoved: () => void;
-}) {
-  const { company, profile } = useAuth() as any;
+}) {  const { company, profile } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
   const userName: string = profile?.email ?? '';
 
   const inward = card?.raw ?? {};
   const maxQ = num(card?.qty) || 0;
+  const inwardGroupIds: string[] = Array.isArray(inward._groupIds) && inward._groupIds.length
+    ? inward._groupIds : (inward.id ? [inward.id] : []);
 
-  const [fgQty, setFgQty] = useState(maxQ > 0 ? String(maxQ) : '');
   const [fgDate, setFgDate] = useState(todayISO());
+  // Current production batch: good vs rejected are entered separately.
+  // Rejected quantity is traceable but never becomes FG stock, DC qty or invoice qty.
+  const [rejQty, setRejQty] = useState('');
+  const [rejType, setRejType] = useState('');
+  const [rejReason, setRejReason] = useState('');
+  const [rejNotes, setRejNotes] = useState('');
+  const [qtySum, setQtySum] = useState<OrderQtySummary | null>(null);
+  const batchKeyRef = useRef<string | null>(null);
+  // Products in this inward: every line is selectable, each selected product
+  // gets its own finished-qty box and its own FG entry + batch on approval.
+  // Raw inward lines; sale-order products (below) lead the selectable rows.
+  const [inwardLines, setInwardLines] = useState<any[]>([]);
+  const [prodSel, setProdSel] = useState<Record<string, string>>({});
+  const [prodInitKey, setProdInitKey] = useState('');
+  // Linked purchase inwards (actuals): service → reference block, goods →
+  // one-click material lines. The estimate itself still prices from BOM when
+  // one exists, like Project Costing separates estimated vs recorded cost.
+  const [serviceActuals, setServiceActuals] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 });
+  const [goodsActuals, setGoodsActuals] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 });
+  const [goodsLoaded, setGoodsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -59,6 +118,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const [so, setSo] = useState<any | null>(null);
   const [wos, setWos] = useState<any[]>([]);
   const [bom, setBom] = useState<any[]>([]);
+  const [routing, setRouting] = useState<any[]>([]);
   const [rawMats, setRawMats] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Record<string, string>>({});
   const [jobCards, setJobCards] = useState<any[]>([]);
@@ -87,6 +147,97 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
 
+  // Inward product lines (one selectable row per product, same-name lines
+  // merged). Defaults select everything at full line qty.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // select('*'): named-column selects fail on databases that predate
+        // newer inward columns; star-selects never do.
+        const r = inwardGroupIds.length > 0
+          ? await supabase.from('cnc_inwards').select('*').in('id', inwardGroupIds).order('created_at')
+          : Promise.resolve({ data: [], error: { message: 'no ids' } } as any);
+        if (cancelled) return;
+        const src = (!r.error && (r.data ?? []).length > 0 ? r.data : [inward]) as any[];
+        setInwardLines(src.filter((x: any) => x && (x.id || x.part_name || x.product_name)));
+      } catch {
+        if (!cancelled) setInwardLines([inward]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Selectable rows: SALE ORDER products lead (order qty shown, inward qty
+  // matched underneath); without SO items, the inward lines lead instead.
+  const prodRows = useMemo(() => {
+    const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+    const inRows = (inwardLines ?? []).map((x: any) => ({
+      name: String(x?.part_name || x?.product_name || 'Unnamed').trim() || 'Unnamed',
+      qty: Number(x?.quantity) || 0,
+      partNumber: String(x?.part_number ?? '').trim(),
+      id: String(x?.id ?? ''),
+    }));
+    let items: any[] = [];
+    try {
+      const rawItems = (so as any)?.items;
+      const parsed = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+      if (Array.isArray(parsed)) items = parsed;
+    } catch { /* fall back to inward lines */ }
+    const soProds = items
+      .map((it: any) => ({
+        name: String(it.partName || it.productName || it.part_name || it.description || '').trim(),
+        qty: Number(it.quantity ?? it.qty) || 0,
+        partNumber: String(it.partNumber || it.part_number || '').trim(),
+      }))
+      .filter((p) => p.name);
+    if (soProds.length === 0) {
+      const merged = new Map<string, { key: string; ids: string[]; name: string; qty: number; inwardQty: number; partNumber: string }>();
+      inRows.forEach((r, i) => {
+        const ex = merged.get(norm(r.name));
+        if (ex) {
+          if (r.id && !ex.ids.includes(r.id)) ex.ids.push(r.id);
+          ex.qty += r.qty; ex.inwardQty += r.qty;
+          if (!ex.partNumber && r.partNumber) ex.partNumber = r.partNumber;
+        } else {
+          merged.set(norm(r.name), { key: `in-${i}`, ids: r.id ? [r.id] : [], name: r.name, qty: r.qty, inwardQty: r.qty, partNumber: r.partNumber });
+        }
+      });
+      return [...merged.values()];
+    }
+    return soProds.map((p, i) => {
+      const matched = inRows.filter((r) => norm(r.name) === norm(p.name));
+      return {
+        key: `so-${i}`,
+        ids: matched.map((r) => r.id).filter(Boolean),
+        name: p.name,
+        qty: p.qty,
+        inwardQty: matched.reduce((s, r) => s + r.qty, 0),
+        partNumber: p.partNumber || matched.find((r) => r.partNumber)?.partNumber || '',
+      };
+    });
+  }, [so, inwardLines]);
+
+  useEffect(() => {
+    const key = prodRows.map((r) => r.key).join('|');
+    if (!key || key === prodInitKey) return;
+    const init: Record<string, string> = {};
+    for (const r of prodRows) init[r.key] = (r.inwardQty > 0 ? String(r.inwardQty) : '');
+    setProdSel(init);
+    setProdInitKey(key);
+  }, [prodRows, prodInitKey]);
+
+  // Prefer the first selected product's part number for BOM/routing lookup.
+  const firstProdKey = Object.keys(prodSel)[0];
+  const firstProd = prodRows.find((r) => r.key === firstProdKey) ?? null;
+  useEffect(() => {
+    if (code.trim() !== '' || !firstProd?.partNumber) return;
+    const c = String(firstProd.partNumber).trim();
+    if (c && c.toUpperCase() !== 'N/A') setCode(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstProd?.partNumber]);
+
   // ---- load live source records for this inward card ----
   useEffect(() => {
     let cancelled = false;
@@ -113,7 +264,8 @@ export function FgCostingModal({ card, onClose, onMoved }: {
         }
         if (cancelled) return;
         setQuote(qRow);
-        setCode(soRow?.part_no || inward.part_number || qRow?.part_number || '');
+        const codeCandidates = [soRow?.part_no, inward.part_number, qRow?.part_number];
+        setCode(String(codeCandidates.find((c) => String(c ?? '').trim() !== '' && String(c).trim().toUpperCase() !== 'N/A') ?? '').trim());
         let woRows: any[] = [];
         if (soRow?.order_no) {
           const r = await supabase.from('cnc_work_orders').select('*').eq('sales_order', soRow.order_no).order('created_at');
@@ -121,6 +273,52 @@ export function FgCostingModal({ card, onClose, onMoved }: {
         }
         if (cancelled) return;
         setWos(woRows);
+        // Self-heal for the stock trigger (runs on open AND on approve).
+        if (soRow?.order_no) void healWorkOrderPartNos(String(soRow.order_no));
+        // Linked purchase actuals for reference (same source as the Project
+        // Costing material/service tabs): service → reference block, goods →
+        // one-click material lines. Matched by UNIQUE NUMBER: the inward
+        // card's and the order's base numbers (stamp suffixes stripped, so
+        // 1010 matches 1010-28Sep26-0994PM) plus the exact sales order number.
+        if (soRow?.order_no || inwardGroupIds.length > 0) {
+          try {
+            const base = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '').trim().toLowerCase();
+            const r = await supabase.from('cnc_inwards').select('*');
+            if (!cancelled && !r.error) {
+              const all = (r.data ?? []) as any[];
+              const scope = new Set<string>();
+              if (soRow?.lead_no) scope.add(base(soRow.lead_no));
+              if (soRow?.order_no) scope.add(String(soRow.order_no).trim().toLowerCase());
+              for (const g of all.filter((x: any) => inwardGroupIds.includes(String(x?.id ?? '')))) {
+                if (g.project_name) scope.add(base(g.project_name));
+              }
+              const linked = all.filter((inv: any) =>
+                scope.has(String(inv.sales_order_ref ?? '').trim().toLowerCase()) || scope.has(base(inv.project_name)));
+              const isService = (c: any) => /service/i.test(String(c ?? ''));
+              const isGoods = (c: any) => {
+                const s = String(c ?? '').trim().toUpperCase();
+                return s.includes('GOODS PURCHASE') || s.includes('GOODS_PURCHASE') || s === 'PURCHASE';
+              };
+              const amountOf = (inv: any) => {
+                const q = Number(inv.quantity) || 0;
+                return Number(inv.total_amount) || q * (Number(inv.price) || 0);
+              };
+              const svc = linked.filter((inv: any) => isService(inv.category));
+              setServiceActuals({ rows: svc, total: svc.reduce((s: number, inv: any) => s + amountOf(inv), 0) });
+              const goods = linked.filter((inv: any) => isGoods(inv.category));
+              setGoodsActuals({ rows: goods, total: goods.reduce((s: number, inv: any) => s + amountOf(inv), 0) });
+            }
+          } catch { /* reference blocks stay empty */ }
+        }
+        // Order-level quantity reconciliation (good / rejected / delivered /
+        // invoiced from live rows) for the batch summary and validation.
+        if (soRow?.order_no) {
+          try {
+            const { summary } = await fetchOrderQty(
+              soRow.id != null ? String(soRow.id) : null, String(soRow.order_no));
+            if (!cancelled && summary) setQtySum(summary);
+          } catch { /* summary stays null; local work-order fallback below */ }
+        }
         const [rmRes, supRes, jcRes, wooRes, procRes] = await Promise.all([
           supabase.from('cnc_raw_materials').select('*'),
           supabase.from('cnc_suppliers').select('id,name'),
@@ -152,13 +350,38 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- BOM follows the (editable) product code ----
+  // ---- BOM + routing follow the (editable) product code ----
+  // Routing is the first-batch fallback: before any work order exists there
+  // are no operations/job cards to cost from, so the engineered routing steps
+  // (valued with live Process Master rates) fill the tables instead.
+  // Source order: Active Part Routing revision first, legacy cnc_routing second.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!code.trim()) { setBom([]); return; }
-      const r = await supabase.from('cnc_bom').select('*').eq('parent_part_no', code.trim()).order('level').order('created_at');
-      if (!cancelled && !r.error) setBom(r.data ?? []);
+      if (!code.trim()) { setBom([]); setRouting([]); return; }
+      const b = await supabase.from('cnc_bom').select('*').eq('parent_part_no', code.trim()).order('level').order('created_at');
+      if (cancelled) return;
+      if (!b.error) setBom(b.data ?? []);
+      try {
+        const h = await supabase.from('cnc_part_routings').select('id').eq('product_code', code.trim()).eq('status', 'Active').order('revision', { ascending: false }).limit(1);
+        if (!h.error && (h.data ?? []).length > 0) {
+          const s = await supabase.from('cnc_part_routing_steps').select('*').eq('routing_id', h.data![0].id).order('sequence');
+          if (cancelled) return;
+          if (!s.error && (s.data ?? []).length > 0) {
+            setRouting((s.data ?? []).map((r: any) => ({
+              op_no: Number(r.sequence),
+              operation: r.process_name || r.process_code || '',
+              machine: r.machine ?? '',
+              setup_time: r.setup_time,
+              cycle_time: r.cycle_time,
+            })));
+            return;
+          }
+        }
+      } catch { /* versioned routing unavailable; legacy fallback below */ }
+      if (cancelled) return;
+      const r = await supabase.from('cnc_routing').select('*').eq('parent_part_no', code.trim()).order('op_no');
+      if (!cancelled && !r.error) setRouting(r.data ?? []);
     })();
     return () => { cancelled = true; };
   }, [code]);
@@ -189,9 +412,19 @@ export function FgCostingModal({ card, onClose, onMoved }: {
 
   const products = useMemo(() => (quote ? parseQuoteProducts(quote) : []), [quote]);
   const product = products[0] ?? null;
-  const productName = inward.part_name || so?.part_name || product?.name || quote?.part_name || '';
+  const selectedProds = prodRows.filter((r) => prodSel[r.key] !== undefined);
+  const finishedOf = (r: { key: string }) => Math.max(0, num(prodSel[r.key]));
+  const productName = firstProd?.name || inward.part_name || so?.part_name || product?.name || quote?.part_name || '';
 
-  const baseQty = num(fgQty) > 0 ? num(fgQty) : 0;
+  const baseQty = selectedProds.reduce((s, r) => s + finishedOf(r), 0);
+  const rejNum = Math.max(0, num(rejQty));
+  // Order-level reconciliation: live summary when loaded, else the work-order
+  // rows already in hand. Completion is always measured on GOOD quantity.
+  const orderedQty = num(so?.quantity);
+  const prevGood = qtySum ? qtySum.good : (wos || []).reduce((s: number, w: any) => s + num(w?.completed), 0);
+  const prevRejected = qtySum ? qtySum.rejected : (wos || []).reduce((s: number, w: any) => s + num(w?.rejected), 0);
+  const remainingQty = orderedQty > 0 ? Math.max(0, orderedQty - prevGood) : 0;
+  const totalGoodAfter = prevGood + baseQty;
 
   // Quotation overrides (edit the sheet's quoted qty / unit price, never the master).
   const qQtyEff = quoteQty.trim() === '' ? num(quote?.quantity) : num(quoteQty);
@@ -206,16 +439,43 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     () => buildMaterialLines(bom, rawMats, suppliers, baseQty),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bom, rawMats, suppliers, baseQty]);
-  const autoOps = useMemo(
-    () => buildOpLines(woOps, jobCards, processes, wos),
+  // Job cards carry the freshest execution plan (machine/operator/cycle times
+  // set at release/scheduling). Prefer them over the work-order operations —
+  // e.g. a card with 24 planned hours prices correctly while the WO operation
+  // still shows cycle 0. Falls back to WO ops, then engineered routing.
+  const autoOps = useMemo(() => {
+    const woNos = new Set((wos ?? []).map((w: any) => String(w.wo_no ?? '')));
+    const relevant = (jobCards ?? []).filter((c: any) => woNos.has(String(c.work_order ?? '')));
+    if (relevant.length > 0) return buildOpLines([], relevant, processes, wos);
+    return buildOpLines(woOps, jobCards, processes, wos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [woOps, jobCards, processes, wos]);
+  }, [woOps, jobCards, processes, wos]);
+  // First-batch fallback: no work orders/job cards exist yet, so value the
+  // engineered routing steps with Process Master rates (hours scale with the
+  // batch qty). Real production history wins whenever it exists.
+  const routingAutoOps = useMemo(() => {
+    if (!routing.length) return [];
+    const cards = routing.map((r: any) => ({
+      work_order: '__routing__',
+      op_no: Number(r.op_no) || 0,
+      operation: r.operation ?? '',
+      machine: r.machine ?? '',
+      operator: '',
+      qty_planned: baseQty,
+      qty_completed: 0,
+      cycle_time: r.cycle_time,
+      setup_time: r.setup_time,
+    }));
+    return buildOpLines([], cards, processes, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routing, processes, baseQty]);
+  const effAutoOps = autoOps.length > 0 ? autoOps : routingAutoOps;
   const matLines = useMemo(() => [...autoMats.map((m) => matPatches[m.key] ?? m), ...extraMats], [autoMats, extraMats, matPatches]);
   const opLines = useMemo(() => {
-    const startSeq = autoOps.length > 0 ? Math.max(...autoOps.map((o) => o.seq)) : 0;
-    const base = [...autoOps.map((o) => opPatches[o.key] ?? o), ...extraOps.map((o, i) => ({ ...o, seq: startSeq + i + 1 }))];
+    const startSeq = effAutoOps.length > 0 ? Math.max(...effAutoOps.map((o) => o.seq)) : 0;
+    const base = [...effAutoOps.map((o) => opPatches[o.key] ?? o), ...extraOps.map((o, i) => ({ ...o, seq: startSeq + i + 1 }))];
     return base;
-  }, [autoOps, extraOps, opPatches]);
+  }, [effAutoOps, extraOps, opPatches]);
 
   const patchMat = (key: string, patch: Partial<MaterialLine>) => {
     if (extraMats.some((m) => m.key === key)) {
@@ -229,7 +489,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     if (extraOps.some((o) => o.key === key)) {
       setExtraOps((ls) => applyOpPatch(ls, key, patch));
     } else {
-      const base = opPatches[key] ?? autoOps.find((o) => o.key === key);
+      const base = opPatches[key] ?? effAutoOps.find((o) => o.key === key);
       if (base) setOpPatches((prev) => ({ ...prev, [key]: applyOpPatch([prev[key] ?? base], key, patch)[0] }));
     }
   };
@@ -274,7 +534,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const effMatLines = draftMat ? [...matLines, draftMat] : matLines;
   const effOpLines = draftOp ? [...opLines, draftOp] : opLines;
   const effWarnings = computeWarnings({
-    hasQuote: !!quote, baseQty, bom, woOps, jobCards, opLines: effOpLines,
+    hasQuote: !!quote, baseQty, bom, woOps, jobCards: jobCards.length > 0 ? jobCards : routing, opLines: effOpLines,
     manualMaterials: effMatLines.some((m) => m.manual), manualOps: effOpLines.some((o) => o.manual),
   });
   // Effective totals include typed-but-unadded input, so values on screen always match.
@@ -298,8 +558,15 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   if (loadError) blockReasons.push('Costing data failed to load.');
   if (!quote) blockReasons.push('No quotation is linked to this inward.');
   if (sheetsMissing) blockReasons.push('Costing storage is not provisioned (apply migration 20260930000000_costing_sheets.sql).');
-  if (!(baseQty > 0)) blockReasons.push('Enter a quantity greater than 0.');
-  if (baseQty > maxQ) blockReasons.push(`Quantity exceeds the inwarded amount (${maxQ}).`);
+  if (!(baseQty > 0)) blockReasons.push('Enter a finished quantity greater than 0 for at least one product.');
+  if (selectedProds.length === 0) blockReasons.push('Select at least one product.');
+  for (const r of selectedProds) {
+    const cap = (r as any).inwardQty > 0 ? (r as any).inwardQty : (orderedQty > 0 ? remainingQty : null);
+    if (cap != null && finishedOf(r) > cap + 1e-9) blockReasons.push(`${r.name}: finished qty exceeds ${(r as any).inwardQty > 0 ? `its inward qty (${(r as any).inwardQty})` : `the remaining order qty (${cap})`}.`);
+  }
+  if (so && orderedQty > 0 && baseQty > remainingQty) blockReasons.push(`Batch good qty exceeds the remaining order qty (${remainingQty} of ${orderedQty} pcs).`);
+  if (rejNum > 0 && !rejType) blockReasons.push('Select a rejection type for the rejected quantity.');
+  if (rejNum > 0 && !rejReason.trim()) blockReasons.push('Enter a rejection reason for the rejected quantity.');
   // TESTING: BOM / work-order warnings (effWarnings) do not block approval for now.
   const canApprove = blockReasons.length === 0;
 
@@ -309,6 +576,35 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     setExtraMats((ls) => [...ls, line]);
     setNewMat({ code: '', name: '', qty: '', unit: 'Nos', rate: '' });
   };
+
+  // Fill the estimate from linked goods-purchase actuals (Project Costing
+  // material tab source). Lines stay editable and flagged manual.
+  const loadGoodsActuals = () => {
+    const lines: MaterialLine[] = goodsActuals.rows.map((inv: any) => {
+      const qty = Number(inv.quantity) || 0;
+      const rate = Number(inv.price) || (qty > 0 ? (Number(inv.total_amount) || 0) / qty : 0);
+      return {
+        key: uid(),
+        material_code: '',
+        material_name: String(inv.part_name || inv.product_name || 'Material'),
+        req_qty: qty, unit: 'pcs', unit_cost: rate, total: qty * rate,
+        supplier: '', remarks: `Actual: ${inv.inward_no ?? ''}`, manual: true,
+      };
+    }).filter((l) => l.req_qty > 0);
+    if (lines.length === 0) return;
+    setExtraMats((ls) => [...ls, ...lines]);
+    setGoodsLoaded(true);
+  };
+
+  // No BOM to calculate from (BOM missing or all-zero) → consider the
+  // Project Costing material actuals as the material cost, automatically.
+  useEffect(() => {
+    if (goodsLoaded || goodsActuals.rows.length === 0 || extraMats.length > 0) return;
+    const bomTotal = autoMats.reduce((s, m) => s + num(m.total), 0);
+    if (bomTotal > 0) return;
+    loadGoodsActuals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goodsActuals, autoMats, extraMats.length, goodsLoaded]);
 
   const addManualOp = () => {
     const line = buildPendingOp(opLines.length);
@@ -407,21 +703,86 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       // 1) Save the Approved costing version (same payload shape as the costing page).
       if (!quote) throw new Error('No quotation linked to this inward — cannot save costing.');
       await persistVersion('Approved', effectiveApproved);
-      // 2) The exact Finished Goods transition the pipeline has always performed.
-      const woNo = `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-      const woErr = await supabase.from('cnc_work_orders').insert([{
-        id: crypto.randomUUID(), wo_no: woNo, customer: card.customer,
-        part_name: inward.part_name || productName, part_no: inward.part_number || code || 'N/A',
-        completed: baseQty, status: 'Completed',
-        sales_order: inward.sales_order_ref || '', quantity: maxQ, start_date: fgDate, due_date: fgDate,
-        priority: 'Normal', drawing_revision: '0', description: '',
-        created_at: fgDate + 'T00:00:00Z',
-      }]);
-      if (woErr.error) throw woErr.error;
-      if (groupIds.length > 0) {
-        const inwQuery = supabase.from('cnc_inwards').update({ status: 'Processed' });
-        const inwRes = groupIds.length > 1 ? await inwQuery.in('id', groupIds) : await inwQuery.eq('id', groupIds[0]);
+      // 2) One work-order row + batch per selected product. Good quantity
+      // becomes FG stock (via the stock trigger on `completed`); rejected
+      // quantity is recorded on the first product only, for traceability, and
+      // never enters stock, DCs or invoices.
+      //
+      // Stock needs a real part number (the trigger skips '' / 'N/A') and a
+      // matching cnc_parts row, so both are ensured here. Older approvals
+      // stored N/A: point them at their product names so the trigger posts
+      // their deltas too (best-effort; failures never block the approval).
+      if (!batchKeyRef.current) batchKeyRef.current = uid();
+      await healWorkOrderPartNos(inward.sales_order_ref || '');
+      const insertWO = async (parts: {
+        id: string; woNo: string; name: string; partNo: string; good: number; rej: number;
+      }) => {
+        const pno = String(parts.partNo || code || parts.name || '').trim();
+        await ensurePart(pno, parts.name);
+        const base: any = {
+          id: parts.id, wo_no: parts.woNo, customer: card.customer,
+          part_name: parts.name, part_no: pno || parts.name,
+          completed: parts.good, rejected: parts.rej, status: 'Completed',
+          sales_order: inward.sales_order_ref || '', quantity: so?.quantity || maxQ, start_date: fgDate, due_date: fgDate,
+          priority: 'Normal', drawing_revision: '0', description: '',
+          created_at: fgDate + 'T00:00:00Z',
+        };
+        const woErr = await supabase.from('cnc_work_orders').insert([base]);
+        if (woErr.error) {
+          const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String(woErr.error.message || ''));
+          if (m && (m[1] === 'rejected')) {
+            // Cloud schema predates the rejected column: retry without it so the
+            // good quantity still moves; rejection traceability is skipped.
+            const c = { ...base };
+            delete c.rejected;
+            const retry = await supabase.from('cnc_work_orders').insert([c]);
+            if (retry.error) throw retry.error;
+          } else {
+            throw woErr.error;
+          }
+        }
+        return parts.id;
+      };
+      const doneLines: string[] = [];
+      for (let pi = 0; pi < selectedProds.length; pi++) {
+        const pr = selectedProds[pi];
+        const fq = finishedOf(pr);
+        if (!(fq > 0)) continue;
+        const prRej = pi === 0 ? rejNum : 0;
+        const woNo = `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        const woId = crypto.randomUUID();
+        await insertWO({ id: woId, woNo, name: pr.name, partNo: pr.partNumber, good: fq, rej: prRej });
+        // 3) Batch traceability (best-effort until the batches migration lands).
+        await recordProductionBatch({
+          salesOrderId: so?.id != null ? String(so.id) : null,
+          salesOrderNo: inward.sales_order_ref || so?.order_no || null,
+          workOrderId: woId, woNo,
+          productName: pr.name,
+          partNo: pr.partNumber || code || null,
+          batchNo: woNo,
+          grossQty: fq + prRej, goodQty: fq, rejectedQty: prRej,
+          rejectionType: prRej > 0 ? rejType : null,
+          rejectionReason: prRej > 0 ? rejReason.trim() : null,
+          notes: (pi === 0 ? rejNotes.trim() : '') || null,
+          createdBy: userName || null,
+          idempotencyKey: `${batchKeyRef.current}-${pi}`,
+        });
+        doneLines.push(`${pr.name}: ${fq} good${prRej > 0 ? `, ${prRej} rejected` : ''}`);
+      }
+      // 4) Mark only fulfilled product lines Processed (a line is fulfilled
+      // when its matched inward qty is finished); the card stays open until
+      // every line is done. Order-level fulfillment keeps old messaging.
+      const processedIds = selectedProds
+        .filter((pr) => (pr as any).ids.length > 0 && (pr as any).inwardQty > 0 && finishedOf(pr) >= (pr as any).inwardQty - 1e-9)
+        .flatMap((pr) => (pr as any).ids)
+        .filter(Boolean);
+      if (processedIds.length > 0) {
+        const inwRes = await supabase.from('cnc_inwards').update({ status: 'Processed' }).in('id', processedIds);
         if (inwRes.error) console.error('Failed to update inward status:', inwRes.error);
+      }
+      const fulfilled = !so || !(orderedQty > 0) || totalGoodAfter >= orderedQty;
+      if (!fulfilled) {
+        alert(`Saved — ${doneLines.join(' · ')}. Total good ${totalGoodAfter} of ${orderedQty}; remaining ${orderedQty - totalGoodAfter}. The inward card stays open for the next batch.`);
       }
       onMoved();
       onClose();
@@ -471,25 +832,72 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Inward No.</p><p className="font-mono font-bold">{inward.inward_no ?? '—'}</p></div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Sales Order No.</p><p className="font-mono font-semibold">{so?.order_no ?? inward.sales_order_ref ?? '—'}</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{productName || '—'}</p></div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Product Code (drives BOM lookup)</p>
-                <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter product code..." className={inputClass} />
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Quantity (max {maxQ})</p>
-                <input type="number" min="0" value={fgQty} onChange={(e) => setFgQty(e.target.value)} className={`${inputClass} font-semibold`} />
-              </div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{selectedProds.length > 0 ? selectedProds.map((p) => p.name).join(', ') : (productName || '—')}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Date</p>
                 <input type="date" value={fgDate} onChange={(e) => setFgDate(e.target.value)} className={inputClass} />
               </div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quotation</p><p className="font-semibold">{quote ? `${quote.quote_no} · ${inr(quote.total_value)}` : 'Not linked'}</p></div>
             </div>
           </div>
+
+          {/* 1a — products in this inward: select any, set finished qty each */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">
+              Section 1A — Sale Order Products ({selectedProds.length} of {prodRows.length} selected)
+            </h3>
+            {prodRows.length === 0 ? (
+              <p className="text-xs text-slate-400 mt-2">Loading inward products…</p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {prodRows.map((r) => {
+                  const checked = prodSel[r.key] !== undefined;
+                  const fq = checked ? Math.max(0, num(prodSel[r.key])) : 0;
+                  const rem = Math.max(0, r.qty - fq);
+                  return (
+                    <div key={r.key} className={`grid grid-cols-[auto_minmax(0,1fr)_7rem] gap-3 items-center rounded-lg border px-3 py-2 ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setProdSel((prev) => {
+                          const next = { ...prev };
+                          if (e.target.checked) next[r.key] = String((r as any).inwardQty > 0 ? (r as any).inwardQty : '');
+                          else delete next[r.key];
+                          return next;
+                        })}
+                        className="h-4 w-4 accent-orange-600"
+                        aria-label={`Select ${r.name}`}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{r.name}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {(r as any).inwardQty !== r.qty
+                            ? `Order qty: ${r.qty} · Inward: ${(r as any).inwardQty}`
+                            : `Inward qty: ${r.qty}`}
+                          {r.qty > 0 && <span className="font-semibold text-amber-700"> · Remaining: {rem}</span>}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400">How many finish?</p>
+                        <input
+                          type="number" min={0}
+                          disabled={!checked}
+                          value={checked ? (prodSel[r.key] ?? '') : ''}
+                          onChange={(e) => setProdSel((prev) => ({ ...prev, [r.key]: e.target.value }))}
+                          className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400 mt-2">
+              Each selected product gets its own Finished Goods entry + batch on approval. Costing below follows {firstProd ? <b>{firstProd.name}</b> : 'the first selected product'}.
+            </p>
+          </div>
+
+          {/* Rejection capture removed — batches record good quantity only. */}
 
           {/* comparison workspace: quotation vs project costing */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
@@ -604,6 +1012,15 @@ export function FgCostingModal({ card, onClose, onMoved }: {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Material Cost</span>
                 <span className="font-bold tabular-nums">{inr(totals.material)}</span>
               </div>
+              {goodsActuals.rows.length > 0 && !goodsLoaded && (
+                <button
+                  type="button"
+                  onClick={loadGoodsActuals}
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:text-brand-900 border border-brand-200 hover:border-brand-400 rounded-lg px-2.5 py-1.5 bg-brand-50/50"
+                >
+                  <Plus size={13} /> Load purchase actuals: {goodsActuals.rows.length} line{goodsActuals.rows.length === 1 ? '' : 's'} ({inr(goodsActuals.total)})
+                </button>
+              )}
               <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add material line</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -649,6 +1066,19 @@ export function FgCostingModal({ card, onClose, onMoved }: {
                 <div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.labour)}</span></div>
                 <div className="flex items-center justify-between border-t border-slate-200 pt-1"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Total Machine &amp; Labour Cost</span><span className="font-bold tabular-nums">{inr(totals.machineLabour)}</span></div>
               </div>
+              {serviceActuals.rows.length > 0 && (
+                <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                    Linked service purchase (actual) — {inr(serviceActuals.total)}
+                  </p>
+                  {serviceActuals.rows.slice(0, 3).map((inv: any, i: number) => (
+                    <p key={i} className="text-[11px] text-slate-600 tabular-nums">
+                      {inv.inward_no} · {inv.part_name || inv.product_name || 'Service'} · {Number(inv.quantity) || 0} pcs × {inr(Number(inv.price) || 0)}
+                    </p>
+                  ))}
+                  <p className="text-[11px] text-slate-400 mt-0.5">Recorded cost from Project Costing — reference only, the estimate above is unchanged.</p>
+                </div>
+              )}
               <div className="border border-dashed border-slate-300 rounded-lg p-2.5 mt-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Add operation line</p>
                 <div className="grid grid-cols-2 gap-2">

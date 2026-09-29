@@ -18,6 +18,11 @@ const quantity = (d: Delivery) => Number(d.dispatch_qty ?? d.quantity ?? 0);
 const orderDelivered = (records: Delivery[], orderId: string | null) => orderId
   ? records.filter(x => x.sales_order_id === orderId && !['Cancelled', 'Returned', 'Return'].includes(String(x.status))).reduce((n, x) => n + quantity(x), 0)
   : 0;
+/** Good produced for an order from live work-order rows (rejected excluded). */
+const woGoodFor = (wos: any[], orderNo: string | null) => {
+  const rows = orderNo ? wos.filter(w => String(w.sales_order || '') === String(orderNo)) : [];
+  return { hasRows: rows.length > 0, good: rows.reduce((n, w) => n + Number(w.completed || 0), 0) };
+};
 const statusFor = (d: Delivery, records: Delivery[] = [], order?: SalesOrder) => {
   if (d.status === 'Cancelled' || d.status === 'Returned' || d.status === 'Return') return 'Returned';
   const delivered = orderDelivered(records, d.sales_order_id);
@@ -31,6 +36,7 @@ export function DeliveriesPage() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<Delivery[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [invoiceLinks, setInvoiceLinks] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,15 +57,17 @@ export function DeliveriesPage() {
     setLoading(true); setError('');
     try {
       // Read the canonical table shared with the Pipeline; RLS supplies company scope.
-      const [d, so, inv] = await Promise.all([
+      const [d, so, inv, wo] = await Promise.all([
         supabase.from('cnc_deliveries').select('*').order('delivery_date', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_sales_orders').select('id,order_no,customer,customer_id,part_name,part_no,quantity,delivered,delivery_date').order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_invoices').select('id,invoice_no,delivery_id,dc_no').limit(2000),
+        supabase.from('cnc_work_orders').select('sales_order,completed,rejected').limit(5000),
       ]);
       if (d.error) throw d.error;
       if (so.error) throw so.error;
       setRecords((d.data || []) as Delivery[]);
       setOrders((so.data || []) as SalesOrder[]);
+      setWorkOrders(wo.error ? [] : (wo.data || []));
       if (!inv.error) {
         const links: Record<string, string> = {};
         for (const row of inv.data || []) {
@@ -104,6 +112,23 @@ export function DeliveriesPage() {
     setForm({ sales_order_id: '', delivery_no: '', delivery_date: todayISO(), quantity: '', delivery_address: '', vehicle_no: '', transport: '', driver_contact: '', remarks: '' });
     setFormOpen(true);
   };
+  /** Prefill = remaining order qty clamped by good-produced availability. */
+  const prefillQty = (so: SalesOrder | undefined) => {
+    if (!so) return '';
+    const sent = records.filter(r => r.sales_order_id === so.id && !['Cancelled', 'Returned', 'Return'].includes(String(r.status))).reduce((n, r) => n + quantity(r), 0);
+    const rem = Math.max(0, Number(so.quantity || 0) - sent);
+    const { hasRows, good } = woGoodFor(workOrders, so.order_no);
+    if (!hasRows) return String(rem);
+    return String(Math.max(0, Math.min(rem, good - sent)));
+  };
+  const formAvail = useMemo(() => {
+    const so = orders.find(x => x.id === form.sales_order_id);
+    if (!so) return null;
+    const sent = records.filter(r => r.sales_order_id === so.id && !['Cancelled', 'Returned', 'Return'].includes(String(r.status)) && r.id !== edit?.id).reduce((n, r) => n + quantity(r), 0);
+    const { hasRows, good } = woGoodFor(workOrders, so.order_no);
+    if (!hasRows) return null;
+    return Math.max(0, good - sent);
+  }, [orders, records, workOrders, form.sales_order_id, edit?.id]);
   const save = async () => {
     const so = orders.find(x => x.id === form.sales_order_id);
     const qty = Number(form.quantity);
@@ -111,6 +136,13 @@ export function DeliveriesPage() {
     const already = records.filter(x => x.sales_order_id === so.id && x.id !== edit?.id && !['Cancelled', 'Returned'].includes(String(x.status))).reduce((n, x) => n + quantity(x), 0);
     const remaining = Math.max(0, Number(so.quantity || 0) - already);
     if (qty > remaining) { setError(`Dispatch quantity exceeds the remaining order quantity of ${remaining}.`); return; }
+    // Good-produced cap: never dispatch more than produced good minus delivered.
+    // Orders without work-order rows (trade/stock deliveries) skip this check.
+    const { hasRows, good } = woGoodFor(workOrders, so.order_no);
+    if (hasRows) {
+      const avail = Math.max(0, good - already);
+      if (qty > avail) { setError(`Only ${avail} good finished goods are produced for this order (${good} good minus ${already} delivered). Rejected quantity can never be dispatched.`); return; }
+    }
     // Where the finished part is in the item master, reject dispatches that exceed current FG stock.
     if (so.part_no) {
       const { data: part, error: partError } = await supabase.from('cnc_parts').select('id,stock_qty').eq('part_no', so.part_no).maybeSingle();
@@ -196,7 +228,7 @@ export function DeliveriesPage() {
       {selected && <div className="grid grid-cols-2 gap-3 text-sm">{[['Customer',selected.customer_name],['Sales Order',selected.sales_order_no],['Part',selected.part_name],['Quantity',quantity(selected)],['Date',formatDate(selected.delivery_date)],['Address',selected.delivery_address],['Vehicle',selected.vehicle_no],['Transport',selected.transport],['Invoice',invoiceLinks[selected.id] || invoiceLinks[`dc:${selected.delivery_no}`] || 'Not Created'],['Remarks',selected.remarks]].map(([k,v])=><div key={String(k)} className="border-b py-2"><div className="text-xs text-slate-500">{k}</div><div>{v || '—'}</div></div>)}</div>}
     </Modal>
     <Modal open={formOpen} onClose={() => setFormOpen(false)} title={edit ? 'Edit Delivery Challan' : 'New Delivery Challan'} subtitle="Saves to cnc_deliveries, the same records used by the Sales Pipeline." size="lg" footer={<><Button variant="secondary" onClick={() => setFormOpen(false)}>Cancel</Button><Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : edit ? 'Save Changes' : 'Create Challan'}</Button></>}>
-      <div className="grid grid-cols-2 gap-3"><FormField label="Sales Order" required><select className={inputClass} value={form.sales_order_id} disabled={!!edit} onChange={e => { const so=orders.find(x=>x.id===e.target.value); setForm({...form,sales_order_id:e.target.value,delivery_no:form.delivery_no || `DLV-${todayISO().replace(/-/g,'')}-${crypto.randomUUID().slice(0,6).toUpperCase()}`,quantity:so?String(Math.max(0,Number(so.quantity||0)-records.filter(r=>r.sales_order_id===so.id&&!['Cancelled','Returned'].includes(String(r.status))).reduce((n,r)=>n+quantity(r),0))):''}); }}><option value="">Choose Sales Order</option>{orders.map(o=><option key={o.id} value={o.id}>{o.order_no} · {o.customer} · {o.part_name}</option>)}</select></FormField><FormField label="DC No" required><input className={inputClass} value={form.delivery_no} onChange={e=>setForm({...form,delivery_no:e.target.value})}/></FormField><FormField label="Date"><input type="date" className={inputClass} value={form.delivery_date} onChange={e=>setForm({...form,delivery_date:e.target.value})}/></FormField><FormField label="Dispatch Qty" required><input type="number" min="0" className={inputClass} value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/></FormField><FormField label="Delivery Address"><input className={inputClass} value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})}/></FormField><FormField label="Vehicle"><input className={inputClass} value={form.vehicle_no} onChange={e=>setForm({...form,vehicle_no:e.target.value})}/></FormField><FormField label="Transport"><input className={inputClass} value={form.transport} onChange={e=>setForm({...form,transport:e.target.value})}/></FormField><FormField label="Driver Contact"><input className={inputClass} value={form.driver_contact} onChange={e=>setForm({...form,driver_contact:e.target.value})}/></FormField><div className="col-span-2"><FormField label="Remarks"><input className={inputClass} value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})}/></FormField></div></div>
+      <div className="grid grid-cols-2 gap-3"><FormField label="Sales Order" required><select className={inputClass} value={form.sales_order_id} disabled={!!edit} onChange={e => { const so=orders.find(x=>x.id===e.target.value); setForm({...form,sales_order_id:e.target.value,delivery_no:form.delivery_no || `DLV-${todayISO().replace(/-/g,'')}-${crypto.randomUUID().slice(0,6).toUpperCase()}`,quantity:prefillQty(so)}); }}><option value="">Choose Sales Order</option>{orders.map(o=><option key={o.id} value={o.id}>{o.order_no} · {o.customer} · {o.part_name}</option>)}</select></FormField><FormField label="DC No" required><input className={inputClass} value={form.delivery_no} onChange={e=>setForm({...form,delivery_no:e.target.value})}/></FormField><FormField label="Date"><input type="date" className={inputClass} value={form.delivery_date} onChange={e=>setForm({...form,delivery_date:e.target.value})}/></FormField><FormField label="Dispatch Qty" required><input type="number" min="0" className={inputClass} value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/>{formAvail != null && <p className="text-[11px] font-semibold text-violet-700 mt-1">Available for Delivery: {formAvail} pcs (good produced minus delivered)</p>}</FormField><FormField label="Delivery Address"><input className={inputClass} value={form.delivery_address} onChange={e=>setForm({...form,delivery_address:e.target.value})}/></FormField><FormField label="Vehicle"><input className={inputClass} value={form.vehicle_no} onChange={e=>setForm({...form,vehicle_no:e.target.value})}/></FormField><FormField label="Transport"><input className={inputClass} value={form.transport} onChange={e=>setForm({...form,transport:e.target.value})}/></FormField><FormField label="Driver Contact"><input className={inputClass} value={form.driver_contact} onChange={e=>setForm({...form,driver_contact:e.target.value})}/></FormField><div className="col-span-2"><FormField label="Remarks"><input className={inputClass} value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})}/></FormField></div></div>
     </Modal>
   </div>;
 }

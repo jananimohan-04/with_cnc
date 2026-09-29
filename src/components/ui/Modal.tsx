@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { GripVertical, X } from 'lucide-react';
+
+// Light scrim only: the page behind stays clearly visible (never blurred).
+const SCRIM = 'bg-[rgba(15,23,42,0.12)]';
 
 export function Modal({
   open,
@@ -10,6 +13,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  draggable = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -18,7 +22,19 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full';
+  /** Header drag handle. Disable only for flows that must stay centered. */
+  draggable?: boolean;
 }) {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  // Every open starts centered; the position is kept until close.
+  useEffect(() => {
+    if (open) setPos({ x: 0, y: 0 });
+  }, [open ]);
+
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -40,33 +56,85 @@ export function Modal({
     full: 'max-w-[95vw]',
   };
 
+  // Clamp the center so at least a grabbable portion always stays on screen.
+  const clamp = (x: number, y: number) => {
+    const el = boxRef.current;
+    const w = el?.offsetWidth ?? 600;
+    const h = el?.offsetHeight ?? 400;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    return {
+      x: Math.min(Math.max(x, 140 - w / 2 - vw / 2), vw / 2 - 120 + w / 2),
+      y: Math.min(Math.max(y, 56 - h / 2 - vh / 2), vh / 2 - 64 + h / 2),
+    };
+  };
+
+  const onHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (!draggable) return;
+    // Never start a drag from a control inside the header (e.g. the X).
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y };
+    setDragging(true);
+  };
+  const onHeaderPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setPos(clamp(d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy));
+  };
+  const endDrag = () => {
+    dragRef.current = null;
+    setDragging(false);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50">
+      <div className={`absolute inset-0 ${SCRIM}`} onClick={onClose} />
       <div
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
-      <div
-        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size] ?? sizes.md} max-h-[90vh] flex flex-col animate-scale-in`}
+        ref={boxRef}
+        className="absolute w-full"
+        style={{
+          left: `calc(50% + ${pos.x}px)`,
+          top: `calc(50% + ${pos.y}px)`,
+          transform: 'translate(-50%, -50%)',
+          maxWidth: 'calc(100vw - 2rem)',
+        }}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <div>
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{title}</h2>
-            {subtitle && <p className="text-xs font-medium text-slate-500 mt-0.5">{subtitle}</p>}
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded border border-transparent hover:border-slate-200 hover:bg-white text-slate-500 transition-colors shadow-sm"
+        <div
+          className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size] ?? sizes.md} max-h-[90vh] flex flex-col animate-scale-in border border-slate-200`}
+        >
+          <div
+            className={`flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl select-none ${
+              draggable ? 'touch-none' : ''
+            } ${draggable ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+            onPointerDown={onHeaderPointerDown}
+            onPointerMove={onHeaderPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            title={draggable ? 'Drag to move' : undefined}
           >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30">{children}</div>
-        {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
-            {footer}
+            <div className="flex items-center gap-2 min-w-0">
+              {draggable && <GripVertical size={15} className="shrink-0 text-slate-300" />}
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider truncate">{title}</h2>
+                {subtitle && <p className="text-xs font-medium text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="w-8 h-8 flex items-center justify-center rounded border border-transparent hover:border-slate-200 hover:bg-white text-slate-500 transition-colors shadow-sm shrink-0"
+            >
+              <X size={16} />
+            </button>
           </div>
-        )}
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30">{children}</div>
+          {footer && (
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+              {footer}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -101,10 +169,7 @@ export function ConfirmDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
+      <div className={`absolute inset-0 ${SCRIM}`} onClick={onClose} />
       <div className="relative bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 animate-scale-in">
         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{title}</h2>
         <p className="text-sm font-medium text-slate-500 mt-2">{message}</p>

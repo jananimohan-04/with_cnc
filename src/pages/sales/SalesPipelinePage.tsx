@@ -3,8 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw, Copy } from 'lucide-react';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
@@ -19,6 +20,8 @@ import { DcInvoiceModal } from './DcInvoiceModal';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
+import { summarizeSalesOrder, fetchOrderQty, recordProductionBatch, REJECTION_TYPES, type OrderQtySummary } from '@/lib/orderQuantities';
+import { QtyProgress, QtySummaryGrid, QtyBreakdown } from '@/components/ui/QuantitySummary';
 
 export type Stage = 'Enquiry' | 'Quotation' | 'Sales Order' | 'Inward' | 'Finished Goods' | 'DC' | 'Invoice';
 
@@ -123,6 +126,8 @@ export interface KanbanCard {
   date: string;
   status?: string;
   raw: any;
+  /** Order quantity reconciliation (live rows) for order/FG/DC/invoice cards. */
+  qtyTrack?: OrderQtySummary | null;
 };
 
 const formatINR = (value: number) => {
@@ -166,6 +171,107 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
   </div>
 );
 
+/** Quantity Tracking section (detail view): summary + reconciliation +
+ *  record-rejected entry. Rejections save as traceable batch rows (good
+ *  quantity untouched) and the summary refreshes from live rows. */
+function QtyTrackingSection({ q, userName, onSaved }: {
+  q: OrderQtySummary; userName: string; onSaved: (q: OrderQtySummary) => void;
+}) {
+  const [rejQty, setRejQty] = useState('');
+  const [rejProduct, setRejProduct] = useState('');
+  const [rejType, setRejType] = useState('');
+  const [rejReason, setRejReason] = useState('');
+  const [rejNotes, setRejNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const saveRejection = async () => {
+    if (!rejProduct) { setMsg('Select the product first.'); return; }
+    const n = Number(rejQty);
+    if (!Number.isFinite(n) || n <= 0) { setMsg('Enter how many were rejected (more than 0).'); return; }
+    if (!rejType) { setMsg('Select a rejection type.'); return; }
+    if (!rejReason.trim()) { setMsg('Enter a rejection reason.'); return; }
+    if (saving) return;
+    setSaving(true);
+    setMsg('');
+    try {
+      const res = await recordProductionBatch({
+        salesOrderId: q.soId,
+        salesOrderNo: q.soNo || null,
+        productName: rejProduct || null,
+        batchNo: `REJ-${Date.now().toString().slice(-6)}`,
+        grossQty: n,
+        goodQty: 0,
+        rejectedQty: n,
+        reworkQty: 0,
+        rejectionType: rejType,
+        rejectionReason: rejReason.trim(),
+        notes: rejNotes.trim() || null,
+        createdBy: userName || null,
+        idempotencyKey: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `rej-${Date.now()}`,
+      });
+      if ((res as any)?.pendingMigration) {
+        setMsg('Batch storage is not provisioned — apply the production-batches migration first.');
+        return;
+      }
+      if (!(res as any)?.saved) { setMsg('Unable to record rejection. Nothing was saved.'); return; }
+      const { summary } = await fetchOrderQty(q.soId, q.soNo);
+      if (summary) onSaved(summary);
+      setRejQty(''); setRejProduct(''); setRejType(''); setRejReason(''); setRejNotes('');
+      setMsg(`Recorded ${n} rejected${rejProduct ? ` for ${rejProduct}` : ''}.`);
+    } catch (e: any) {
+      setMsg('Unable to record rejection: ' + (e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 px-4 py-3 mb-4">
+      <h4 className="font-bold text-sm text-violet-900 uppercase mb-2">Quantity Tracking</h4>
+      <QtySummaryGrid q={q} />
+      <div className="mt-2"><QtyProgress q={q} /></div>
+      <details className="mt-2">
+        <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
+        <div className="mt-2"><QtyBreakdown q={q} /></div>
+      </details>
+      <div className="mt-3 rounded-xl border border-rose-200 bg-white p-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">Record rejected quantity</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+          <FormField label="In which product? *">
+            <select className={inputClass} value={rejProduct} onChange={(e) => setRejProduct(e.target.value)}>
+              <option value="">Select product…</option>
+              {((q.products ?? []).some((p) => p.ordered > 0) ? (q.products ?? []).filter((p) => p.ordered > 0) : (q.products ?? [])).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+            </select>
+          </FormField>
+          <FormField label="How many rejected? *">
+            <input type="number" min={0} className={inputClass} value={rejQty} onChange={(e) => setRejQty(e.target.value)} placeholder="0" />
+          </FormField>
+          <FormField label="Rejection Type *">
+            <select className={inputClass} value={rejType} onChange={(e) => setRejType(e.target.value)}>
+              <option value="">Select…</option>
+              {REJECTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <div className="col-span-2 md:col-span-2">
+            <FormField label="Rejection Reason *">
+              <input className={inputClass} value={rejReason} onChange={(e) => setRejReason(e.target.value)} placeholder="e.g. Oversize by 0.05mm" />
+            </FormField>
+          </div>
+          <FormField label="Notes">
+            <input className={inputClass} value={rejNotes} onChange={(e) => setRejNotes(e.target.value)} placeholder="Optional" />
+          </FormField>
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <Button size="sm" disabled={saving} onClick={() => void saveRejection()}>{saving ? 'Saving…' : 'Save Rejection'}</Button>
+          {msg && <span className="text-xs text-slate-600">{msg}</span>}
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched — rejected stays traceable and never enters stock, DCs or invoices.</p>
+      </div>
+    </div>
+  );
+}
+
 export function SalesPipelinePage() {
   const { profile, company } = useAuth();
   const userName = profile?.full_name || '';
@@ -180,6 +286,8 @@ export function SalesPipelinePage() {
   const [customerFilter, setCustomerFilter] = useState<string>('All Customers');
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
+  // Original enquiry number when the form was opened via Duplicate.
+  const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
   const [quotationModalTarget, setQuotationModalTarget] = useState<KanbanCard | null>(null);
   
   const [inwardModalTarget, setInwardModalTarget] = useState<KanbanCard | null>(null);
@@ -953,9 +1061,12 @@ export function SalesPipelinePage() {
 
     if (inwards && !inwardErr) {
       // Same unique number = one card (like history): group sibling inward rows.
+      // Strip the order-time stamp suffix (e.g. 1010-28Sep26-0994PM -> 1010) so
+      // repeat inwards for the same company + unique number land on one card.
+      const baseUniqueNo = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
       const groups = new Map<string, any[]>();
       inwards.forEach(i => {
-        const key = orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id;
+        const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(i);
       });
@@ -985,8 +1096,37 @@ export function SalesPipelinePage() {
     if (invErr) console.error("Error fetching invoices:", invErr);
     else if (invs && invs.length > 0) invoicesData = invs;
     if (fgs) {
+      // Same sales order = one card (like inward): group sibling FG rows so a
+      // multi-product approval shows once with a per-product breakdown.
+      const fgGroups = new Map<string, any[]>();
       fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
-         newCards.push({ id: w.id, stage: 'Finished Goods', type: 'finished_goods', refNo: orderMap.get(w.sales_order) || w.sales_order || w.wo_no || `WO-${w.id.substring(0,4)}`, customer: w.customer, part: w.part_name, qty: w.completed, value: 0, date: w.created_at ? w.created_at.split('T')[0] : '', status: w.status, raw: w });
+        const key = orderMap.get(w.sales_order) || w.sales_order || w.wo_no || `WO-${w.id.substring(0, 4)}`;
+        if (!fgGroups.has(key)) fgGroups.set(key, []);
+        fgGroups.get(key)!.push(w);
+      });
+      fgGroups.forEach((list, key) => {
+        const first = list[0];
+        const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
+        // Per-product order quantities (for remaining = ordered − finished).
+        const soRow = (allOrders || []).find((o: any) => String(o.order_no ?? '') !== '' && (String(o.order_no) === String(first.sales_order ?? '') || String(o.lead_no ?? '') === String(key)));
+        let itemQty: Record<string, number> = {};
+        try {
+          const rawItems = (soRow as any)?.items;
+          const parsed = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+          if (Array.isArray(parsed)) parsed.forEach((it: any) => {
+            const n = String(it.partName || it.productName || it.part_name || '').trim().toLowerCase();
+            if (n) itemQty[n] = (itemQty[n] || 0) + (Number(it.quantity ?? it.qty) || 0);
+          });
+        } catch { /* per-product remaining unavailable */ }
+        newCards.push({
+          id: `fg_${first.id}`, stage: 'Finished Goods', type: 'finished_goods',
+          refNo: key, customer: first.customer,
+          part: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : ''),
+          qty: list.reduce((s, x) => s + (Number(x.completed) || 0), 0), value: 0,
+          date: list.map(x => x.created_at).filter(Boolean).sort().reverse()[0]?.split('T')[0] || '',
+          status: first.status,
+          raw: list.length > 1 ? { ...first, _groupIds: list.map(x => x.id), _groupCount: list.length, _groupRows: list, _itemQty: itemQty } : { ...first, _itemQty: itemQty },
+        });
       });
     }
 
@@ -1002,6 +1142,89 @@ export function SalesPipelinePage() {
          const ref = inv.invoice_no || orderMap.get(inv.sales_order_no) || (inv.dc_no && dcMap.get(inv.dc_no)) || `INV-${inv.id.substring(0,4)}`;
          newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: ref, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
+    }
+
+    // ---- Order quantity reconciliation (single source of truth) ----
+    // Summaries reconcile live rows: WO completed/rejected per sales order,
+    // active deliveries, billable invoices and production batches. Rejected
+    // quantity is visible for traceability, never as stock or billable qty.
+    // Guarded: quantity extras must never blank the board on unexpected data.
+    try {
+    let batchesData: any[] = [];
+    try {
+      const { data: bq, error: bqErr } = await supabase.from('cnc_production_batches').select('*').limit(5000);
+      if (!bqErr && bq) batchesData = bq;
+    } catch { /* per-batch traceability unavailable; WO rows still reconcile */ }
+    const qtyBySoNo = new Map<string, OrderQtySummary>();
+    const qtyBySoId = new Map<string, OrderQtySummary>();
+    (allOrders || []).forEach((o: any) => {
+      const q = summarizeSalesOrder(o, fgs || [], effectiveDcs, invoicesData || [], batchesData);
+      if (o.order_no) qtyBySoNo.set(String(o.order_no), q);
+      if (o.id != null) qtyBySoId.set(String(o.id), q);
+    });
+    const qtyForDelivery = (d: any): OrderQtySummary | null => {
+      if (d?.sales_order_id != null && qtyBySoId.has(String(d.sales_order_id))) return qtyBySoId.get(String(d.sales_order_id))!;
+      if (d?.sales_order_no && qtyBySoNo.has(String(d.sales_order_no))) return qtyBySoNo.get(String(d.sales_order_no))!;
+      return null;
+    };
+    const qtyForInvoice = (inv: any): OrderQtySummary | null => {
+      if (inv?.sales_order_id != null && qtyBySoId.has(String(inv.sales_order_id))) return qtyBySoId.get(String(inv.sales_order_id))!;
+      const dc = (effectiveDcs || []).find((dd: any) =>
+        (inv?.delivery_id != null && String(dd.id) === String(inv.delivery_id)) ||
+        (inv?.dc_no && String(dd.delivery_no) === String(inv.dc_no)));
+      if (dc) return qtyForDelivery(dc);
+      return null;
+    };
+    for (const c of newCards) {
+      if (c.type === 'order' && c.raw?.order_no && qtyBySoNo.has(String(c.raw.order_no))) {
+        c.qtyTrack = qtyBySoNo.get(String(c.raw.order_no))!;
+      } else if (c.type === 'finished_goods' && c.raw?.sales_order) {
+        c.qtyTrack = qtyBySoNo.get(String(c.raw.sales_order)) ?? null;
+      } else if (c.type === 'dc') {
+        c.qtyTrack = qtyForDelivery(c.raw);
+      } else if (c.type === 'invoice') {
+        c.qtyTrack = qtyForInvoice(c.raw);
+      } else if (c.type === 'inward') {
+        // Resolve the sales order (by ref, else by base unique number) so the
+        // card uses the centralized reconciliation, not a parallel calculation.
+        const rows = Array.isArray(c.raw?._groupIds) && c.raw._groupIds.length
+          ? (inwards || []).filter((x: any) => c.raw._groupIds.includes(x.id))
+          : [c.raw];
+        const ref = String(rows.map((r: any) => r?.sales_order_ref).find(Boolean) ?? '');
+        let hit: OrderQtySummary | null = ref && qtyBySoNo.has(ref) ? qtyBySoNo.get(ref)! : null;
+        if (!hit) {
+          const base = baseUniqueNo(rows[0]?.project_name || '');
+          const o = base !== '' ? (allOrders || []).find((x: any) => baseUniqueNo(x.lead_no || '') === base) : null;
+          if (o) hit = (o.order_no && qtyBySoNo.get(String(o.order_no))) || (o.id != null && qtyBySoId.get(String(o.id))) || null;
+        }
+        c.qtyTrack = hit;
+        // Per-product inward remaining: received per part vs finished (work
+        // orders scoped to the same base unique number).
+        const bases = new Set([baseUniqueNo(c.refNo)]);
+        const fin = new Map<string, number>();
+        for (const w of (fgs || [])) {
+          const rawKey = orderMap.get(w.sales_order) || w.sales_order || '';
+          const b = rawKey ? baseUniqueNo(rawKey) : '';
+          if (b !== '' && !bases.has(b)) continue;
+          const n = String(w.part_name ?? '').trim().toLowerCase();
+          if (!n) continue;
+          fin.set(n, (fin.get(n) ?? 0) + (Number(w.completed) || 0));
+        }
+        const byName = new Map<string, { name: string; recv: number }>();
+        rows.forEach((x: any) => {
+          const n = String(x?.part_name || x?.product_name || '').trim() || '—';
+          const e = byName.get(n.toLowerCase()) ?? { name: n, recv: 0 };
+          e.recv += Number(x?.quantity) || 0;
+          byName.set(n.toLowerCase(), e);
+        });
+        c.raw._inwardProd = [...byName.values()].map((e) => {
+          const done = fin.get(e.name.toLowerCase()) ?? 0;
+          return { name: e.name, recv: e.recv, done, left: Math.max(0, e.recv - done) };
+        });
+      }
+    }
+    } catch (e) {
+      console.error('Quantity reconciliation failed; showing cards without quantity extras:', e);
     }
 
     try {
@@ -1311,6 +1534,12 @@ export function SalesPipelinePage() {
         aggregated.enquiry = card.raw;
       } else if (card.type === 'finished_goods') {
         aggregated.finished_goods = card.raw;
+        if (card.raw.sales_order) {
+          try {
+            const { data: ord } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', card.raw.sales_order).maybeSingle();
+            if (ord) aggregated.order = ord;
+          } catch { /* order linkage stays empty */ }
+        }
       } else if (card.type === 'dc') {
         aggregated.dc = card.raw;
         // Optionally try to fetch order if we had a sales order id
@@ -1373,6 +1602,16 @@ export function SalesPipelinePage() {
     }
     if (aggregated.enquiry) parseItems(aggregated.enquiry, 'enquiring_for');
       if (aggregated.quotation) parseItems(aggregated.quotation, 'description');
+      // Quantity tracking: one reconciliation (good / rejected / remaining /
+      // FG available / delivered / invoiced) shared by every stage view.
+      try {
+        const soRef = String(aggregated.order?.order_no || '');
+        const soId = aggregated.order?.id != null ? String(aggregated.order.id) : null;
+        if (soRef || soId) {
+          const { summary } = await fetchOrderQty(soId, soRef);
+          if (summary) (aggregated as any).qtyTracking = summary;
+        }
+      } catch { /* details stay backward-compatible */ }
       setViewModalData(aggregated);
     
     // Load mock images for all records in the pipeline history
@@ -1553,10 +1792,16 @@ export function SalesPipelinePage() {
       // leaves the card (and the database) exactly where it was.
       setCostingModalTarget(card);
     } else if (card.type === 'finished_goods' && toStage === 'DC') {
+      // Prefill with the deliverable quantity: never more than the good FG
+      // available for the order (good completed minus already delivered).
+      // Re-validated against live rows on save.
+      const avail = card.qtyTrack ? Math.max(0, card.qtyTrack.fgAvailable) : null;
+      const wanted = Number(card.qty) || 0;
       setDcForm({
          dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
          date: new Date().toISOString().split('T')[0], partyName: card.customer,
-         partName: card.part, quantity: card.qty?.toString() || '0', price: '',
+         partName: card.part, quantity: String(avail == null ? (card.qty?.toString() || '0') : Math.min(wanted, avail)),
+         availableQty: avail, price: '',
          poNumber: card.raw.sales_order || card.raw.wo_no || '', vehicleNo: '', ewayBill: ''
       });
       setDcModalTarget(card);
@@ -1574,6 +1819,53 @@ export function SalesPipelinePage() {
     } catch(err: any) {
       alert("Runtime Error in handleDrop: " + err.message);
     }
+  };
+
+  // Duplicate = new enquiry using the old one as a template (new number,
+  // new record, New status). Only enquiry-level fields are copied; nothing
+  // downstream (quotations, orders, production, DCs, invoices) is touched.
+  // Attachment paths are referenced (never moved/deleted); new uploads merge
+  // on save through the existing saveEnquiry flow.
+  const duplicateEnquiry = (card: KanbanCard) => {
+    const raw = card.raw ?? {};
+    let parsed: any[] = [];
+    try {
+      const ef = raw.enquiring_for;
+      const p = typeof ef === 'string' ? JSON.parse(ef) : ef;
+      if (Array.isArray(p)) parsed = p;
+    } catch { /* fall back to part_name below */ }
+    const mapped = parsed
+      .map((it: any) => ({
+        productName: String(it.productName || it.partName || it.part_name || '').trim(),
+        partName: String(it.productName || it.partName || it.part_name || '').trim(),
+        quantity: it.quantity ?? it.qty ?? '',
+        remarks: it.remarks || '',
+        filePaths: Array.isArray(it.filePaths) ? [...it.filePaths] : [],
+        files: [] as File[],
+      }))
+      .filter((it: any) => it.productName);
+    if (mapped.length === 0 && String(raw.part_name || '').trim()) {
+      mapped.push({
+        productName: String(raw.part_name).trim(),
+        partName: String(raw.part_name).trim(),
+        quantity: raw.quantity ?? '',
+        remarks: '',
+        filePaths: [],
+        files: [] as File[],
+      });
+    }
+    setEnquiryForm({
+      ...resetEnquiryForm(),
+      company: raw.customer || '',
+      expectedDate: raw.expected_date || '',
+      source: raw.source || 'Direct',
+      estimatedValue: raw.estimated_value ?? '',
+      receivedDate: new Date().toISOString().split('T')[0],
+      contacts: [{ person: raw.contact_person || '', phone: raw.phone || '', email: raw.email || '' }],
+      items: mapped.length ? mapped : [{ productName: '', quantity: '', files: [] as File[] }],
+    });
+    setDuplicateSource(raw.lead_no || raw.enquiry_no || card.refNo || '');
+    setEnquiryModalOpen(true);
   };
 
   const saveEnquiry = async () => {
@@ -1618,6 +1910,7 @@ export function SalesPipelinePage() {
       if (!error) { 
         setEnquiryModalOpen(false); 
         setEnquiryForm(resetEnquiryForm()); 
+        setDuplicateSource(null);
         fetchPipeline(); 
       } else { 
         alert("Error saving enquiry: " + error.message); 
@@ -1923,6 +2216,26 @@ export function SalesPipelinePage() {
       if (soErr) console.error("Failed to look up sales order:", soErr);
       so = soRow;
     }
+    // Authoritative DC cap: deliverable = good completed minus delivered.
+    // Enforced only when production rows exist for the order (deliveries
+    // without work orders keep the previous behaviour).
+    let availNow: number | null = null;
+    let goodTotal = 0;
+    let deliveredTotal = 0;
+    if (so) {
+      try {
+        const { summary } = await fetchOrderQty(String(so.id), soNo);
+        if (summary && summary.hasProduction) {
+          availNow = summary.fgAvailable;
+          goodTotal = summary.good;
+          deliveredTotal = summary.delivered;
+          if (q > availNow) {
+            alert(`Only ${availNow} pcs are available for delivery (good completed ${goodTotal} minus already delivered ${deliveredTotal}). Rejected quantity can never be dispatched.`);
+            return;
+          }
+        }
+      } catch (e) { console.error('Delivery availability check failed:', e); }
+    }
     // Near-duplicate guard: same order + product + qty + date within minutes.
     if (soNo) {
       try {
@@ -1965,8 +2278,16 @@ export function SalesPipelinePage() {
     }]);
     if (!error) {
        if (fromWorkOrder) {
-         const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).eq('id', dcModalTarget.raw.id);
-         if (woErr) console.error("Failed to update work order status:", woErr);
+         // Partial DCs leave the batch open; only a fulfilling dispatch marks
+         // it Dispatched. Orders without production rows keep old behaviour.
+         // Grouped FG cards mark every row in the group.
+         const fulfilled = availNow == null || (goodTotal > 0 && deliveredTotal + q >= goodTotal);
+         if (fulfilled) {
+           const woIds = Array.isArray((dcModalTarget.raw as any)?._groupIds) && (dcModalTarget.raw as any)._groupIds.length
+             ? (dcModalTarget.raw as any)._groupIds : [dcModalTarget.raw.id];
+           const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).in('id', woIds.filter(Boolean));
+           if (woErr) console.error("Failed to update work order status:", woErr);
+         }
        }
        if (so) {
          const delivered = (Number(so.delivered) || 0) + q;
@@ -2495,6 +2816,122 @@ export function SalesPipelinePage() {
                           </div>
                         </div>
                       </div>
+                      {card.type === 'order' && card.qtyTrack && (
+                        <div className="mt-1.5 space-y-1">
+                          <QtyProgress q={card.qtyTrack} />
+                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                            Ord {card.qtyTrack.ordered} · Good {card.qtyTrack.good} · Rej {card.qtyTrack.rejected} · Rem {card.qtyTrack.remaining} · Del {card.qtyTrack.delivered} · Inv {card.qtyTrack.invoiced}
+                          </p>
+                        </div>
+                      )}
+                      {card.type === 'finished_goods' && card.qtyTrack && (card.qtyTrack.products ?? []).length > 0 ? (
+                        <div className="mt-1.5 space-y-1">
+                          <div className="rounded-lg bg-emerald-600 px-2 py-1 text-center">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-50">Finished / Available</p>
+                            <p className="text-sm font-extrabold tabular-nums text-white leading-tight">{card.qtyTrack.fgAvailable} pcs</p>
+                          </div>
+                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                            Order {card.qtyTrack.ordered} · Finished {card.qtyTrack.good} · Remaining {card.qtyTrack.remaining} · Delivered {card.qtyTrack.delivered} · Avail {card.qtyTrack.fgAvailable}
+                          </p>
+                          {card.qtyTrack.products.slice(0, 3).map((p) => (
+                            <div key={p.name} className="rounded-md border border-slate-200 bg-white/70 px-1.5 py-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[10px] font-bold text-slate-700 truncate">{p.name}</span>
+                                {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
+                              </div>
+                              <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                                Finished {p.good} / {p.ordered} · Available {p.available}
+                              </p>
+                            </div>
+                          ))}
+                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-400">+{card.qtyTrack.products.length - 3} more products</p>}
+                          <QtyProgress q={card.qtyTrack} />
+                        </div>
+                      ) : (
+                      card.type === 'finished_goods' && (() => {
+                        const rows = Array.isArray(card.raw?._groupRows) && card.raw._groupRows.length ? card.raw._groupRows : [card.raw];
+                        const g = rows.reduce((s: number, x: any) => s + (Number(x?.completed) || 0), 0);
+                        const rj = rows.reduce((s: number, x: any) => s + (Number(x?.rejected) || 0), 0);
+                        const itemQty = (card.raw?._itemQty ?? {}) as Record<string, number>;
+                        const byName = new Map<string, number>();
+                        rows.forEach((x: any) => {
+                          const n = String(x?.part_name ?? '').trim() || '—';
+                          byName.set(n, (byName.get(n) ?? 0) + (Number(x?.completed) || 0));
+                        });
+                        const lines = [...byName.entries()].map(([n, done]) => {
+                          const oq = itemQty[n.toLowerCase()];
+                          return { n, done, left: oq != null && oq > 0 ? Math.max(0, oq - done) : null };
+                        });
+                        return (
+                          <div className="mt-1.5 space-y-1">
+                            <div className="flex flex-wrap gap-1">
+                              {lines.slice(0, 3).map((l) => (
+                                <span key={l.n} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] tabular-nums">
+                                  <span className="font-semibold text-slate-700">{l.n}</span>
+                                  <b className="text-emerald-700">{l.done} done</b>
+                                  {l.left != null && <b className="text-amber-700">· {l.left} left</b>}
+                                </span>
+                              ))}
+                              {lines.length > 3 && <span className="text-[10px] text-slate-400">+{lines.length - 3} more</span>}
+                            </div>
+                            <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                              Good {g} · Rej {rj}{card.qtyTrack ? ` · Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} · Avail ${card.qtyTrack.fgAvailable}` : ''}
+                            </p>
+                          </div>
+                        );
+                      })())}
+                      {card.type === 'inward' && card.qtyTrack && (card.qtyTrack.products ?? []).length > 0 ? (
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                            Ordered {card.qtyTrack.ordered} · Finished {card.qtyTrack.good}
+                          </p>
+                          {card.qtyTrack.remaining > 0 || card.qtyTrack.ordered <= 0 ? (
+                            <div className="rounded-lg bg-amber-500 px-2 py-1 text-center">
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-amber-50">Remaining to produce</p>
+                              <p className="text-sm font-extrabold tabular-nums text-white leading-tight">{card.qtyTrack.remaining} pcs</p>
+                            </div>
+                          ) : (
+                            <div className="rounded-lg bg-emerald-600 px-2 py-1 text-center">
+                              <p className="text-[10px] font-extrabold uppercase tracking-widest text-white">Production complete</p>
+                            </div>
+                          )}
+                          {card.qtyTrack.products.slice(0, 3).map((p) => (
+                            <div key={p.name} className="rounded-md border border-slate-200 bg-white/70 px-1.5 py-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[10px] font-bold text-slate-700 truncate">{p.name}</span>
+                                {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
+                              </div>
+                              <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                                {p.good} / {p.ordered} finished · <b className="text-amber-700">Remaining {p.remaining}</b>
+                              </p>
+                            </div>
+                          ))}
+                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-400">+{card.qtyTrack.products.length - 3} more products</p>}
+                          <QtyProgress q={card.qtyTrack} />
+                        </div>
+                      ) : (
+                      card.type === 'inward' && Array.isArray(card.raw?._inwardProd) && card.raw._inwardProd.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {card.raw._inwardProd.slice(0, 3).map((l: any) => (
+                            <span key={l.name} className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] tabular-nums">
+                              <span className="font-semibold text-slate-700">{l.name}</span>
+                              <span className="text-slate-500">{l.recv} in</span>
+                              <b className="text-amber-700">· {l.left} left</b>
+                            </span>
+                          ))}
+                          {card.raw._inwardProd.length > 3 && <span className="text-[10px] text-slate-400">+{card.raw._inwardProd.length - 3} more</span>}
+                        </div>
+                      ))}
+                      {card.type === 'dc' && (
+                        <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
+                          Dispatched {card.qty}{card.qtyTrack ? ` · Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
+                        </p>
+                      )}
+                      {card.type === 'invoice' && card.qtyTrack && (
+                        <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
+                          Invoiced {card.qtyTrack.invoiced} · Invoiceable left {card.qtyTrack.invoiceable}
+                        </p>
+                      )}
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
                         <span 
                           className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-10 relative"
@@ -2510,6 +2947,11 @@ export function SalesPipelinePage() {
                           <button onClick={(e) => { e.stopPropagation(); setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
                             <Edit2 size={14} />
                           </button>
+                          {card.type === 'lead' && (
+                            <button onClick={(e) => { e.stopPropagation(); duplicateEnquiry(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="Duplicate Enquiry">
+                              <Copy size={14} />
+                            </button>
+                          )}
                           <button onClick={(e) => handleDeleteCard(e, card)} className="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
                             <Trash2 size={14} />
                           </button>
@@ -2720,8 +3162,13 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Enquiry Modal */}
-      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); }} title="New Enquiry" size="lg" footer={<><Button variant="secondary" onClick={() => setEnquiryModalOpen(false)}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
+      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry — Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
+          {duplicateSource && (
+            <div className="col-span-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
+              Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own unique number.
+            </div>
+          )}
           <div className="col-span-2 flex justify-end">
             <button type="button" onClick={() => { setEnquiryModalOpen(false); openNewLeadModal(); }} className="text-xs font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded-lg px-3 py-1.5 bg-brand-50/50 transition-colors">+ Add New Lead</button>
           </div>
@@ -2842,8 +3289,8 @@ export function SalesPipelinePage() {
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">Qty</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[20%]">Product Name</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
@@ -2861,7 +3308,7 @@ export function SalesPipelinePage() {
                         <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" value={item.partName || ''} onChange={e => updateQuoteItem(idx, 'partName', e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
-                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.quantity || ''} onChange={e => updateQuoteItem(idx, 'quantity', e.target.value)} />
+                        <input type="number" min="0" className="w-full min-w-[72px] tabular-nums text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.quantity || ''} onChange={e => updateQuoteItem(idx, 'quantity', e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
                         <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitPrice || ''} onChange={e => updateQuoteItem(idx, 'unitPrice', e.target.value)} />
@@ -2938,7 +3385,7 @@ export function SalesPipelinePage() {
         <div className="flex flex-col gap-4">
           <PipelineContextBanner stage="Inward Entry" uniqueNo={inwardForm.projectName || inwardModalTarget?.refNo} products={inwardForm.productName || inwardModalTarget?.part} customer={inwardForm.partyName || inwardModalTarget?.customer} />
           {inwardModalTarget?.id === 'dummy' && (
-          <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+          <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-100">
               <CustomerAutocomplete
                 label="Party / Customer"
                 value={inwardForm.partyName || ''}
@@ -2966,23 +3413,6 @@ export function SalesPipelinePage() {
                     .map((o: any) => o.leadNo).filter(Boolean))).map((no: any) => <option key={no} value={no}>{no}</option>)}
                 </select>
               </FormField>
-            {inwardModalTarget?.id === 'dummy' && (<>
-              <FormField label="Category" required>
-                <select className={inputClass} value={inwardForm.category} onChange={e=>setInwardForm({...inwardForm, category: e.target.value})}>
-                  <option>EXPENSES</option>
-                  <option>CUSTOMER DC</option>
-                  <option>NEW PART</option>
-                  <option>NO DC</option>
-                  <option>GOODS PURCHASE</option>
-                  <option>SERVICE PURCHASE</option>
-                </select>
-              </FormField>
-              <FormField label="Reference No."><input className={inputClass} value={inwardForm.referenceNo} onChange={e=>setInwardForm({...inwardForm, referenceNo: e.target.value})} placeholder="e.g. DC/Invoice No" /></FormField>
-              <FormField label="Inward Date" required><input type="date" className={inputClass} value={inwardForm.inwardDate} onChange={e=>setInwardForm({...inwardForm, inwardDate: e.target.value})} /></FormField>
-              <div className="col-span-3">
-                <FormField label="Remarks"><input className={inputClass} value={inwardForm.remarks} onChange={e=>setInwardForm({...inwardForm, remarks: e.target.value})} /></FormField>
-              </div>
-            </>)}
           </div>)}
           
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
@@ -2990,7 +3420,8 @@ export function SalesPipelinePage() {
             <Button variant="secondary" onClick={() => {
               const opts = inwardForm.productOptions || [];
               const m = opts.find((o: any) => o.name === inwardForm.productName) || null;
-              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: inwardForm.category, referenceNo: inwardForm.referenceNo, inwardDate: inwardForm.inwardDate, remarks: inwardForm.remarks }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '' }]});
+              const prev = (inwardForm.parts || []).slice(-1)[0] || {};
+              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0] }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '' }]});
             }}><Plus size={14}/> Add Inward</Button>
           </div>
           <div className="space-y-4">
@@ -3028,6 +3459,9 @@ export function SalesPipelinePage() {
                   </FormField>
                   <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
                   <FormField label="Inward Date" required><input type="date" className={inputClass} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
+                </div>
+                <div className="mb-3">
+                  <FormField label="Remarks"><input className={inputClass} value={group.remarks || ''} onChange={e=>setGroup({ remarks: e.target.value })} placeholder="Remarks for this inward..." /></FormField>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-1 px-1">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name *</span>
@@ -3074,11 +3508,13 @@ export function SalesPipelinePage() {
 
       {/* Finished Goods + Costing gate (Inward drag opens this, not the entry form) */}
       {costingModalTarget && (
-        <FgCostingModal
-          card={costingModalTarget}
-          onClose={() => setCostingModalTarget(null)}
-          onMoved={() => { setCostingModalTarget(null); fetchPipeline(); }}
-        />
+        <ErrorBoundary title="Finished Goods costing failed to open" onClose={() => setCostingModalTarget(null)}>
+          <FgCostingModal
+            card={costingModalTarget}
+            onClose={() => setCostingModalTarget(null)}
+            onMoved={() => { setCostingModalTarget(null); fetchPipeline(); }}
+          />
+        </ErrorBoundary>
       )}
 
       {/* Finished Goods Modal */}
@@ -3117,20 +3553,28 @@ export function SalesPipelinePage() {
             <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details</h4>
             <div className="grid grid-cols-3 gap-4">
               <FormField label="Product Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
-              <FormField label="Quantity" required><input type="number" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
+              <FormField label="Quantity" required><input type="number" min="0" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
               <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
             </div>
+            {dcForm.availableQty != null && (
+              <p className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 mt-3">
+                Available for Delivery: {Number(dcForm.availableQty).toLocaleString('en-IN')} pcs
+                <span className="font-normal text-violet-600"> (good completed minus already delivered — rejected qty can never be dispatched)</span>
+              </p>
+            )}
           </div>
         </div>
       </Modal>
 
       {/* DC → Invoice gate (approved FG price, no manual re-entry) */}
       {invoiceCostingTarget && (
-        <DcInvoiceModal
-          card={invoiceCostingTarget}
-          onClose={() => setInvoiceCostingTarget(null)}
-          onMoved={() => { setInvoiceCostingTarget(null); fetchPipeline(); }}
-        />
+        <ErrorBoundary title="Invoice entry failed to open" onClose={() => setInvoiceCostingTarget(null)}>
+          <DcInvoiceModal
+            card={invoiceCostingTarget}
+            onClose={() => setInvoiceCostingTarget(null)}
+            onMoved={() => { setInvoiceCostingTarget(null); fetchPipeline(); }}
+          />
+        </ErrorBoundary>
       )}
 
       {/* Invoice Modal */}
@@ -3288,6 +3732,13 @@ export function SalesPipelinePage() {
                 </div>
               );
             })()}
+            {viewModalData?.qtyTracking && (
+              <QtyTrackingSection
+                q={viewModalData.qtyTracking}
+                userName={userName}
+                onSaved={(summary) => setViewModalData((prev: any) => (prev ? { ...prev, qtyTracking: summary } : prev))}
+              />
+            )}
             {(() => {
               // Show the opened card's own stage details first, then the rest in pipeline order.
               const sections = [

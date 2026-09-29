@@ -116,12 +116,23 @@ export function WorkOrderDetail({
 
   const updateOp = async (op: any, patch: Record<string, any>) => {
     try {
-      const { error } = await supabase
-        .from('cnc_work_order_operations')
-        .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('id', op.id);
-      if (error) throw error;
-      onChanged();
+      // Tolerant: the rejected_qty column arrives with the production-batches
+      // migration — older databases keep working without it.
+      let remaining = { ...patch };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { error } = await supabase
+          .from('cnc_work_order_operations')
+          .update({ ...remaining, updated_at: new Date().toISOString() })
+          .eq('id', op.id);
+        if (!error) { onChanged(); return; }
+        const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String((error as any)?.message || ''));
+        if (m && Object.prototype.hasOwnProperty.call(remaining, m[1])) {
+          console.warn(`Operation update skipped missing column ${m[1]} (apply migration 20260929010000_production_batches.sql).`);
+          delete remaining[m[1]];
+          continue;
+        }
+        throw error;
+      }
     } catch (err: any) {
       alert('Failed to update operation: ' + (err?.message ?? err));
     }
@@ -279,6 +290,7 @@ export function WorkOrderDetail({
                       <span><b className="text-slate-500">Operator:</b> {op.operator || '—'}</span>
                       <span><b className="text-slate-500">Planned Qty:</b> {Number(op.planned_qty) || 0}</span>
                       <span><b className="text-slate-500">Completed Qty:</b> {Number(op.completed_qty) || 0}</span>
+                      <span><b className="text-slate-500">Rejected Qty:</b> <span className={Number(op.rejected_qty) > 0 ? 'text-rose-600 font-semibold' : ''}>{Number(op.rejected_qty) || 0}</span></span>
                       <span><b className="text-slate-500">Planned Time:</b> {plannedMinutes(op)} min</span>
                       <span><b className="text-slate-500">Actual Time:</b> {Number(op.actual_minutes) ? `${op.actual_minutes} min` : '—'}</span>
                     </div>
@@ -300,6 +312,20 @@ export function WorkOrderDetail({
                           const n = Number(e.target.value);
                           if (Number.isFinite(n) && n >= 0 && n !== Number(op.completed_qty)) {
                             updateOp(op, { completed_qty: n });
+                          }
+                        }}
+                        className="w-20 text-xs rounded border border-slate-300 bg-white px-2 py-1 focus:outline-none focus:border-brand-500"
+                      />
+                      <label className="text-[11px] text-slate-500 font-medium">Rejected Qty</label>
+                      <input
+                        type="number"
+                        min="0"
+                        defaultValue={Number(op.rejected_qty) || 0}
+                        key={`${op.id}-${op.rejected_qty}`}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n) && n >= 0 && n !== Number(op.rejected_qty)) {
+                            updateOp(op, { rejected_qty: n });
                           }
                         }}
                         className="w-20 text-xs rounded border border-slate-300 bg-white px-2 py-1 focus:outline-none focus:border-brand-500"

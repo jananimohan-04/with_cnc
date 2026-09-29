@@ -7,9 +7,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal, FormField, FormSection, inputClass } from '@/components/ui/Modal';
 import {
   ClipboardList, CalendarClock, Cog, CheckCircle,
-  Plus, Eye, Pencil, X, ChevronUp, ChevronDown, Trash2,
+  Plus, Eye, Pencil, X, ChevronUp, ChevronDown, Trash2, GitBranch,
 } from 'lucide-react';
 import { WorkOrderDetail } from './WorkOrderDetail';
+import { fetchActiveRouting } from '@/lib/partRouting';
 
 export const WO_STATUSES = ['Draft', 'Planned', 'Released', 'In Progress', 'Completed', 'On Hold', 'Cancelled'];
 // Rows created by older screens / other modules keep working (shown as-is).
@@ -68,6 +69,9 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const [opDrafts, setOpDrafts] = useState<OpDraft[]>([]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // Part Routing reference stamped on operations created from the Active
+  // revision. Existing/manual operations carry no reference and are untouched.
+  const [routingRef, setRoutingRef] = useState<{ routingId: string; revision: number | null; productCode: string } | null>(null);
 
   const [detailWO, setDetailWO] = useState<any | null>(null);
 
@@ -210,6 +214,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     setEditWO(null);
     setWoForm({ ...EMPTY_WO_FORM, startDate: new Date().toISOString().slice(0, 10) });
     setOpDrafts([]);
+    setRoutingRef(null);
     setFormErrors({});
     setShowForm(true);
   };
@@ -233,6 +238,14 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       operator: op.operator ?? '',
     }));
     setOpDrafts(existing);
+    // Preserve the routing reference when every operation still points at one revision.
+    const allOps = opsByWO[String(wo.id)] ?? [];
+    const stamped = allOps.filter((op) => op.routing_id != null);
+    const uniform = stamped.length > 0 && stamped.length === allOps.length
+      && new Set(stamped.map((op) => String(op.routing_id))).size === 1;
+    setRoutingRef(uniform
+      ? { routingId: String(stamped[0].routing_id), revision: stamped[0].routing_revision ?? null, productCode: wo.part_no ?? '' }
+      : null);
     setFormErrors({});
     setShowForm(true);
   };
@@ -284,6 +297,53 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   const removeOpDraft = (key: string) => {
     setOpDrafts((list) => list.filter((o) => o.key !== key));
+  };
+
+  // Fill operation drafts from the product's Active routing revision only.
+  // Inactive/Draft revisions are never offered; rows stay editable afterwards.
+  const loadRoutingIntoDrafts = async () => {
+    const partNo = editWO ? (editWO.part_no ?? '') : (selectedSO?.part_number || selectedSO?.part_no || '');
+    if (!String(partNo ?? '').trim()) {
+      setFormErrors((e) => ({ ...e, ops: 'Select a sales order (product) first.' }));
+      return;
+    }
+    if (processesMissing || activeProcesses.length === 0) {
+      setFormErrors((e) => ({ ...e, ops: 'Process Master is not available. Provision the cnc_processes table first.' }));
+      return;
+    }
+    const found = await fetchActiveRouting(String(partNo));
+    if (!found || found.steps.length === 0) {
+      setFormErrors((e) => ({ ...e, ops: `No Active routing for ${partNo}. Create and activate one under Production → Part Routing.` }));
+      return;
+    }
+    const mapped = found.steps.map((s: any) => {
+      const byId = processes.find((p) => String(p.id) === String(s.process_id ?? ''));
+      const byCode = !byId && s.process_code
+        ? processes.find((p) => String(p.process_code) === String(s.process_code))
+        : null;
+      const proc = byId ?? byCode;
+      return {
+        key: newOpKey(),
+        processId: proc ? String(proc.id) : '',
+        machine: s.machine ?? '',
+        plannedQty: woForm.targetQty,
+        cycleTime: String(s.cycle_time ?? ''),
+        setupTime: String(s.setup_time ?? ''),
+        operator: '',
+      };
+    });
+    const missing = mapped.filter((m) => !m.processId);
+    setOpDrafts(mapped);
+    setRoutingRef({ routingId: String(found.header.id), revision: found.header.revision ?? null, productCode: found.header.product_code ?? '' });
+    setFormErrors((e) => {
+      const next = { ...e };
+      if (missing.length > 0) {
+        next.ops = `${missing.length} routing step(s) reference processes missing from Process Master — select replacements. Only the Active routing revision was loaded.`;
+      } else {
+        delete next.ops;
+      }
+      return next;
+    });
   };
 
   const moveOpDraft = (key: string, dir: -1 | 1) => {
@@ -413,10 +473,28 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         est_cycle_time: o.cycleTime.trim() === '' ? 0 : Number(o.cycleTime),
         setup_time: o.setupTime.trim() === '' ? 0 : Number(o.setupTime),
         status: 'Pending',
+        routing_id: routingRef?.routingId ?? null,
+        routing_revision: routingRef?.revision ?? null,
       };
     });
-    const { error } = await supabase.from('cnc_work_order_operations').insert(rows);
-    if (error) throw error;
+    // Tolerant: the routing reference columns arrive with the part-routing
+    // migration — older databases save the same rows without them.
+    let pending: any[] = rows;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase.from('cnc_work_order_operations').insert(pending);
+      if (!error) return;
+      const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String((error as any)?.message || ''));
+      if (m && (m[1] === 'routing_id' || m[1] === 'routing_revision') && pending.length && Object.prototype.hasOwnProperty.call(pending[0], m[1])) {
+        pending = pending.map((r) => {
+          const c = { ...r };
+          delete c[m[1]];
+          return c;
+        });
+        continue;
+      }
+      throw error;
+    }
+    throw new Error('Failed to save operations after retries.');
   };
 
   // ---------- table ----------
@@ -721,8 +799,17 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         <FormSection title="Section 3 — Operations / Processes">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-slate-500">Select processes from Process Master. Sequence follows row order.</p>
-            <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={addOperation}>Add Operation</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" icon={<GitBranch size={14} />} onClick={() => void loadRoutingIntoDrafts()}>Load Active Routing</Button>
+              <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={addOperation}>Add Operation</Button>
+            </div>
           </div>
+          {routingRef && (
+            <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5 mb-3">
+              Operations from Part Routing {routingRef.productCode} Rev {routingRef.revision ?? '?'} (Active) — rows stay editable.
+              <button type="button" onClick={() => setRoutingRef(null)} className="ml-2 underline hover:text-violet-900">clear reference</button>
+            </p>
+          )}
           {errText('ops')}
           {opDrafts.length === 0 ? (
             <p className="text-sm text-slate-400 py-4 text-center border border-dashed border-slate-200 rounded-lg">

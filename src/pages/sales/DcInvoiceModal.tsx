@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
+import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
 import { formatINR, todayISO } from '@/lib/format';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
@@ -23,6 +24,8 @@ interface InvLine {
   itemName: string;
   productCode: string;
   qty: number;
+  /** DC quantity at load: edits may reduce but never exceed it. */
+  maxQty: number;
   unit: string;
   approvedUnit: number | null;
   sheetRef: string;
@@ -65,6 +68,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [igst, setIgst] = useState('');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [orderQty, setOrderQty] = useState<OrderQtySummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +134,14 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         setQuoteNo(qRow.quote_no ?? '');
         setSoNo(soRow?.order_no ?? '');
         setSoId(soRow?.id != null ? String(soRow.id) : null);
+        // Order quantity context: delivered vs invoiced vs still invoiceable.
+        if (soRow) {
+          try {
+            const { summary } = await fetchOrderQty(
+              soRow.id != null ? String(soRow.id) : null, String(soRow.order_no ?? ''));
+            if (!cancelled && summary) setOrderQty(summary);
+          } catch { /* invoice still uses the DC quantity */ }
+        }
         if (first.customer_name || first.customer || card?.customer) {
           setCustomer(first.customer_name || first.customer || card?.customer || '');
         }
@@ -152,12 +164,14 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           }
           const name = row.part_name || row.product_name || soRow?.part_name || '';
           if (approvedUnit == null) missing.push(name || code || 'Unnamed item');
+          const lineQty = num(row.dispatch_qty ?? row.quantity) || 0;
           built.push({
             key: uid(),
             dcId: row.id != null ? String(row.id) : null,
             itemName: name,
             productCode: code,
-            qty: num(row.dispatch_qty ?? row.quantity) || 0,
+            qty: lineQty,
+            maxQty: lineQty,
             unit: row.unit || '',
             approvedUnit,
             sheetRef,
@@ -192,8 +206,9 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const adjustment = basic - origTotal;
 
   const canApprove = !loading && !loadError && !blocked && lines.length > 0
-    && lines.every((l) => !l.missing && num(l.qty) > 0 && effUnit(l) >= 0)
+    && lines.every((l) => !l.missing && num(l.qty) > 0 && num(l.qty) <= num(l.maxQty) && effUnit(l) >= 0)
     && customer.trim() !== '';
+  const dcTotal = lines.reduce((s, l) => s + num(l.qty), 0);
 
   const setLine = (key: string, patch: Partial<InvLine>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -334,6 +349,14 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <p><Badge variant={blocked ? 'error' : statusToVariant('Pending')} dot>{blocked ? 'Blocked' : 'Ready'}</Badge></p>
               </div>
             </div>
+            {orderQty && (
+              <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs">
+                <span className="font-bold text-violet-800 uppercase tracking-wider text-[10px]">Order quantity — </span>
+                <span className="tabular-nums">Ordered {orderQty.ordered} · Good {orderQty.good} · Rejected {orderQty.rejected} · Delivered {orderQty.delivered} · Invoiced {orderQty.invoiced} · </span>
+                <b className="tabular-nums text-violet-800">Still invoiceable after this invoice: {Math.max(0, orderQty.delivered - orderQty.invoiced - dcTotal)}</b>
+                <span className="text-slate-500"> (this DC: {dcTotal} pcs at approved unit price — never the full order qty)</span>
+              </div>
+            )}
           </div>
 
           {/* items */}

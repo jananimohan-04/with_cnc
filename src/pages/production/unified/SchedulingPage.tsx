@@ -354,7 +354,8 @@ export function SchedulingPage() {
 
       setMachines(machinesRes.data || []);
       const jobsData = jobsRes.data || [];
-      setJobs(jobsData);
+      // Cancelled job cards keep audit history but never occupy the board.
+      setJobs(jobsData.filter((j: any) => String(j.status ?? '') !== 'Cancelled'));
       
       // Operators come only from job history (never login users).
       // Skip placeholders like '—'.
@@ -555,6 +556,12 @@ export function SchedulingPage() {
     'Waiting': 'bg-orange-200 text-orange-800 border-orange-300',
     'Delayed': 'bg-red-200 text-red-800 border-red-300',
     'Maintenance': 'bg-slate-200 text-slate-800 border-slate-300',
+    // Job Card module flow (shares this board; fallback stays Planned).
+    'Draft': 'bg-slate-200 text-slate-700 border-slate-300',
+    'Ready': 'bg-cyan-200 text-cyan-800 border-cyan-300',
+    'Scheduled': 'bg-indigo-200 text-indigo-800 border-indigo-300',
+    'On Hold': 'bg-amber-200 text-amber-800 border-amber-300',
+    'Cancelled': 'bg-slate-200 text-slate-500 border-slate-300',
   };
 
   const getStatusColor = (status: string) => statusColors[status] || statusColors['Planned'];
