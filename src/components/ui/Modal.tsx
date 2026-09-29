@@ -5,6 +5,29 @@ import { GripVertical, X } from 'lucide-react';
 // Light scrim only: the page behind stays clearly visible (never blurred).
 const SCRIM = 'bg-[rgba(15,23,42,0.12)]';
 
+// Consistent desktop defaults; always clamped into the viewport.
+const MIN_W = 600;
+const MAX_W = 1100;
+const MIN_H = 400;
+const MAX_H = 850;
+
+const initialWidth = (size: string, vw: number): number => {
+  const base =
+    size === 'sm' ? 520 :
+    size === 'md' ? 640 :
+    size === 'lg' ? 860 :
+    size === 'xl' ? 1024 :
+    size === 'full' ? vw - 64 :
+    MAX_W; // 2xl, 3xl
+  return Math.min(Math.max(base, Math.min(MIN_W, vw - 32)), Math.min(MAX_W, vw - 32));
+};
+
+const clampWidth = (w: number, vw: number): number =>
+  Math.min(Math.max(w, Math.min(MIN_W, vw - 32)), Math.min(MAX_W, vw - 32));
+
+const clampHeight = (h: number, vh: number): number =>
+  Math.min(Math.max(h, Math.min(MIN_H, vh - 32)), Math.min(MAX_H, vh * 0.9, vh - 32));
+
 export function Modal({
   open,
   onClose,
@@ -14,6 +37,8 @@ export function Modal({
   footer,
   size = 'md',
   draggable = true,
+  isDirty = false,
+  dirtyMessage = 'Discard unsaved changes?',
 }: {
   open: boolean;
   onClose: () => void;
@@ -24,15 +49,46 @@ export function Modal({
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full';
   /** Header drag handle. Disable only for flows that must stay centered. */
   draggable?: boolean;
+  /** External dirty flag (OR-ed with automatic form-interaction tracking). */
+  isDirty?: boolean;
+  dirtyMessage?: string;
 }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dim, setDim] = useState<{ w: number; h: number | null }>({ w: 640, h: null });
   const [dragging, setDragging] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const resizeRef = useRef<{ sx: number; sy: number; w: number; h: number; dir: 'se' | 'e' | 's' } | null>(null);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const movedRef = useRef(false);
 
-  // Every open starts centered; the position is kept until close.
+  const dirty = isDirty || touched;
+
+  // Every open starts centered at the default size; position is kept until close.
   useEffect(() => {
-    if (open) setPos({ x: 0, y: 0 });
+    if (open) {
+      const vw = window.innerWidth;
+      setDim({ w: initialWidth(size, vw), h: null });
+      setTouched(false);
+      setConfirming(false);
+      setDragging(false);
+      setResizing(false);
+      movedRef.current = false;
+      // Center once laid out (natural height is measured, not assumed).
+      requestAnimationFrame(() => {
+        const el = boxRef.current;
+        const h = el?.offsetHeight ?? 400;
+        const vh = window.innerHeight;
+        setPos({
+          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw))) / 2),
+          y: Math.max(16, (vh - h) / 2),
+        });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open ]);
 
   useEffect(() => {
@@ -42,30 +98,42 @@ export function Modal({
         document.body.style.overflow = '';
       };
     }
-  }, [open]);
+  }, [open ]);
+
+  // ESC closes (or asks, when dirty). Native selects keep their own behavior.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      if (confirming) {
+        setConfirming(false);
+        return;
+      }
+      if (dirty) setConfirming(true);
+      else onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, dirty, confirming, onClose]);
 
   if (!open) return null;
 
-  const sizes: Record<string, string> = {
-    sm: 'max-w-md',
-    md: 'max-w-xl',
-    lg: 'max-w-3xl',
-    xl: 'max-w-5xl',
-    '2xl': 'max-w-6xl',
-    '3xl': 'max-w-7xl',
-    full: 'max-w-[95vw]',
+  const requestClose = () => {
+    if (dirty) setConfirming(true);
+    else onClose();
   };
 
-  // Clamp the center so at least a grabbable portion always stays on screen.
-  const clamp = (x: number, y: number) => {
+  // Clamp so at least a grabbable portion always stays on screen.
+  const clampPos = (x: number, y: number, w: number, h: number | null) => {
     const el = boxRef.current;
-    const w = el?.offsetWidth ?? 600;
-    const h = el?.offsetHeight ?? 400;
+    const hh = h ?? el?.offsetHeight ?? 400;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     return {
-      x: Math.min(Math.max(x, 140 - w / 2 - vw / 2), vw / 2 - 120 + w / 2),
-      y: Math.min(Math.max(y, 56 - h / 2 - vh / 2), vh / 2 - 64 + h / 2),
+      x: Math.min(Math.max(x, 120 - w), vw - 120),
+      y: Math.min(Math.max(y, -(hh - 56)), vh - 64),
     };
   };
 
@@ -80,31 +148,74 @@ export function Modal({
   const onHeaderPointerMove = (e: React.PointerEvent<HTMLElement>) => {
     const d = dragRef.current;
     if (!d) return;
-    setPos(clamp(d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy));
+    movedRef.current = true;
+    setPos(clampPos(d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy, dim.w, dim.h));
   };
   const endDrag = () => {
     dragRef.current = null;
     setDragging(false);
   };
 
+  const onResizePointerDown = (dir: 'se' | 'e' | 's') => (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const el = boxRef.current;
+    resizeRef.current = {
+      sx: e.clientX, sy: e.clientY,
+      w: dim.w, h: dim.h ?? el?.offsetHeight ?? 400, dir,
+    };
+    setResizing(true);
+  };
+  const onResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    movedRef.current = true;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let w = r.w;
+    let h = r.h;
+    if (r.dir === 'se' || r.dir === 'e') w = clampWidth(r.w + e.clientX - r.sx, vw);
+    if (r.dir === 'se' || r.dir === 's') h = clampHeight(r.h + e.clientY - r.sy, vh);
+    setDim({ w, h });
+    setPos((p) => clampPos(p.x, p.y, w, h));
+  };
+  const endResize = () => {
+    resizeRef.current = null;
+    setResizing(false);
+  };
+
   return (
-    <div className="fixed inset-0 z-50">
-      <div className={`absolute inset-0 ${SCRIM}`} onClick={onClose} />
+    <div className={`fixed inset-0 z-50 ${dragging || resizing ? 'select-none' : ''}`}>
+      <div
+        className={`absolute inset-0 ${SCRIM}`}
+        onPointerDown={(e) => { downRef.current = { x: e.clientX, y: e.clientY }; }}
+        onClick={(e) => {
+          // A press that travelled is a drag across the backdrop, not a close click.
+          const d = downRef.current;
+          downRef.current = null;
+          if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
+          requestClose();
+        }}
+      />
       <div
         ref={boxRef}
-        className="absolute w-full"
+        className="absolute"
         style={{
-          left: `calc(50% + ${pos.x}px)`,
-          top: `calc(50% + ${pos.y}px)`,
-          transform: 'translate(-50%, -50%)',
+          left: pos.x,
+          top: pos.y,
+          width: dim.w,
           maxWidth: 'calc(100vw - 2rem)',
+          height: dim.h ?? undefined,
+          maxHeight: 'min(80vh, 850px)',
         }}
       >
         <div
-          className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size] ?? sizes.md} max-h-[90vh] flex flex-col animate-scale-in border border-slate-200`}
+          className="relative bg-white rounded-2xl shadow-2xl w-full border border-slate-200 flex flex-col animate-scale-in overflow-hidden"
+          style={{ height: dim.h ? `${dim.h}px` : undefined, maxHeight: 'min(80vh, 850px)' }}
+          onChange={() => setTouched(true)}
         >
           <div
-            className={`flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl select-none ${
+            className={`flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0 select-none ${
               draggable ? 'touch-none' : ''
             } ${draggable ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
             onPointerDown={onHeaderPointerDown}
@@ -128,14 +239,66 @@ export function Modal({
               <X size={16} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30">{children}</div>
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/30 min-h-0">{children}</div>
           {footer && (
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
               {footer}
             </div>
           )}
+          {/* Resize handles (desktop only). */}
+          <div
+            className="hidden sm:block absolute bottom-0 right-0 w-2 cursor-ew-resize"
+            style={{ top: 0 }}
+            onPointerDown={onResizePointerDown('e')}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+          />
+          <div
+            className="hidden sm:block absolute bottom-0 left-0 h-2 cursor-ns-resize"
+            style={{ right: 0 }}
+            onPointerDown={onResizePointerDown('s')}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+          />
+          <div
+            className="hidden sm:block absolute bottom-1 right-1 w-4 h-4 cursor-nwse-resize text-slate-300 hover:text-brand-500"
+            onPointerDown={onResizePointerDown('se')}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+            title="Resize"
+          >
+            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M9 3 L13 13 M5 11 L11 13 M13 5 L13 13 L5 13" opacity="0.9" />
+            </svg>
+          </div>
         </div>
       </div>
+      {confirming && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+          <div className={`absolute inset-0 ${SCRIM}`} onClick={() => setConfirming(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 animate-scale-in">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Discard unsaved changes?</h2>
+            <p className="text-sm font-medium text-slate-500 mt-2">{dirtyMessage}</p>
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => setConfirming(false)}
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 rounded transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirming(false); onClose(); }}
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-white rounded transition-colors shadow-sm bg-red-600 hover:bg-red-700"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

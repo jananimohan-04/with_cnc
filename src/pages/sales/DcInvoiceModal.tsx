@@ -61,6 +61,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [invDate, setInvDate] = useState(todayISO());
   const [quoteNo, setQuoteNo] = useState('');
   const [soNo, setSoNo] = useState('');
+  const [soOrderNo, setSoOrderNo] = useState('');
   const [soId, setSoId] = useState<string | null>(null);
   const [lines, setLines] = useState<InvLine[]>([]);
   const [cgst, setCgst] = useState('');
@@ -132,7 +133,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           return;
         }
         setQuoteNo(qRow.quote_no ?? '');
-        setSoNo(soRow?.order_no ?? '');
+        setSoNo(soRow?.lead_no || soRow?.order_no || '');
+        setSoOrderNo(soRow?.order_no ?? '');
         setSoId(soRow?.id != null ? String(soRow.id) : null);
         // Order quantity context: delivered vs invoiced vs still invoiceable.
         if (soRow) {
@@ -145,24 +147,32 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         if (first.customer_name || first.customer || card?.customer) {
           setCustomer(first.customer_name || first.customer || card?.customer || '');
         }
-        // 3) Approved price per product line.
+        // 3) Approved price per product line — one fetch for the quotation,
+        // then match by product code, else by product name (codes are often
+        // empty on multi-product approvals; names always resolve).
         const built: InvLine[] = [];
         let missing: string[] = [];
+        let sheets: any[] = [];
+        try {
+          const v = await supabase.from('cnc_costing_sheets').select('approved_price,quantity,version,status,product_code,product_name')
+            .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
+          if (!v.error) sheets = v.data ?? [];
+        } catch { /* missing stays missing below */ }
+        const lc = (s: any) => String(s ?? '').trim().toLowerCase();
+        const unitOf = (code: string, name: string): { unit: number | null; ref: string } => {
+          const byCode = code.trim() !== ''
+            ? sheets.find((s: any) => lc(s.product_code) === lc(code))
+            : null;
+          const sheet = byCode ?? (name.trim() !== '' ? sheets.find((s: any) => lc(s.product_name) === lc(name)) : null) ?? null;
+          if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
+            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow.quote_no} V${sheet.version}` };
+          }
+          return { unit: null, ref: '' };
+        };
         for (const row of rows) {
           const code = row.part_no || soRow?.part_no || '';
-          let approvedUnit: number | null = null;
-          let sheetRef = '';
-          if (code) {
-            const v = await supabase.from('cnc_costing_sheets').select('approved_price,quantity,version,status')
-              .eq('quotation_no', qRow.quote_no).eq('product_code', code)
-              .eq('status', 'Approved').order('version', { ascending: false }).limit(1);
-            const sheet = !v.error ? (v.data ?? [])[0] : null;
-            if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
-              approvedUnit = num(sheet.approved_price) / num(sheet.quantity);
-              sheetRef = `${qRow.quote_no} V${sheet.version}`;
-            }
-          }
           const name = row.part_name || row.product_name || soRow?.part_name || '';
+          const { unit: approvedUnit, ref: sheetRef } = unitOf(code, name);
           if (approvedUnit == null) missing.push(name || code || 'Unnamed item');
           const lineQty = num(row.dispatch_qty ?? row.quantity) || 0;
           built.push({
@@ -241,7 +251,9 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         rate: effUnit(l), gst_rate: gstRate,
       })));
       if (dcId) {
-        const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', dcId);
+        // Multi-product challans: every line under the number is billed together.
+        const ids = Array.from(new Set(lines.map((l) => l.dcId).filter(Boolean))) as string[];
+        const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).in('id', ids.length ? ids : [dcId]);
         if (dcErr) throw dcErr;
       }
       onMoved();
@@ -260,7 +272,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     documentNo: 'DRAFT',
     date: invDate,
     details: [
-      ['Bill To', customer], ['Delivery Challan', dcNo], ['Sales Order', soNo],
+      ['Bill To', customer], ['Delivery Challan', dcNo], ['Sales Order', soOrderNo || soNo],
       ['Quotation', quoteNo], ['Priced From', Array.from(new Set(lines.map((l) => l.sheetRef).filter(Boolean))).join(', ') || '—'],
     ] as [string, string | number | null | undefined][],
     columns: ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'],
@@ -281,7 +293,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     const row = (cells: string[]) => `<tr>${cells.map((x) => `<td>${x}</td>`).join('')}</tr>`;
     printHtml(`Invoice - ${dcNo}`, `
       <h2>${companyName} — Tax Invoice (DRAFT)</h2>
-      <p>Customer: ${customer} | DC: ${dcNo} | SO: ${soNo} | Date: ${invDate}</p>
+      <p>Customer: ${customer} | DC: ${dcNo} | SO: ${soOrderNo || soNo} | Date: ${invDate}</p>
       <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
       <tbody>${lines.map((l) => row([l.itemName, String(l.qty), formatINR(effUnit(l)), formatINR(num(l.qty) * effUnit(l))])).join('')}</tbody></table>
       <h3>Basic ${formatINR(basic)} | Tax ${formatINR(tax)} | Total ${formatINR(grand)}</h3>`);
@@ -292,7 +304,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       open
       onClose={onClose}
       title="Invoice Entry — Approved Price"
-      subtitle={`DC ${dcNo || ''} → Invoice`}
+      subtitle={`${dcNo ? `${card?.refNo || dcNo} → Invoice` : '→ Invoice'}`}
       size="2xl"
       footer={
         <>
@@ -337,7 +349,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p>
                 <input value={customer} disabled={!editing} onChange={(e) => setCustomer(e.target.value)} className={`${inputClass} font-semibold`} />
               </div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-mono font-semibold">{dcNo || '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-mono font-semibold">{card?.refNo || dcNo || '—'}</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Sales Order No.</p><p className="font-mono font-semibold">{soNo || '—'}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Date</p>

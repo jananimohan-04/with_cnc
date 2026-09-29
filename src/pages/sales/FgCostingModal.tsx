@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { todayISO } from '@/lib/format';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
+import { QtyTrackingSection } from './SalesPipelinePage';
 import { fetchOrderQty, recordProductionBatch, type OrderQtySummary } from '@/lib/orderQuantities';
 import { insertTolerant } from '@/lib/partRouting';
 import { downloadCostingDocument, viewCostingDocument } from '@/lib/brandedDocument';
@@ -157,7 +158,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
         // newer inward columns; star-selects never do.
         const r = inwardGroupIds.length > 0
           ? await supabase.from('cnc_inwards').select('*').in('id', inwardGroupIds).order('created_at')
-          : Promise.resolve({ data: [], error: { message: 'no ids' } } as any);
+          : { data: [] as any[], error: { message: 'no ids' } };
         if (cancelled) return;
         const src = (!r.error && (r.data ?? []).length > 0 ? r.data : [inward]) as any[];
         setInwardLines(src.filter((x: any) => x && (x.id || x.part_name || x.product_name)));
@@ -798,7 +799,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       open
       onClose={onClose}
       title="Finished Goods + Costing"
-      subtitle={`Inward ${inward.inward_no ?? ''} → Finished Goods with pricing approval`}
+      subtitle={`Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval`}
       size="3xl"
       footer={
         <>
@@ -841,8 +842,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
             </div>
           </div>
 
-          {/* 1a — products in this inward: select any, set finished qty each */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          {/* 1a — products in this inward: select any, set finished qty each */}          <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">
               Section 1A — Sale Order Products ({selectedProds.length} of {prodRows.length} selected)
             </h3>
@@ -898,6 +898,9 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           </div>
 
           {/* Rejection capture removed — batches record good quantity only. */}
+          {qtySum && (
+            <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} />
+          )}
 
           {/* comparison workspace: quotation vs project costing */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">

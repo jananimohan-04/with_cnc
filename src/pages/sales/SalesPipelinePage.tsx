@@ -43,8 +43,12 @@ async function uploadInwardAttachment(companyId: string, inwardId: string, file:
   return { name: file.name, path, size: file.size, type: file.type || 'application/octet-stream' };
 }
 
-export function formatLeadProductDisplay(raw: any): string {
-  if (!raw) return 'N/A';
+// Base unique number: strips the order-time stamp suffix (1010-28Sep26-0994PM -> 1010)
+// so stamped and plain numbers match. Idempotent.
+export const baseUniqueNo = (s: any): string =>
+  String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
+
+export function formatLeadProductDisplay(raw: any): string {  if (!raw) return 'N/A';
   
   // 1. Check for items array (Quotation, Sales Order, etc.)
   let items: any[] = [];
@@ -171,10 +175,10 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
   </div>
 );
 
-/** Quantity Tracking section (detail view): summary + reconciliation +
- *  record-rejected entry. Rejections save as traceable batch rows (good
- *  quantity untouched) and the summary refreshes from live rows. */
-function QtyTrackingSection({ q, userName, onSaved }: {
+/** Quantity Tracking section (detail view + FG approval): summary +
+ *  reconciliation + record-rejected entry. Rejections save as traceable batch
+ *  rows (good quantity untouched) and the summary refreshes from live rows. */
+export function QtyTrackingSection({ q, userName, onSaved }: {
   q: OrderQtySummary; userName: string; onSaved: (q: OrderQtySummary) => void;
 }) {
   const [rejQty, setRejQty] = useState('');
@@ -272,6 +276,486 @@ function QtyTrackingSection({ q, userName, onSaved }: {
   );
 }
 
+/** Enquiry edit form (view modal, edit mode): the same layout as the New
+ *  Enquiry entry form — unique number, company, product rows with
+ *  name/qty/upload/remarks — plus the summary banner strip. Saves with an
+ *  UPDATE (no new record); uploads reuse the existing storage mechanism. */
+function EnquiryEditForm({ raw, companies, productNames, companyId, onSaved }: {
+  raw: any;
+  companies: any[];
+  productNames: string[];
+  companyId?: string;
+  onSaved: () => void;
+}) {
+  const initItems = () => {
+    try {
+      const ef = raw?.enquiring_for;
+      const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((it: any) => ({
+          productName: String(it.productName || it.partName || it.part_name || ''),
+          partName: String(it.productName || it.partName || it.part_name || ''),
+          quantity: it.quantity ?? it.qty ?? '',
+          remarks: it.remarks || '',
+          filePaths: Array.isArray(it.filePaths) ? [...it.filePaths] : [],
+          files: [] as File[],
+        }));
+      }
+    } catch { /* fall through to single-product fallback */ }
+    return [{
+      productName: String(raw?.part_name || ''),
+      partName: String(raw?.part_name || ''),
+      quantity: raw?.quantity ?? '',
+      remarks: '',
+      filePaths: [] as string[],
+      files: [] as File[],
+    }];
+  };
+  const [leadNo, setLeadNo] = useState(String(raw?.lead_no || raw?.enquiry_no || ''));
+  const [company, setCompany] = useState(String(raw?.customer || ''));
+  const [contacts, setContacts] = useState<any[]>(Array.isArray(raw?.contacts) && raw.contacts.length ? raw.contacts : [{ person: raw?.contact_person || '', phone: raw?.phone || '', email: raw?.email || '' }]);
+  const [items, setItems] = useState<any[]>(initItems);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const names = items.map((it: any) => String(it.productName || it.partName || '').trim()).filter(Boolean);
+  const fileEntries = (fps: any[]) => (fps || []).map((fp: any, i: number) => typeof fp === 'string'
+    ? { name: fp.split('/').pop() || fp, path: fp, key: `${fp}-${i}` }
+    : { name: fp.name || String(fp.path || fp.url || '').split('/').pop(), path: fp.path || fp.url, key: `${fp.path || fp.url}-${i}` })
+    .filter((f: any) => f.path);
+
+  const save = async () => {
+    if (!company.trim()) { setError('Please enter a company name.'); return; }
+    const entered = items.filter((it: any) => String(it.productName || it.partName || '').trim());
+    if (!entered.length) { setError('Please enter at least one product name.'); return; }
+    if (entered.some((it: any) => Number(it.quantity) < 0)) { setError('Product quantities cannot be negative.'); return; }
+    if (entered.some((it: any) => (it.files || []).length) && !companyId) {
+      setError('Select a company before uploading product files.'); return;
+    }
+    if (saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const itemsToSave = await Promise.all(entered.map(async (item: any) => {
+        const uploaded = companyId
+          ? await Promise.all((item.files || []).map((file: File) => uploadEnquiryProductFile(companyId, file)))
+          : [];
+        return {
+          productName: String(item.productName || item.partName).trim(),
+          partName: String(item.productName || item.partName).trim(),
+          quantity: item.quantity || '0',
+          remarks: item.remarks || '',
+          filePaths: [...(item.filePaths || []).filter((p: any) => typeof p === 'string'), ...uploaded],
+        };
+      }));
+      const firstItem = itemsToSave[0];
+      const productNamesList = itemsToSave.map((it: any) => it.productName).join(', ');
+      const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
+      const c0 = contacts[0] || {};
+      const { error: updErr } = await supabase.from('cnc_enquiries').update({
+        lead_no: leadNo.trim(),
+        enquiry_no: leadNo.trim(),
+        customer: company.trim(),
+        contact_person: c0.person || raw?.contact_person || '',
+        phone: c0.phone || raw?.phone || '',
+        email: c0.email || raw?.email || '',
+        enquiring_for: JSON.stringify(itemsToSave),
+        part_name: itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName,
+        quantity: totalQty,
+      }).eq('id', raw.id);
+      if (updErr) throw updErr;
+      onSaved();
+    } catch (e: any) {
+      setError('Unable to save changes: ' + (e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+        <div>
+          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
+          <span className="text-sm font-extrabold text-slate-900">{leadNo || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
+          <span className="text-sm font-extrabold text-slate-900 break-words">{company || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({names.length})</span>
+          <span className="text-sm font-extrabold text-slate-900 break-words">{names.length ? names.join(', ') : '—'}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Unique Number" required>
+          <input className={inputClass} value={leadNo} onChange={(e) => setLeadNo(e.target.value)} placeholder="e.g. 1840 or Custom Unique Number" />
+        </FormField>
+        <CustomerAutocomplete
+          label="Company Name"
+          required
+          value={company}
+          onChange={(val) => {
+            setCompany(val);
+            const matched = (companies || []).find((c: any) => String(c.company || '').toLowerCase() === val.trim().toLowerCase());
+            if (matched && (matched.contact_person || matched.phone || matched.email)) {
+              setContacts([{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]);
+            }
+          }}
+          onSelectCustomer={(c: any) => {
+            setCompany(c.company);
+            if (c.contact_person || c.phone || c.email) {
+              setContacts([{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]);
+            }
+          }}
+          companies={companies}
+          inputClass={inputClass}
+          placeholder="Type or select company..."
+        />
+        <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
+          <h4 className="font-semibold text-sm text-slate-800 mb-4">Enquiry Details</h4>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
+          <div className="space-y-2">
+            {items.map((item: any, idx: number) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div>
+                  <input className={inputClass} placeholder="Product Name" list="enquiry-edit-product-list" value={item.productName ?? item.partName ?? ''} onChange={(e) => {
+                    const next = [...items];
+                    next[idx] = { ...next[idx], productName: e.target.value, partName: e.target.value };
+                    setItems(next);
+                  }} />
+                </div>
+                <div>
+                  <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={(e) => {
+                    const next = [...items];
+                    next[idx] = { ...next[idx], quantity: e.target.value };
+                    setItems(next);
+                  }} />
+                </div>
+                <div>
+                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                    <UploadCloud size={15} />{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
+                    <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
+                      const selectedFiles = Array.from(e.currentTarget.files || []);
+                      const next = [...items];
+                      next[idx] = { ...next[idx], files: [...(next[idx].files || []), ...selectedFiles] };
+                      setItems(next);
+                      e.currentTarget.value = '';
+                    }} />
+                  </label>
+                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = { ...next[idx], files: next[idx].files.filter((_: File, j: number) => j !== fileIdx) }; setItems(next); }}>Remove</button></div>)}</div>}
+                  {fileEntries(item.filePaths).length > 0 && <div className="mt-1 space-y-1">{fileEntries(item.filePaths).map((f: any) => <div key={f.key} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{f.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = { ...next[idx], filePaths: (next[idx].filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) }; setItems(next); }}>Remove</button></div>)}</div>}
+                </div>
+                <div className="col-span-full">
+                  <input className={inputClass} placeholder="Remarks for this product..." value={item.remarks || ''} onChange={(e) => {
+                    const next = [...items];
+                    next[idx] = { ...next[idx], remarks: e.target.value };
+                    setItems(next);
+                  }} />
+                </div>
+                {idx > 0 && (
+                  <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => setItems(items.filter((_: any, i: number) => i !== idx))}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+            <datalist id="enquiry-edit-product-list">{productNames.map((n) => <option key={n} value={n} />)}</datalist>
+            <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
+              setItems([...items, { productName: '', partName: '', quantity: '', remarks: '', filePaths: [], files: [] as File[] }]);
+            }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Add Another Product
+            </button>
+          </div>
+        </div>
+      </div>
+      {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
+      <div className="flex justify-end mt-4">
+        <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Quotation edit form (view modal, edit mode): the same layout as the Create
+ *  Quotation entry form — context banner, quotation date, editable
+ *  products/items table with computed totals, additional details. Saves with
+ *  an UPDATE (totals recomputed with the entry formula); uploads reuse the
+ *  existing storage mechanism. */
+function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: {
+  raw: any;
+  productNames: string[];
+  companyId?: string;
+  openFile: (path: string) => void;
+  onSaved: () => void;
+}) {
+  const initItems = () => {
+    try {
+      const d = raw?.description;
+      const parsed = typeof d === 'string' ? JSON.parse(d) : d;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((it: any) => ({
+          id: it.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `q-${Date.now()}-${Math.random()}`),
+          partName: String(it.partName || it.productName || it.part_name || it.description || ''),
+          partNumber: String(it.partNumber || it.part_number || ''),
+          quantity: it.quantity ?? it.qty ?? '',
+          unitPrice: it.unitPrice ?? it.rate ?? '',
+          discount: it.discount ?? it.discount_percent ?? '0',
+          unitDiscount: it.unitDiscount ?? it.unit_discount ?? '0',
+          gst: it.gst ?? it.gst_percent ?? '18',
+          filePaths: Array.isArray(it.filePaths) ? [...it.filePaths] : [],
+          files: [] as File[],
+        }));
+      }
+    } catch { /* fall through to single-item fallback */ }
+    return [{
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `q-${Date.now()}`,
+      partName: String(raw?.part_name || ''),
+      partNumber: String(raw?.part_number || raw?.part_no || ''),
+      quantity: raw?.quantity ?? '',
+      unitPrice: raw?.unit_price ?? '',
+      discount: raw?.discount_percent ?? '0',
+      unitDiscount: (raw as any)?.unit_discount ?? '0',
+      gst: raw?.gst_percent ?? '18',
+      filePaths: [] as string[],
+      files: [] as File[],
+    }];
+  };
+  const [quoteDate, setQuoteDate] = useState(String(raw?.date || raw?.quote_date || new Date().toISOString().split('T')[0]).slice(0, 10));
+  const [items, setItems] = useState<any[]>(initItems);
+  const [paymentTerms, setPaymentTerms] = useState(String(raw?.payment_terms || ''));
+  const [deliveryTerms, setDeliveryTerms] = useState(String(raw?.delivery_terms || ''));
+  const [remarks, setRemarks] = useState(String(raw?.remarks || raw?.notes || ''));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const upd = (idx: number, patch: any) => setItems((list) => list.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  const lineTotal = (it: any) => {
+    const q = Number(it.quantity) || 0;
+    const p = Number(it.unitPrice) || 0;
+    const d = Number(it.discount) || 0;
+    const ud = Number(it.unitDiscount) || 0;
+    const g = Number(it.gst) || 0;
+    return q * Math.max(0, p * (1 - d / 100) - ud) * (1 + g / 100);
+  };
+  const grandTotal = items.reduce((s, it) => s + lineTotal(it), 0);
+  const names = items.map((it: any) => String(it.partName || it.productName || '').trim()).filter(Boolean);
+  const fileEntries = (fps: any[]) => (fps || []).map((fp: any, i: number) => typeof fp === 'string'
+    ? { name: fp.split('/').pop() || fp, path: fp, key: `${fp}-${i}` }
+    : { name: fp.name || String(fp.path || fp.url || '').split('/').pop(), path: fp.path || fp.url, key: `${fp.path || fp.url}-${i}` })
+    .filter((f: any) => f.path);
+
+  const save = async () => {
+    const entered = items.filter((it: any) => String(it.partName || it.productName || '').trim());
+    if (!entered.length) { setError('Enter at least one product.'); return; }
+    if (entered.some((it: any) => (it.files || []).length) && !companyId) {
+      setError('Select a company before uploading product files.'); return;
+    }
+    if (saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await Promise.all(entered.map(async (it: any) => {
+        const uploaded = companyId
+          ? await Promise.all((it.files || []).map((f: File) => uploadEnquiryProductFile(companyId, f)))
+          : [];
+        const { files, ...rest } = it;
+        return { ...rest, filePaths: [...(it.filePaths || []).filter((p: any) => typeof p === 'string'), ...uploaded] };
+      }));
+      const firstItem = saved[0];
+      const itemNamesList = saved.map((i: any) => String(i.partName || i.productName || '').trim()).filter(Boolean).join(', ');
+      const totalQty = saved.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0);
+      const { error: updErr } = await supabase.from('cnc_quotations').update({
+        part_name: saved.length > 1 ? `${itemNamesList} (${saved.length} Products)` : (firstItem.partName || 'TBD'),
+        part_number: firstItem.partNumber || '',
+        description: JSON.stringify(saved),
+        unit_price: Number(firstItem.unitPrice) || 0,
+        unit_discount: Number(firstItem.unitDiscount) || 0,
+        quantity: totalQty,
+        total_value: grandTotal,
+        date: quoteDate || null,
+        discount_percent: Number(firstItem.discount) || 0,
+        gst_percent: Number(firstItem.gst) || 18,
+        payment_terms: paymentTerms,
+        delivery_terms: deliveryTerms,
+        remarks,
+      }).eq('id', raw.id);
+      if (updErr) {
+        const msg = String((updErr as any)?.message || '');
+        if (msg.includes('unit_discount') || (updErr as any)?.code === '42703') {
+          const retry = await supabase.from('cnc_quotations').update({
+            part_name: saved.length > 1 ? `${itemNamesList} (${saved.length} Products)` : (firstItem.partName || 'TBD'),
+            part_number: firstItem.partNumber || '',
+            description: JSON.stringify(saved),
+            unit_price: Number(firstItem.unitPrice) || 0,
+            quantity: totalQty,
+            total_value: grandTotal,
+            date: quoteDate || null,
+            discount_percent: Number(firstItem.discount) || 0,
+            gst_percent: Number(firstItem.gst) || 18,
+            payment_terms: paymentTerms,
+            delivery_terms: deliveryTerms,
+            remarks,
+          }).eq('id', raw.id);
+          if (retry.error) throw retry.error;
+        } else throw updErr;
+      }
+      onSaved();
+    } catch (e: any) {
+      setError('Unable to save changes: ' + (e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+        <FormField label="Quotation Date" required>
+          <input type="date" className={inputClass} value={quoteDate} onChange={(e) => setQuoteDate(e.target.value)} />
+        </FormField>
+      </div>
+      <div className="border-t border-slate-100 pt-4">
+        <h4 className="font-semibold text-sm text-slate-800 mb-3">Products / Items Breakdown</h4>
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
+                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
+                <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">File</th>
+                <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any, idx: number) => (
+                <tr key={item.id || idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                  <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
+                  <td className="px-3 py-2">
+                    <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" list="quotation-edit-product-list" value={item.partName || ''} onChange={(e) => upd(idx, { partName: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input type="number" min={0} className="w-full min-w-[72px] tabular-nums text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.quantity ?? ''} onChange={(e) => upd(idx, { quantity: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitPrice ?? ''} onChange={(e) => upd(idx, { unitPrice: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.discount ?? ''} onChange={(e) => upd(idx, { discount: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitDiscount ?? ''} onChange={(e) => upd(idx, { unitDiscount: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst ?? ''} onChange={(e) => upd(idx, { gst: e.target.value })} />
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2 text-center">
+                    <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                      <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
+                      <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
+                        const selected = Array.from(e.currentTarget.files || []);
+                        upd(idx, { files: [...(item.files || []), ...selected] });
+                        e.currentTarget.value = '';
+                      }} />
+                    </label>
+                    {fileEntries(item.filePaths).length > 0 && (
+                      <div className="mt-1 space-y-1 text-left">
+                        {fileEntries(item.filePaths).map((f: any) => (
+                          <div key={f.key} className="flex items-center justify-between gap-1 text-[10px] text-slate-600">
+                            <button type="button" className="truncate text-blue-700 hover:underline" onClick={() => openFile(f.path)}>{f.name}</button>
+                            <button type="button" className="text-rose-600" onClick={() => upd(idx, { filePaths: (item.filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) })}>x</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <button onClick={() => setItems(items.filter((_: any, i: number) => i !== idx))} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove product">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-50 border-t border-slate-200">
+              <tr>
+                <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
+                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <datalist id="quotation-edit-product-list">{productNames.map((n) => <option key={n} value={n} />)}</datalist>
+        <button onClick={() => setItems([...items, { id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `q-${Date.now()}`, partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18', filePaths: [], files: [] }])} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+          <span className="text-lg">+</span> Add Another Product
+        </button>
+      </div>
+      <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4 mt-4">Additional Details</h4>
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Payment Terms"><input className={inputClass} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} /></FormField>
+        <FormField label="Delivery Terms"><input className={inputClass} value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} /></FormField>
+        <div className="col-span-2"><FormField label="Notes / Remarks"><textarea className={inputClass} rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></FormField></div>
+      </div>
+      {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
+      <div className="flex justify-end mt-4">
+        <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Neutral context strip (type / unique number / products / customer), shared
+ *  by quotation view and edit modes so both look the same. */
+function StageStrip({ typeLabel, uniqueNo, products, customer }: {
+  typeLabel: string; uniqueNo: string; products: string[]; customer: string;
+}) {
+  return (
+    <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Document</span>
+        <span className="text-sm font-extrabold text-slate-900">{typeLabel}</span>
+      </div>
+      <div>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
+        <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
+      </div>
+      <div>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({products.length})</span>
+        <span className="text-sm font-extrabold text-slate-900 break-words">{products.length ? products.join(', ') : '—'}</span>
+      </div>
+      <div>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
+        <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
+      </div>
+    </div>
+  );
+}
+
+function quoteProductNames(raw: any): string[] {
+  try {
+    const d = raw?.description;
+    const parsed = typeof d === 'string' ? JSON.parse(d) : d;
+    if (Array.isArray(parsed)) {
+      const out = parsed.map((it: any) => String(it.partName || it.productName || it.part_name || it.description || '').trim()).filter(Boolean);
+      if (out.length) return Array.from(new Set(out));
+    }
+  } catch { /* fall through */ }
+  const single = String(raw?.part_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
+  return single ? [single] : [];
+}
+
 export function SalesPipelinePage() {
   const { profile, company } = useAuth();
   const userName = profile?.full_name || '';
@@ -298,6 +782,72 @@ export function SalesPipelinePage() {
   const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
   const [dcSaving, setDcSaving] = useState(false);
   const [dcForm, setDcForm] = useState<any>({});
+  // Multi-product DC lines (drag path): one selectable row per order product
+  // with its own dispatch qty; saved as one delivery row each under the same
+  // DC number (which the invoice flow already reads as a multi-item challan).
+  const [dcItems, setDcItems] = useState<{ name: string; avail: number; qty: string; selected: boolean }[]>([]);
+  // Approved-price display for the DC form (same source as the DC→Invoice
+  // gate: latest Approved costing sheet for the quotation). The DC line can
+  // name several products ("p1, p2"), so prices resolve per product and show
+  // as a breakdown. Saved challan flow is unchanged.
+  const [dcPricing, setDcPricing] = useState<{ lines: { name: string; unit: number; sheetRef: string }[]; loading: boolean }>({ lines: [], loading: false });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const soNo = String((dcModalTarget as any)?.raw?.sales_order || dcForm.poNumber || '').trim();
+        const pname = String(dcForm.partName || '').trim();
+        if (!dcModalTarget || !soNo) {
+          if (!cancelled) setDcPricing({ lines: [], loading: false });
+          return;
+        }
+        if (!cancelled) setDcPricing((p) => ({ ...p, loading: true }));
+        const soR = await supabase.from('cnc_sales_orders').select('id,order_no,part_no,quotation_id,quote_no').eq('order_no', soNo).maybeSingle();
+        const soRow = !soR.error ? soR.data : null;
+        let qRow: any = null;
+        if (soRow?.quotation_id) {
+          const r = await supabase.from('cnc_quotations').select('quote_no').eq('id', soRow.quotation_id).limit(1);
+          if (!r.error) qRow = (r.data ?? [])[0] ?? null;
+        }
+        if (!qRow && soRow?.quote_no) {
+          const r = await supabase.from('cnc_quotations').select('quote_no').eq('quote_no', soRow.quote_no).limit(1);
+          if (!r.error) qRow = (r.data ?? [])[0] ?? null;
+        }
+        if (cancelled) return;
+        if (!qRow?.quote_no) { setDcPricing({ lines: [], loading: false }); return; }
+        const v = await supabase.from('cnc_costing_sheets')
+          .select('approved_price,quantity,version,product_code,product_name')
+          .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
+        if (cancelled) return;
+        const sheets = !v.error ? (v.data ?? []) : [];
+        const lc = (s: any) => String(s ?? '').trim().toLowerCase();
+        const frags = pname.split(',').map((s) => s.trim()).filter(Boolean);
+        const candidates = [...(frags.length ? frags : []), String(soRow?.part_no ?? '').trim()].filter(Boolean);
+        const seen = new Set<string>();
+        const lines: { name: string; unit: number; sheetRef: string }[] = [];
+        for (const nm of candidates) {
+          const key = lc(nm);
+          if (!nm || seen.has(key)) continue;
+          seen.add(key);
+          const pick = sheets.find((s: any) => String(s.product_code ?? '').trim() !== '' && (lc(s.product_code) === key || (soRow?.part_no && lc(s.product_code) === lc(soRow.part_no))))
+            ?? sheets.find((s: any) => lc(s.product_name) === key);
+          if (pick && Number(pick.quantity) > 0 && pick.approved_price != null) {
+            lines.push({ name: nm, unit: Math.round((Number(pick.approved_price) / Number(pick.quantity)) * 100) / 100, sheetRef: `${qRow.quote_no} V${pick.version}` });
+          }
+        }
+        if (!cancelled) {
+          setDcPricing({ lines, loading: false });
+          if (lines.length === 1) {
+            setDcForm((prev: any) => (prev.price ? prev : { ...prev, price: String(lines[0].unit) }));
+          }
+        }
+      } catch {
+        if (!cancelled) setDcPricing({ lines: [], loading: false });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dcModalTarget, dcForm.poNumber, dcForm.partName]);
   const [invoiceModalTarget, setInvoiceModalTarget] = useState<KanbanCard | null>(null);
   const [soModalTarget, setSoModalTarget] = useState<KanbanCard | null>(null);
   const [soForm, setSoForm] = useState<any>({});
@@ -616,7 +1166,7 @@ export function SalesPipelinePage() {
             </div>
           </>) : (
           orderDetailEntries(title, Object.entries(raw)).map(([key, value]) => {
-            if (key === 'id' || key.startsWith('_') || key.endsWith('_id') || ((value === null || value === '') && !(title === 'Inward' && (key === 'product_name' || key === 'part_name' || key === 'category'))) || key === 'items' || key === 'contacts' || key === 'attachments' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || key === 'status' || key === 'delivered' || key === 'contact_person' || key === 'phone' || key === 'email' || key === 'part_no' || key === 'part_number' || key === 'partNo' || key === 'partNumber') return null;
+            if (key === 'id' || key.startsWith('_') || key.endsWith('_id') || ((value === null || value === '') && !(title === 'Inward' && (key === 'product_name' || key === 'part_name' || key === 'category'))) || key === 'items' || key === 'contacts' || key === 'attachments' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'delivery_no' || key === 'dc_no' || key === 'invoice_no' || key === 'sales_order_no' || key === 'sales_order_ref' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || key === 'status' || key === 'delivered' || key === 'contact_person' || key === 'phone' || key === 'email' || key === 'part_no' || key === 'part_number' || key === 'partNo' || key === 'partNumber') return null;
             if (title === 'Enquiry' && (key === 'status' || key === 'estimated_value' || key === 'received_date' || key === 'pipeline_stage' || key === 'expected_date' || key === 'source' || key === 'created_at' || key === 'lead_no')) return null;
             if (title === 'Sales Order' && (key === 'part_name' || key === 'quantity' || key === 'lead_no' || key === 'value' || key === 'customer' || key === 'created_at' || key === 'payment_terms' || key === 'total_value' || key === 'delivery_date')) return null;
             if (title === 'Quotation' && (key === 'customer' || key === 'part_name' || key === 'salesperson')) return null;
@@ -655,7 +1205,7 @@ export function SalesPipelinePage() {
             );
           }))}
         </div>
-        {showItems && raw.items && Array.isArray(raw.items) && (
+        {showItems && title !== 'Sales Order' && raw.items && Array.isArray(raw.items) && (
           <div className="bg-white rounded-lg border border-slate-200 mt-4">
             <h4 className="font-bold text-xs text-brand-800 border-b border-slate-200 p-2.5 bg-slate-50 rounded-t-lg uppercase">Items Breakdown</h4>
             <div className="overflow-x-auto">
@@ -895,7 +1445,7 @@ export function SalesPipelinePage() {
     estimatedValue: '', receivedDate: new Date().toISOString().split('T')[0],
     contacts: [{ person: '', phone: '', email: '' }],
     remarks: '',
-    items: [{ productName: '', quantity: '', files: [] as File[] }],
+    items: [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }],
     files: [] as File[]
   });
   const [enquiryForm, setEnquiryForm] = useState(resetEnquiryForm());
@@ -1063,7 +1613,6 @@ export function SalesPipelinePage() {
       // Same unique number = one card (like history): group sibling inward rows.
       // Strip the order-time stamp suffix (e.g. 1010-28Sep26-0994PM -> 1010) so
       // repeat inwards for the same company + unique number land on one card.
-      const baseUniqueNo = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
       const groups = new Map<string, any[]>();
       inwards.forEach(i => {
         const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
@@ -1073,9 +1622,16 @@ export function SalesPipelinePage() {
       groups.forEach((list, key) => {
         const first = list[0];
         const parts = Array.from(new Set(list.map(x => x.product_name ? `${x.product_name} · ${x.part_name}` : x.part_name).filter(Boolean)));
+        // Display the stamped unique number (like order/FG/DC cards); the
+        // group key stays stamp-stripped so repeats still land on one card.
+        const soMatch = (allOrders || []).find((o: any) => {
+          const lead = String(o.lead_no || '').trim();
+          return lead !== '' && baseUniqueNo(lead) === key;
+        });
+        const displayRef = soMatch?.lead_no || key;
         newCards.push({
           id: `inward_${first.id}`, stage: 'Inward', type: 'inward',
-          refNo: key, customer: first.party_name,
+          refNo: displayRef, customer: first.party_name,
           part: parts.slice(0, 3).join(', ') + (parts.length > 3 ? ` +${parts.length - 3} more` : ''),
           qty: list.reduce((s, x) => s + (Number(x.quantity) || 0), 0),
           value: list.reduce((s, x) => s + (Number(x.total_amount) || 0), 0),
@@ -1100,7 +1656,8 @@ export function SalesPipelinePage() {
       // multi-product approval shows once with a per-product breakdown.
       const fgGroups = new Map<string, any[]>();
       fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
-        const key = orderMap.get(w.sales_order) || w.sales_order || w.wo_no || `WO-${w.id.substring(0, 4)}`;
+        // Unique number only (raw sales_order/order numbers stay in backend).
+        const key = orderMap.get(w.sales_order) || w.wo_no || `WO-${w.id.substring(0, 4)}`;
         if (!fgGroups.has(key)) fgGroups.set(key, []);
         fgGroups.get(key)!.push(w);
       });
@@ -1131,15 +1688,52 @@ export function SalesPipelinePage() {
     }
 
     const dcMap = new Map();
+    // Same challan number = one card: group multi-product delivery rows.
+    // Card shows the UNIQUE number (backend delivery_no stays stored); it
+    // resolves through the linked sales order, else the legacy ref, else the
+    // stamped project name. Raw backend numbers never display.
+    const uniqueForDelivery = (d: any): string => {
+      if (d?.sales_order_no && orderMap.get(d.sales_order_no)) return orderMap.get(d.sales_order_no);
+      if (d?.sales_order_ref && orderMap.get(d.sales_order_ref)) return orderMap.get(d.sales_order_ref);
+      if (d?.project_name) return d.project_name;
+      return d?.delivery_no || '';
+    };
+    // Same challan number = one card: group multi-product delivery rows.
+    const dcGroups = new Map<string, any[]>();
     effectiveDcs.forEach(d => {
-       const ref = d.delivery_no || orderMap.get(d.sales_order_no) || `DC-${d.id.substring(0,4)}`;
-       if (d.delivery_no) dcMap.set(d.delivery_no, ref);
-       newCards.push({ id: d.id, stage: 'DC', type: 'dc', refNo: ref, customer: d.customer_name || d.party_name || 'Customer', part: d.part_name, qty: d.dispatch_qty || d.quantity, value: 0, date: d.delivery_date, status: d.status, raw: d });
+      const key = d.delivery_no || orderMap.get(d.sales_order_no) || `DC-${d.id.substring(0, 4)}`;
+      if (!dcGroups.has(key)) dcGroups.set(key, []);
+      dcGroups.get(key)!.push(d);
+    });
+    dcGroups.forEach((list, key) => {
+      const first = list[0];
+      const ref = uniqueForDelivery(first);
+      if (first.delivery_no) dcMap.set(first.delivery_no, ref);
+      const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
+      newCards.push({
+        id: `dc_${first.id}`, stage: 'DC', type: 'dc', refNo: ref,
+        customer: first.customer_name || first.party_name || 'Customer',
+        part: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : ''),
+        qty: list.reduce((s, x) => s + (Number(x.dispatch_qty ?? x.quantity) || 0), 0), value: 0,
+        date: list.map(x => x.delivery_date).filter(Boolean).sort().reverse()[0] || first.delivery_date,
+        status: first.status,
+        raw: list.length > 1 ? { ...first, _groupIds: list.map(x => x.id), _groupCount: list.length } : first,
+      });
     });
 
     if (invoicesData && invoicesData.length > 0) {
+      // Card shows the UNIQUE number (backend invoice_no stays stored).
+      const uniqueForInvoice = (inv: any): string => {
+        if (inv?.sales_order_no && orderMap.get(inv.sales_order_no)) return orderMap.get(inv.sales_order_no);
+        if (inv?.sales_order_id != null) {
+          const o = (allOrders || []).find((x: any) => String(x.id) === String(inv.sales_order_id));
+          if (o && o.order_no && orderMap.get(o.order_no)) return orderMap.get(o.order_no);
+        }
+        if (inv?.dc_no && dcMap.get(inv.dc_no)) return dcMap.get(inv.dc_no);
+        return inv?.invoice_no || `INV-${String(inv.id).substring(0, 4)}`;
+      };
       invoicesData.filter((inv: any) => !inv.pipeline_completed_at).forEach(inv => {
-         const ref = inv.invoice_no || orderMap.get(inv.sales_order_no) || (inv.dc_no && dcMap.get(inv.dc_no)) || `INV-${inv.id.substring(0,4)}`;
+         const ref = uniqueForInvoice(inv);
          newCards.push({ id: inv.id, stage: 'Invoice', type: 'invoice', refNo: ref, customer: inv.customer_name || 'Customer', part: inv.item || inv.part_name || '-', qty: inv.quantity || 1, value: inv.amount || 0, date: inv.invoice_date || (inv.created_at ? inv.created_at.split('T')[0] : ''), status: inv.status, raw: inv });
       });
     }
@@ -1436,7 +2030,12 @@ export function SalesPipelinePage() {
 
     if (table) {
       setLoading(true);
-      const { error } = await supabase.from(table).delete().eq('id', card.raw.id);
+      const ids = Array.isArray((card.raw as any)?._groupIds) && (card.raw as any)._groupIds.length
+        ? (card.raw as any)._groupIds.filter(Boolean)
+        : [card.raw.id];
+      const { error } = ids.length > 1
+        ? await supabase.from(table).delete().in('id', ids)
+        : await supabase.from(table).delete().eq('id', card.raw.id);
       if (error) alert("Error deleting: " + error.message);
       else fetchPipeline();
       setLoading(false);
@@ -1804,6 +2403,17 @@ export function SalesPipelinePage() {
          availableQty: avail, price: '',
          poNumber: card.raw.sales_order || card.raw.wo_no || '', vehicleNo: '', ewayBill: ''
       });
+      const prods = ((card as any).qtyTrack?.products ?? []).filter((p: any) => (p.available ?? 0) > 0 || (p.good ?? 0) > 0);
+      if (prods.length > 1) {
+        setDcItems(prods.map((p: any) => ({
+          name: p.name,
+          avail: Math.max(0, Number(p.available) || 0),
+          qty: String(Math.max(0, Number(p.available) || 0)),
+          selected: true,
+        })));
+      } else {
+        setDcItems([]);
+      }
       setDcModalTarget(card);
     } else if (card.type === 'dc' && toStage === 'Invoice') {
       // Approved-price gate: open the invoice modal backed by FG costing instead
@@ -1834,13 +2444,13 @@ export function SalesPipelinePage() {
       const p = typeof ef === 'string' ? JSON.parse(ef) : ef;
       if (Array.isArray(p)) parsed = p;
     } catch { /* fall back to part_name below */ }
-    const mapped = parsed
+    const mapped: { productName: string; partName: string; quantity: string; remarks: string; filePaths: string[]; files: File[] }[] = parsed
       .map((it: any) => ({
         productName: String(it.productName || it.partName || it.part_name || '').trim(),
         partName: String(it.productName || it.partName || it.part_name || '').trim(),
-        quantity: it.quantity ?? it.qty ?? '',
-        remarks: it.remarks || '',
-        filePaths: Array.isArray(it.filePaths) ? [...it.filePaths] : [],
+        quantity: String(it.quantity ?? it.qty ?? ''),
+        remarks: String(it.remarks || ''),
+        filePaths: Array.isArray(it.filePaths) ? it.filePaths.filter((p: any) => typeof p === 'string') : [],
         files: [] as File[],
       }))
       .filter((it: any) => it.productName);
@@ -1848,7 +2458,7 @@ export function SalesPipelinePage() {
       mapped.push({
         productName: String(raw.part_name).trim(),
         partName: String(raw.part_name).trim(),
-        quantity: raw.quantity ?? '',
+        quantity: String(raw.quantity ?? ''),
         remarks: '',
         filePaths: [],
         files: [] as File[],
@@ -1862,7 +2472,7 @@ export function SalesPipelinePage() {
       estimatedValue: raw.estimated_value ?? '',
       receivedDate: new Date().toISOString().split('T')[0],
       contacts: [{ person: raw.contact_person || '', phone: raw.phone || '', email: raw.email || '' }],
-      items: mapped.length ? mapped : [{ productName: '', quantity: '', files: [] as File[] }],
+      items: mapped.length ? mapped : [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }],
     });
     setDuplicateSource(raw.lead_no || raw.enquiry_no || card.refNo || '');
     setEnquiryModalOpen(true);
@@ -2182,7 +2792,10 @@ export function SalesPipelinePage() {
 
   const saveDeliveryChallan = async () => {
     if (!dcModalTarget || dcSaving) return;
-    const q = Number(dcForm.quantity) || 0;
+    // Multi-product lines (drag path) or the single combined line.
+    const picked = dcItems.filter((i) => i.selected);
+    const useItems = !!dcModalTarget.raw?.id && picked.length > 0;
+    const q = useItems ? picked.reduce((s, i) => s + (Number(i.qty) || 0), 0) : (Number(dcForm.quantity) || 0);
     const fromWorkOrder = !!dcModalTarget.raw?.id;
     if (q <= 0) {
        alert("Please enter the dispatch quantity.");
@@ -2193,6 +2806,13 @@ export function SalesPipelinePage() {
       if (q > maxQ) {
          alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
          return;
+      }
+    }
+    if (useItems) {
+      for (const it of picked) {
+        const n = Number(it.qty) || 0;
+        if (!(n > 0)) { alert(`Enter a dispatch quantity greater than 0 for ${it.name}.`); return; }
+        if (n > it.avail) { alert(`${it.name}: quantity exceeds the available ${it.avail} pcs.`); return; }
       }
     }
     setDcSaving(true);
@@ -2237,16 +2857,22 @@ export function SalesPipelinePage() {
       } catch (e) { console.error('Delivery availability check failed:', e); }
     }
     // Near-duplicate guard: same order + product + qty + date within minutes.
+    // Multi-product challans check each line.
+    const checkEntries = useItems
+      ? picked.map((i) => ({ part: i.name, qty: Number(i.qty) || 0 }))
+      : [{ part: dcForm.partName || '', qty: q }];
     if (soNo) {
       try {
         const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: recent } = await supabase.from('cnc_deliveries')
-          .select('id,delivery_no').eq('sales_order_no', soNo)
-          .eq('part_name', dcForm.partName || '').eq('dispatch_qty', q)
-          .eq('delivery_date', dcForm.date || null).gte('created_at', tenMinAgo).limit(1);
-        if (recent && recent.length > 0 && !window.confirm(
-          `A nearly identical challan (${recent[0].delivery_no}) was created minutes ago. Create this one anyway?`)) {
-          return;
+        for (const ce of checkEntries) {
+          const { data: recent } = await supabase.from('cnc_deliveries')
+            .select('id,delivery_no').eq('sales_order_no', soNo)
+            .eq('part_name', ce.part).eq('dispatch_qty', ce.qty)
+            .eq('delivery_date', dcForm.date || null).gte('created_at', tenMinAgo).limit(1);
+          if (recent && recent.length > 0 && !window.confirm(
+            `A nearly identical challan (${recent[0].delivery_no}) was created minutes ago. Create this one anyway?`)) {
+            return;
+          }
         }
       } catch { /* guard is best-effort; the insert below still validates */ }
     }
@@ -2269,13 +2895,22 @@ export function SalesPipelinePage() {
       }
     }
     if (!customerId) { alert('Could not resolve a customer for this delivery. Add the party as a customer first.'); return; }
-    const { error } = await supabase.from('cnc_deliveries').insert([{
-       id: crypto.randomUUID(), delivery_no: dcForm.dcNo, customer_name: dcForm.partyName,
-       customer_id: customerId, sales_order_id: so?.id || null, sales_order_no: soNo || null,
-       part_name: dcForm.partName, quantity: q, dispatch_qty: q, delivery_date: dcForm.date || null,
-       vehicle_no: dcForm.vehicleNo || '', status: 'Pending',
-       created_at: new Date().toISOString()
-    }]);
+    // One delivery row per product under the same challan number (multi-item
+    // challans are read back together by the invoice flow).
+    const rowsToSave = useItems
+      ? picked.map((i) => ({ part: i.name, qty: Number(i.qty) || 0 }))
+      : [{ part: dcForm.partName, qty: q }];
+    let error: any = null;
+    for (const r of rowsToSave) {
+      const res = await supabase.from('cnc_deliveries').insert([{
+         id: crypto.randomUUID(), delivery_no: dcForm.dcNo, customer_name: dcForm.partyName,
+         customer_id: customerId, sales_order_id: so?.id || null, sales_order_no: soNo || null,
+         part_name: r.part, quantity: r.qty, dispatch_qty: r.qty, delivery_date: dcForm.date || null,
+         vehicle_no: dcForm.vehicleNo || '', status: 'Pending',
+         created_at: new Date().toISOString()
+      }]);
+      if (res.error) { error = res.error; break; }
+    }
     if (!error) {
        if (fromWorkOrder) {
          // Partial DCs leave the batch open; only a fulfilling dispatch marks
@@ -2763,6 +3398,7 @@ export function SalesPipelinePage() {
                       setDcForm({
                         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', poNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', vehicleNo: '', ewayBill: ''
                       });
+                      setDcItems([]);
                       setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Invoice') {
                       setInvoiceForm({
@@ -3056,7 +3692,7 @@ export function SalesPipelinePage() {
             value={newLeadForm.company}
             onChange={val => {
               const matched = allKnownCompanies.find(c => c.company.toLowerCase() === val.trim().toLowerCase());
-              setNewLeadForm(prev => ({
+              setNewLeadForm((prev: any) => ({
                 ...prev,
                 company: val,
                 contacts: matched && (matched.contact_person || matched.phone || matched.email)
@@ -3067,7 +3703,7 @@ export function SalesPipelinePage() {
               }));
             }}
             onSelectCustomer={c => {
-              setNewLeadForm(prev => ({
+              setNewLeadForm((prev: any) => ({
                 ...prev,
                 company: c.company,
                 contacts: (c.contact_person || c.phone || c.email)
@@ -3137,7 +3773,7 @@ export function SalesPipelinePage() {
                     </div>
                     {idx > 0 && (
                       <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
-                        const newItems = newLeadForm.items.filter((_, i) => i !== idx);
+                        const newItems = newLeadForm.items.filter((_: any, i: number) => i !== idx);
                         setNewLeadForm({...newLeadForm, items: newItems});
                       }}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
@@ -3191,7 +3827,7 @@ export function SalesPipelinePage() {
           <div className="col-span-2">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
             <div className="space-y-2">
-              {(enquiryForm.items || [{ productName: '', quantity: '', files: [] }]).map((item: any, idx: number) => (
+              {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
                 <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div>
                     <input className={inputClass} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
@@ -3239,7 +3875,7 @@ export function SalesPipelinePage() {
               ))}
               <datalist id="enquiry-product-list">{existingProductNames.map(n => <option key={n} value={n} />)}</datalist>
               <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
-                setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', quantity: '', files: [] }]});
+                setEnquiryForm({...enquiryForm, items: [...(enquiryForm.items || []), { productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]});
               }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 Add Another Product
@@ -3550,12 +4186,57 @@ export function SalesPipelinePage() {
           <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
           <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
           <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details</h4>
+            <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details — how much of each product for this DC?</h4>
+            {dcItems.length > 0 ? (
+              <div className="space-y-2">
+                {dcItems.map((it, idx) => (
+                  <div key={it.name} className={`grid grid-cols-[auto_minmax(0,1fr)_7rem] gap-3 items-center rounded-lg border px-3 py-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                    <input
+                      type="checkbox"
+                      checked={it.selected}
+                      onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
+                      className="h-4 w-4 accent-orange-600"
+                      aria-label={`Select ${it.name}`}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{it.name}</p>
+                      <p className="text-[11px] text-slate-400">Available: {it.avail}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400">Qty for DC</p>
+                      <input
+                        type="number" min={0}
+                        disabled={!it.selected}
+                        value={it.qty}
+                        onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
+                        className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="grid grid-cols-3 gap-4">
               <FormField label="Product Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
               <FormField label="Quantity" required><input type="number" min="0" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
               <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
             </div>
+            )}
+            {dcPricing.loading ? (
+              <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
+            ) : dcPricing.lines.length > 0 && (
+              <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Project cost breakdown (approved)</p>
+                {dcPricing.lines.map((l) => (
+                  <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
+                    {l.name} — {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
+                  </p>
+                ))}
+                {dcPricing.lines.length === 1 && (
+                  <p className="text-slate-500 tabular-nums">Line amount: {formatINR((dcItems.length > 0 ? dcItems.filter((i) => i.selected).reduce((s, i) => s + (Number(i.qty) || 0), 0) : (Number(dcForm.quantity) || 0)) * dcPricing.lines[0].unit)}</p>
+                )}
+              </div>
+            )}
             {dcForm.availableQty != null && (
               <p className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 mt-3">
                 Available for Delivery: {Number(dcForm.availableQty).toLocaleString('en-IN')} pcs
@@ -3669,7 +4350,8 @@ export function SalesPipelinePage() {
 <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
-            {(() => {
+            {/* Top banner hides where a section renders its own live strip (enquiry edit, quotation). */}
+            {(viewEditMode && viewModalTarget?.stage === 'Enquiry' && viewModalData?.enquiry) || (viewModalData?.quotation && (viewModalTarget?.stage === 'Quotation' || viewModalTarget?.stage === 'Sales Order')) ? null : (() => {
               const enq: any = viewModalData?.enquiry;
               const quo: any = viewModalData?.quotation;
               const ord: any = viewModalData?.order;
@@ -3732,7 +4414,7 @@ export function SalesPipelinePage() {
                 </div>
               );
             })()}
-            {viewModalData?.qtyTracking && (
+            {(viewModalTarget?.stage === 'Finished Goods' || viewModalTarget?.stage === 'Inward') && viewModalData?.qtyTracking && (
               <QtyTrackingSection
                 q={viewModalData.qtyTracking}
                 userName={userName}
@@ -3767,7 +4449,21 @@ export function SalesPipelinePage() {
                         <span>Inward Details #{gi + 1}</span>
                       </h4>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                        <div className="mb-3">{inwardCellFor(g[0], 'product_name', 'Product from Enquiry')}</div>
+                        <div className="mb-3">
+                          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Product from Enquiry</span>
+                          {viewEditMode ? (
+                            <select
+                              className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
+                              value={g[0].product_name || ''}
+                              onChange={(e) => { if (e.target.value !== (g[0].product_name || '')) void handleInlineEdit('Inward', g[0].id, 'product_name', e.target.value); }}
+                            >
+                              <option value="">Select product…</option>
+                              {Array.from(new Set([...enquiryProductOptions(rawLeadsList, g[0].project_name).map((o: any) => o.name), g[0].product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-sm text-slate-800 font-medium break-words">{g[0].product_name || '—'}</span>
+                          )}
+                        </div>
                         <div className="grid grid-cols-3 gap-4 mb-3">
                           {inwardCellFor(g[0], 'category', 'Category')}
                           {inwardCellFor(g[0], 'reference_no', 'Reference No.')}
@@ -3796,8 +4492,36 @@ export function SalesPipelinePage() {
                   ))}</>);
                 })() },
                 { key: 'Sales Order', node: renderRecordData('Sales Order', viewModalData.order, true) },
-                { key: 'Quotation', node: renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order) },
-                { key: 'Enquiry', node: renderRecordData('Enquiry', viewModalData.enquiry, !viewModalData.quotation && !viewModalData.order) },
+                { key: 'Quotation', node: viewModalData.quotation ? (
+                  <>
+                    <StageStrip
+                      typeLabel="QUOTATION"
+                      uniqueNo={viewModalData.quotation.enquiry_no || viewModalData.quotation.lead_no || viewModalData.quotation.quote_no || ''}
+                      products={quoteProductNames(viewModalData.quotation)}
+                      customer={viewModalData.quotation.customer || viewModalData.quotation.customer_name || ''}
+                    />
+                    {viewEditMode ? (
+                      <QuotationEditForm
+                        key={viewModalData.quotation.id || 'quo'}
+                        raw={viewModalData.quotation}
+                        productNames={existingProductNames}
+                        companyId={company?.id}
+                        openFile={(p) => void openProductFile(p)}
+                        onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
+                      />
+                    ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)}
+                  </>
+                ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order) },
+                { key: 'Enquiry', node: (viewEditMode && viewModalData.enquiry) ? (
+                  <EnquiryEditForm
+                    key={viewModalData.enquiry.id || 'enq'}
+                    raw={viewModalData.enquiry}
+                    companies={allKnownCompanies}
+                    productNames={existingProductNames}
+                    companyId={company?.id}
+                    onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
+                  />
+                ) : renderRecordData('Enquiry', viewModalData.enquiry, !viewModalData.quotation && !viewModalData.order) },
               ];
               const cur = viewModalTarget?.stage || '';
               // Enquiry Details section only shows when opened from an Enquiry card.

@@ -38,8 +38,10 @@ export function QuantityTrackingPage() {
     (async () => {
       setLoading(true); setError('');
       try {
-        const [so, wo, dc, inv, cu, bq] = await Promise.all([
-          supabase.from('cnc_sales_orders').select('id,order_no,order_date,customer,part_name,part_no,quantity,status').order('created_at', { ascending: false }).limit(1000),
+        const soQ = (cols: string) => supabase.from('cnc_sales_orders').select(cols).order('created_at', { ascending: false }).limit(1000);
+        let so = await soQ('id,order_no,lead_no,order_date,customer,part_name,part_no,quantity,status');
+        if (so.error) so = await soQ('id,order_no,order_date,customer,part_name,part_no,quantity,status');
+        const [wo, dc, inv, cu, bq] = await Promise.all([
           supabase.from('cnc_work_orders').select('sales_order,completed,rejected').limit(5000),
           supabase.from('cnc_deliveries').select('id,delivery_no,delivery_date,sales_order_id,sales_order_no,dispatch_qty,quantity,status').limit(5000),
           supabase.from('cnc_invoices').select('id,invoice_no,invoice_type,invoice_date,sales_order_id,delivery_id,dc_no,quantity,cancelled').limit(5000),
@@ -99,15 +101,19 @@ export function QuantityTrackingPage() {
     return [];
   }, [batches, batchesAvailable]);
 
+  // Display rule: unique number only (backend order/delivery numbers stay stored).
+  const uniqueOf = (orderNo: string) =>
+    orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
+
   const exportReport = () => exportCsv(`Order_Quantity_Tracking_${todayISO()}`, [
-    ['Sales Order', 'Date', 'Customer', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
+    ['Unique Number', 'Date', 'Customer', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
     ...filtered.map((q) => {
       const o = orders.find((x) => String(x.order_no) === q.soNo);
-      return [q.soNo, o?.order_date || '', q.customer, q.product, o?.status || '', q.ordered, q.good, q.rejected, q.remaining, q.fgAvailable, q.delivered, q.invoiced, q.invoiceable, q.ordered > 0 ? Math.round((q.good / q.ordered) * 100) : 0];
+      return [uniqueOf(q.soNo), o?.order_date || '', q.customer, q.product, o?.status || '', q.ordered, q.good, q.rejected, q.remaining, q.fgAvailable, q.delivered, q.invoiced, q.invoiceable, q.ordered > 0 ? Math.round((q.good / q.ordered) * 100) : 0];
     }),
     [],
-    ['Rejection: Batch', 'Date', 'Sales Order', 'Product', 'Rejected Qty', 'Rejection Type', 'Rejection Reason', 'Machine', 'Operator'],
-    ...rejections.map((b: any) => [b.batch_no, String(b.created_at || '').slice(0, 10), b.sales_order_no, b.product_name, Number(b.rejected_qty), b.rejection_type, b.rejection_reason, b.machine, b.operator]),
+    ['Rejection: Batch', 'Date', 'Unique Number', 'Product', 'Rejected Qty', 'Rejection Type', 'Rejection Reason', 'Machine', 'Operator'],
+    ...rejections.map((b: any) => [b.batch_no, String(b.created_at || '').slice(0, 10), uniqueOf(b.sales_order_no), b.product_name, Number(b.rejected_qty), b.rejection_type, b.rejection_reason, b.machine, b.operator]),
   ]);
 
   return (
@@ -149,7 +155,7 @@ export function QuantityTrackingPage() {
           <table className="w-full text-xs min-w-[1100px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200 bg-slate-50">
-                <th className="px-3 py-2">Sales Order</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Product</th>
+                <th className="px-3 py-2">Unique Number</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Product</th>
                 <th className="px-3 py-2 text-right">Ordered</th><th className="px-3 py-2 text-right">Good</th>
                 <th className="px-3 py-2 text-right">Rejected</th><th className="px-3 py-2 text-right">Remaining</th>
                 <th className="px-3 py-2 text-right">FG Avail</th><th className="px-3 py-2 text-right">Delivered</th>
@@ -162,7 +168,7 @@ export function QuantityTrackingPage() {
               {!loading && filtered.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-500">No orders match the filters.</td></tr>}
               {filtered.map((q) => (
                 <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100 hover:bg-slate-50/60 cursor-pointer" onClick={() => setSelected(selected?.soNo === q.soNo ? null : q)}>
-                  <td className="px-3 py-2 font-mono font-semibold">{q.soNo}</td>
+                  <td className="px-3 py-2 font-mono font-semibold">{uniqueOf(q.soNo)}</td>
                   <td className="px-3 py-2">{q.customer || '—'}</td>
                   <td className="px-3 py-2">{q.product || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(q.ordered)}</td>
@@ -194,13 +200,13 @@ export function QuantityTrackingPage() {
         {batchesAvailable && rejections.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[900px]">
-              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Batch</th><th className="py-2">Date</th><th className="py-2">Sales Order</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected</th><th className="py-2">Type</th><th className="py-2">Reason</th><th className="py-2">Machine</th><th className="py-2">Operator</th></tr></thead>
+              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Batch</th><th className="py-2">Date</th><th className="py-2">Unique Number</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected</th><th className="py-2">Type</th><th className="py-2">Reason</th><th className="py-2">Machine</th><th className="py-2">Operator</th></tr></thead>
               <tbody>
                 {rejections.map((b: any) => (
                   <tr key={b.id || b.batch_no} className="border-t border-slate-100">
                     <td className="py-2 font-mono font-semibold">{b.batch_no}</td>
                     <td className="py-2">{String(b.created_at || '').slice(0, 10)}</td>
-                    <td className="py-2 font-mono">{b.sales_order_no || '—'}</td>
+                    <td className="py-2 font-mono">{uniqueOf(b.sales_order_no) || '—'}</td>
                     <td className="py-2">{b.product_name || '—'}</td>
                     <td className="py-2 text-right tabular-nums font-semibold text-rose-600">{fmt(Number(b.rejected_qty))}</td>
                     <td className="py-2">{b.rejection_type || '—'}</td>
@@ -215,11 +221,11 @@ export function QuantityTrackingPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[700px]">
-              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Sales Order</th><th className="py-2">Customer</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
+              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Unique Number</th><th className="py-2">Customer</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
               <tbody>
                 {filtered.filter((q) => q.rejected > 0).map((q) => (
                   <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100">
-                    <td className="py-2 font-mono font-semibold">{q.soNo}</td>
+                    <td className="py-2 font-mono font-semibold">{uniqueOf(q.soNo)}</td>
                     <td className="py-2">{q.customer || '—'}</td>
                     <td className="py-2">{q.product || '—'}</td>
                     <td className="py-2 text-right tabular-nums font-semibold text-rose-600">{fmt(q.rejected)}</td>

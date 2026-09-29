@@ -146,25 +146,31 @@ export function PartRoutingTab() {
 
   useEffect(() => {
     void load();
-    supabase.from('cnc_parts').select('part_no, part_name').order('part_no').limit(2000)
-      .then(({ data }) => { if (data) setParts(data.filter((p: any) => p.part_no)); })
-      .catch(() => {});
-    supabase.from('cnc_processes').select('*').order('process_code')
-      .then(({ data, error }) => {
-        if (error) {
-          if ((error as any).code === 'PGRST205') setProcessesMissing(true);
+    (async () => {
+      try {
+        const p = await supabase.from('cnc_parts').select('part_no, part_name').order('part_no').limit(2000);
+        if (!p.error && p.data) setParts(p.data.filter((x: any) => x.part_no));
+      } catch { /* parts list stays empty */ }
+      try {
+        const pr = await supabase.from('cnc_processes').select('*').order('process_code');
+        if (pr.error) {
+          if ((pr.error as any).code === 'PGRST205') setProcessesMissing(true);
           setProcesses([]);
-        } else setProcesses(data ?? []);
-      })
-      .catch(() => setProcesses([]));
-    // Machine master: name column is optional in older databases.
-    supabase.from('cnc_machines').select('code,name').order('code')
-      .then(({ data, error }) => {
-        if (!error && data) { setMachines(data.map((m: any) => ({ code: m.code, name: m.name ?? '' })).filter((m) => m.code)); return; }
-        return supabase.from('cnc_machines').select('code').order('code')
-          .then(({ data: d2 }) => { if (d2) setMachines(d2.map((m: any) => ({ code: m.code, name: '' })).filter((m: any) => m.code)); });
-      })
-      .catch(() => {});
+        } else setProcesses(pr.data ?? []);
+      } catch {
+        setProcesses([]);
+      }
+      // Machine master: name column is optional in older databases.
+      try {
+        const m = await supabase.from('cnc_machines').select('code,name').order('code');
+        if (!m.error && m.data) {
+          setMachines(m.data.map((x: any) => ({ code: x.code, name: x.name ?? '' })).filter((x) => x.code));
+        } else {
+          const m2 = await supabase.from('cnc_machines').select('code').order('code');
+          if (!m2.error && m2.data) setMachines(m2.data.map((x: any) => ({ code: x.code, name: '' })).filter((x: any) => x.code));
+        }
+      } catch { /* machine list stays empty */ }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
