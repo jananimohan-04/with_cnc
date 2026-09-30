@@ -431,7 +431,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
 
   // ---------- export / print / pdf ----------
   const exportRows = () => exportCsv(`Job_Cards_${new Date().toISOString().slice(0, 10)}`, [
-    ['Job Card No', 'Work Order', 'Sales Order', 'Customer', 'Product', 'Seq', 'Process', 'Machine', 'Operator', 'Planned', 'Good', 'Rejected', 'Rework', 'Remaining', 'Status', 'Scheduled Date'],
+    ['Job Card No', 'Work Order', 'Sales Order', 'Company', 'Product', 'Seq', 'Process', 'Machine', 'Operator', 'Planned', 'Good', 'Rejected', 'Rework', 'Remaining', 'Status', 'Scheduled Date'],
     ...filtered.map((j) => [j.job_no, j.work_order, j.sales_order_no, j.customer, j.part_name, j.op_no, j.operation, j.machine, j.operator, Number(j.qty_planned) || 0, Number(j.qty_completed) || 0, Number(j.qty_rejected) || 0, Number(j.rework_qty) || 0, remainingOf(j), j.status, j.machine ? dstr(j.created_at) : '']),
   ]);
 
@@ -447,7 +447,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
       details: [
         ['Job Card No.', j.job_no], ['Work Order No.', j.work_order || '—'],
         ['Sales Order No.', j.sales_order_no || wo?.sales_order || '—'],
-        ['Customer', j.customer || wo?.customer || '—'],
+        ['Company', j.customer || wo?.customer || '—'],
         ['Product', j.part_name || '—'], ['Product Code', j.part_no || wo?.part_no || '—'],
       ] as [string, string | number | null | undefined][],
       details2: [
@@ -492,7 +492,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
     { key: 'job_no', label: 'Job Card No.', sortable: true, render: (r) => <button className="font-mono text-xs font-bold text-brand-700 hover:underline" onClick={() => openDetail(String(r.id))}>{r.job_no}</button> },
     { key: 'work_order', label: 'Work Order No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-600">{r.work_order || '—'}</span> },
     { key: 'sales_order_no', label: 'Sales Order No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.sales_order_no || '—'}</span> },
-    { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="text-xs">{r.customer || '—'}</span> },
+    { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="text-xs">{r.customer || '—'}</span> },
     { key: 'part_name', label: 'Product', sortable: true, render: (r) => <span className="text-xs font-medium">{r.part_name || '—'}</span> },
     { key: 'op_no', label: 'Seq', sortable: true, align: 'right', render: (r) => <span className="font-mono text-xs">{r.op_no ?? '—'}</span> },
     { key: 'operation', label: 'Process', sortable: true, render: (r) => <span className="text-xs">{r.operation || '—'}</span> },
@@ -656,7 +656,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                 {[
-                  ['Customer', selWO.customer || '—'], ['Product', selWO.part_name || '—'],
+                  ['Company', selWO.customer || '—'], ['Product', selWO.part_name || '—'],
                   ['Product Code', selWO.part_no || '—'], ['Sales Order', selWO.sales_order || '—'],
                   ['Work Order', selWO.wo_no || '—'],
                   ['Sequence', `Seq ${selOp.operation_sequence}`],
@@ -760,7 +760,7 @@ export function JobCardsTab({ workOrders }: { workOrders: any[] }) {
                 {[
                   ['Job Card No.', viewJob.job_no], ['Work Order No.', viewJob.work_order || '—'],
                   ['Sales Order No.', viewJob.sales_order_no || viewWO?.sales_order || '—'],
-                  ['Customer', viewJob.customer || viewWO?.customer || '—'],
+                  ['Company', viewJob.customer || viewWO?.customer || '—'],
                   ['Product', viewJob.part_name || '—'], ['Product Code', viewJob.part_no || viewWO?.part_no || '—'],
                 ].map(([k, v]) => (
                   <div key={k}><p className="text-[10px] uppercase tracking-wider text-slate-400">{k}</p><p className="font-semibold">{v}</p></div>

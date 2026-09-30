@@ -42,7 +42,7 @@ export const navSections: NavSection[] = [
     label: 'Sales',
     items: [
       { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline' },
-      { label: 'All Leads', icon: Users, page: 'sales/leads' },
+      { label: 'All Companies', icon: Users, page: 'sales/leads' },
     ],
   },
   {
@@ -106,8 +106,8 @@ export const navSections: NavSection[] = [
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Executive Dashboard',
   'sales/pipeline': 'Sales Pipeline',
-  'sales/leads': 'All Leads',
-  'sales/customers': 'Customers',
+  'sales/leads': 'All Companies',
+  'sales/customers': 'Companies',
   'sales/quotations': 'Quotations',
   'sales/orders': 'Sales Orders',
   'operations/delivery': 'Delivery Challan',

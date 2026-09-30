@@ -22,7 +22,7 @@ export function StageStrip({ typeLabel, uniqueNo, products, customer }: {
         <span className="text-sm font-extrabold text-slate-900 break-words">{products.length ? products.join(', ') : '—'}</span>
       </div>
       <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
         <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
       </div>
     </div>
@@ -75,6 +75,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
     partName: String(it.partName || it.productName || it.part_name || it.description || ''),
     quantity: it.quantity ?? it.qty ?? '',
     rejectedQty: it.rejectedQty ?? it.rejected_qty ?? it.rejected ?? '',
+    unitPrice: it.unitPrice ?? '',
     itemStatus: it.status || '',
   })));
   const [saving, setSaving] = useState(false);
@@ -100,7 +101,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
     const entered = items
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
       .filter((it: any) => it.partName);
-    if (!customer.trim()) { setError('Enter the customer.'); return false; }
+    if (!customer.trim()) { setError('Enter the company.'); return false; }
     if (!entered.length) { setError('Enter at least one product.'); return false; }
     if (entered.some((it: any) => Number(it.quantity) < 0)) { setError('Product quantities cannot be negative.'); return false; }
     if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { setError('Rejected quantities cannot be negative.'); return false; }
@@ -116,6 +117,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
           partName: it.partName,
           quantity: it.quantity === '' ? '0' : it.quantity,
           rejectedQty: it.rejectedQty === '' ? 0 : Number(it.rejectedQty) || 0,
+          unitPrice: it.unitPrice === '' || it.unitPrice == null ? '0' : it.unitPrice,
           status: it.itemStatus || (prev as any).status || order?.status || 'Confirmed',
         };
       });
@@ -165,7 +167,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
     <div className="mb-6">
       <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
         <div>
-          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer</span>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
           {editMode ? (
             <input className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
               value={customer} onChange={(e) => setCustomer(e.target.value)} />
@@ -185,10 +187,11 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
       </div>
       <div className="mt-3 space-y-2">
         {(editMode ? items : baseItems).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center px-1">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_5rem_4.5rem_8rem] gap-2 items-center px-1">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Rej Qty</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
           </div>
@@ -199,9 +202,11 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
             : String(it.partName || it.productName || it.part_name || it.description || '').trim() || '—';
           const qty = editMode ? it.quantity : (it.quantity ?? it.qty ?? '—');
           const rej = prodOf(name)?.rejected ?? 0;
+          const upRaw = editMode ? it.unitPrice : (it.unitPrice ?? '');
+          const upText = upRaw === '' || upRaw == null ? '—' : `₹${Number(upRaw).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
           return (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_5rem_4.5rem_8rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <div>
                   {editMode ? (
@@ -219,6 +224,15 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
                       onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, quantity: e.target.value } : r)))} />
                   ) : (
                     <span className="text-sm text-slate-800 font-medium tabular-nums">{qty === '' ? '—' : String(qty)}</span>
+                  )}
+                </div>
+                <div>
+                  {editMode ? (
+                    <input type="number" min={0} className="w-full text-sm font-medium tabular-nums text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
+                      value={it.unitPrice ?? ''} placeholder="0.00"
+                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, unitPrice: e.target.value } : r)))} />
+                  ) : (
+                    <span className="text-sm text-slate-800 font-medium tabular-nums">{upText}</span>
                   )}
                 </div>
                 <div>
@@ -252,7 +266,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
         )}
       </div>
       {editMode && (
-        <button onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', itemStatus: '' }])}
+        <button onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', unitPrice: '', itemStatus: '' }])}
           className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
           <span className="text-lg">+</span> Add Another Product
         </button>

@@ -472,7 +472,7 @@ export function ProjectCostingPage() {
     if (!report) return;
     exportCsv('Costing_' + report.project.project_name, [
       ['Project', report.project.project_name],
-      ['Customer', report.project.party_name],
+      ['Company', report.project.party_name],
       ['Part', report.project.part_name],
       ['Planned Cost', report.project.planned_cost || ''],
       ['Recorded Actual Cost', totalActual || ''],
@@ -599,7 +599,7 @@ export function ProjectCostingPage() {
                 className={inputClass}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search project, part, customer..."
+                placeholder="Search project, part, company..."
               />
               <Button size="sm" type="submit" aria-label="Search">
                 <Search size={14} />

@@ -53,7 +53,9 @@ export function LeadsPage() {
               status: d.status || 'New',
               estimatedValue: Number(d.estimated_value),
               source: d.source || 'Direct',
-              notes: d.notes || ''
+              notes: d.notes || '',
+              remarks: d.remarks || '',
+              allocation: d.remarks || ''
            })));
         }
 
@@ -139,10 +141,14 @@ export function LeadsPage() {
   useEffect(() => {
     fetchLeads();
     fetchCustomers();
-  }, []);
+  }, [company?.id]);
 
   async function fetchCustomers() {
-    const { data } = await supabase.from('cnc_customers').select('*');
+    let query = supabase.from('cnc_customers').select('*');
+    if (company?.id) {
+      query = query.eq('company_id', company.id);
+    }
+    const { data } = await query;
     if (data) setCustomerList(data);
   }
 
@@ -182,7 +188,11 @@ export function LeadsPage() {
   async function fetchLeads() {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('cnc_enquiries').select('*').order('created_at', { ascending: false });
+      let query = supabase.from('cnc_enquiries').select('*').order('created_at', { ascending: false });
+      if (company?.id) {
+        query = query.eq('company_id', company.id);
+      }
+      const { data, error } = await query;
       if (error) {
         console.error('Error fetching leads:', error);
         setDbError(true);
@@ -209,6 +219,8 @@ export function LeadsPage() {
               status: st,
               estimatedValue: Number(d.estimated_value),
               source: d.source || 'Direct',
+              remarks: d.remarks || '',
+              allocation: d.remarks || '',
               statusSummary: { [st]: 1 },
               allEnquiries: [d]
             });
@@ -370,7 +382,7 @@ export function LeadsPage() {
           }]);
       if (error) {
         console.error('Failed to save lead:', error);
-        alert('Failed to save lead: ' + error.message);
+        alert('Failed to save company: ' + error.message);
         return;
       }
 
@@ -399,7 +411,7 @@ export function LeadsPage() {
       setEditId(null);
     } catch (err: any) {
       console.error('Failed to save lead:', err);
-      alert('Failed to save lead: ' + (err?.message || 'Unknown error'));
+      alert('Failed to save company: ' + (err?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -544,7 +556,7 @@ export function LeadsPage() {
       await fetchCustomers();
     } catch (err: any) {
       console.error('Failed to delete lead:', err);
-      alert('Failed to delete lead: ' + (err?.message || 'Unknown error'));
+      alert('Failed to delete company: ' + (err?.message || 'Unknown error'));
     } finally {
       setDeleting(false);
     }
@@ -554,7 +566,7 @@ export function LeadsPage() {
     { key: 'leadNo', label: 'Unique Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
     { key: 'company', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.company}</span> },
     { key: 'contactPerson', label: 'Contact', render: (r) => <div><p className="text-sm">{r.contactPerson}</p><p className="text-xs text-slate-500">{r.phone}</p></div> },
-    { key: 'partName', label: 'Product Name', render: (r) => <div><p className="text-sm font-medium text-slate-700">{formatLeadProductDisplay(r)}</p><p className="text-xs text-slate-500">Qty: {r.quantity}</p></div> },
+    { key: 'partName', label: 'Product Name', render: (r) => <div><p className="text-sm font-medium text-slate-700">{formatLeadProductDisplay(r)}</p><p className="text-xs text-slate-500">Qty: {r.quantity} {r.allocation ? `• ${r.allocation}` : ''}</p></div> },
     { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source}</Badge> },
     { key: 'status', label: 'Status Summary', render: (r) => (
       <div className="flex flex-wrap gap-1 max-w-[150px]">
@@ -592,7 +604,7 @@ export function LeadsPage() {
           )}
           <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => handleEditClick(r)} title="Edit Latest Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
-          <button onClick={() => openDeleteLead(r)} title="Delete Lead" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
+          <button onClick={() => openDeleteLead(r)} title="Delete Company" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
       );
     } }
@@ -600,18 +612,18 @@ export function LeadsPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="All Leads" description="Manage all incoming enquiries and convert qualified leads to customers" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
+      <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Leads" value={leadsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
+        <StatCard label="Total Companies" value={leadsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="New" value={leadsData.filter(l => l.status === 'New').length.toString()} icon={<FileText size={20} />} accent="warning" />
         <StatCard label="Converted" value={leadsData.filter(l => l.status === 'Converted').length.toString()} icon={<FileText size={20} />} accent="success" />
         <StatCard label="Lost" value={leadsData.filter(l => l.status === 'Lost').length.toString()} icon={<FileText size={20} />} accent="error" />
       </div>
 
-      <DataTable data={leadsData} columns={columns} searchKeys={['company', 'partName', 'leadNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Lead" />
+      <DataTable data={leadsData} columns={columns} searchKeys={['company', 'partName', 'leadNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" />
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Lead" : "Add New Lead"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Lead</Button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Company" : "Add New Company"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Unique Number" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
           <CustomerAutocomplete
@@ -811,7 +823,7 @@ export function LeadsPage() {
             <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
               <FormField label="Quotation No." required><input className={inputClass} value={quoteForm.quoteNo} disabled /></FormField>
               <CustomerAutocomplete
-                label="Customer"
+                label="Company"
                 required
                 value={quoteForm.customer || ''}
                 onChange={val => setQuoteForm((prev: any) => ({ ...prev, customer: val }))}
@@ -823,9 +835,9 @@ export function LeadsPage() {
                 }}
                 companies={allKnownCompanies}
                 inputClass={inputClass}
-                placeholder="Type or select customer..."
+                placeholder="Type or select company..."
               />
-              <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
+              <FormField label="Enquiry / Company No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
               <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
               <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
               <FormField label="Salesperson"><input className={inputClass} value={quoteForm.salesperson} onChange={e=>setQuoteForm({...quoteForm, salesperson: e.target.value})} /></FormField>
@@ -856,7 +868,7 @@ export function LeadsPage() {
           </div>
       </Modal>
       
-      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Lead / Company History" size="lg" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="Company History" size="lg" footer={<Button onClick={() => setViewTarget(null)}>Close</Button>}>
         {viewTarget && (
           <div className="flex flex-col gap-6">
             <div>
@@ -935,7 +947,7 @@ export function LeadsPage() {
                       <div className="flex justify-between items-start mb-3 border-b border-slate-100 pb-3">
                         <div>
                           <h6 className="font-bold text-slate-800 text-base">{h.leadNo} - {h.partName}</h6>
-                          <span className="text-xs text-slate-500 font-medium">Source: {h.source} | Expected: {h.expectedDate || 'N/A'}</span>
+                          <span className="text-xs text-slate-500 font-medium">Source: {h.source} {h.allocation ? `| Allocation: ${h.allocation}` : ''} | Expected: {h.expectedDate || 'N/A'}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           <select
@@ -1060,7 +1072,7 @@ export function LeadsPage() {
          </div>
       </Modal>
 
-      <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title="Delete Lead" size="sm" footer={<><Button variant="secondary" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button><Button disabled={deleting} onClick={confirmDeleteLead} className="bg-red-600 hover:bg-red-700 text-white border-0">{deleting ? 'Deleting...' : 'Delete'}</Button></>}>
+      <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title="Delete Company" size="sm" footer={<><Button variant="secondary" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button><Button disabled={deleting} onClick={confirmDeleteLead} className="bg-red-600 hover:bg-red-700 text-white border-0">{deleting ? 'Deleting...' : 'Delete'}</Button></>}>
         {deleteTarget && (
           <div className="text-sm text-slate-600 space-y-2">
             <p>Delete <span className="font-bold text-slate-800">{deleteTarget.row.company}</span> and all of its data?</p>
@@ -1068,7 +1080,7 @@ export function LeadsPage() {
               <li>{(deleteTarget.row.allEnquiries || []).length} enquir{((deleteTarget.row.allEnquiries || []).length === 1) ? 'y' : 'ies'}</li>
               <li>{deleteTarget.quotes} quotation(s)</li>
               <li>{deleteTarget.orders} sales order(s) + linked work orders, deliveries & invoices</li>
-              <li>Customer record</li>
+              <li>Company record</li>
             </ul>
             <p className="text-xs font-semibold text-red-600">This cannot be undone.</p>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Download, Eye, Edit2, MoreVertical } from 'lucide-react';
+import { Search, Download, Eye } from 'lucide-react';
 import { KanbanCard } from './SalesPipelinePage';
 
 interface PipelineListViewProps {
@@ -11,16 +11,12 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('All');
   const [processFilter, setProcessFilter] = useState('All');
-  const [assignedFilter, setAssignedFilter] = useState('All');
 
   const customers = Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort();
   
   // Try to extract process from raw data, fallback to stage
   const getProcess = (c: KanbanCard) => c.raw?.process || c.raw?.category || c.stage;
   const processes = Array.from(new Set(cards.map(getProcess))).filter(Boolean).sort();
-  
-  const getAssigned = (c: KanbanCard) => c.raw?.contact_person || c.raw?.salesperson || 'Unassigned';
-  const assignees = Array.from(new Set(cards.map(getAssigned))).filter(Boolean).sort();
 
   const filteredCards = cards.filter(c => {
     const matchesSearch = !search || 
@@ -30,9 +26,8 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
       
     const matchesCustomer = customerFilter === 'All' || c.customer === customerFilter;
     const matchesProcess = processFilter === 'All' || getProcess(c) === processFilter;
-    const matchesAssigned = assignedFilter === 'All' || getAssigned(c) === assignedFilter;
 
-    return matchesSearch && matchesCustomer && matchesProcess && matchesAssigned;
+    return matchesSearch && matchesCustomer && matchesProcess;
   });
 
   return (
@@ -50,18 +45,13 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
         </div>
         
         <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
-          <option value="All">All Customers</option>
+          <option value="All">All Companies</option>
           {customers.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
         <select value={processFilter} onChange={e => setProcessFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
           <option value="All">All Processes</option>
           {processes.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-
-        <select value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500 hidden xl:block">
-          <option value="All">All Assigned</option>
-          {assignees.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
 
         <button className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="Export">
@@ -76,13 +66,10 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
               <th className="p-3 font-semibold">#</th>
               <th className="p-3 font-semibold">Enquiry No</th>
               <th className="p-3 font-semibold">Date</th>
-              <th className="p-3 font-semibold">Customer</th>
-              <th className="p-3 font-semibold">Description</th>
+              <th className="p-3 font-semibold">Company</th>
+              <th className="p-3 font-semibold">Products</th>
               <th className="p-3 font-semibold">Process</th>
               <th className="p-3 font-semibold text-right">Qty</th>
-              <th className="p-3 font-semibold text-right">Est. Value (₹)</th>
-              <th className="p-3 font-semibold">Assigned To</th>
-              <th className="p-3 font-semibold">Next Action</th>
               <th className="p-3 font-semibold">Remarks</th>
               <th className="p-3 font-semibold text-center">Actions</th>
             </tr>
@@ -97,20 +84,11 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
                 <td className="p-3 text-sm text-slate-700 max-w-[200px] truncate" title={card.part}>{card.part}</td>
                 <td className="p-3 text-sm text-slate-600">{getProcess(card)}</td>
                 <td className="p-3 text-sm text-slate-700 text-right font-medium">{card.qty}</td>
-                <td className="p-3 text-sm text-slate-700 text-right font-mono">{card.value > 0 ? `₹${card.value.toLocaleString('en-IN')}` : '-'}</td>
-                <td className="p-3 text-sm text-slate-600">{getAssigned(card)}</td>
-                <td className="p-3 text-xs text-slate-500 whitespace-nowrap">{card.raw?.next_action || '-'}</td>
                 <td className="p-3 text-xs text-slate-500 max-w-[150px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
                 <td className="p-3 text-center">
                   <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => onView(card)} className="p-1 text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
                       <Eye className="w-4 h-4" />
-                    </button>
-                    <button className="p-1 text-slate-400 hover:text-amber-600 transition-colors" title="Edit">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
-                      <MoreVertical className="w-4 h-4" />
                     </button>
                   </div>
                 </td>
@@ -118,7 +96,7 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
             ))}
             {filteredCards.length === 0 && (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-slate-500">
+                <td colSpan={9} className="p-8 text-center text-slate-500">
                   No records found matching your filters.
                 </td>
               </tr>

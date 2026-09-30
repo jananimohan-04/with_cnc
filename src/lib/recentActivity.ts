@@ -29,9 +29,9 @@ export async function fetchRecentActivity(limit = 8): Promise<ActivityItem[]> {
   ]);
 
   const items: ActivityItem[] = [
-    ...(enq.data || []).map(r => ({ id: `enq-${r.id}`, type: 'sales' as const, message: `Enquiry ${r.enquiry_no ?? ''} received from ${r.customer ?? 'customer'}`, createdAt: r.created_at })),
-    ...(quo.data || []).map(r => ({ id: `quo-${r.id}`, type: 'sales' as const, message: `Quotation ${r.quote_no ?? ''} prepared for ${r.customer ?? 'customer'}`, createdAt: r.created_at })),
-    ...(so.data || []).map(r => ({ id: `so-${r.id}`, type: 'sales' as const, message: `Sales order ${r.order_no ?? ''} booked for ${r.customer ?? 'customer'}`, createdAt: r.created_at })),
+    ...(enq.data || []).map(r => ({ id: `enq-${r.id}`, type: 'sales' as const, message: `Enquiry ${r.enquiry_no ?? ''} received from ${r.customer ?? 'company'}`, createdAt: r.created_at })),
+    ...(quo.data || []).map(r => ({ id: `quo-${r.id}`, type: 'sales' as const, message: `Quotation ${r.quote_no ?? ''} prepared for ${r.customer ?? 'company'}`, createdAt: r.created_at })),
+    ...(so.data || []).map(r => ({ id: `so-${r.id}`, type: 'sales' as const, message: `Sales order ${r.order_no ?? ''} booked for ${r.customer ?? 'company'}`, createdAt: r.created_at })),
     ...(wo.data || []).map(r => ({ id: `wo-${r.id}`, type: 'production' as const, message: `Work order ${r.wo_no ?? ''} created${r.part_name ? ` for ${r.part_name}` : ''}`, createdAt: r.created_at })),
     ...(dc.data || []).map(r => ({ id: `dc-${r.id}`, type: 'inventory' as const, message: `Delivery ${r.delivery_no ?? ''} raised${r.customer_name ? ` for ${r.customer_name}` : ''}`, createdAt: r.created_at })),
   ];

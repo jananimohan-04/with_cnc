@@ -345,11 +345,13 @@ export function QtyTrackingSection({ q, userName, onSaved }: {
  *  Enquiry entry form — unique number, company, product rows with
  *  name/qty/upload/remarks — plus the summary banner strip. Saves with an
  *  UPDATE (no new record); uploads reuse the existing storage mechanism. */
-function EnquiryEditForm({ raw, companies, productNames, companyId, onSaved }: {
+function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, saveRef, onSaved }: {
   raw: any;
   companies: any[];
   productNames: string[];
   companyId?: string;
+  editMode: boolean;
+  saveRef?: { current: (() => Promise<boolean>) | null };
   onSaved: () => void;
 }) {
   const initItems = () => {
@@ -383,21 +385,20 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const names = items.map((it: any) => String(it.productName || it.partName || '').trim()).filter(Boolean);
   const fileEntries = (fps: any[]) => (fps || []).map((fp: any, i: number) => typeof fp === 'string'
     ? { name: fp.split('/').pop() || fp, path: fp, key: `${fp}-${i}` }
     : { name: fp.name || String(fp.path || fp.url || '').split('/').pop(), path: fp.path || fp.url, key: `${fp.path || fp.url}-${i}` })
     .filter((f: any) => f.path);
 
-  const save = async () => {
-    if (!company.trim()) { setError('Please enter a company name.'); return; }
+  const save = async (): Promise<boolean> => {
+    if (!company.trim()) { setError('Please enter a company name.'); return false; }
     const entered = items.filter((it: any) => String(it.productName || it.partName || '').trim());
-    if (!entered.length) { setError('Please enter at least one product name.'); return; }
-    if (entered.some((it: any) => Number(it.quantity) < 0)) { setError('Product quantities cannot be negative.'); return; }
+    if (!entered.length) { setError('Please enter at least one product name.'); return false; }
+    if (entered.some((it: any) => Number(it.quantity) < 0)) { setError('Product quantities cannot be negative.'); return false; }
     if (entered.some((it: any) => (it.files || []).length) && !companyId) {
-      setError('Select a company before uploading product files.'); return;
+      setError('Select a company before uploading product files.'); return false;
     }
-    if (saving) return;
+    if (saving) return false;
     setSaving(true);
     setError('');
     try {
@@ -430,118 +431,146 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, onSaved }: {
       }).eq('id', raw.id);
       if (updErr) throw updErr;
       onSaved();
+      return true;
     } catch (e: any) {
       setError('Unable to save changes: ' + (e?.message ?? e));
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
+  // The footer "Done Editing" button triggers this save; no separate button here.
+  useEffect(() => {
+    if (saveRef) saveRef.current = save;
+    return () => { if (saveRef && saveRef.current === save) saveRef.current = null; };
+  });
+
+  const extraFields = ([
+    ['Expected Date', raw?.expected_date],
+    ['Source', raw?.source],
+    ['Received Date', raw?.received_date],
+    ['City', raw?.city],
+    ['GST', raw?.gst],
+  ] as [string, any][]).filter(([, v]) => v !== null && v !== undefined && v !== '');
+
   return (
     <div className="mb-6">
-      <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 gap-4">
+        {editMode ? (
+          <CustomerAutocomplete
+            label="Company Name"
+            required
+            value={company}
+            onChange={(val) => {
+              setCompany(val);
+              const matched = (companies || []).find((c: any) => String(c.company || '').toLowerCase() === val.trim().toLowerCase());
+              if (matched && (matched.contact_person || matched.phone || matched.email)) {
+                setContacts([{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]);
+              }
+            }}
+            onSelectCustomer={(c: any) => {
+              setCompany(c.company);
+              if (c.contact_person || c.phone || c.email) {
+                setContacts([{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]);
+              }
+            }}
+            companies={companies}
+            inputClass={inputClass}
+            placeholder="Type or select company..."
+          />
+        ) : (
+          <div>
+            <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company Name</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{company || '—'}</span>
+          </div>
+        )}
         <div>
-          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
-          <span className="text-sm font-extrabold text-slate-900">{leadNo || '—'}</span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
-          <span className="text-sm font-extrabold text-slate-900 break-words">{company || '—'}</span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({names.length})</span>
-          <span className="text-sm font-extrabold text-slate-900 break-words">{names.length ? names.join(', ') : '—'}</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormField label="Unique Number" required>
-          <input className={inputClass} value={leadNo} onChange={(e) => setLeadNo(e.target.value)} placeholder="e.g. 1840 or Custom Unique Number" />
-        </FormField>
-        <CustomerAutocomplete
-          label="Company Name"
-          required
-          value={company}
-          onChange={(val) => {
-            setCompany(val);
-            const matched = (companies || []).find((c: any) => String(c.company || '').toLowerCase() === val.trim().toLowerCase());
-            if (matched && (matched.contact_person || matched.phone || matched.email)) {
-              setContacts([{ person: matched.contact_person || '', phone: matched.phone || '', email: matched.email || '' }]);
-            }
-          }}
-          onSelectCustomer={(c: any) => {
-            setCompany(c.company);
-            if (c.contact_person || c.phone || c.email) {
-              setContacts([{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]);
-            }
-          }}
-          companies={companies}
-          inputClass={inputClass}
-          placeholder="Type or select company..."
-        />
-        <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-          <h4 className="font-semibold text-sm text-slate-800 mb-4">Enquiry Details</h4>
-        </div>
-        <div className="col-span-2">
           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
           <div className="space-y-2">
             {items.map((item: any, idx: number) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-3 items-center rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div>
-                  <input className={inputClass} placeholder="Product Name" list="enquiry-edit-product-list" value={item.productName ?? item.partName ?? ''} onChange={(e) => {
-                    const next = [...items];
-                    next[idx] = { ...next[idx], productName: e.target.value, partName: e.target.value };
-                    setItems(next);
-                  }} />
-                </div>
-                <div>
-                  <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={(e) => {
-                    const next = [...items];
-                    next[idx] = { ...next[idx], quantity: e.target.value };
-                    setItems(next);
-                  }} />
-                </div>
-                <div>
-                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                    <UploadCloud size={15} />{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
-                    <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
-                      const selectedFiles = Array.from(e.currentTarget.files || []);
+                  {editMode ? (
+                    <input className={inputClass} placeholder="Product Name" list="enquiry-edit-product-list" value={item.productName ?? item.partName ?? ''} onChange={(e) => {
                       const next = [...items];
-                      next[idx] = { ...next[idx], files: [...(next[idx].files || []), ...selectedFiles] };
+                      next[idx] = { ...next[idx], productName: e.target.value, partName: e.target.value };
                       setItems(next);
-                      e.currentTarget.value = '';
                     }} />
-                  </label>
-                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = { ...next[idx], files: next[idx].files.filter((_: File, j: number) => j !== fileIdx) }; setItems(next); }}>Remove</button></div>)}</div>}
-                  {fileEntries(item.filePaths).length > 0 && <div className="mt-1 space-y-1">{fileEntries(item.filePaths).map((f: any) => <div key={f.key} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{f.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = { ...next[idx], filePaths: (next[idx].filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) }; setItems(next); }}>Remove</button></div>)}</div>}
+                  ) : (
+                    <span className="text-sm text-slate-800 font-medium break-words">{item.productName || item.partName || '—'}</span>
+                  )}
                 </div>
-                <div className="col-span-full">
-                  <input className={inputClass} placeholder="Remarks for this product..." value={item.remarks || ''} onChange={(e) => {
-                    const next = [...items];
-                    next[idx] = { ...next[idx], remarks: e.target.value };
-                    setItems(next);
-                  }} />
+                <div>
+                  {editMode ? (
+                    <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={(e) => {
+                      const next = [...items];
+                      next[idx] = { ...next[idx], quantity: e.target.value };
+                      setItems(next);
+                    }} />
+                  ) : (
+                    <span className="text-sm text-slate-800 font-medium tabular-nums">{item.quantity === '' || item.quantity == null ? '—' : String(item.quantity)}</span>
+                  )}
                 </div>
-                {idx > 0 && (
-                  <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => setItems(items.filter((_: any, i: number) => i !== idx))}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                  </button>
-                )}
+                <div>
+                  {editMode && (
+                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                      <UploadCloud size={15} />{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
+                      <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
+                        const selectedFiles = Array.from(e.currentTarget.files || []);
+                        const next = [...items];
+                        next[idx] = { ...next[idx], files: [...(next[idx].files || []), ...selectedFiles] };
+                        setItems(next);
+                        e.currentTarget.value = '';
+                      }} />
+                    </label>
+                  )}
+                  {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const next = [...items]; next[idx] = {...next[idx], files: next[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setItems(next); }}>Remove</button></div>)}</div>}
+                  {fileEntries(item.filePaths).length > 0 && <div className="mt-1 space-y-1">{fileEntries(item.filePaths).map((f: any) => <div key={f.key} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{f.name}</span>{editMode && <button type="button" className="text-rose-600" onClick={() => { const next = [...items]; next[idx] = {...next[idx], filePaths: (next[idx].filePaths || []).filter((p: any) => (typeof p === 'string' ? p : p.path || p.url) !== f.path) }; setItems(next); }}>Remove</button>}</div>)}</div>}
+                </div>
+                <div>
+                  {editMode ? (
+                    <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={(e) => {
+                      const next = [...items];
+                      next[idx] = { ...next[idx], remarks: e.target.value };
+                      setItems(next);
+                    }} />
+                  ) : (
+                    <span className="text-sm text-slate-600 break-words">{item.remarks || '—'}</span>
+                  )}
+                </div>
+                {editMode ? (
+                  idx > 0 ? (
+                    <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded" onClick={() => setItems(items.filter((_: any, i: number) => i !== idx))}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0-1 1-2 2-2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                    </button>
+                  ) : <span />
+                ) : null}
               </div>
             ))}
             <datalist id="enquiry-edit-product-list">{productNames.map((n) => <option key={n} value={n} />)}</datalist>
-            <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
-              setItems([...items, { productName: '', partName: '', quantity: '', remarks: '', filePaths: [], files: [] as File[] }]);
-            }}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              Add Another Product
-            </button>
+            {editMode && (
+              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
+                setItems([...items, { productName: '', partName: '', quantity: '', remarks: '', filePaths: [], files: [] as File[] }]);
+              }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Add Another Product
+              </button>
+            )}
           </div>
         </div>
+        {!editMode && extraFields.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
+            {extraFields.map(([label, v]) => (
+              <div key={label}>
+                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
+                <span className="text-sm text-slate-800 font-medium break-words">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-      <div className="flex justify-end mt-4">
-        <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
-      </div>
+      {editMode && error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
     </div>
   );
 }
@@ -801,11 +830,36 @@ export function SalesPipelinePage() {
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
+  // Single tap selects (multi-select), double tap opens the edit page.
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const clickTimer = useRef<any>(null);
+  const toggleCardSelect = (id: string) => {
+    setSelectedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const handleCardClick = (card: KanbanCard) => {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+      setViewEditMode(true);
+      void openViewModal(card);
+    } else {
+      const id = card.id;
+      clickTimer.current = setTimeout(() => {
+        clickTimer.current = null;
+        toggleCardSelect(id);
+      }, 260);
+    }
+  };
   const [, setLoading] = useState(true);
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
-  const [customerFilter, setCustomerFilter] = useState<string>('All Customers');
+  const [customerFilter, setCustomerFilter] = useState<string>('All Companies');
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   // Original enquiry number when the form was opened via Duplicate.
@@ -897,6 +951,8 @@ export function SalesPipelinePage() {
   const [viewEditMode, setViewEditMode] = useState(false);
   // Pending sales-order save, flushed by the footer "Done Editing" button.
   const soSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  // Pending enquiry save, flushed the same way.
+  const enquirySaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
@@ -1449,8 +1505,8 @@ export function SalesPipelinePage() {
       documentNo: docNo,
       date: record.delivery_date || record.date,
       details: [
-        ['Customer Name', customerName],
-        ['Customer Address', record.billing_address || record.customer_address || record.delivery_address],
+        ['Company Name', customerName],
+        ['Company Address', record.billing_address || record.customer_address || record.delivery_address],
         ['Delivery Address', record.delivery_address || record.billing_address || record.customer_address],
       ] as [string, string | number | null | undefined][],
       details2: [
@@ -1501,7 +1557,7 @@ export function SalesPipelinePage() {
 
   
 
-  const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18' });
+  const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', remarks: defaults.remarks || '' });
   const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
   const [inwardForm, setInwardForm] = useState<any>({
     inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
@@ -1978,7 +2034,7 @@ export function SalesPipelinePage() {
   };
 
     const handleCompleteInvoice = async (card: KanbanCard) => {
-      if (!window.confirm(`Mark "${card.refNo}" as complete? This will save the full deal history under the customer's lead.`)) return;
+      if (!window.confirm(`Mark "${card.refNo}" as complete? This will save the full deal history under the company record.`)) return;
       setLoading(true);
       try {
         // 1. Collect all the lineage data for this invoice
@@ -2277,6 +2333,7 @@ export function SalesPipelinePage() {
     setViewModalData(null);
     setViewEditMode(false);
     soSaveRef.current = null;
+    enquirySaveRef.current = null;
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
@@ -2426,7 +2483,7 @@ export function SalesPipelinePage() {
       setInwardForm({
         inwardNo: '', category: 'GOODS PURCHASE', projectName: card.refNo || '', salesOrderRef: card.raw.order_no || '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
         productName: selectedProduct?.name || '', productKey: selectedProduct?.key || '', productOptions: products, enquiryId: selectedProduct?.enquiryId || '',
-        parts: [{ ...emptyInwardPart({ partyName: card.customer || '' }), productKey: selectedProduct?.key || '', productName: selectedProduct?.name || '', enquiryId: selectedProduct?.enquiryId || '', projectName: selectedProduct?.leadNo || card.refNo || '', partyName: card.customer || '' }],
+        parts: [{ ...emptyInwardPart({ partyName: card.customer || '' }), productKey: selectedProduct?.key || '', productName: selectedProduct?.name || '', enquiryId: selectedProduct?.enquiryId || '', projectName: selectedProduct?.leadNo || card.refNo || '', partyName: card.customer || '', items: [{ ...emptyInwardItem({ partyName: card.customer || '' }), productKey: selectedProduct?.key || '', productName: selectedProduct?.name || '', enquiryId: selectedProduct?.enquiryId || '', projectName: selectedProduct?.leadNo || card.refNo || '' }] }],
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
@@ -2581,7 +2638,7 @@ export function SalesPipelinePage() {
     if (!quotationModalTarget) return;
     const cStr = getContactStrings(quoteForm);
     const leadId = quotationModalTarget.raw?.id || null;
-    if (!quoteForm.customer) { alert("Please enter the customer."); return; }
+    if (!quoteForm.customer) { alert("Please enter the company."); return; }
 
     // Use multi-part items if available, fallback to single-part legacy fields
     const rawItems = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
@@ -2701,9 +2758,9 @@ export function SalesPipelinePage() {
     const groups = (inwardForm.parts || [])
       .map((g: any) => ({ ...g, items: (g.items || []).filter((it: any) => String(it.partName || '').trim()) }))
       .filter((g: any) => g.items.length);
-    if (!inwardForm.productName) { alert('Select an enquired product first.'); return; }
+
     if (!groups.length) { alert('Add at least one part to inward for this product.'); return; }
-    if (groups.some((g: any) => !(g.productName || inwardForm.productName))) { alert('Select a product for each inward.'); return; }
+    if (groups.flatMap((g: any) => g.items.map((it: any) => ({ g, it }))).some(({ g, it }: any) => !(it.productName || (g as any).productName || inwardForm.productName))) { alert('Select a product for each line.'); return; }
     if (groups.some((g: any) => !(g.category || inwardForm.category))) { alert('Select a category for each inward.'); return; }
     if (groups.some((g: any) => !(g.inwardDate || inwardForm.inwardDate))) { alert('Select an inward date for each inward.'); return; }
     const flatItems = groups.flatMap((g: any) => g.items.map((it: any) => ({ g, it })));
@@ -2733,10 +2790,10 @@ export function SalesPipelinePage() {
         rows.push({
           id: inwardId,
           inward_no: `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          category: g.category || inwardForm.category, product_name: g.productName || inwardForm.productName, enquiry_id: g.enquiryId || inwardForm.enquiryId || null,
-          project_name: g.projectName || inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
+          category: g.category || inwardForm.category, product_name: it.productName || g.productName || inwardForm.productName, enquiry_id: it.enquiryId || g.enquiryId || inwardForm.enquiryId || null,
+          project_name: it.projectName || g.projectName || inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
           sales_order_ref: inwardForm.salesOrderRef, reference_no: g.referenceNo ?? inwardForm.referenceNo,
-          inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: it.partyName || g.partyName || inwardForm.partyName, remarks: g.remarks ?? inwardForm.remarks,
+          inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: g.partyName || it.partyName || inwardForm.partyName, remarks: it.remarks ?? g.remarks ?? inwardForm.remarks,
           part_name: it.partName, part_number: it.partNumber || '', quantity: q, price: p,
           discount_percent: d, gst_percent: gg, total_amount: total, status: 'Pending', attachments,
         });
@@ -2800,6 +2857,7 @@ export function SalesPipelinePage() {
     }
     setInwardModalTarget(null);
     fetchPipeline();
+    setInwardRefreshSignal((n) => n + 1);
   };
 
   const saveFinishedGoods = async () => {
@@ -2939,7 +2997,7 @@ export function SalesPipelinePage() {
         }
       }
     }
-    if (!customerId) { alert('Could not resolve a customer for this delivery. Add the party as a customer first.'); return; }
+    if (!customerId) { alert('Could not resolve a company for this delivery. Add the party as a company first.'); return; }
     // One delivery row per product under the same challan number (multi-item
     // challans are read back together by the invoice flow).
     const rowsToSave = useItems
@@ -2984,7 +3042,7 @@ export function SalesPipelinePage() {
 
     const saveStandaloneSalesOrder = async () => {
     if (!soModalTarget) return;
-    if (!String(soForm.customer || '').trim()) { alert('Enter the customer.'); return; }
+    if (!String(soForm.customer || '').trim()) { alert('Enter the company.'); return; }
     const entered = ((soForm.items || []) as any[])
       .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
       .filter((it: any) => it.partName);
@@ -3043,7 +3101,7 @@ export function SalesPipelinePage() {
     const q = Number(invoiceForm.quantity) || 0;
     const p = Number(invoiceForm.price) || 0;
     if (!invoiceForm.partyName?.trim() || !invoiceForm.partName?.trim() || q <= 0 || p < 0) {
-      alert('Customer, item, positive quantity and a valid unit price are required.');
+      alert('Company, item, positive quantity and a valid unit price are required.');
       return;
     }
     try {
@@ -3129,7 +3187,7 @@ export function SalesPipelinePage() {
         <span className="text-sm font-extrabold text-slate-900 break-words">{products || '—'}</span>
       </div>
       <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
         <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
       </div>
     </div>
@@ -3138,8 +3196,18 @@ export function SalesPipelinePage() {
   const stageDetailsTitle = (stage?: string) =>
     !stage ? 'Pipeline History' : stage === 'DC' ? 'Delivery Challan Details' : `${stage} Details`;
 
-  const openNewLeadModal = () => {
-    const nextNo = generateUniqueProjectNo(rawLeadsList);
+  // Standalone inward entry (kanban +Add and Inwards list share this).
+  const [inwardRefreshSignal, setInwardRefreshSignal] = useState(0);
+  const openDummyInward = () => {
+    setInwardForm({
+      category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
+      productName: '', productOptions: enquiryProductOptions(rawLeadsList, undefined, salesOrdersList), enquiryId: '',
+      parts: [emptyInwardPart()], contacts: [{ person: '', phone: '', email: '' }]
+    });
+    setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+  };
+
+  const openNewLeadModal = () => {    const nextNo = generateUniqueProjectNo(rawLeadsList);
     setNewLeadForm({
       leadNo: nextNo,
       company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', remarks: '', contacts: [{ person: '', phone: '', email: '' }],
@@ -3244,11 +3312,11 @@ export function SalesPipelinePage() {
         await fetchPipeline();
       } else {
         console.error('Failed to save lead:', error);
-        alert("Failed to save lead: " + error.message);
+        alert("Failed to save company: " + error.message);
       }
     } catch (err: any) {
       console.error('Exception in saveNewLead:', err);
-      alert("Failed to save lead: " + (err?.message || "Unknown error"));
+      alert("Failed to save company: " + (err?.message || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -3306,23 +3374,24 @@ export function SalesPipelinePage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
         <div className="flex p-1 bg-white rounded-lg shadow-sm border border-slate-200">
           <button 
-            onClick={() => setPipelineViewMode('kanban')}
+            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Kanban Board</button>
           <button 
-            onClick={() => setPipelineViewMode('list')}
+            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
           <button 
-            onClick={() => setPipelineViewMode('calendar')}
+            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
         </div>
         
+        {pipelineViewMode !== 'list' && (
         <div className="flex flex-wrap items-center gap-3">
           <select 
             className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium"
             value={customerFilter}
             onChange={(e) => setCustomerFilter(e.target.value)}
           >
-            <option value="All Customers">All Customers</option>
+            <option value="All Companies">All Companies</option>
             {Array.from(new Set(cards.map(c => c.customer))).filter(Boolean).sort().map(customer => (
               <option key={customer} value={customer}>{customer}</option>
             ))}
@@ -3338,6 +3407,7 @@ export function SalesPipelinePage() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
           </button>
         </div>
+        )}
       </div>
 
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
@@ -3355,7 +3425,7 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'inward_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <InwardModule onBack={() => setActiveView('pipeline')} />
+          <InwardModule onBack={() => setActiveView('pipeline')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal} />
         </div>
       ) : activeView === 'fg_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
@@ -3386,11 +3456,11 @@ export function SalesPipelinePage() {
             { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700', card: 'bg-emerald-100 border-emerald-300 hover:bg-emerald-100/80', code: 'bg-emerald-200 text-emerald-900', amount: 'text-emerald-900' },
             { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700', card: 'bg-amber-100 border-amber-300 hover:bg-amber-100/80', code: 'bg-amber-200 text-amber-900', amount: 'text-amber-900' },
             { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700', card: 'bg-cyan-100 border-cyan-300 hover:bg-cyan-100/80', code: 'bg-cyan-200 text-cyan-900', amount: 'text-cyan-900' },
-            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to customer', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700', card: 'bg-rose-100 border-rose-300 hover:bg-rose-100/80', code: 'bg-rose-200 text-rose-900', amount: 'text-rose-900' },
+            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to company', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700', card: 'bg-rose-100 border-rose-300 hover:bg-rose-100/80', code: 'bg-rose-200 text-rose-900', amount: 'text-rose-900' },
             { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-indigo-100 border-indigo-300 hover:bg-indigo-100/80', code: 'bg-indigo-200 text-indigo-900', amount: 'text-indigo-900' }
           ].map(stage => {
             const stageCards = cards
-              .filter(c => c.stage === stage.id && (customerFilter === 'All Customers' || c.customer === customerFilter))
+              .filter(c => c.stage === stage.id && (customerFilter === 'All Companies' || c.customer === customerFilter))
               .sort((a, b) => (a.refNo || '').localeCompare(b.refNo || '', undefined, { numeric: true }));
             return (
               <div key={stage.id} 
@@ -3424,12 +3494,7 @@ export function SalesPipelinePage() {
                       });
                       setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Inward') {
-                      setInwardForm({
-                        category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
-                        productName: '', productOptions: enquiryProductOptions(rawLeadsList, undefined, salesOrdersList), enquiryId: '',
-                        parts: [emptyInwardPart()], contacts: [{ person: '', phone: '', email: '' }]
-                      });
-                      setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                      openDummyInward();
                     } else if (stage.id === 'Finished Goods') {
                       setFgForm({
                         woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', partNo: '', orderQty: '', completedQty: '', date: new Date().toISOString().split('T')[0]
@@ -3461,11 +3526,21 @@ export function SalesPipelinePage() {
                       draggable 
                       onDragStart={(e) => handleDragStart(e, card)}
                         onDragEnd={() => setDraggedCard(null)} 
-                      onClick={() => openViewModal(card)}
-                      className={`${stage.card} rounded-xl p-3.5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group`}
+                      onClick={() => handleCardClick(card)}
+                      className={`${stage.card} rounded-xl p-3.5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group ${selectedCards.has(card.id) ? 'ring-2 ring-brand-500' : ''}`}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedCards.has(card.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleCardSelect(card.id)}
+                            className="w-3.5 h-3.5 accent-brand-600 cursor-pointer shrink-0"
+                            title="Select"
+                          />
+                          <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
+                        </div>
                         <span className="text-[10px] text-slate-500 font-medium">{card.date || 'No Date'}</span>
                       </div>
                       
@@ -3479,6 +3554,18 @@ export function SalesPipelinePage() {
                           ) : (
                              <p className="text-xs font-medium text-slate-600">{card.qty} pcs</p>
                           )}
+                          {card.type === 'order' && (() => {
+                            const raw = card.raw || {};
+                            let up = 0;
+                            try {
+                              const items = typeof raw.items === 'string' ? JSON.parse(raw.items) : raw.items;
+                              if (Array.isArray(items) && items.length) up = Number(items[0].unitPrice) || 0;
+                            } catch { /* ignore */ }
+                            if (!up) up = Number(raw.unit_price) || 0;
+                            if (!up && card.value && Number(card.qty)) up = Number(card.value) / Number(card.qty);
+                            if (!up) return null;
+                            return <p className="text-[11px] font-semibold text-slate-500 tabular-nums">Unit Price ₹{up.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>;
+                          })()}
                         </div>
                         <div className="flex items-center gap-2">
                           {card.type === 'invoice' && (
@@ -3716,9 +3803,9 @@ export function SalesPipelinePage() {
       </div>
 
       {/* New Lead Modal */}
-      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Lead" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Lead</Button></>}>
+      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="New Lead" uniqueNo={newLeadForm.leadNo} products={(newLeadForm.items || []).map((i: any) => i.productName || i.partName).filter(Boolean).join(', ')} customer={newLeadForm.company} />
+          <PipelineContextBanner stage="New Company" uniqueNo={newLeadForm.leadNo} products={(newLeadForm.items || []).map((i: any) => i.productName || i.partName).filter(Boolean).join(', ')} customer={newLeadForm.company} />
           <FormField label="Unique Number" required>
             <input 
               className={inputClass} 
@@ -3847,9 +3934,9 @@ export function SalesPipelinePage() {
             </div>
           )}
           <div className="col-span-2 flex justify-end">
-            <button type="button" onClick={() => { setEnquiryModalOpen(false); openNewLeadModal(); }} className="text-xs font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded-lg px-3 py-1.5 bg-brand-50/50 transition-colors">+ Add New Lead</button>
+            <button type="button" onClick={() => { setEnquiryModalOpen(false); openNewLeadModal(); }} className="text-xs font-bold text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 rounded-lg px-3 py-1.5 bg-brand-50/50 transition-colors whitespace-nowrap">+ Add New Company</button>
           </div>
-          <FormField label="Unique Number" required><input className={inputClass} value={enquiryForm.leadNo} onChange={e => setEnquiryForm({...enquiryForm, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
+          <div className="col-span-2">
           <CustomerAutocomplete
             label="Company Name"
             required
@@ -3860,16 +3947,13 @@ export function SalesPipelinePage() {
             inputClass={inputClass}
             placeholder="Type or select company..."
           />
-          
-          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-             <h4 className="font-semibold text-sm text-slate-800 mb-4">Enquiry Details</h4>
           </div>
           
           <div className="col-span-2">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
             <div className="space-y-2">
               {(enquiryForm.items || [{ productName: '', partName: '', quantity: '', remarks: '', filePaths: [] as string[], files: [] as File[] }]).map((item: any, idx: number) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-3 items-center rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div>
                     <input className={inputClass} placeholder="Product Name" list="enquiry-product-list" value={item.productName ?? item.partName ?? ''} onChange={e => {
                       const newItems = [...(enquiryForm.items || [])];
@@ -3897,8 +3981,8 @@ export function SalesPipelinePage() {
                     </label>
                     {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...enquiryForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setEnquiryForm({...enquiryForm, items: newItems}); }}>Remove</button></div>)}</div>}
                   </div>
-                  <div className="col-span-full">
-                    <input className={inputClass} placeholder="Remarks for this product..." value={item.remarks || ''} onChange={e => {
+                  <div>
+                    <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={e => {
                       const newItems = [...(enquiryForm.items || [])];
                       newItems[idx] = { ...newItems[idx], remarks: e.target.value };
                       setEnquiryForm({...enquiryForm, items: newItems});
@@ -3933,7 +4017,7 @@ export function SalesPipelinePage() {
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             {quotationModalTarget?.id === 'dummy' && (<>
             <CustomerAutocomplete
-              label="Customer"
+              label="Company"
               required
               value={quoteForm.customer || ''}
               onChange={val => setQuoteForm((prev: any) => ({ ...prev, customer: val }))}
@@ -3950,7 +4034,7 @@ export function SalesPipelinePage() {
               inputClass={inputClass}
               placeholder="Type or select customer..."
             />
-            <FormField label="Enquiry / Lead No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
+            <FormField label="Enquiry / Company No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
             </>)}
             <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
             {quotationModalTarget?.id === 'dummy' && (<>
@@ -4060,41 +4144,10 @@ export function SalesPipelinePage() {
       {/* Inward Modal */}
       <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
         <div className="flex flex-col gap-4">
-          <PipelineContextBanner stage="Inward Entry" uniqueNo={inwardForm.projectName || inwardModalTarget?.refNo} products={inwardForm.productName || inwardModalTarget?.part} customer={inwardForm.partyName || inwardModalTarget?.customer} />
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
           </datalist>
-          {inwardModalTarget?.id === 'dummy' && (
-          <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-100">
-              <CustomerAutocomplete
-                label="Party / Customer"
-                value={inwardForm.partyName || ''}
-                onChange={val => setInwardForm((prev: any) => ({ ...prev, partyName: val, projectName: '', productKey: '', productName: '', enquiryId: '', parts: (prev.parts || []).map((g: any) => ({ ...g, items: (g.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: val })) })) }))}
-                onSelectCustomer={c => {
-                  setInwardForm((prev: any) => ({ ...prev, partyName: c.company, projectName: '', productKey: '', productName: '', enquiryId: '', parts: (prev.parts || []).map((g: any) => ({ ...g, items: (g.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: c.company })) })) }));
-                }}
-                companies={allKnownCompanies}
-                inputClass={inputClass}
-                placeholder="Type or select party / customer..."
-              />
-              <FormField label="Unique Number" required>
-                <select className={inputClass} value={inwardForm.projectName || ''} onChange={e => {
-                  const no = e.target.value;
-                  const mine = (inwardForm.productOptions || []).filter((o: any) => o.leadNo === no);
-                  const custs = Array.from(new Set(mine.map((o: any) => o.customer).filter(Boolean)));
-                  setInwardForm((prev: any) => ({
-                    ...prev, projectName: no, productKey: '', productName: '', enquiryId: '',
-                    ...(custs.length === 1 && custs[0] ? { partyName: custs[0] } : {}),
-                  }));
-                }}>
-                  <option value="">Select unique number</option>
-                  {Array.from(new Set((inwardForm.productOptions || [])
-                    .filter((o: any) => { const p = (inwardForm.partyName || '').trim().toLowerCase(); return !p || String(o.customer || '').trim().toLowerCase() === p; })
-                    .map((o: any) => o.leadNo).filter(Boolean))).map((no: any) => <option key={no} value={no}>{no}</option>)}
-                </select>
-              </FormField>
-          </div>)}
-          
+
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
             <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts — one line per part.</p></div>
             <Button variant="secondary" onClick={() => {
@@ -4102,7 +4155,7 @@ export function SalesPipelinePage() {
               const m = opts.find((o: any) => o.name === inwardForm.productName) || null;
               const prev = (inwardForm.parts || []).slice(-1)[0] || {};
               const prevParty = (prev.items || []).slice(-1)[0]?.partyName || prev.partyName || inwardForm.partyName || m?.customer || '';
-              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0], partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '', partyName: prevParty }]});
+              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0], partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '', partyName: prevParty, items: [{ ...emptyInwardItem({ partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '' }] }]});
             }}><Plus size={14}/> Add Inward</Button>
           </div>
           <div className="space-y-4">
@@ -4110,25 +4163,23 @@ export function SalesPipelinePage() {
               const setGroup = (patch: any) => { const parts=[...inwardForm.parts]; parts[index]={...group, ...patch}; setInwardForm({...inwardForm, parts}); };
               const setItem = (ii: number, patch: any) => { const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch}; setGroup({ items }); };
               const lineTotal = (it: any) => (Number(it.quantity)||0)*(Number(it.price)||0)*(1-(Number(it.discount)||0)/100)*(1+(Number(it.gst)||0)/100);
+              const productOptions = inwardModalTarget?.id === 'dummy'
+                ? (inwardForm.productOptions || []).filter((o: any) => { const p = (group.partyName || inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); })
+                : (inwardForm.productOptions || []);
+              const onSelectProduct = (ii: number, key: string) => {
+                const selected = (inwardForm.productOptions || []).find((option: any) => option.key === key);
+                const cust = selected?.customer || '';
+                const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '' };
+                const items=[...(group.items || [])]; items[ii]={...items[ii], ...patch};
+                const gpatch: any = { ...patch };
+                if (cust && !String(group.partyName || '').trim()) gpatch.partyName = cust;
+                const parts=[...inwardForm.parts]; parts[index]={...group, ...gpatch, items};
+                setInwardForm({ ...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName });
+              };
               return (
               <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
-                <div className="mb-3">
-                <FormField label="Product from Enquiry" required>
-                  <select className={inputClass} value={group.productKey || ''} onChange={e=>{
-                    const selected = (inwardForm.productOptions || []).find((option: any) => option.key === e.target.value);
-                    const cust = selected?.customer || inwardForm.partyName || group.partyName || '';
-                    const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '', partyName: cust, items: (group.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: cust })) };
-                    const parts=[...inwardForm.parts]; parts[index]={...group, ...patch};
-                    setInwardForm({...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName});
-                  }}>
-                    <option value="">Select an enquired product</option>
-                    {(inwardModalTarget?.id === 'dummy' ? (inwardForm.productOptions || []).filter((o: any) => { const p = (inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); }) : (inwardForm.productOptions || [])).map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
-                  </select>
-                  {(inwardForm.productOptions || []).length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
-                </FormField>
-              </div>
-              <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-[9rem_minmax(0,1fr)_9rem_9rem_auto] gap-4 mb-3">
                   <FormField label="Category" required>
                     <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
                       <option>EXPENSES</option>
@@ -4139,48 +4190,58 @@ export function SalesPipelinePage() {
                       <option>SERVICE PURCHASE</option>
                     </select>
                   </FormField>
-                  <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
+                    <input className={inputClass} placeholder="Company" list="inward-customer-list" value={group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setGroup({ partyName: e.target.value })} />
+                  </div>
                   <FormField label="Inward Date" required><input type="date" className={inputClass} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
+                  <FormField label="Reference No."><input className={inputClass} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-700">
+                      <span className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 hover:border-brand-400">Choose Files</span>
+                      {(group.files || []).length ? <span className="max-w-[12rem] truncate text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span> : <span className="text-slate-400">No file chosen</span>}
+                      <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
+                    </label>
+                  </div>
                 </div>
-                <div className="mb-3">
-                  <FormField label="Remarks"><input className={inputClass} value={group.remarks || ''} onChange={e=>setGroup({ remarks: e.target.value })} placeholder="Remarks for this inward..." /></FormField>
-                </div>
-                <div className="grid grid-cols-[9rem_minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-1 px-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Customer</span>
+                <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-1 px-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name *</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quantity *</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Qty *</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Price *</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Discount</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Disc</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">GST</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Total (Rs.)</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Total</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Remarks</span>
                   <span></span>
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className="grid grid-cols-[9rem_minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-2">
-                    <input className={inputClass} placeholder="Customer" list="inward-customer-list" value={item.partyName ?? group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setItem(ii, { partyName: e.target.value })} />
+                  <div key={ii} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-2">
+                    <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
+                      <option value="">Select product</option>
+                      {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                    </select>
                     <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} />
                     <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled />
+                    <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
                     {(group.items || []).length > 1 ? (
-                      <button type="button" className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove part" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
+                      <button type="button" className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                       </button>
                     ) : <span></span>}
                   </div>
                 ))}
+                {(inwardForm.productOptions || []).length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
                 <div className="flex items-center justify-between mt-1">
-                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem({ partyName: (group.items || []).slice(-1)[0]?.partyName || group.partyName || inwardForm.partyName || '' })] })}>
+                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     Add part
                   </button>
-                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600 hover:text-brand-700">
-                    <span className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 hover:border-brand-400">Choose Files</span>
-                    {(group.files || []).length ? <span className="max-w-[12rem] truncate text-slate-500">{group.files.map((f: File) => f.name).join(', ')}</span> : <span className="text-slate-400">No file chosen</span>}
-                    <input type="file" multiple accept="*/*" className="hidden" onChange={e=>{ setGroup({ files: [...(group.files || []), ...Array.from(e.target.files || [])] }); e.currentTarget.value=''; }} />
-                  </label>
                 </div>
               </div>);
             })}
@@ -4379,13 +4440,13 @@ export function SalesPipelinePage() {
           <PipelineContextBanner stage="Sales Order" uniqueNo={soModalTarget?.refNo} products={(soForm.items || []).map((i: any) => i.partName).filter(Boolean).join(', ') || soModalTarget?.part} customer={soForm.customer || soModalTarget?.customer} />
           <div className="grid grid-cols-2 gap-4">
             <CustomerAutocomplete
-              label="Customer"
+              label="Company"
               required
               value={soForm.customer || ''}
               onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
               companies={allKnownCompanies}
               inputClass={inputClass}
-              placeholder="Type or select customer..."
+              placeholder="Type or select company..."
             />
             <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           </div>
@@ -4430,12 +4491,16 @@ export function SalesPipelinePage() {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
                       }
+                      if (viewEditMode && viewModalTarget?.stage === 'Enquiry' && enquirySaveRef.current) {
+                        const ok = await enquirySaveRef.current();
+                        if (!ok) return;
+                      }
                       setViewEditMode(!viewEditMode);
                     })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
-            {/* Top banner hides where a section renders its own live strip (enquiry edit, quotation). */}
-            {(viewEditMode && viewModalTarget?.stage === 'Enquiry' && viewModalData?.enquiry) || (viewModalData?.quotation && (viewModalTarget?.stage === 'Quotation' || viewModalTarget?.stage === 'Sales Order')) ? null : (() => {
+            {/* Top banner hides where a section renders its own live strip (enquiry form, quotation). */}
+            {(viewModalData?.enquiry && viewModalTarget?.stage === 'Enquiry') || (viewModalData?.quotation && (viewModalTarget?.stage === 'Quotation' || viewModalTarget?.stage === 'Sales Order')) ? null : (() => {
               const enq: any = viewModalData?.enquiry;
               const quo: any = viewModalData?.quotation;
               const ord: any = viewModalData?.order;
@@ -4488,7 +4553,7 @@ export function SalesPipelinePage() {
                     <span className="text-sm font-extrabold text-slate-900">{uniq}</span>
                   </div>
                   <div>
-                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
+                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
                     <span className="text-sm font-extrabold text-slate-900 break-words">{cust}</span>
                   </div>
                   <div>
@@ -4526,51 +4591,57 @@ export function SalesPipelinePage() {
                     g.push(r);
                   });
                   const lineKeys = ['part_name', 'quantity', 'price', 'discount_percent', 'gst_percent', 'total_amount'];
-                  const lineHead = ['Part Name', 'Quantity', 'Price', 'Discount', 'GST', 'Total (Rs.)'];
+                  const lineHead = ['Part Name', 'Qty', 'Price', 'Disc', 'GST', 'Total', 'Remarks'];
                   return (<>{groups.map((g, gi) => (
                     <div key={g[0].id || gi} className="mb-6">
                       <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase flex justify-between items-center">
                         <span>Inward Details #{gi + 1}</span>
                       </h4>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                        <div className="mb-3">
-                          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Product from Enquiry</span>
-                          {viewEditMode ? (
-                            <select
-                              className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                              value={g[0].product_name || ''}
-                              onChange={(e) => { if (e.target.value !== (g[0].product_name || '')) void handleInlineEdit('Inward', g[0].id, 'product_name', e.target.value); }}
-                            >
-                              <option value="">Select product…</option>
-                              {Array.from(new Set([...enquiryProductOptions(rawLeadsList, g[0].project_name).map((o: any) => o.name), g[0].product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          ) : (
-                            <span className="text-sm text-slate-800 font-medium break-words">{g[0].product_name || '—'}</span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 mb-3">
+                        <div className="grid grid-cols-2 md:grid-cols-[9rem_minmax(0,1fr)_9rem_9rem_auto] gap-4 mb-3">
                           {inwardCellFor(g[0], 'category', 'Category')}
-                          {inwardCellFor(g[0], 'reference_no', 'Reference No.')}
+                          {inwardCellFor(g[0], 'party_name', 'Company')}
                           {inwardCellFor(g[0], 'inward_date', 'Inward Date')}
+                          {inwardCellFor(g[0], 'reference_no', 'Reference No.')}
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
+                            <div className="flex flex-wrap gap-2">
+                              {g.flatMap((r: any, ri: number) => (Array.isArray(r.attachments) ? r.attachments : []).map((att: any, ai: number) => {
+                                const p = typeof att === 'string' ? att : (att.path || att.url || '');
+                                const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
+                                if (!p) return null;
+                                return <button key={`${ri}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
+                              }))}
+                              {!g.some((r: any) => Array.isArray(r.attachments) && r.attachments.length > 0) && (
+                                <span className="text-sm text-slate-400">—</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-[minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem] gap-2 items-center mb-1 px-1">
+                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center mb-1 px-1">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
                           {lineHead.map(h => <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>)}
                         </div>
                         {g.map((row: any, ri: number) => (
-                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2 mb-2">
+                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2 mb-2">
+                            <div>
+                              {viewEditMode ? (
+                                <select
+                                  className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
+                                  value={row.product_name || ''}
+                                  onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
+                                >
+                                  <option value="">Select product…</option>
+                                  {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                              ) : (
+                                <span className="text-sm text-slate-800 font-medium break-words">{row.product_name || '—'}</span>
+                              )}
+                            </div>
                             {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}
+                            <div>{inwardCellFor(row, 'remarks', '')}</div>
                           </div>
                         ))}
-                        {g.some((r: any) => Array.isArray(r.attachments) && r.attachments.length > 0) && (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {g.flatMap((r: any, ri: number) => (Array.isArray(r.attachments) ? r.attachments : []).map((att: any, ai: number) => {
-                              const p = typeof att === 'string' ? att : (att.path || att.url || '');
-                              const n = typeof att === 'string' ? p.split('/').pop() : (att.name || p.split('/').pop() || `File ${ai + 1}`);
-                              if (!p) return null;
-                              return <button key={`${ri}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
-                            }))}
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}</>);
@@ -4606,16 +4677,18 @@ export function SalesPipelinePage() {
                     ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)}
                   </>
                 ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order) },
-                { key: 'Enquiry', node: (viewEditMode && viewModalData.enquiry) ? (
+                { key: 'Enquiry', node: viewModalData.enquiry ? (
                   <EnquiryEditForm
                     key={viewModalData.enquiry.id || 'enq'}
                     raw={viewModalData.enquiry}
                     companies={allKnownCompanies}
                     productNames={existingProductNames}
                     companyId={company?.id}
+                    editMode={viewEditMode}
+                    saveRef={enquirySaveRef}
                     onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
                   />
-                ) : renderRecordData('Enquiry', viewModalData.enquiry, !viewModalData.quotation && !viewModalData.order) },
+                ) : null },
               ];
               const cur = viewModalTarget?.stage || '';
               // Enquiry Details section only shows when opened from an Enquiry card.

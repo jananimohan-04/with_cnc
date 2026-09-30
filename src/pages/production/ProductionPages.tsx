@@ -192,7 +192,7 @@ export function OldProductionPlanningPage() {
               <tr className="border-b border-slate-100">
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">WO No</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Part</th>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Customer</th>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Company</th>
                 <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase">Qty</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Start Date</th>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">Due Date</th>
@@ -261,7 +261,7 @@ function WorkOrderDetailModal({ wo, onClose }: { wo: WorkOrder, onClose: () => v
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="space-y-4">
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Part</p><p className="font-semibold text-slate-800">{wo.partName}</p></div>
-          <div><p className="text-xs text-slate-500 uppercase tracking-wider">Customer</p><p className="text-sm text-slate-700">{wo.customer}</p></div>
+          <div><p className="text-xs text-slate-500 uppercase tracking-wider">Company</p><p className="text-sm text-slate-700">{wo.customer}</p></div>
           <div><p className="text-xs text-slate-500 uppercase tracking-wider">Sales Order</p><p className="text-sm font-mono text-slate-700">{wo.salesOrder}</p></div>
         </div>
         <div className="space-y-4">
@@ -497,7 +497,7 @@ export function WorkOrdersPage() {
   const columns: Column<WorkOrder & { id: string }>[] = [
     { key: 'woNo', label: 'WO Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700 font-semibold">{r.woNo}</span> },
     { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm font-medium text-slate-800">{r.partName}</p></div> },
-    { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.customer}</span> },
+    { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.customer}</span> },
     { key: 'quantity', label: 'Planned', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.quantity}</span> },
     { key: 'completed', label: 'Progress', render: (r) => <div className="flex items-center gap-2 min-w-[120px]"><ProgressBar value={r.completed} max={r.quantity} color="brand" /><span className="text-xs font-medium text-slate-600 whitespace-nowrap">{r.completed}/{r.quantity}</span></div> },
     { key: 'rejected', label: 'Rej', align: 'right', render: (r) => <span className={r.rejected > 0 ? 'text-red-600 font-semibold bg-red-50 px-1.5 py-0.5 rounded' : 'text-slate-400'}>{r.rejected}</span> },
@@ -580,8 +580,8 @@ export function WorkOrdersPage() {
               <FormField label="Sales Order Ref" required>
                 <input className={inputClass} value={formData.salesOrder} onChange={e => setFormData({...formData, salesOrder: e.target.value})} placeholder="Link to Sales Order" />
               </FormField>
-              <FormField label="Customer" required>
-                <input className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} placeholder="Customer Name" />
+              <FormField label="Company" required>
+                <input className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} placeholder="Company Name" />
               </FormField>
               <FormField label="Target Quantity" required>
                 <input type="number" className={inputClass} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} placeholder="100" />
@@ -1563,7 +1563,7 @@ export function FinishedGoodsPage() {
       <DataTable data={finishedGoods} columns={[
         { key: 'woNo', label: 'WO No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.woNo}</span> },
         { key: 'partName', label: 'Part', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p></div> },
-        { key: 'customer', label: 'Customer', sortable: true },
+        { key: 'customer', label: 'Company', sortable: true },
         { key: 'quantity', label: 'Order Qty', align: 'right', sortable: true },
         { key: 'completed', label: 'Produced', align: 'right', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.completed}</span> },
         { key: 'rejected', label: 'Rejected', align: 'right', render: (r) => <span className={r.rejected > 0 ? 'text-red-500' : 'text-slate-400'}>{r.rejected}</span> },

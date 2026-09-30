@@ -106,7 +106,7 @@ export function QuantityTrackingPage() {
     orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
 
   const exportReport = () => exportCsv(`Order_Quantity_Tracking_${todayISO()}`, [
-    ['Unique Number', 'Date', 'Customer', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
+    ['Unique Number', 'Date', 'Company', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
     ...filtered.map((q) => {
       const o = orders.find((x) => String(x.order_no) === q.soNo);
       return [uniqueOf(q.soNo), o?.order_date || '', q.customer, q.product, o?.status || '', q.ordered, q.good, q.rejected, q.remaining, q.fgAvailable, q.delivered, q.invoiced, q.invoiceable, q.ordered > 0 ? Math.round((q.good / q.ordered) * 100) : 0];
@@ -126,14 +126,14 @@ export function QuantityTrackingPage() {
       {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
       <Card className="p-3">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-          <FormField label="Customer">
+          <FormField label="Company">
             <select className={inputClass} value={customer} onChange={(e) => setCustomer(e.target.value)}>
-              <option value="">All Customers</option>
+              <option value="">All Companies</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </FormField>
           <FormField label="Search Order / Product">
-            <input className={inputClass} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order no, customer, product…" />
+            <input className={inputClass} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order no, company, product…" />
           </FormField>
           <label className="flex items-center gap-2 text-sm text-slate-600 pb-2">
             <input type="checkbox" checked={hideComplete} onChange={(e) => setHideComplete(e.target.checked)} />
@@ -155,7 +155,7 @@ export function QuantityTrackingPage() {
           <table className="w-full text-xs min-w-[1100px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200 bg-slate-50">
-                <th className="px-3 py-2">Unique Number</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Product</th>
+                <th className="px-3 py-2">Unique Number</th><th className="px-3 py-2">Company</th><th className="px-3 py-2">Product</th>
                 <th className="px-3 py-2 text-right">Ordered</th><th className="px-3 py-2 text-right">Good</th>
                 <th className="px-3 py-2 text-right">Rejected</th><th className="px-3 py-2 text-right">Remaining</th>
                 <th className="px-3 py-2 text-right">FG Avail</th><th className="px-3 py-2 text-right">Delivered</th>
@@ -221,7 +221,7 @@ export function QuantityTrackingPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[700px]">
-              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Unique Number</th><th className="py-2">Customer</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
+              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Unique Number</th><th className="py-2">Company</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
               <tbody>
                 {filtered.filter((q) => q.rejected > 0).map((q) => (
                   <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100">

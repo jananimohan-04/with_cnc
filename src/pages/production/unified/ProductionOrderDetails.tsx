@@ -145,7 +145,7 @@ export function ProductionOrderDetails({ order, refresh }: { order: any, onClose
           <Card className="p-4">
             <h4 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Project & Part Details</h4>
             <div className="grid grid-cols-2 gap-y-3 text-sm">
-              <div className="text-slate-500">Project / Customer</div><div className="font-medium text-slate-800">{order.customer}</div>
+              <div className="text-slate-500">Project / Company</div><div className="font-medium text-slate-800">{order.customer}</div>
               <div className="text-slate-500">Sales Order</div><div className="text-slate-800">{order.sales_order || '-'}</div>
               <div className="text-slate-500">Part Name</div><div className="font-medium text-slate-800">{order.part_name}</div>
               <div className="text-slate-500">Drawing / Rev</div><div className="text-slate-800">{order.drawing_revision || 'R0'}</div>

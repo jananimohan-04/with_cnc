@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
-import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { Search, ArrowLeft, FileText, Download, Plus } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { useAuth } from '@/contexts/AuthContext';
+import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 
-export function InwardModule({ onBack }: { onBack: () => void }) {
+export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: () => void; onAddInward?: () => void; refreshSignal?: number }) {
+  const { company } = useAuth();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -25,7 +28,7 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [refreshSignal]);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -37,6 +40,57 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
 
   const openRecord = async (record: any) => {
     setSelectedRecord(record);
+  };
+
+  // Core PDF fonts lack the ₹ glyph — always use Rs. in generated bills.
+  const inr = (v: any) => 'Rs. ' + Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+  const buildBillInput = () => {
+    const r = selectedRecord;
+    if (!r) return null;
+    const q = Number(r.quantity) || 0;
+    const p = Number(r.price) || 0;
+    const total = r.total_amount !== null && r.total_amount !== undefined && r.total_amount !== ''
+      ? Number(r.total_amount)
+      : q * p * (1 - (Number(r.discount_percent) || 0) / 100) * (1 + (Number(r.gst_percent) || 0) / 100);
+    return {
+      companyName: company?.company_name || 'ARGUS CNC',
+      title: 'Purchase Bill',
+      documentNo: r.inward_no || '',
+      date: r.inward_date || r.created_at,
+      details: [
+        ['Party Name', r.party_name || '—'],
+        ['Category', r.category || '—'],
+        ['Reference No.', r.reference_no || '—'],
+        ['Product', r.product_name || r.project_name || '—'],
+      ] as [string, string | number | null | undefined][],
+      details2: [
+        ['Inward Date', r.inward_date || '—'],
+        ['Status', r.status || '—'],
+      ] as [string, string | number | null | undefined][],
+      columns: ['S.No', 'Part Name', 'Qty', 'Price (Rs.)', 'Disc %', 'GST %', 'Amount (Rs.)'],
+      rows: [[
+        1, r.part_name || '—', q, inr(p),
+        `${Number(r.discount_percent) || 0}%`, `${Number(r.gst_percent) || 0}%`, inr(total),
+      ]] as (string | number)[][],
+      totals: [['Total Amount', inr(total)]] as [string, string][],
+      signatures: ['Prepared By', 'Checked By', 'Received By'],
+      premium: true,
+    };
+  };
+
+  const previewBill = async () => {
+    const input = buildBillInput();
+    if (!input) return;
+    try { await viewBrandedDocument(input); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Unable to preview the bill.'); }
+  };
+
+  const downloadBill = async () => {
+    const input = buildBillInput();
+    if (!input) return;
+    try { await downloadBrandedDocument(input); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Unable to download the bill.'); }
   };
 
   const filteredRecords = records.filter(r =>
@@ -67,6 +121,11 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onAddInward && (
+            <button onClick={onAddInward} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
+              <Plus size={15} /> Add Inward
+            </button>
+          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -121,70 +180,66 @@ export function InwardModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Inwards Details: ' + (selectedRecord?.inward_no || 'Pending')} size="xl" footer={
+      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Inward Details: ' + (selectedRecord?.inward_no || 'Pending')} size="lg" footer={
         <div className="flex justify-between w-full">
-          <div>
-             <Button onClick={() => alert('Development Note: Conversion logic will go here.')} className="bg-emerald-600 hover:bg-emerald-700 text-white">Create Work Order</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => void previewBill()}>Bill Preview</Button>
+            <Button variant="secondary" icon={<Download size={14} />} onClick={() => void downloadBill()}>Download Bill PDF</Button>
           </div>
           <Button onClick={() => setSelectedRecord(null)}>Close</Button>
         </div>
       }>
         {selectedRecord && (
-          <div className="flex gap-6">
-            <div className="flex-1 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Inward No"><input className={inputClass} value={selectedRecord.inward_no || ''} disabled /></FormField>
-                <FormField label="Enquired Product"><input className={inputClass} value={selectedRecord.product_name || selectedRecord.project_name || ''} disabled /></FormField>
-                <FormField label="Party"><input className={inputClass} value={selectedRecord.party_name || ''} disabled /></FormField>
-                <FormField label="Product Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
-                <FormField label="Quantity"><input className={inputClass} value={selectedRecord.quantity ?? ''} disabled /></FormField>
-                <FormField label="Status"><input className={inputClass} value={selectedRecord.status || ''} disabled /></FormField>
-                {Array.isArray(selectedRecord.attachments) && selectedRecord.attachments.length > 0 && (
-                  <div className="col-span-2">
-                    <span className="mb-2 block text-xs font-semibold uppercase text-slate-500">Attachments</span>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedRecord.attachments.map((attachment: { path: string; name: string }, index: number) => (
-                        <button key={`${attachment.path}-${index}`} type="button" onClick={() => openAttachment(attachment)} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-brand-700 hover:bg-brand-50">
-                          <FileText className="h-4 w-4" />{attachment.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="grid grid-cols-2 md:grid-cols-[9rem_minmax(0,1fr)_9rem_9rem_auto] gap-4 mb-3">
+              {([
+                ['Category', selectedRecord.category],
+                ['Company', selectedRecord.party_name],
+                ['Inward Date', selectedRecord.inward_date],
+                ['Reference No.', selectedRecord.reference_no],
+              ] as [string, any][]).map(([label, v]) => (
+                <div key={label}>
+                  <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
+                </div>
+              ))}
+              <div>
+                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Files</span>
+                <div className="flex flex-wrap gap-2">
+                  {Array.isArray(selectedRecord.attachments) && selectedRecord.attachments.length > 0 ? (
+                    selectedRecord.attachments.map((attachment: { path: string; name: string }, index: number) => (
+                      <button key={`${attachment.path}-${index}`} type="button" onClick={() => openAttachment(attachment)} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-brand-700 hover:bg-brand-50">
+                        <FileText className="h-4 w-4" />{attachment.name}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-400">—</span>
+                  )}
+                </div>
               </div>
             </div>
-
-            <div className="w-64 bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col h-full">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-200 pb-2"><FileText className="w-4 h-4 text-brand-600"/> DOCUMENT FLOW</h3>
-
-              <div className="flex flex-col space-y-0 relative pl-4">
-                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-slate-200 z-0"></div>
-
-                <FlowStep active={false} title="ENQUIRY" subtitle={selectedRecord.project_name || 'Linked'} />
-                <FlowStep active={false} title="QUOTATION" subtitle="Linked" />
-                <FlowStep active={false} title="SALES ORDER" subtitle={selectedRecord.sales_order_ref || 'Linked'} />
-                <FlowStep active highlight title="INWARD" subtitle={selectedRecord.inward_no} />
-                <FlowStep active={false} title="PRODUCTION" subtitle="Linked" />
-                <FlowStep active={false} title="FINISHED GOODS" subtitle="Linked" />
-                <FlowStep active={false} title="DELIVERY CHALLAN" subtitle="Linked" />
-                <FlowStep active={false} title="INVOICE" subtitle="Linked" />
-              </div>
+            <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center mb-1 px-1">
+              {['Product', 'Part Name', 'Qty', 'Price', 'Disc', 'GST', 'Total', 'Remarks'].map(h => (
+                <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>
+              ))}
+            </div>
+            <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2">
+              {[
+                selectedRecord.product_name || selectedRecord.project_name || '—',
+                selectedRecord.part_name || '—',
+                selectedRecord.quantity ?? '—',
+                selectedRecord.price !== null && selectedRecord.price !== undefined && selectedRecord.price !== '' ? inr(selectedRecord.price) : '—',
+                `${Number(selectedRecord.discount_percent) || 0}%`,
+                `${Number(selectedRecord.gst_percent) || 0}%`,
+                selectedRecord.total_amount !== null && selectedRecord.total_amount !== undefined && selectedRecord.total_amount !== '' ? inr(selectedRecord.total_amount) : '—',
+                selectedRecord.remarks || '—',
+              ].map((v, i) => (
+                <span key={i} className="text-sm text-slate-800 font-medium break-words tabular-nums">{String(v)}</span>
+              ))}
             </div>
           </div>
         )}
       </Modal>
-    </div>
-  );
-}
-
-function FlowStep({ active, highlight, title, subtitle }: { active: boolean, highlight?: boolean, title: string, subtitle: string }) {
-  return (
-    <div className="relative z-10 flex items-start gap-3 py-3">
-      <div className={"mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 " + (highlight ? 'bg-brand-500 border-brand-500' : (active ? 'bg-white border-brand-400' : 'bg-white border-slate-300'))}></div>
-      <div>
-        <div className={"font-bold text-[11px] uppercase tracking-wider " + (highlight ? 'text-brand-700' : (active ? 'text-slate-600' : 'text-slate-400'))}>{title}</div>
-        <div className={"text-[10px] font-mono " + (highlight ? 'text-slate-700' : 'text-slate-400')}>{subtitle}</div>
-      </div>
     </div>
   );
 }

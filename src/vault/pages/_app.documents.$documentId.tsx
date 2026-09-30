@@ -212,7 +212,7 @@ function DocumentDetailPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-slate-500">Party / Customer</div>
+                    <div className="text-sm text-slate-500">Party / Company</div>
                     <div className="font-medium">{doc.parties?.name || "Internal"}</div>
                   </div>
                   {(doc as any)?.parts?.part_name && (

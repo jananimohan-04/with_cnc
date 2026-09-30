@@ -57,7 +57,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const [machineCodes, setMachineCodes] = useState<string[]>([]);
 
   const [search, setSearch] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('All Customers');
+  const [customerFilter, setCustomerFilter] = useState('All Companies');
   const [productFilter, setProductFilter] = useState('All Products');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [dateFrom, setDateFrom] = useState('');
@@ -169,7 +169,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         const hay = `${w.wo_no ?? ''} ${w.sales_order ?? ''} ${w.customer ?? ''} ${w.part_name ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (customerFilter !== 'All Customers' && w.customer !== customerFilter) return false;
+      if (customerFilter !== 'All Companies' && w.customer !== customerFilter) return false;
       if (productFilter !== 'All Products' && w.part_name !== productFilter) return false;
       if (statusFilter !== 'All Statuses' && w.status !== statusFilter) return false;
       if (dateFrom && (w.start_date ?? '').slice(0, 10) < dateFrom) return false;
@@ -190,14 +190,14 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   const clearFilters = () => {
     setSearch('');
-    setCustomerFilter('All Customers');
+    setCustomerFilter('All Companies');
     setProductFilter('All Products');
     setStatusFilter('All Statuses');
     setDateFrom('');
     setDateTo('');
   };
   const filtersActive =
-    search.trim() !== '' || customerFilter !== 'All Customers' || productFilter !== 'All Products' ||
+    search.trim() !== '' || customerFilter !== 'All Companies' || productFilter !== 'All Products' ||
     statusFilter !== 'All Statuses' || dateFrom !== '' || dateTo !== '';
 
   const selectedSO = useMemo(
@@ -511,7 +511,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       sortable: true,
       render: (r) => <span className="font-mono text-xs text-slate-500">{r.sales_order || '—'}</span>,
     },
-    { key: 'customer', label: 'Customer', sortable: true },
+    { key: 'customer', label: 'Company', sortable: true },
     {
       key: 'part_name',
       label: 'Product',
@@ -646,14 +646,14 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Work Order No. / Sales Order / Customer / Product..."
+              placeholder="Work Order No. / Sales Order / Company / Product..."
               className={inputClass}
             />
           </div>
           <div className="min-w-[170px]">
-            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Customer</label>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Company</label>
             <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={inputClass}>
-              <option>All Customers</option>
+              <option>All Companies</option>
               {customers.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
@@ -732,7 +732,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
                 </FormField>
                 {errText('salesOrderId')}
               </div>
-              <FormField label="Customer">
+              <FormField label="Company">
                 <input className={`${inputClass} bg-slate-50`} readOnly placeholder="Auto-filled from Sales Order" value={selectedSO?.customer ?? ''} />
               </FormField>
               <FormField label="Product">
@@ -748,7 +748,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sales Order</p><p className="font-mono font-semibold text-slate-800">{editWO.sales_order || '—'}</p></div>
-              <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Customer</p><p className="font-semibold text-slate-800">{editWO.customer || '—'}</p></div>
+              <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company</p><p className="font-semibold text-slate-800">{editWO.customer || '—'}</p></div>
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Product</p><p className="font-semibold text-slate-800">{editWO.part_name || '—'}</p></div>
               <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</p><p><Badge variant={statusToVariant(editWO.status)} dot>{editWO.status}</Badge></p></div>
             </div>

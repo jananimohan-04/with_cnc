@@ -161,7 +161,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Quote No</th>
                 <th className="p-3 font-semibold">Date</th>
-                <th className="p-3 font-semibold">Customer</th>
+                <th className="p-3 font-semibold">Company</th>
                 <th className="p-3 font-semibold">Description</th>
                 <th className="p-3 font-semibold">Value</th>
                 <th className="p-3 font-semibold">Status</th>
@@ -209,7 +209,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                 <FormField label="Quotation No"><input className={inputClass} value={selectedQuote.quote_no || 'Pending'} disabled /></FormField>
                 <FormField label="Date"><input className={inputClass} value={selectedQuote.date?.split('T')[0] || selectedQuote.created_at?.split('T')[0] || ''} disabled /></FormField>
                 
-                <div className="col-span-2"><FormField label="Customer"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedQuote.customer || ''} disabled /></FormField></div>
+                <div className="col-span-2"><FormField label="Company"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedQuote.customer || ''} disabled /></FormField></div>
                 
                 <FormField label="Related Enquiry No">
                   <div className="relative">
@@ -273,7 +273,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Enquiry No"><input className={inputClass} value={relatedEnquiry.enquiry_no} disabled /></FormField>
             <FormField label="Date"><input className={inputClass} value={relatedEnquiry.received_date?.split('T')[0] || ''} disabled /></FormField>
-            <FormField label="Customer"><input className={`${inputClass} font-semibold`} value={relatedEnquiry.customer || ''} disabled /></FormField>
+            <FormField label="Company"><input className={`${inputClass} font-semibold`} value={relatedEnquiry.customer || ''} disabled /></FormField>
             <FormField label="Status"><input className={inputClass} value={relatedEnquiry.status || ''} disabled /></FormField>
             <div className="col-span-2"><FormField label="Description"><input className={inputClass} value={relatedEnquiry.part_name || relatedEnquiry.enquiring_for || ''} disabled /></FormField></div>
             <FormField label="Quantity"><input className={inputClass} value={relatedEnquiry.quantity || ''} disabled /></FormField>
@@ -292,7 +292,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <FormField label="Customer"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.customer} disabled /></FormField>
+                <FormField label="Company"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.customer} disabled /></FormField>
               </div>
               <FormField label="Quotation Ref"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.quote_no} disabled /></FormField>
               <FormField label="Enquiry Ref"><input className={`${inputClass} bg-slate-100`} value={soModalTarget.enquiry_no || relatedEnquiry?.enquiry_no || ''} disabled /></FormField>

@@ -54,7 +54,7 @@ function printWorkOrder(wo: any, ops: any[]) {
     <p>Argus CNC ERP · Printed ${esc(new Date().toLocaleString('en-IN'))}</p></div>
     <div class="grid">
       <div class="cell"><small>Sales Order</small><b>${esc(wo.sales_order || '—')}</b></div>
-      <div class="cell"><small>Customer</small><b>${esc(wo.customer || '—')}</b></div>
+      <div class="cell"><small>Company</small><b>${esc(wo.customer || '—')}</b></div>
       <div class="cell"><small>Product</small><b>${esc(wo.part_name || '—')}</b></div>
       <div class="cell"><small>Status</small><b>${esc(wo.status)}</b></div>
       <div class="cell"><small>Target Qty</small><b>${qty}</b></div>
@@ -231,7 +231,7 @@ export function WorkOrderDetail({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Work Order No.</p><p className="font-mono font-bold text-slate-800">{wo.wo_no}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sales Order</p><p className="font-mono font-semibold text-slate-700">{wo.sales_order || '—'}</p></div>
-            <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Customer</p><p className="font-semibold text-slate-800">{wo.customer || '—'}</p></div>
+            <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company</p><p className="font-semibold text-slate-800">{wo.customer || '—'}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Product</p><p className="font-semibold text-slate-800">{wo.part_name || '—'}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Target Quantity</p><p className="font-bold text-slate-800">{qty.toLocaleString('en-IN')}</p></div>
             <div><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completed</p><p className="font-bold text-emerald-600">{comp.toLocaleString('en-IN')}</p></div>

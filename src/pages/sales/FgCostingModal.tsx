@@ -631,7 +631,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     const row = (cells: string[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
     printHtml(`Finished Goods Costing - ${inward.inward_no ?? ''}`, `
       <h2>${companyName} — Finished Goods / Costing (${inward.inward_no ?? ''})</h2>
-      <p>Inward: ${inward.inward_no ?? ''} | SO: ${so?.order_no ?? ''} | Customer: ${card?.customer ?? ''} | Product: ${productName} (${code || '—'}) | Qty: ${baseQty}</p>
+      <p>Inward: ${inward.inward_no ?? ''} | SO: ${so?.order_no ?? ''} | Company: ${card?.customer ?? ''} | Product: ${productName} (${code || '—'}) | Qty: ${baseQty}</p>
       <p>Project Costing ${inr(totals.calculated)} | Material ${inr(totals.material)} | Machine & Labour ${inr(totals.machineLabour)} | Process ${inr(totals.process)}</p>
       <h3>Calculated ${inr(totals.calculated)} | Approved ${inr(effectiveApproved)} | Adjustment ${adjustment >= 0 ? '+' : ''}${inr(adjustment)}</h3>
       <table><thead><tr><th>Material</th><th>Qty</th><th>Total</th></tr></thead>
@@ -833,7 +833,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{selectedProds.length > 0 ? selectedProds.map((p) => p.name).join(', ') : (productName || '—')}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Date</p>
@@ -907,14 +907,14 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           {/* LEFT — quotation (reference only, master never modified) */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Quotation</h3>
-            <p className="text-[11px] text-slate-400 mt-1 mb-3">Customer quoted price</p>
+            <p className="text-[11px] text-slate-400 mt-1 mb-3">Company quoted price</p>
             {!quote ? (
               <p className="text-sm text-slate-400">No quotation linked to this inward — costing starts from materials and operations only.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quote No</p><p className="font-mono font-semibold">{quote.quote_no}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Sales Order No</p><p className="font-mono font-semibold">{so?.order_no ?? inward.sales_order_ref ?? '—'}</p></div>
-                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p><p className="font-semibold">{quote.customer || card?.customer || '—'}</p></div>
+                <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{quote.customer || card?.customer || '—'}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{productName || '—'}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product Code</p><p className="font-mono font-semibold">{code || product?.code || '—'}</p></div>
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quoted Qty</p><p className="font-semibold">{quote.quantity}</p></div>

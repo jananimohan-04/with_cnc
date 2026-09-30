@@ -293,7 +293,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     const row = (cells: string[]) => `<tr>${cells.map((x) => `<td>${x}</td>`).join('')}</tr>`;
     printHtml(`Invoice - ${dcNo}`, `
       <h2>${companyName} — Tax Invoice (DRAFT)</h2>
-      <p>Customer: ${customer} | DC: ${dcNo} | SO: ${soOrderNo || soNo} | Date: ${invDate}</p>
+      <p>Company: ${customer} | DC: ${dcNo} | SO: ${soOrderNo || soNo} | Date: ${invDate}</p>
       <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
       <tbody>${lines.map((l) => row([l.itemName, String(l.qty), formatINR(effUnit(l)), formatINR(num(l.qty) * effUnit(l))])).join('')}</tbody></table>
       <h3>Basic ${formatINR(basic)} | Tax ${formatINR(tax)} | Total ${formatINR(grand)}</h3>`);
@@ -346,7 +346,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Document Type</p><p className="font-semibold">Tax Invoice</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Number</p><p className="font-mono text-slate-500">Auto-generated on save</p></div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p>
                 <input value={customer} disabled={!editing} onChange={(e) => setCustomer(e.target.value)} className={`${inputClass} font-semibold`} />
               </div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-mono font-semibold">{card?.refNo || dcNo || '—'}</p></div>

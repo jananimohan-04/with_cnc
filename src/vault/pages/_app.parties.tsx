@@ -73,7 +73,7 @@ function AddPartyDialog({ onAdded }: { onAdded: () => void }) {
         <DialogHeader>
           <DialogTitle>Add New Party</DialogTitle>
           <DialogDescription>
-            Create a new customer company, supplier, or internal department.
+            Create a new company, supplier, or internal department.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -297,7 +297,7 @@ function PartiesPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Parties</h2>
           <p className="text-muted-foreground mt-1">
-            Manage customer companies, suppliers, vendors, and internal departments.
+            Manage companies, suppliers, vendors, and internal departments.
           </p>
         </div>
         {(isSuperAdmin || isCompanyAdmin || can("manage_parties")) && (

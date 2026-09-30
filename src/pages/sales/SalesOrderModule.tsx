@@ -150,7 +150,7 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Order No</th>
-                <th className="p-3 font-semibold">Customer</th>
+                <th className="p-3 font-semibold">Company</th>
                 <th className="p-3 font-semibold">Part Name</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Total Value</th>

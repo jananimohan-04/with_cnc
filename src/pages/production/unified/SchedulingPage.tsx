@@ -869,7 +869,7 @@ export function SchedulingPage() {
                   </div>
                   
                   <div className="grid grid-cols-[100px_1fr] gap-y-2 text-sm">
-                    <span className="text-slate-500">Customer</span>
+                    <span className="text-slate-500">Company</span>
                     <span className="font-medium text-slate-800">: {selectedJob.customer || woCustomerMap[selectedJob.work_order] || workOrders.find(w => w.wo_no === selectedJob.work_order)?.customer || 'Unknown'}</span>
                     
                     <span className="text-slate-500">Quantity</span>
@@ -971,7 +971,7 @@ export function SchedulingPage() {
           </FormField>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="Customer"><input className={inputClass + ' bg-slate-50'} value={newJobForm.customer} readOnly disabled/></FormField>
+            <FormField label="Company"><input className={inputClass + ' bg-slate-50'} value={newJobForm.customer} readOnly disabled/></FormField>
             <FormField label="Product"><input className={inputClass + ' bg-slate-50'} value={newJobForm.partName} readOnly disabled/></FormField>
             <FormField label="Process"><input className={inputClass + ' bg-slate-50'} value={newJobForm.processName} readOnly disabled placeholder="Auto-filled from operation"/></FormField>
             <FormField label="Operation Sequence"><input className={inputClass + ' bg-slate-50'} value={newJobForm.operationSeq} readOnly disabled placeholder="Auto-filled from operation"/></FormField>

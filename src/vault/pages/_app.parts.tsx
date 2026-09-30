@@ -778,7 +778,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
             <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-slate-800">
-                  Unique Number (From All Leads)
+                  Unique Number (From All Companies)
                 </Label>
                 {selectedProjectName && selectedProjectName !== "none" && (
                   <button
@@ -884,7 +884,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
               <Label className="text-xs font-semibold">Company / Party (Optional)</Label>
               <Select value={partyId} onValueChange={setPartyId}>
                 <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Select Party / Customer..." />
+                  <SelectValue placeholder="Select Party / Company..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-56 overflow-y-auto">
                   <SelectItem value="internal">Internal Company</SelectItem>

@@ -275,7 +275,7 @@ export function buildCostingPdfInput(args: {
     documentNo,
     date,
     infoLeft: [
-      ['Customer', quote?.customer ?? ''],
+      ['Company', quote?.customer ?? ''],
       ['Quotation No', quote?.quote_no ?? ''],
       ['Sales Order', so?.order_no ?? ''],
       ['Product', product?.name ?? ''],

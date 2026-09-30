@@ -24,14 +24,14 @@ export interface CustomerAutocompleteProps {
 }
 
 export function CustomerAutocomplete({
-  label = "Customer",
+  label = "Company",
   required = false,
   value,
   disabled = false,
   onChange,
   onSelectCustomer,
   companies = [],
-  placeholder = "Type or select customer...",
+  placeholder = "Type or select company...",
   inputClass = "w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500 bg-white",
   hint,
 }: CustomerAutocompleteProps) {
@@ -105,7 +105,7 @@ export function CustomerAutocomplete({
               ))
             ) : (
               <div className="px-3.5 py-2.5 text-xs text-slate-500 italic">
-                No matching customer found (continue typing custom name)
+                No matching company found (continue typing custom name)
               </div>
             )}
           </div>

@@ -14,7 +14,7 @@ export function FinishedGoodsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('All Projects');
-  const [customerFilter, setCustomerFilter] = useState('All Customers');
+  const [customerFilter, setCustomerFilter] = useState('All Companies');
   const [statusFilter, setStatusFilter] = useState('Active Only');
   const [monthFilter, setMonthFilter] = useState('');
 
@@ -186,7 +186,7 @@ export function FinishedGoodsPage() {
   const filteredRecords = records.filter(r => {
     const matchesSearch = (r.part_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesProject = projectFilter === 'All Projects' || r.sales_order === projectFilter;
-    const matchesCustomer = customerFilter === 'All Customers' || r.customer === customerFilter;
+    const matchesCustomer = customerFilter === 'All Companies' || r.customer === customerFilter;
     const matchesStatus = statusFilter === 'All' ? true : 
                           statusFilter === 'Active Only' ? (r.status !== 'Dispatched' && r.status !== 'Delivered') : 
                           r.status === statusFilter;
@@ -234,7 +234,7 @@ export function FinishedGoodsPage() {
         </div>
       )
     },
-    { key: 'customer', label: 'Customer', render: (r) => <span className="text-slate-600 min-w-[100px] block">{r.customer || 'N/A'}</span> },
+    { key: 'customer', label: 'Company', render: (r) => <span className="text-slate-600 min-w-[100px] block">{r.customer || 'N/A'}</span> },
     { key: 'orderedQty', label: 'Ordered Qty', sortable: true, render: (r) => <span className="text-slate-700">{r.orderedQty}</span> },
     { 
       key: 'completedQty', 
@@ -383,13 +383,13 @@ export function FinishedGoodsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Customer</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">Company</label>
             <select 
               className="w-full h-9 rounded-lg border border-slate-200 text-sm px-3 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               value={customerFilter}
               onChange={e => setCustomerFilter(e.target.value)}
             >
-              <option value="All Customers">All Customers</option>
+              <option value="All Companies">All Companies</option>
               {filterOptions.customers.map(c => (
                 <option key={c as string} value={c as string}>{c as string}</option>
               ))}
@@ -428,7 +428,7 @@ export function FinishedGoodsPage() {
           </div>
           <div className="col-span-12 md:col-span-1 flex items-end">
             <Button variant="secondary" className="h-9 w-full bg-white text-xs font-bold" onClick={() => {
-              setSearchTerm(''); setProjectFilter('All Projects'); setCustomerFilter('All Customers'); setStatusFilter('Active Only'); setMonthFilter('');
+              setSearchTerm(''); setProjectFilter('All Projects'); setCustomerFilter('All Companies'); setStatusFilter('Active Only'); setMonthFilter('');
             }}>Clear</Button>
           </div>
         </div>
@@ -467,7 +467,7 @@ export function FinishedGoodsPage() {
           
           {selectedWO && (
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-sm text-slate-600 space-y-2">
-              <div className="flex justify-between"><span>Customer:</span> <span className="font-medium text-slate-800">{availableWOs.find(w=>w.id===selectedWO)?.customer}</span></div>
+              <div className="flex justify-between"><span>Company:</span> <span className="font-medium text-slate-800">{availableWOs.find(w=>w.id===selectedWO)?.customer}</span></div>
               <div className="flex justify-between"><span>Project:</span> <span className="font-medium text-slate-800">{availableWOs.find(w=>w.id===selectedWO)?.sales_order}</span></div>
               <div className="flex justify-between"><span>Target Qty:</span> <span className="font-medium text-slate-800">{availableWOs.find(w=>w.id===selectedWO)?.orderedQty}</span></div>
               <div className="flex justify-between"><span>Completed Qty:</span> <span className="font-medium text-slate-800">{availableWOs.find(w=>w.id===selectedWO)?.completedQty}</span></div>
@@ -497,7 +497,7 @@ export function FinishedGoodsPage() {
                 <div className="text-sm text-slate-600">{showViewModal.part_name}</div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Customer / Project</label>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Company / Project</label>
                 <div className="text-sm font-semibold text-slate-800">{showViewModal.customer}</div>
                 <div className="text-sm text-slate-600">{showViewModal.sales_order}</div>
               </div>

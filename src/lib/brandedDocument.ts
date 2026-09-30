@@ -19,6 +19,27 @@ export interface BrandedDocumentInput {
   premium?: boolean;
 }
 
+/** Logo on a curved (rounded-corner) white badge so it never looks pasted as a sharp rectangle. */
+async function addRoundedLogo(doc: any, x: number, y: number, w: number, h: number) {
+  try {
+    const response = await fetch('/arguscnc-logo.jpg');
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, y, w, h, 3, 3, 'F');
+    const pad = 1.2;
+    doc.addImage(dataUrl, 'JPEG', x + pad, y + pad, w - pad * 2, h - pad * 2);
+  } catch {
+    // The document stays printable without the logo.
+  }
+}
+
 async function buildBrandedDocument(input: BrandedDocumentInput) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -31,21 +52,7 @@ async function buildBrandedDocument(input: BrandedDocumentInput) {
   }
   let y = 15;
 
-  try {
-    const response = await fetch('/arguscnc-logo.jpg');
-    if (response.ok) {
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      doc.addImage(dataUrl, 'JPEG', 14, 12, 42, 18);
-    }
-  } catch {
-    // The company name and document remain printable when the optional logo is unavailable.
-  }
+  await addRoundedLogo(doc, 14, 12, 42, 18);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
@@ -105,21 +112,7 @@ async function buildPremiumDocument(
   // Header band
   doc.setFillColor(...NAVY);
   doc.rect(0, 0, pageWidth, 36, 'F');
-  try {
-    const response = await fetch('/arguscnc-logo.jpg');
-    if (response.ok) {
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      doc.addImage(dataUrl, 'JPEG', ML, 8, 40, 17);
-    }
-  } catch {
-    // Header text below keeps the document printable without the logo.
-  }
+  await addRoundedLogo(doc, ML, 8, 40, 17);
   const tx = 60;
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
@@ -306,20 +299,7 @@ export interface CostingDocumentInput {
 }
 
 async function loadLogo(doc: any, x: number, y: number, w: number, h: number) {
-  try {
-    const response = await fetch('/arguscnc-logo.jpg');
-    if (!response.ok) return;
-    const blob = await response.blob();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-    doc.addImage(dataUrl, 'JPEG', x, y, w, h);
-  } catch {
-    // Document stays printable without the logo.
-  }
+  await addRoundedLogo(doc, x, y, w, h);
 }
 
 async function buildCostingDocument(input: CostingDocumentInput) {
@@ -400,7 +380,7 @@ async function buildCostingDocument(input: CostingDocumentInput) {
   const R = { halign: 'right' as const };
   const C = { halign: 'center' as const };
 
-  section('1. Quotation Details', ['Quotation No', 'Customer', 'Product', 'Qty', 'Unit Price', 'Discount', 'Tax', 'Quoted Total'],
+  section('1. Quotation Details', ['Quotation No', 'Company', 'Product', 'Qty', 'Unit Price', 'Discount', 'Tax', 'Quoted Total'],
     [input.quotationRow.map(val)], { 0: C, 3: R, 4: R, 5: R, 6: R, 7: R });
   section('2. Material Cost',
     ['Code', 'Material', 'Req. Qty', 'Unit', 'Unit Cost', 'Total'],

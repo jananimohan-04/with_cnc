@@ -253,7 +253,7 @@ export function QuoteCostingPage() {
       `<table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     printHtml(`Product Costing - ${quote?.quote_no ?? ''}`, `
       <h2>${companyName} — Product Costing / Final Pricing (${quote?.quote_no ?? ''})</h2>
-      <p>Customer: ${quote?.customer ?? ''} | Product: ${product?.name ?? ''} | Qty: ${baseQty} | Date: ${todayISO()}</p>
+      <p>Company: ${quote?.customer ?? ''} | Product: ${product?.name ?? ''} | Qty: ${baseQty} | Date: ${todayISO()}</p>
       <h3>1. Quotation — ${inr(quote?.total_value)}</h3>
       <h3>2. Material Cost — ${inr(totals.material)}</h3>
       ${tbl(['Code', 'Material', 'Req Qty', 'Unit Cost', 'Total'], matLines.map((m) => row([m.material_code, m.material_name, `${m.req_qty} ${m.unit}`, inr(m.unit_cost), inr(m.total)])).join(''))}
@@ -311,7 +311,7 @@ export function QuoteCostingPage() {
         {/* quotation picker */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <FormField label="Search Quotations">
-            <input value={quoteSearch} onChange={(e) => setQuoteSearch(e.target.value)} placeholder="No. / customer / product..." className={inputClass} />
+            <input value={quoteSearch} onChange={(e) => setQuoteSearch(e.target.value)} placeholder="No. / company / product..." className={inputClass} />
           </FormField>
           <div className="mt-3 max-h-[520px] overflow-y-auto space-y-2">
             {loadingQuotes && <p className="text-sm text-slate-400">Loading quotations...</p>}
@@ -369,7 +369,7 @@ export function QuoteCostingPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
-                  <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p><p className="font-semibold">{quote.customer}</p></div>
+                  <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{quote.customer}</p></div>
                   <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product Code</p><p className="font-mono font-semibold">{productCode || '—'}</p></div>
                   <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quantity</p><p className="font-semibold">{baseQty}</p></div>
                   <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Costing Date</p><p className="font-semibold">{todayISO()}</p></div>

@@ -116,7 +116,7 @@ export function CustomersPage() {
         setFormData(resetForm());
       } else {
         console.error('Failed to add customer:', error);
-        alert("Failed to add customer: " + error.message);
+        alert("Failed to add company: " + error.message);
       }
     }
     setLoading(false);
@@ -148,16 +148,16 @@ export function CustomersPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Customers" description="Manage client relationships and outstanding balances" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
+      <PageHeader title="Companies" description="Manage client relationships and outstanding balances" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Clients" value={customersData.length.toString()} icon={<Users size={20} />} accent="brand" />
         <StatCard label="Active Clients" value={activeCount.toString()} icon={<Users size={20} />} trend="2" trendUp accent="success" />
         <StatCard label="Total Revenue" value={`₹${(totalValue / 10000000).toFixed(2)}Cr`} icon={<FileText size={20} />} trend="12%" trendUp accent="accent" />
         <StatCard label="Outstanding" value={`₹${(outstanding / 100000).toFixed(1)}L`} icon={<FileText size={20} />} accent="warning" />
       </div>
-      <DataTable data={customersData} columns={columns} searchKeys={['name', 'contact', 'city']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="Add Customer" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Inactive', value: 'Inactive' }]} />
+      <DataTable data={customersData} columns={columns} searchKeys={['name', 'contact', 'city']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="Add Company" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Inactive', value: 'Inactive' }]} />
       
-      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Customer" : "New Customer"} subtitle={editId ? "Update customer profile" : "Add a new customer to the database"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Customer' : 'Save Customer'}</Button></>}>
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Company" : "New Company"} subtitle={editId ? "Update company profile" : "Add a new company to the database"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Company' : 'Save Company'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Company Name" required><input className={inputClass} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Company Ltd" /></FormField>
           <FormField label="Industry" required>
@@ -179,7 +179,7 @@ export function CustomersPage() {
         </div>
       </Modal>
 
-      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Customer Details" subtitle={viewTarget?.name}>
+      <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Company Details" subtitle={viewTarget?.name}>
         {viewTarget && (
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
             <div><p className="text-slate-500 mb-1">Industry</p><Badge variant="neutral">{viewTarget.industry}</Badge></div>
@@ -210,8 +210,8 @@ export function CustomersPage() {
             setLoading(false);
           }
         }} 
-        title="Delete Customer" 
-        message={`Delete customer ${deleteTarget?.name}? This will remove all associated records.`} 
+        title="Delete Company" 
+        message={`Delete company ${deleteTarget?.name}? This will remove all associated records.`} 
         confirmLabel="Delete" 
         danger 
       />
@@ -379,7 +379,7 @@ export function QuotationsPage() {
 
   const columns: Column<QuotationRow>[] = [
     { key: 'quoteNo', label: 'Quote No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.quoteNo}</span> },
-    { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
+    { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
     { key: 'enquiryNo', label: 'Enquiry', render: (r) => <span className="font-mono text-xs text-slate-500">{r.enquiryNo}</span> },
     { key: 'partName', label: 'Product', sortable: true },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right' },
@@ -407,7 +407,7 @@ export function QuotationsPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Quotations" description="Manage price quotations for customer enquiries" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
+      <PageHeader title="Quotations" description="Manage price quotations for company enquiries" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Quotations" value={quotationsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="Pending" value={pendingCount.toString()} icon={<FileText size={20} />} accent="warning" />
@@ -416,12 +416,12 @@ export function QuotationsPage() {
       </div>
       <DataTable data={quotationsData} columns={columns} searchKeys={['quoteNo', 'customer', 'partName']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Quotation" filterOptions={[{ label: 'Draft', value: 'Draft' }, { label: 'Sent', value: 'Sent' }, { label: 'Converted', value: 'Converted' }, { label: 'Rejected', value: 'Rejected' }]} />
       
-      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Quotation" : "New Quotation"} subtitle={editId ? "Update quotation details" : "Create a new quotation for a customer"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Quotation' : 'Save Quotation'}</Button></>}>
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Quotation" : "New Quotation"} subtitle={editId ? "Update quotation details" : "Create a new quotation for a company"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Quotation' : 'Save Quotation'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Quotation Number" required><input className={inputClass} value={formData.quoteNo} onChange={e => setFormData({...formData, quoteNo: e.target.value})} /></FormField>
-          <FormField label="Customer" required>
+          <FormField label="Company" required>
             <select className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
-              <option value="">Select customer...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              <option value="">Select company...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
               {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
             </select>
           </FormField>
@@ -449,7 +449,7 @@ export function QuotationsPage() {
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Quotation Details" subtitle={viewTarget?.quoteNo}>
         {viewTarget && (
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-            <div><p className="text-slate-500 mb-1">Customer</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
+            <div><p className="text-slate-500 mb-1">Company</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
             <div><p className="text-slate-500 mb-1">Product Name</p><p className="font-medium text-slate-800">{viewTarget.partName}</p></div>
             <div><p className="text-slate-500 mb-1">Enquiry No</p><p className="font-mono text-slate-700">{viewTarget.enquiryNo}</p></div>
@@ -699,7 +699,7 @@ export function SalesOrdersPage() {
 
   const columns: Column<SalesOrderRow>[] = [
     { key: 'orderNo', label: 'Order No', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-700">{r.orderNo}</span> },
-    { key: 'customer', label: 'Customer', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
+    { key: 'customer', label: 'Company', sortable: true, render: (r) => <span className="font-medium text-slate-700">{r.customer}</span> },
     { key: 'partName', label: 'Product', sortable: true, render: (r) => <div><p className="text-sm text-slate-700">{r.partName}</p></div> },
     { key: 'quantity', label: 'Qty', sortable: true, align: 'right' },
     { key: 'delivered', label: 'Delivered', align: 'right', render: (r) => <span className={r.delivered === r.quantity ? 'text-green-600 font-medium' : 'text-slate-500'}>{r.delivered}/{r.quantity}</span> },
@@ -725,7 +725,7 @@ export function SalesOrdersPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="Sales Orders" description="Track confirmed customer orders" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
+      <PageHeader title="Sales Orders" description="Track confirmed company orders" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Orders" value={ordersData.length.toString()} icon={<FileText size={20} />} accent="brand" />
         <StatCard label="In Production" value={inProduction.toString()} icon={<FileText size={20} />} accent="accent" />
@@ -737,9 +737,9 @@ export function SalesOrdersPage() {
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Sales Order" : "New Sales Order"} subtitle={editId ? "Update sales order details" : "Create a sales order from an accepted quotation"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Order' : 'Create Order'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Order Number" required><input className={inputClass} value={formData.orderNo} onChange={e => setFormData({...formData, orderNo: e.target.value})} /></FormField>
-          <FormField label="Customer" required>
+          <FormField label="Company" required>
             <select className={inputClass} value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})}>
-              <option value="">Select customer...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              <option value="">Select company...</option>{customerOptions.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
               {formData.customer && !customerOptions.some(c => c.name === formData.customer) && <option value={formData.customer}>{formData.customer}</option>}
             </select>
           </FormField>
@@ -765,7 +765,7 @@ export function SalesOrdersPage() {
       <Modal open={!!viewTarget} onClose={() => setViewTarget(null)} title="View Sales Order Details" subtitle={viewTarget?.orderNo}>
         {viewTarget && (
           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-            <div><p className="text-slate-500 mb-1">Customer</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
+            <div><p className="text-slate-500 mb-1">Company</p><p className="font-semibold text-slate-800">{viewTarget.customer}</p></div>
             <div><p className="text-slate-500 mb-1">Status</p><Badge variant={statusToVariant(viewTarget.status)} dot>{viewTarget.status}</Badge></div>
             <div><p className="text-slate-500 mb-1">Part Name</p><p className="font-medium text-slate-800">{viewTarget.partName}</p></div>
             <div><p className="text-slate-500 mb-1">Quantity</p><p className="text-slate-800">{viewTarget.quantity}</p></div>

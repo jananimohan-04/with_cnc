@@ -368,7 +368,7 @@ function UploadWizardPage() {
         <CardHeader>
           <CardTitle>{STEPS[currentStep]}</CardTitle>
           <CardDescription>
-            {currentStep === 0 && "Select the customer or department this document belongs to."}
+            {currentStep === 0 && "Select the company or department this document belongs to."}
             {currentStep === 1 && "Link this document to a specific engineering part."}
             {currentStep === 2 && "Enter the metadata for this document."}
             {currentStep === 3 && "Select the file to upload."}

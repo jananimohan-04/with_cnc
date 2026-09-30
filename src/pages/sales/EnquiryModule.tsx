@@ -44,6 +44,30 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
     (e.customer || '').toLowerCase().includes(search.toLowerCase())
   );
 
+  const productNames = (enq: any): string => {
+    try {
+      const ef = enq?.enquiring_for;
+      const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+      if (Array.isArray(parsed)) {
+        const names = parsed.map((it: any) => String(it.productName || it.partName || it.part_name || '').trim()).filter(Boolean);
+        if (names.length) return names.join(', ');
+      }
+    } catch { /* fall through to part_name */ }
+    return String(enq?.part_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim() || '—';
+  };
+
+  const productRemarks = (enq: any): string => {
+    try {
+      const ef = enq?.enquiring_for;
+      const parsed = typeof ef === 'string' ? JSON.parse(ef) : ef;
+      if (Array.isArray(parsed)) {
+        const rs = parsed.map((it: any) => String(it.remarks || '').trim()).filter(Boolean);
+        if (rs.length) return rs.join(' | ');
+      }
+    } catch { /* no remarks */ }
+    return '—';
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
@@ -84,8 +108,9 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Enquiry No</th>
                 <th className="p-3 font-semibold">Date</th>
-                <th className="p-3 font-semibold">Customer</th>
-                <th className="p-3 font-semibold">Product / Description</th>
+                <th className="p-3 font-semibold">Company</th>
+                <th className="p-3 font-semibold">Products</th>
+                <th className="p-3 font-semibold">Remarks</th>
                 <th className="p-3 font-semibold">Quantity</th>
                 <th className="p-3 font-semibold">Status</th>
                 <th className="p-3 font-semibold">Actions</th>
@@ -96,8 +121,9 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
                 <tr key={enq.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 font-mono text-sm text-slate-800 font-medium">{enq.enquiry_no || 'Pending'}</td>
                   <td className="p-3 text-sm text-slate-600">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
-                  <td className="p-3 font-semibold text-brand-700 text-sm">{enq.customer}</td>
-                  <td className="p-3 text-sm text-slate-700">{enq.part_name || enq.enquiring_for || 'N/A'}</td>
+                  <td className="p-3 font-semibold text-brand-700 text-sm max-w-[220px] truncate" title={enq.customer}>{enq.customer}</td>
+                  <td className="p-3 text-sm text-slate-700 max-w-[260px]">{productNames(enq)}</td>
+                  <td className="p-3 text-sm text-slate-500 max-w-[200px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">{enq.quantity || '-'}</td>
                   <td className="p-3">
                     <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
@@ -108,7 +134,7 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
                 </tr>
               ))}
               {filteredEnquiries.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No enquiries found.</td></tr>
               )}
             </tbody>
           </table>
@@ -122,13 +148,10 @@ export function EnquiryModule({ onBack }: { onBack: () => void }) {
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Enquiry No"><input className={inputClass} value={selectedEnquiry.enquiry_no || 'Pending'} disabled /></FormField>
                 <FormField label="Date"><input className={inputClass} value={selectedEnquiry.received_date?.split('T')[0] || selectedEnquiry.created_at?.split('T')[0] || ''} disabled /></FormField>
-                <FormField label="Customer"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedEnquiry.customer || ''} disabled /></FormField>
+                <FormField label="Company"><input className={`${inputClass} font-semibold text-brand-700`} value={selectedEnquiry.customer || ''} disabled /></FormField>
                 <FormField label="Status"><input className={inputClass} value={selectedEnquiry.status || 'New'} disabled /></FormField>
                 <div className="col-span-2"><FormField label="Product / Description"><input className={inputClass} value={selectedEnquiry.part_name || selectedEnquiry.enquiring_for || ''} disabled /></FormField></div>
                 <FormField label="Quantity"><input className={inputClass} value={selectedEnquiry.quantity || ''} disabled /></FormField>
-                <FormField label="Estimated Value"><input className={inputClass} value={selectedEnquiry.estimated_value || ''} disabled /></FormField>
-                <FormField label="Assigned To"><input className={inputClass} value="Admin" disabled /></FormField>
-                <FormField label="Next Action"><input className={inputClass} value="Prepare Quotation" disabled /></FormField>
                 <div className="col-span-2"><FormField label="Remarks"><textarea className={inputClass} value={selectedEnquiry.lost_reason || ''} disabled rows={2}></textarea></FormField></div>
               </div>
             </div>

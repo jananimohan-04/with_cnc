@@ -10,7 +10,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = 
   'Qualified':      { label: 'Under Technical Review', color: 'bg-indigo-100 text-indigo-700', icon: Clock },
   'Under Review':   { label: 'Under Technical Review', color: 'bg-indigo-100 text-indigo-700', icon: Clock },
   'Quoted':         { label: 'Quotation Prepared', color: 'bg-purple-100 text-purple-700', icon: FileText },
-  'Converted':      { label: 'Converted to Customer', color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
+  'Converted':      { label: 'Converted to Company', color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
   'Lost':           { label: 'Enquiry Closed', color: 'bg-red-100 text-red-700', icon: AlertCircle },
   // Quotation statuses
   'Draft':          { label: 'Being Prepared', color: 'bg-slate-100 text-slate-700', icon: Clock },
