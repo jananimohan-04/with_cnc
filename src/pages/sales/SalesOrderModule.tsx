@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
-import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { fetchOrderQty, summarizeSalesOrder } from '@/lib/orderQuantities';
+import { Search, ArrowLeft } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
+import { SalesOrderSection } from './SalesOrderSection';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
+
+const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
 export function SalesOrderModule({ onBack }: { onBack: () => void }) {
   const [records, setRecords] = useState<any[]>([]);
@@ -12,6 +16,11 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
   const [search, setSearch] = useState('');
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [qtyTracking, setQtyTracking] = useState<any>(null);
+  // Live per-order progress (finished / rejected / remaining / DC / invoice).
+  const [qtyMap, setQtyMap] = useState<Record<string, any>>({});
+  const soSaveRef = useRef<(() => Promise<boolean>) | null>(null);
 
   useEffect(() => {
     fetchRecords();
@@ -23,10 +32,83 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
     if (error) console.error('Error fetching sales orders:', error);
     if (data) setRecords(data);
     setLoading(false);
+    // Batch-load production rows once and reconcile every order locally.
+    try {
+      const [woRes, dcRes, invRes, batchRes] = await Promise.all([
+        supabase.from('cnc_work_orders').select('*'),
+        supabase.from('cnc_deliveries').select('*'),
+        supabase.from('cnc_invoices').select('*'),
+        supabase.from('cnc_production_batches').select('*'),
+      ]);
+      const map: Record<string, any> = {};
+      (data || []).forEach((so: any) => {
+        try {
+          map[so.order_no] = summarizeSalesOrder(
+            so, woRes.data ?? [], dcRes.data ?? [], invRes.data ?? [], batchRes.data ?? []);
+        } catch { /* this order stays without progress */ }
+      });
+      setQtyMap(map);
+    } catch { /* progress stays hidden */ }
   };
 
-  const openRecord = async (record: any) => {
+  const updateStatus = async (record: any, value: string) => {
+    if (!value || value === record.status) return;
+    const { error } = await supabase.from('cnc_sales_orders').update({ status: value }).eq('id', record.id);
+    if (error) {
+      alert('Failed to update status: ' + error.message);
+      return;
+    }
+    setRecords((prev) => prev.map((r) => (r.id === record.id ? { ...r, status: value } : r)));
+    setSelectedRecord((prev: any) => (prev && prev.id === record.id ? { ...prev, status: value } : prev));
+  };
+
+  const openRecord = async (record: any, edit: boolean) => {
     setSelectedRecord(record);
+    setEditMode(edit);
+    setQtyTracking(null);
+    soSaveRef.current = null;
+    try {
+      const { summary } = await fetchOrderQty(record?.id ?? null, record?.order_no ?? '');
+      if (summary) setQtyTracking(summary);
+    } catch { /* quantities stay order-level */ }
+  };
+
+  const closeRecord = () => {
+    setSelectedRecord(null);
+    setEditMode(false);
+    setQtyTracking(null);
+    soSaveRef.current = null;
+  };
+
+  const refreshSelected = async (id: string) => {
+    await fetchRecords();
+    const { data } = await supabase.from('cnc_sales_orders').select('*').eq('id', id).maybeSingle();
+    if (data) {
+      setSelectedRecord(data);
+      try {
+        const r = await fetchOrderQty(data.id ?? null, data.order_no ?? '');
+        if (r.summary) setQtyTracking(r.summary);
+      } catch { /* keep previous tracking */ }
+    }
+  };
+
+  const handleInlineEdit = async (field: string, value: string) => {
+    if (!selectedRecord) return;
+    const { error } = await supabase.from('cnc_sales_orders').update({ [field]: value }).eq('id', selectedRecord.id);
+    if (error) {
+      alert('Failed to update field: ' + error.message);
+      return;
+    }
+    setSelectedRecord((prev: any) => (prev ? { ...prev, [field]: value } : prev));
+    void refreshSelected(selectedRecord.id);
+  };
+
+  const toggleEdit = async () => {
+    if (editMode && soSaveRef.current) {
+      const ok = await soSaveRef.current();
+      if (!ok) return;
+    }
+    setEditMode(!editMode);
   };
 
   const filteredRecords = records.filter(r =>
@@ -86,9 +168,36 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{orderValue(record) ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.delivery_date || '-'}</td>
-                  <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
                   <td className="p-3">
-                    <Button variant="secondary" size="sm" onClick={() => openRecord(record)}>View Details</Button>
+                    <select
+                      value={record.status || ''}
+                      onChange={(e) => void updateStatus(record, e.target.value)}
+                      className="text-sm text-slate-700 border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
+                      title="Change status"
+                    >
+                      {Array.from(new Set([...ORDER_STATUSES, record.status].filter(Boolean))).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => void openRecord(record, false)}>View Details</Button>
+                      <Button variant="secondary" size="sm" onClick={() => void openRecord(record, true)}>Edit</Button>
+                    </div>
+                    {(() => {
+                      const q = qtyMap[record.order_no];
+                      if (!q) return null;
+                      return (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <span title="Finished (good)" className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-emerald-700">Fin {q.good}</span>
+                          <span title="Rejected" className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-rose-700">Rej {q.rejected}</span>
+                          <span title="Remaining" className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-amber-700">Rem {q.remaining}</span>
+                          <span title="Delivered via DC" className="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-violet-700">DC {q.delivered}</span>
+                          <span title="Invoiced" className="rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-sky-700">Inv {q.invoiced}</span>
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -100,44 +209,23 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Sales Orders Details: ' + (selectedRecord?.order_no || 'Pending')} size="xl" footer={
-        <div className="flex justify-between w-full">
-          <div>
-             <Button onClick={() => alert('Development Note: Conversion logic will go here.')} className="bg-emerald-600 hover:bg-emerald-700 text-white">Create Inward</Button>
-          </div>
-          <Button onClick={() => setSelectedRecord(null)}>Close</Button>
+      <Modal open={!!selectedRecord} onClose={closeRecord} title={'Sales Order Details: ' + (selectedRecord?.order_no || 'Pending')} size="xl" footer={
+        <div className="flex justify-end w-full gap-2">
+          <Button variant={editMode ? 'primary' : 'secondary'} onClick={() => void toggleEdit()}>{editMode ? 'Done Editing' : 'Edit'}</Button>
+          <Button variant="secondary" onClick={closeRecord}>Close</Button>
         </div>
       }>
         {selectedRecord && (
-          <div className="flex gap-6">
-            <div className="flex-1 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Order No"><input className={inputClass} value={selectedRecord.order_no || ''} disabled /></FormField>
-                <FormField label="Customer"><input className={inputClass} value={selectedRecord.customer || ''} disabled /></FormField>
-                <FormField label="Part Name"><input className={inputClass} value={selectedRecord.part_name || ''} disabled /></FormField>
-                <FormField label="Quantity"><input className={inputClass} value={selectedRecord.quantity ?? ''} disabled /></FormField>
-                <FormField label="Total Value"><input className={inputClass} value={orderValue(selectedRecord) ?? ''} disabled /></FormField>
-                <FormField label="Delivery Date"><input className={inputClass} value={selectedRecord.delivery_date || ''} disabled /></FormField>
-                <FormField label="Status"><input className={inputClass} value={selectedRecord.status || ''} disabled /></FormField>
-              </div>
-            </div>
-
-            <div className="w-64 bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col h-full">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-200 pb-2"><FileText className="w-4 h-4 text-brand-600"/> DOCUMENT FLOW</h3>
-
-              <div className="flex flex-col space-y-0 relative pl-4">
-                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-slate-200 z-0"></div>
-
-                <FlowStep active={false} title="ENQUIRY" subtitle={selectedRecord.lead_no || selectedRecord.enquiry_no || 'Linked'} />
-                <FlowStep active={false} title="QUOTATION" subtitle={selectedRecord.quote_no || 'Linked'} />
-                <FlowStep active highlight title="SALES ORDER" subtitle={selectedRecord.order_no} />
-                <FlowStep active={false} title="INWARD" subtitle="Linked" />
-                <FlowStep active={false} title="PRODUCTION" subtitle="Linked" />
-                <FlowStep active={false} title="FINISHED GOODS" subtitle="Linked" />
-                <FlowStep active={false} title="DELIVERY CHALLAN" subtitle="Linked" />
-                <FlowStep active={false} title="INVOICE" subtitle="Linked" />
-              </div>
-            </div>
+          <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
+            <SalesOrderSection
+              key={selectedRecord.id || 'so'}
+              order={selectedRecord}
+              qtyTracking={qtyTracking}
+              editMode={editMode}
+              saveRef={soSaveRef}
+              onSaved={() => void refreshSelected(selectedRecord.id)}
+              onInlineEdit={(field: string, value: string) => void handleInlineEdit(field, value)}
+            />
           </div>
         )}
       </Modal>
@@ -145,14 +233,3 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
   );
 }
 
-function FlowStep({ active, highlight, title, subtitle }: { active: boolean, highlight?: boolean, title: string, subtitle: string }) {
-  return (
-    <div className="relative z-10 flex items-start gap-3 py-3">
-      <div className={"mt-1 w-4 h-4 rounded-full border-2 flex-shrink-0 " + (highlight ? 'bg-brand-500 border-brand-500' : (active ? 'bg-white border-brand-400' : 'bg-white border-slate-300'))}></div>
-      <div>
-        <div className={"font-bold text-[11px] uppercase tracking-wider " + (highlight ? 'text-brand-700' : (active ? 'text-slate-600' : 'text-slate-400'))}>{title}</div>
-        <div className={"text-[10px] font-mono " + (highlight ? 'text-slate-700' : 'text-slate-400')}>{subtitle}</div>
-      </div>
-    </div>
-  );
-}

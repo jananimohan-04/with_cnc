@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
@@ -17,6 +17,7 @@ import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 import { FgCostingModal } from './FgCostingModal';
 import { DcInvoiceModal } from './DcInvoiceModal';
+import { StageStrip, SalesOrderSection } from './SalesOrderSection';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
@@ -91,11 +92,55 @@ export function formatLeadProductDisplay(raw: any): string {  if (!raw) return '
   return pName || 'N/A';
 }
 
-function enquiryProductOptions(enquiries: any[], leadNo?: string) {
+function formatStampDateTime(stamped: any): string | null {
+  const m = /-(\d{2})([A-Za-z]{3})(\d{2})-(\d{2})(\d{2})(AM|PM)$/.exec(String(stamped || ''));
+  if (!m) return null;
+  const [, dd, mon, yy, hh, mm, ap] = m;
+  return `${dd} ${mon} ${yy}, ${hh}:${mm} ${ap}`;
+}
+
+function formatSaleOrderDateTime(order: any): string | null {
+  if (!order) return null;
+  const fromStamp = formatStampDateTime(order.lead_no || order.stamped_lead_no || '');
+  if (fromStamp) return fromStamp;
+  const datePart = String(order.order_date || '').slice(0, 10);
+  const timePart = String(order.created_at || '').slice(11, 16);
+  if (datePart && timePart && timePart.includes(':')) {
+    try {
+      const d = new Date(`${datePart}T${timePart}:00`);
+      if (!isNaN(d.getTime())) {
+        const monNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        let h = d.getHours(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+        return `${String(d.getDate()).padStart(2, '0')} ${monNames[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}, ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
+      }
+    } catch { /* fall through */ }
+    return `${datePart}${timePart ? `, ${timePart}` : ''}`;
+  }
+  if (datePart) return datePart;
+  if (order.created_at) {
+    try {
+      const d = new Date(order.created_at);
+      if (!isNaN(d.getTime())) return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch { /* ignore */ }
+    return String(order.created_at).slice(0, 16).replace('T', ' ');
+  }
+  return null;
+}
+
+function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]) {
   // Sales-stage numbers carry a date-time stamp (1009-26Sep26-1208AM) while the
   // enquiry stores the plain number (1009) — compare base numbers so both match.
   const baseOf = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
   const wantBase = baseOf(leadNo || '');
+  const ordersByBase = new Map<string, any[]>();
+  (orders || []).forEach((o: any) => {
+    const b = baseOf(o?.lead_no || '');
+    if (!b) return;
+    if (!ordersByBase.has(b)) ordersByBase.set(b, []);
+    ordersByBase.get(b)!.push(o);
+  });
+  ordersByBase.forEach(list => list.sort((a: any, b: any) =>
+    String(b?.created_at || b?.order_date || '') .localeCompare(String(a?.created_at || a?.order_date || ''))));
   return (enquiries || []).filter((enquiry: any) => !leadNo || enquiry.lead_no === leadNo || enquiry.enquiry_no === leadNo
       || (wantBase && (baseOf(enquiry.lead_no) === wantBase || baseOf(enquiry.enquiry_no) === wantBase)))
     .flatMap((enquiry: any) => {
@@ -107,14 +152,34 @@ function enquiryProductOptions(enquiries: any[], leadNo?: string) {
       if (!items.length && enquiry.part_name && !String(enquiry.part_name).startsWith('Multiple Products')) {
         items = [{ productName: enquiry.part_name, quantity: enquiry.quantity }];
       }
-      return items.map((item: any, index: number) => ({
-        key: `${enquiry.id}:${index}`,
-        name: String(item.productName || item.product_name || item.partName || item.part_name || '').trim(),
-        quantity: item.quantity ?? item.qty ?? '',
-        enquiryId: enquiry.id,
-        leadNo: enquiry.lead_no || enquiry.enquiry_no,
-        customer: enquiry.customer || '',
-      })).filter((item: any) => item.name);
+      const base = baseOf(enquiry.lead_no || enquiry.enquiry_no);
+      const matchedOrders = ordersByBase.get(base) || [];
+      return items.flatMap((item: any, index: number) => {
+        const name = String(item.productName || item.product_name || item.partName || item.part_name || '').trim();
+        if (!name) return [];
+        const baseOption = {
+          key: `${enquiry.id}:${index}`,
+          name,
+          quantity: item.quantity ?? item.qty ?? '',
+          enquiryId: enquiry.id,
+          leadNo: enquiry.lead_no || enquiry.enquiry_no,
+          customer: enquiry.customer || '',
+        };
+        if (!matchedOrders.length) return [{ ...baseOption }];
+        // One dropdown row per sales order so the sale date/time disambiguates repeats.
+        return matchedOrders.map((o: any) => {
+          const saleLabel = formatSaleOrderDateTime(o);
+          const stamped = String(o.lead_no || '').trim();
+          return {
+            ...baseOption,
+            key: `${enquiry.id}:${index}:${o.order_no || stamped}`,
+            saleLabel,
+            saleStamp: stamped,
+            saleOrderRef: o.order_no || '',
+            saleOrderDate: o.order_date || null,
+          };
+        });
+      });
     });
 }
 
@@ -716,33 +781,6 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
   );
 }
 
-/** Neutral context strip (type / unique number / products / customer), shared
- *  by quotation view and edit modes so both look the same. */
-function StageStrip({ typeLabel, uniqueNo, products, customer }: {
-  typeLabel: string; uniqueNo: string; products: string[]; customer: string;
-}) {
-  return (
-    <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Document</span>
-        <span className="text-sm font-extrabold text-slate-900">{typeLabel}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
-        <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({products.length})</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{products.length ? products.join(', ') : '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Customer</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
-      </div>
-    </div>
-  );
-}
-
 function quoteProductNames(raw: any): string[] {
   try {
     const d = raw?.description;
@@ -857,6 +895,8 @@ export function SalesPipelinePage() {
   const [viewModalTarget, setViewModalTarget] = useState<KanbanCard | null>(null);
   const [viewModalData, setViewModalData] = useState<any>(null);
   const [viewEditMode, setViewEditMode] = useState(false);
+  // Pending sales-order save, flushed by the footer "Done Editing" button.
+  const soSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
@@ -1438,6 +1478,7 @@ export function SalesPipelinePage() {
   };
 
   const [rawLeadsList, setRawLeadsList] = useState<any[]>([]);
+  const [salesOrdersList, setSalesOrdersList] = useState<any[]>([]);
 
   const resetEnquiryForm = (leads = rawLeadsList) => ({
     leadNo: generateUniqueProjectNo(leads),
@@ -1460,8 +1501,8 @@ export function SalesPipelinePage() {
 
   
 
-  const emptyInwardItem = () => ({ partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18' });
-  const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', items: [emptyInwardItem()] });
+  const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18' });
+  const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
   const [inwardForm, setInwardForm] = useState<any>({
     inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: '', partyName: '', remarks: '',
     productName: '', productKey: '', productOptions: [], enquiryId: '', parts: [emptyInwardPart()],
@@ -1580,6 +1621,7 @@ export function SalesPipelinePage() {
 
     const { data: allOrders, error: ordersErr } = await supabase.from('cnc_sales_orders').select('*');
     if (ordersErr) console.error("Error fetching sales orders:", ordersErr);
+    if (allOrders) setSalesOrdersList(allOrders);
     const orderMap = new Map();
     if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, o.lead_no || quoteMap.get(o.quotation_id) || o.order_no));
     const orders = allOrders?.filter(o => ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status));
@@ -2234,6 +2276,7 @@ export function SalesPipelinePage() {
     setViewModalTarget(null);
     setViewModalData(null);
     setViewEditMode(false);
+    soSaveRef.current = null;
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
@@ -2376,12 +2419,14 @@ export function SalesPipelinePage() {
         alert("Error creating sales order: " + error.message);
       }
     } else if (card.type === 'order' && toStage === 'Inward') {
-      const products = enquiryProductOptions(rawLeadsList, card.refNo);
+      const orderPool = [...(salesOrdersList || [])];
+      if (card.raw && !orderPool.some((o: any) => o.order_no && card.raw.order_no && o.order_no === card.raw.order_no)) orderPool.push(card.raw);
+      const products = enquiryProductOptions(rawLeadsList, card.refNo, orderPool.length ? orderPool : (card.raw ? [card.raw] : []));
       const selectedProduct = products[0];
       setInwardForm({
         inwardNo: '', category: 'GOODS PURCHASE', projectName: card.refNo || '', salesOrderRef: card.raw.order_no || '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: card.customer, remarks: '',
         productName: selectedProduct?.name || '', productKey: selectedProduct?.key || '', productOptions: products, enquiryId: selectedProduct?.enquiryId || '',
-        parts: [{ ...emptyInwardPart(), productKey: selectedProduct?.key || '', productName: selectedProduct?.name || '', enquiryId: selectedProduct?.enquiryId || '', projectName: selectedProduct?.leadNo || card.refNo || '' }],
+        parts: [{ ...emptyInwardPart({ partyName: card.customer || '' }), productKey: selectedProduct?.key || '', productName: selectedProduct?.name || '', enquiryId: selectedProduct?.enquiryId || '', projectName: selectedProduct?.leadNo || card.refNo || '', partyName: card.customer || '' }],
         contacts: parseContacts(card.raw)
       });
       setInwardModalTarget(card);
@@ -2691,7 +2736,7 @@ export function SalesPipelinePage() {
           category: g.category || inwardForm.category, product_name: g.productName || inwardForm.productName, enquiry_id: g.enquiryId || inwardForm.enquiryId || null,
           project_name: g.projectName || inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
           sales_order_ref: inwardForm.salesOrderRef, reference_no: g.referenceNo ?? inwardForm.referenceNo,
-          inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: inwardForm.partyName, remarks: g.remarks ?? inwardForm.remarks,
+          inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: it.partyName || g.partyName || inwardForm.partyName, remarks: g.remarks ?? inwardForm.remarks,
           part_name: it.partName, part_number: it.partNumber || '', quantity: q, price: p,
           discount_percent: d, gst_percent: gg, total_amount: total, status: 'Pending', attachments,
         });
@@ -2720,7 +2765,7 @@ export function SalesPipelinePage() {
       try {
         await createDraftWorkOrdersForInwards(rows.map(r => ({
           inward: r, qty: r.quantity,
-          customer: (inwardModalTarget as any)?.customer || inwardForm.partyName || '',
+          customer: r.party_name || (inwardModalTarget as any)?.customer || inwardForm.partyName || '',
         })));
       } catch (woErr) {
         console.error('Draft work order auto-create failed:', woErr);
@@ -3385,7 +3430,7 @@ export function SalesPipelinePage() {
                     } else if (stage.id === 'Inward') {
                       setInwardForm({
                         category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
-                        productName: '', productOptions: enquiryProductOptions(rawLeadsList), enquiryId: '',
+                        productName: '', productOptions: enquiryProductOptions(rawLeadsList, undefined, salesOrdersList), enquiryId: '',
                         parts: [emptyInwardPart()], contacts: [{ person: '', phone: '', email: '' }]
                       });
                       setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
@@ -4020,14 +4065,17 @@ export function SalesPipelinePage() {
       <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
         <div className="flex flex-col gap-4">
           <PipelineContextBanner stage="Inward Entry" uniqueNo={inwardForm.projectName || inwardModalTarget?.refNo} products={inwardForm.productName || inwardModalTarget?.part} customer={inwardForm.partyName || inwardModalTarget?.customer} />
+          <datalist id="inward-customer-list">
+            {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
+          </datalist>
           {inwardModalTarget?.id === 'dummy' && (
           <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-100">
               <CustomerAutocomplete
                 label="Party / Customer"
                 value={inwardForm.partyName || ''}
-                onChange={val => setInwardForm((prev: any) => ({ ...prev, partyName: val, projectName: '', productKey: '', productName: '', enquiryId: '' }))}
+                onChange={val => setInwardForm((prev: any) => ({ ...prev, partyName: val, projectName: '', productKey: '', productName: '', enquiryId: '', parts: (prev.parts || []).map((g: any) => ({ ...g, items: (g.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: val })) })) }))}
                 onSelectCustomer={c => {
-                  setInwardForm((prev: any) => ({ ...prev, partyName: c.company, projectName: '', productKey: '', productName: '', enquiryId: '' }));
+                  setInwardForm((prev: any) => ({ ...prev, partyName: c.company, projectName: '', productKey: '', productName: '', enquiryId: '', parts: (prev.parts || []).map((g: any) => ({ ...g, items: (g.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: c.company })) })) }));
                 }}
                 companies={allKnownCompanies}
                 inputClass={inputClass}
@@ -4057,7 +4105,8 @@ export function SalesPipelinePage() {
               const opts = inwardForm.productOptions || [];
               const m = opts.find((o: any) => o.name === inwardForm.productName) || null;
               const prev = (inwardForm.parts || []).slice(-1)[0] || {};
-              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0] }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '' }]});
+              const prevParty = (prev.items || []).slice(-1)[0]?.partyName || prev.partyName || inwardForm.partyName || m?.customer || '';
+              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0], partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '', partyName: prevParty }]});
             }}><Plus size={14}/> Add Inward</Button>
           </div>
           <div className="space-y-4">
@@ -4072,12 +4121,13 @@ export function SalesPipelinePage() {
                 <FormField label="Product from Enquiry" required>
                   <select className={inputClass} value={group.productKey || ''} onChange={e=>{
                     const selected = (inwardForm.productOptions || []).find((option: any) => option.key === e.target.value);
-                    const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '' };
+                    const cust = selected?.customer || inwardForm.partyName || group.partyName || '';
+                    const patch = { productKey: selected?.key || '', productName: selected?.name || '', enquiryId: selected?.enquiryId || '', projectName: selected?.leadNo || '', partyName: cust, items: (group.items || []).map((it: any) => (String(it.partName || '').trim() || String(it.partyName || '').trim() ? it : { ...it, partyName: cust })) };
                     const parts=[...inwardForm.parts]; parts[index]={...group, ...patch};
-                    setInwardForm({...inwardForm, parts, ...patch, partyName: selected?.customer || inwardForm.partyName});
+                    setInwardForm({...inwardForm, parts, ...patch, partyName: cust || inwardForm.partyName});
                   }}>
                     <option value="">Select an enquired product</option>
-                    {(inwardModalTarget?.id === 'dummy' ? (inwardForm.productOptions || []).filter((o: any) => { const p = (inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); }) : (inwardForm.productOptions || [])).map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}</option>)}
+                    {(inwardModalTarget?.id === 'dummy' ? (inwardForm.productOptions || []).filter((o: any) => { const p = (inwardForm.partyName || '').trim().toLowerCase(); const u = (inwardForm.projectName || '').trim(); const base = (s: any) => String(s||'').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, ''); return (!p || String(o.customer || '').trim().toLowerCase() === p) && (!u || base(o.leadNo) === base(u)); }) : (inwardForm.productOptions || [])).map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
                   </select>
                   {(inwardForm.productOptions || []).length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
                 </FormField>
@@ -4099,7 +4149,8 @@ export function SalesPipelinePage() {
                 <div className="mb-3">
                   <FormField label="Remarks"><input className={inputClass} value={group.remarks || ''} onChange={e=>setGroup({ remarks: e.target.value })} placeholder="Remarks for this inward..." /></FormField>
                 </div>
-                <div className="grid grid-cols-[minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-1 px-1">
+                <div className="grid grid-cols-[9rem_minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-1 px-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Customer</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name *</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Quantity *</span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Price *</span>
@@ -4109,7 +4160,8 @@ export function SalesPipelinePage() {
                   <span></span>
                 </div>
                 {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className="grid grid-cols-[minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-2">
+                  <div key={ii} className="grid grid-cols-[9rem_minmax(0,1.5fr)_4.5rem_5.5rem_4.5rem_4.5rem_6rem_2rem] gap-2 items-center mb-2">
+                    <input className={inputClass} placeholder="Customer" list="inward-customer-list" value={item.partyName ?? group.partyName ?? inwardForm.partyName ?? ''} onChange={e=>setItem(ii, { partyName: e.target.value })} />
                     <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} />
                     <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} />
@@ -4124,7 +4176,7 @@ export function SalesPipelinePage() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between mt-1">
-                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
+                  <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem({ partyName: (group.items || []).slice(-1)[0]?.partyName || group.partyName || inwardForm.partyName || '' })] })}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     Add part
                   </button>
@@ -4347,7 +4399,13 @@ export function SalesPipelinePage() {
           <FormField label="GST (%)"><input type="number" className={inputClass} value={soForm.gst || ''} onChange={e=>setSoForm({...soForm, gst: e.target.value})} /></FormField>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => setViewEditMode(!viewEditMode)}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+                      if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
+                        const ok = await soSaveRef.current();
+                        if (!ok) return;
+                      }
+                      setViewEditMode(!viewEditMode);
+                    })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
             {/* Top banner hides where a section renders its own live strip (enquiry edit, quotation). */}
@@ -4491,7 +4549,17 @@ export function SalesPipelinePage() {
                     </div>
                   ))}</>);
                 })() },
-                { key: 'Sales Order', node: renderRecordData('Sales Order', viewModalData.order, true) },
+                { key: 'Sales Order', node: viewModalData.order ? (
+                  <SalesOrderSection
+                    key={viewModalData.order.id || 'so'}
+                    order={viewModalData.order}
+                    qtyTracking={viewModalData.qtyTracking}
+                    editMode={viewEditMode}
+                    saveRef={soSaveRef}
+                    onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
+                    onInlineEdit={(field: string, value: string) => void handleInlineEdit('Sales Order', viewModalData.order.id, field, value)}
+                  />
+                ) : null },
                 { key: 'Quotation', node: viewModalData.quotation ? (
                   <>
                     <StageStrip
@@ -4525,7 +4593,10 @@ export function SalesPipelinePage() {
               ];
               const cur = viewModalTarget?.stage || '';
               // Enquiry Details section only shows when opened from an Enquiry card.
-              const visible = sections.filter(s => s.key !== 'Enquiry' || cur === 'Enquiry');
+              // From a Sales Order card the quotation block would repeat the same
+              // products, so it is hidden — the sales-order block carries them.
+              const visible = sections.filter(s => s.key !== 'Enquiry' || cur === 'Enquiry')
+                .filter(s => !(cur === 'Sales Order' && s.key === 'Quotation'));
               const ordered = [...visible.filter(s => s.key === cur), ...visible.filter(s => s.key !== cur)];
               return <>{ordered.map(s => <div key={s.key} className="contents">{s.node}</div>)}</>;
             })()}

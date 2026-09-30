@@ -173,6 +173,23 @@ export function summarizeSalesOrder(
   const rejByBatch = sumBy(batches, (b) => norm(b?.product_name), (b) => num(b?.rejected_qty));
   const rejBy = new Map<string, number>(rejByWo);
   for (const [k, v] of rejByBatch) rejBy.set(k, (rejBy.get(k) ?? 0) + v);
+  // Manual rejections entered on the sales order itself (editable Rej Qty).
+  try {
+    const rawItems = (so as any)?.items;
+    const parsed = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+    if (Array.isArray(parsed)) {
+      for (const it of parsed) {
+        const name = String(it.partName || it.productName || it.part_name || it.description || '').trim();
+        if (!name) continue;
+        const v = num((it as any).rejectedQty ?? (it as any).rejected_qty ?? (it as any).rejected);
+        if (v) {
+          const k = norm(name);
+          if (!display.has(k)) display.set(k, name);
+          rejBy.set(k, (rejBy.get(k) ?? 0) + v);
+        }
+      }
+    }
+  } catch { /* manual rejections stay zero */ }
   const delBy = sumBy(activeDeliveries, (d) => norm(d?.part_name), (d) => num(d?.dispatch_qty ?? d?.quantity));
   const invBy = sumBy(
     invoices.filter(isBillableInvoice),
