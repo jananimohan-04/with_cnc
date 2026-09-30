@@ -2984,34 +2984,47 @@ export function SalesPipelinePage() {
 
     const saveStandaloneSalesOrder = async () => {
     if (!soModalTarget) return;
-    const q = Number(soForm.quantity) || 0;
-    const p = Number(soForm.price) || 0;
-    const item = {
-       id: crypto.randomUUID(),
-       partName: soForm.partName,
-       partNumber: soForm.partNumber || '',
+    if (!String(soForm.customer || '').trim()) { alert('Enter the customer.'); return; }
+    const entered = ((soForm.items || []) as any[])
+      .map((it: any) => ({ ...it, partName: String(it.partName || '').trim() }))
+      .filter((it: any) => it.partName);
+    if (!entered.length) { alert('Enter at least one product.'); return; }
+    if (entered.some((it: any) => Number(it.quantity) < 0)) { alert('Product quantities cannot be negative.'); return; }
+    if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { alert('Rejected quantities cannot be negative.'); return; }
+    const finalItems = entered.map((it: any) => ({
+       id: it.id || crypto.randomUUID(),
+       partName: it.partName,
+       partNumber: '',
        description: '',
-       quantity: q.toString(),
-       unitPrice: p.toString(),
+       quantity: String(Number(it.quantity) || 0),
+       rejectedQty: Number(it.rejectedQty) || 0,
+       status: it.itemStatus || 'Confirmed',
+       unitPrice: String(Number(it.unitPrice) || 0),
        discount: '0',
-       gst: soForm.gst || '18'
-    };
-    const finalItems = [item];
-    const totalVal = q * p * (1 + Number(soForm.gst||18)/100);
+       unitDiscount: '0',
+       gst: it.gst || '18'
+    }));
+    const totalQty = finalItems.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0);
+    const names = finalItems.map((i: any) => i.partName);
+    const prodStatuses = Array.from(new Set(finalItems.map((i: any) => String(i.status || '').trim()).filter(Boolean)));
+    const totalVal = finalItems.reduce((s: number, i: any) =>
+      s + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (1 + Number(i.gst || 18) / 100), 0);
 
     const { error } = await supabase.from('cnc_sales_orders').insert([{
       id: crypto.randomUUID(),
-      order_no: soForm.orderNo, customer: soForm.customer,
+      order_no: soForm.orderNo, customer: String(soForm.customer).trim(),
       contact_person: '', phone: '', email: '',
       billing_address: '', delivery_address: '',
       shipping_contact: '', shipping_phone: '',
       lead_no: '', order_date: soForm.orderDate || null,
       customer_po_no: '', customer_po_date: null,
       items: finalItems,
-      part_name: item.partName, part_number: item.partNumber, part_no: item.partNumber,
-      quantity: q, delivered: 0,
+      part_name: finalItems.length > 1 ? `${names.join(', ')} (${finalItems.length} Products)` : names[0],
+      part_number: '', part_no: '',
+      quantity: totalQty, delivered: 0,
       value: totalVal, total_value: totalVal,
-      delivery_date: soForm.deliveryDate || soForm.orderDate || null, status: 'Confirmed',
+      delivery_date: soForm.deliveryDate || soForm.orderDate || null,
+      status: prodStatuses.length === 1 ? prodStatuses[0] : 'Confirmed',
       payment_terms: 'Net 30', special_instructions: '',
       internal_remarks: '',
       quotation_id: null
@@ -3244,24 +3257,6 @@ export function SalesPipelinePage() {
 
   return (
     <div className="p-4 lg:p-6 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
-      
-      {/* 1. Page Header */}
-      <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight">Simple ERP</h1>
-          <p className="text-xs text-slate-500 font-medium mt-1">From Enquiry to Invoice – All in One Place</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative hidden md:block">
-            <input type="text" placeholder="Search by customer, part, document no..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 bg-slate-50" />
-            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          </div>
-          <button onClick={openNewLeadModal} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-            New <svg className="w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-          </button>
-        </div>
-      </div>
 
       {/* 2. Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
@@ -3424,7 +3419,8 @@ export function SalesPipelinePage() {
                       setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Sales Order') {
                       setSoForm({
-                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], partName: '', partNumber: '', quantity: '', price: '', gst: '18'
+                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0],
+                        items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
                       });
                       setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Inward') {
@@ -4378,28 +4374,58 @@ export function SalesPipelinePage() {
 
       
       {/* Sales Order Modal */}
-      <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="lg" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="Sales Order" uniqueNo={soModalTarget?.refNo} products={soForm.partName || soModalTarget?.part} customer={soForm.customer || soModalTarget?.customer} />
-          <CustomerAutocomplete
-            label="Customer"
-            required
-            value={soForm.customer || ''}
-            onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
-            companies={allKnownCompanies}
-            inputClass={inputClass}
-            placeholder="Type or select customer..."
-          />
-          <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+      <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="md" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+        <div className="flex flex-col gap-4">
+          <PipelineContextBanner stage="Sales Order" uniqueNo={soModalTarget?.refNo} products={(soForm.items || []).map((i: any) => i.partName).filter(Boolean).join(', ') || soModalTarget?.part} customer={soForm.customer || soModalTarget?.customer} />
+          <div className="grid grid-cols-2 gap-4">
+            <CustomerAutocomplete
+              label="Customer"
+              required
+              value={soForm.customer || ''}
+              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select customer..."
+            />
+            <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+          </div>
+          {(soForm.items || []).length > 0 && (
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center px-1">
+              <span></span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Rej Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+            </div>
+          )}
+          {(soForm.items || []).map((item: any, idx: number) => {
+            const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
+            return (
+              <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center">
+                  <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
+                  <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="0" value={item.rejectedQty ?? ''} onChange={e=>upd({ rejectedQty: e.target.value })} />
+                  <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
+                    {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
+                </div>
+              </div>
+            );
+          })}
+          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }] }))}
+            className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+            <span className="text-lg">+</span> Add Another Product
+          </button>
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
-          <FormField label="Product Name" required><input className={inputClass} value={soForm.partName || ''} onChange={e=>setSoForm({...soForm, partName: e.target.value})} /></FormField>
-          
-          <FormField label="Quantity" required><input type="number" className={inputClass} value={soForm.quantity || ''} onChange={e=>setSoForm({...soForm, quantity: e.target.value})} /></FormField>
-          <FormField label="Unit Price" required><input type="number" className={inputClass} value={soForm.price || ''} onChange={e=>setSoForm({...soForm, price: e.target.value})} /></FormField>
-          <FormField label="GST (%)"><input type="number" className={inputClass} value={soForm.gst || ''} onChange={e=>setSoForm({...soForm, gst: e.target.value})} /></FormField>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;

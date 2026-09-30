@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  Search,
   ChevronDown,
   Bell,
   ChevronRight,
@@ -10,8 +9,8 @@ import {
   Menu,
   HelpCircle,
   Building2,
+  CalendarDays,
 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchRecentActivity, timeAgo, type ActivityItem } from '@/lib/recentActivity';
@@ -35,7 +34,6 @@ export function Topbar({
 }) {
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const { profile, company, companies, isSuperAdmin, setActiveCompany } = useAuth();
@@ -58,19 +56,14 @@ export function Topbar({
   }, []);
 
   const breadcrumbs = getBreadcrumbs(currentPage);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [searchText, setSearchText] = useState('');
-  const searchHint = currentPage.startsWith('inventory')
-    ? 'Search by Item Name, Category, Supplier...'
-    : 'Search anything (customer, project, part, invoice...)';
-  // Pages that support it read ?q= (e.g. Inventory); others simply ignore it.
-  const submitSearch = () => {
-    const params = new URLSearchParams(location.search);
-    if (searchText.trim()) params.set('q', searchText.trim()); else params.delete('q');
-    navigate({ pathname: location.pathname, search: params.toString() });
-  };
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(/,/g, '');
+  // Live clock: date + time, ticking every second.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const datePart = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(/,/g, '');
+  const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
   return (
     <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-16 flex items-center px-4 lg:px-6 gap-6">
@@ -90,26 +83,6 @@ export function Topbar({
           </div>
         ))}
       </div>
-
-      {/* Global Search */}
-      <div className="hidden md:flex items-center relative group">
-        <Search size={16} className="absolute left-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-        <input
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') submitSearch(); }}
-          placeholder={searchHint}
-          className="w-64 lg:w-96 pl-9 pr-12 py-2 text-sm rounded-md bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-300 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all shadow-inner placeholder:text-slate-400"
-        />
-        <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] text-slate-400 bg-white border border-slate-200 rounded shadow-sm px-1.5 py-0.5 font-mono font-bold tracking-widest">
-          <span>⌘</span>K
-        </kbd>
-      </div>
-
-      {/* Mobile search */}
-      <button className="md:hidden p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-lg transition-colors" onClick={() => setShowSearch(!showSearch)}>
-        <Search size={18} />
-      </button>
 
       {/* Company: fixed for normal users, switchable for the Super Admin */}
       {isSuperAdmin ? (
@@ -134,7 +107,15 @@ export function Topbar({
         </div>
       )}
 
-      <span className="hidden xl:block text-xs font-medium text-slate-500 whitespace-nowrap">{today}</span>
+      <div className="hidden xl:flex items-center gap-2.5 pl-2 pr-3.5 py-1.5 rounded-xl bg-gradient-to-r from-brand-50 via-white to-brand-50 border border-brand-100 shadow-sm">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shadow-sm shrink-0">
+          <CalendarDays size={15} />
+        </div>
+        <div className="leading-tight">
+          <p className="text-xs font-extrabold text-slate-800 whitespace-nowrap tracking-wide">{datePart}</p>
+          <p className="text-[11px] font-bold text-brand-600 tabular-nums whitespace-nowrap tracking-widest">{timePart}</p>
+        </div>
+      </div>
 
       {/* System Status */}
       <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full">

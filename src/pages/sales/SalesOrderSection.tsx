@@ -185,7 +185,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
       </div>
       <div className="mt-3 space-y-2">
         {(editMode ? items : baseItems).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_7rem_7rem_10rem] gap-2 items-center px-1">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center px-1">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
@@ -201,7 +201,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
           const rej = prodOf(name)?.rejected ?? 0;
           return (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_7rem_7rem_10rem] gap-2 items-center">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <div>
                   {editMode ? (

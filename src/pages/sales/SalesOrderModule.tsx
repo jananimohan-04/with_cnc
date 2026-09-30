@@ -209,7 +209,7 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      <Modal open={!!selectedRecord} onClose={closeRecord} title={'Sales Order Details: ' + (selectedRecord?.order_no || 'Pending')} size="xl" footer={
+      <Modal open={!!selectedRecord} onClose={closeRecord} title={'Sales Order Details: ' + (selectedRecord?.order_no || 'Pending')} size="md" footer={
         <div className="flex justify-end w-full gap-2">
           <Button variant={editMode ? 'primary' : 'secondary'} onClick={() => void toggleEdit()}>{editMode ? 'Done Editing' : 'Edit'}</Button>
           <Button variant="secondary" onClick={closeRecord}>Close</Button>
