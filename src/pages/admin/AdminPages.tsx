@@ -90,8 +90,10 @@ export function UsersPage() {
     [users, companyFilter, isSuperAdmin],
   );
 
+  // A Super Admin may edit anyone except themselves (self-edit stays blocked
+  // so nobody can accidentally remove their own Super Admin access).
   const canEdit = (u: UserRow) =>
-    u.role !== 'SUPER_ADMIN' && (isSuperAdmin || (u.role === 'USER' && u.company_id === profile?.company_id));
+    isSuperAdmin ? u.id !== profile?.id : (u.role === 'USER' && u.company_id === profile?.company_id);
 
   const openCreate = () => {
     setForm({ ...emptyUserForm, company_id: isSuperAdmin ? companyFilter || company?.id || '' : profile?.company_id ?? '' });
@@ -115,7 +117,8 @@ export function UsersPage() {
       p_role: next.role,
       p_status: next.status,
       // Company Admins never choose a company: the database uses their own.
-      p_company_id: isSuperAdmin ? next.company_id || null : null,
+      // Super Admin accounts span all companies: no company is sent.
+      p_company_id: isSuperAdmin && next.role !== 'SUPER_ADMIN' ? next.company_id || null : null,
     });
     setSaving(false);
     if (error) {
@@ -128,7 +131,7 @@ export function UsersPage() {
 
   const handleSubmit = async () => {
     if (!form.email.trim()) { setFormError('Google account email is required'); return; }
-    if (isSuperAdmin && !form.company_id) { setFormError('Select a company'); return; }
+    if (isSuperAdmin && form.role !== 'SUPER_ADMIN' && !form.company_id) { setFormError('Select a company'); return; }
     if ((await save(form)) === null) setShowForm(false);
   };
 
@@ -166,7 +169,7 @@ export function UsersPage() {
     },
   ];
 
-  const roleOptions: ErpRole[] = isSuperAdmin ? ['COMPANY_ADMIN', 'USER'] : ['USER'];
+  const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER'] : ['USER'];
   const ownCompanyName = companies.find(c => c.id === profile?.company_id)?.company_name ?? company?.company_name ?? '';
 
   return (
@@ -214,8 +217,10 @@ export function UsersPage() {
           <FormField label="Gmail / Google Account Email" required>
             <input className={inputClass} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@gmail.com" />
           </FormField>
-          <FormField label="Company" required>
-            {isSuperAdmin ? (
+          <FormField label="Company" required={form.role !== 'SUPER_ADMIN'}>
+            {isSuperAdmin && form.role === 'SUPER_ADMIN' ? (
+              <input className={`${inputClass} !bg-slate-100 !text-slate-500 cursor-not-allowed`} value="All companies" disabled title="Super Admin accounts span all companies" />
+            ) : isSuperAdmin ? (
               <select className={inputClass} value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })}>
                 <option value="">Select company…</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
