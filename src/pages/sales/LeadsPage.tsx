@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Eye, Edit, ArrowRightCircle, XCircle, FileText, RefreshCcw, UploadCloud, Plus, Trash2 } from 'lucide-react';
+import { Eye, Edit, ArrowRightCircle, FileText, Trash2 } from 'lucide-react';
 import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
@@ -8,7 +8,6 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { formatLeadProductDisplay } from './SalesPipelinePage';
 
 async function uploadLeadProductFile(companyId: string | undefined | null, file: File) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
@@ -25,6 +24,8 @@ export function LeadsPage() {
   const { profile, company } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  // Editing a master-only company row (no enquiry): updates cnc_customers only.
+  const [masterEditId, setMasterEditId] = useState<string | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
   const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
   const [viewHistory, setViewHistory] = useState<any[]>([]);
@@ -103,8 +104,6 @@ export function LeadsPage() {
   }, [viewTarget]);
   const [quotationTarget, setQuotationTarget] = useState<any | null>(null);
   const [quoteSelectTarget, setQuoteSelectTarget] = useState<any[] | null>(null);
-  const [lostSelectTarget, setLostSelectTarget] = useState<any[] | null>(null);
-  const [revertSelectTarget, setRevertSelectTarget] = useState<any[] | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ row: any; quotes: number; orders: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -185,6 +184,38 @@ export function LeadsPage() {
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, leadsData]);
 
+  // Company-master rows with no enquiry yet still list under All Companies
+  // (blank product/status cells). Their Company ID is the master CUST-xxxx id.
+  const displayLeads = useMemo(() => {
+    const grouped = new Set((leadsData || []).map((l: any) => String(l.company || '').trim().toLowerCase()));
+    const extras = (customerList || [])
+      .filter((c: any) => String(c.name || '').trim() && !grouped.has(String(c.name).trim().toLowerCase()))
+      .map((c: any) => ({
+        id: c.id,
+        leadNo: c.id,
+        company: String(c.name).trim(),
+        contactPerson: c.contact || '',
+        phone: c.phone || '',
+        email: c.email || '',
+        city: c.city || '',
+        gst: c.gst || c.gstin || c.gst_number || '',
+        enquiringFor: '',
+        partName: '',
+        partNo: '',
+        quantity: '',
+        expectedDate: '',
+        status: '',
+        estimatedValue: 0,
+        source: '',
+        remarks: '',
+        allocation: '',
+        statusSummary: {},
+        allEnquiries: [],
+        isMasterOnly: true,
+      }));
+    return [...(leadsData || []), ...extras];
+  }, [leadsData, customerList]);
+
   async function fetchLeads() {
     try {
       setLoading(true);
@@ -264,6 +295,28 @@ export function LeadsPage() {
   };
 
   const handleEditClick = (r: any) => {
+    // Master-only rows edit the company master (no enquiry fields).
+    if (r.isMasterOnly) {
+      const parts = (p: any) => String(p || '').split(' | ').map((s: string) => s.trim());
+      const persons = parts(r.contactPerson);
+      const phones = parts(r.phone);
+      const emails = parts(r.email);
+      const n = Math.max(persons.length, phones.length, emails.length, 1);
+      setFormData({
+        ...resetForm(),
+        customer: r.company,
+        contacts: Array.from({ length: n }).map((_, i) => ({
+          person: persons[i] || '', phone: phones[i] || '', email: emails[i] || '',
+        })),
+        city: r.city || '',
+        gst: r.gst || '',
+        source: 'Direct',
+      });
+      setMasterEditId(r.id);
+      setEditId(null);
+      setShowAdd(true);
+      return;
+    }
     let parsedItems = [{ productName: r.partName || '', quantity: r.quantity?.toString() || '', files: [] as File[], filePaths: [] as string[] }];
     try {
       const raw = r.enquiringFor ?? r.enquiring_for;
@@ -302,12 +355,83 @@ export function LeadsPage() {
       notes: r.notes || ''
     });
     setEditId(r.id);
+    setMasterEditId(null);
     setShowAdd(true);
+  };
+
+  // Company-master save only (new company + master-row edit): writes
+  // cnc_customers and never creates or touches an enquiry. The Company ID
+  // (CUST-xxxx) is generated in the background for new rows.
+  const saveCompanyMaster = async () => {
+    const name = String(formData.customer || '').trim();
+    if (!name) {
+      alert("Please enter company name.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const person = (formData.contacts || []).map((c: any) => c.person).join(' | ');
+      const phone = (formData.contacts || []).map((c: any) => c.phone).join(' | ');
+      const email = (formData.contacts || []).map((c: any) => c.email).join(' | ');
+      const stripUnknown = async (op: (payload: any) => any, payload: any): Promise<any> => {
+        const remaining = { ...payload };
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const res = await op(remaining);
+          if (!res.error) return null;
+          const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(res.error.message || '');
+          if (m && Object.prototype.hasOwnProperty.call(remaining, m[1])) {
+            delete remaining[m[1]];
+            continue;
+          }
+          return res.error;
+        }
+        return new Error('Company save failed after retries.');
+      };
+      if (masterEditId) {
+        const err = await stripUnknown(
+          (p) => supabase.from('cnc_customers').update(p).eq('id', masterEditId),
+          {
+            name, contact: person || null, phone: phone || null, email: email || null,
+            city: formData.city || null, gst: formData.gst || null, source: formData.source || null,
+          },
+        );
+        if (err) throw err;
+      } else {
+        const dup = (customerList || []).some((c: any) => String(c.name || '').trim().toLowerCase() === name.toLowerCase());
+        if (dup) {
+          alert(`Company "${name}" already exists in the company master.`);
+          return;
+        }
+        const payload: any = {
+          id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+          name,
+          contact: person || null, phone: phone || null, email: email || null,
+          city: formData.city || null, gst: formData.gst || null, source: formData.source || null,
+          status: 'Active',
+        };
+        if (company?.id) payload.company_id = company.id;
+        const err = await stripUnknown((p) => supabase.from('cnc_customers').insert([p]), payload);
+        if (err) throw err;
+      }
+      await fetchCustomers();
+      setShowAdd(false);
+      setMasterEditId(null);
+    } catch (err: any) {
+      console.error('Failed to save company:', err);
+      alert('Failed to save company: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
     if (!formData.customer?.trim()) {
       alert("Please enter company name.");
+      return;
+    }
+    // New companies save to the master only (no enquiry is created here).
+    if (!editId) {
+      await saveCompanyMaster();
       return;
     }
     const enteredProducts = (formData.items || []).filter((item: any) => String(item.productName || item.partName || '').trim());
@@ -409,6 +533,7 @@ export function LeadsPage() {
       await fetchLeads();
       setShowAdd(false);
       setEditId(null);
+      setMasterEditId(null);
     } catch (err: any) {
       console.error('Failed to save lead:', err);
       alert('Failed to save company: ' + (err?.message || 'Unknown error'));
@@ -466,17 +591,6 @@ export function LeadsPage() {
     if (error) { alert('Failed to update status: ' + error.message); return; }
     setViewHistory(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
     fetchLeads();
-  };
-
-  const handleRevertLost = async (id: string) => {
-    setLoading(true);
-    await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', id);
-    await fetchLeads();
-  };
-  const handleMarkLost = async (id: string) => {
-    setLoading(true);
-    await supabase.from('cnc_enquiries').update({ status: 'Lost', pipeline_stage: null }).eq('id', id);
-    await fetchLeads();
   };
 
   const openDeleteLead = async (r: any) => {
@@ -563,11 +677,12 @@ export function LeadsPage() {
   };
 
   const columns: Column<any>[] = [
-    { key: 'leadNo', label: 'Unique Number', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
+    { key: 'leadNo', label: 'Company ID', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-500">{r.leadNo}</span> },
     { key: 'company', label: 'Company', sortable: true, render: (r) => <span className="font-semibold text-slate-800">{r.company}</span> },
+    { key: 'city', label: 'Address', render: (r) => <span className="text-sm text-slate-600">{r.city || '—'}</span> },
+    { key: 'gst', label: 'GST No.', render: (r) => <span className="text-sm text-slate-600">{r.gst || '—'}</span> },
     { key: 'contactPerson', label: 'Contact', render: (r) => <div><p className="text-sm">{r.contactPerson}</p><p className="text-xs text-slate-500">{r.phone}</p></div> },
-    { key: 'partName', label: 'Product Name', render: (r) => <div><p className="text-sm font-medium text-slate-700">{formatLeadProductDisplay(r)}</p><p className="text-xs text-slate-500">Qty: {r.quantity} {r.allocation ? `• ${r.allocation}` : ''}</p></div> },
-    { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source}</Badge> },
+    { key: 'source', label: 'Source', render: (r) => <Badge variant="neutral">{r.source || '—'}</Badge> },
     { key: 'status', label: 'Status Summary', render: (r) => (
       <div className="flex flex-wrap gap-1 max-w-[150px]">
         {Object.entries(r.statusSummary || {}).map(([st, count]) => (
@@ -577,30 +692,15 @@ export function LeadsPage() {
     ) },
     { key: 'actions', label: 'Actions', align: 'right', render: (r) => {
         const activeEnqs = (r.allEnquiries || []).filter((e: any) => e.status !== 'Converted' && e.status !== 'Lost' && e.status !== 'Quoted');
-        const lostEnqs = (r.allEnquiries || []).filter((e: any) => e.status === 'Lost');
         const hasActive = activeEnqs.length > 0;
-        const hasLost = lostEnqs.length > 0;
 
         return (
         <div className="flex items-center justify-end gap-1">
           {hasActive && (
-            <>
-              <button onClick={() => {
-                if (activeEnqs.length === 1) openQuoteModal(activeEnqs[0]);
-                else setQuoteSelectTarget(activeEnqs);
-              }} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
-              
-              <button onClick={() => {
-                if (activeEnqs.length === 1) handleMarkLost(activeEnqs[0].id);
-                else setLostSelectTarget(activeEnqs);
-              }} title="Mark as Lost" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><XCircle size={15} /></button>
-            </>
-          )}
-          {hasLost && (
             <button onClick={() => {
-              if (lostEnqs.length === 1) handleRevertLost(lostEnqs[0].id);
-              else setRevertSelectTarget(lostEnqs);
-            }} title="Revert Lost Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><RefreshCcw size={15} /></button>
+              if (activeEnqs.length === 1) openQuoteModal(activeEnqs[0]);
+              else setQuoteSelectTarget(activeEnqs);
+            }} title="Create Quotation" className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"><ArrowRightCircle size={15} /></button>
           )}
           <button onClick={() => setViewTarget(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
           <button onClick={() => handleEditClick(r)} title="Edit Latest Enquiry" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit size={15} /></button>
@@ -612,20 +712,22 @@ export function LeadsPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}<DateSelector /></div>} />
+      <PageHeader title="All Companies" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Companies" value={leadsData.length.toString()} icon={<FileText size={20} />} accent="brand" />
-        <StatCard label="New" value={leadsData.filter(l => l.status === 'New').length.toString()} icon={<FileText size={20} />} accent="warning" />
-        <StatCard label="Converted" value={leadsData.filter(l => l.status === 'Converted').length.toString()} icon={<FileText size={20} />} accent="success" />
-        <StatCard label="Lost" value={leadsData.filter(l => l.status === 'Lost').length.toString()} icon={<FileText size={20} />} accent="error" />
+        <StatCard label="Total Companies" value={displayLeads.length.toString()} icon={<FileText size={20} />} accent="brand" />
+        <StatCard label="New" value={displayLeads.filter(l => l.status === 'New').length.toString()} icon={<FileText size={20} />} accent="warning" />
+        <StatCard label="Converted" value={displayLeads.filter(l => l.status === 'Converted').length.toString()} icon={<FileText size={20} />} accent="success" />
+        <StatCard label="Lost" value={displayLeads.filter(l => l.status === 'Lost').length.toString()} icon={<FileText size={20} />} accent="error" />
       </div>
 
-      <DataTable data={leadsData} columns={columns} searchKeys={['company', 'partName', 'leadNo']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" />
+      <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId ? "Edit Company" : "Add New Company"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId || masterEditId ? "Edit Company" : "Add New Company"} size="xl" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Unique Number" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Unique Number" /></FormField>
+          {editId && (
+            <FormField label="Company ID" required><input className={inputClass} value={formData.leadNo} onChange={e => setFormData({...formData, leadNo: e.target.value})} placeholder="e.g. 1840 or Custom Company ID" /></FormField>
+          )}
           <CustomerAutocomplete
             label="Company Name"
             required
@@ -657,10 +759,12 @@ export function LeadsPage() {
             inputClass={inputClass}
             placeholder="e.g. Acme Corp"
           />
+          <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
+          <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
-              <button onClick={() => setFormData({...formData, contacts: [...formData.contacts, { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+              <button onClick={() => setFormData({...formData, contacts: [...formData.contacts, { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact Person</button>
             </div>
             {formData.contacts.map((c: any, i: number) => (
               <div key={i} className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -669,144 +773,6 @@ export function LeadsPage() {
                 <input placeholder="Email" className={inputClass} value={c.email} onChange={e => { const nc = [...formData.contacts]; nc[i].email = e.target.value; setFormData({...formData, contacts: nc}); }} />
               </div>
             ))}
-          </div>
-          <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></FormField>
-          <FormField label="GST No."><input className={inputClass} value={formData.gst} onChange={e => setFormData({...formData, gst: e.target.value})} /></FormField>
-
-          {/* Multiple Products Required with Image / File upload */}
-          <div className="col-span-2">
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
-            <div className="space-y-2">
-              {(formData.items || [{ productName: '', quantity: '', files: [], filePaths: [] }]).map((item: any, idx: number) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_7rem_minmax(14rem,0.9fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div>
-                    <input
-                      className={inputClass}
-                      placeholder="Product Name *"
-                      value={item.productName ?? item.partName ?? ''}
-                      onChange={e => {
-                        const newItems = [...(formData.items || [])];
-                        newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
-                        setFormData({ ...formData, items: newItems, partName: newItems[0].productName });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="number"
-                      min="0"
-                      className={inputClass}
-                      placeholder="Qty"
-                      value={item.quantity}
-                      onChange={e => {
-                        const newItems = [...(formData.items || [])];
-                        newItems[idx] = { ...newItems[idx], quantity: e.target.value };
-                        setFormData({ ...formData, items: newItems, quantity: newItems[0].quantity });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 transition-colors">
-                      <UploadCloud size={15} />
-                      {(item.files || []).length || (item.filePaths || []).length
-                        ? `${(item.files || []).length + (item.filePaths || []).length} file(s) selected`
-                        : 'Upload image / file / PDF'}
-                      <input
-                        type="file"
-                        multiple
-                        accept="*/*"
-                        className="hidden"
-                        onChange={e => {
-                          const selectedFiles = Array.from(e.currentTarget.files || []);
-                          const newItems = [...(formData.items || [])];
-                          newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-                          setFormData({ ...formData, items: newItems });
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </label>
-                    {/* Render newly chosen files */}
-                    {(item.files || []).length > 0 && (
-                      <div className="mt-1 space-y-1">
-                        {item.files.map((file: File, fileIdx: number) => {
-                          const isImg = file.type.startsWith('image/');
-                          return (
-                            <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600 bg-white p-1.5 rounded border border-slate-200">
-                              <div className="flex items-center gap-1.5 truncate">
-                                {isImg ? (
-                                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-5 h-5 object-cover rounded flex-shrink-0" />
-                                ) : (
-                                  <FileText size={13} className="text-slate-400 flex-shrink-0" />
-                                )}
-                                <span className="truncate">{file.name}</span>
-                              </div>
-                              <button
-                                type="button"
-                                className="text-rose-600 hover:text-rose-800 text-xs px-1 font-medium"
-                                onClick={() => {
-                                  const newItems = [...formData.items];
-                                  newItems[idx] = { ...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx) };
-                                  setFormData({ ...formData, items: newItems });
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {/* Render previously uploaded filePaths */}
-                    {Array.isArray(item.filePaths) && item.filePaths.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {item.filePaths.map((path: string, pIdx: number) => (
-                          <span key={path} className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                            <FileText size={11} />
-                            <span className="truncate max-w-[120px]">{path.split('/').pop()}</span>
-                            <button
-                              type="button"
-                              className="text-red-500 hover:text-red-700 ml-1 text-xs"
-                              onClick={() => {
-                                const newItems = [...formData.items];
-                                newItems[idx] = { ...newItems[idx], filePaths: newItems[idx].filePaths.filter((_: string, j: number) => j !== pIdx) };
-                                setFormData({ ...formData, items: newItems });
-                              }}
-                            >
-                              &times;
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {idx > 0 && (
-                    <button
-                      type="button"
-                      className="p-2 text-red-500 hover:bg-red-50 rounded mt-1 transition-colors"
-                      title="Remove Product"
-                      onClick={() => {
-                        const newItems = formData.items.filter((_: any, i: number) => i !== idx);
-                        setFormData({ ...formData, items: newItems });
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                type="button"
-                className="text-xs font-semibold text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2 transition-colors py-1 px-2 rounded hover:bg-brand-50"
-                onClick={() => {
-                  setFormData({
-                    ...formData,
-                    items: [...(formData.items || []), { productName: '', quantity: '', files: [], filePaths: [] }]
-                  });
-                }}
-              >
-                <Plus size={14} /> Add Another Product
-              </button>
-            </div>
           </div>
 
           <FormField label="Source">
@@ -1043,28 +1009,6 @@ export function LeadsPage() {
          <div className="flex flex-col gap-2">
             {quoteSelectTarget?.map(e => (
                <div key={e.id} onClick={() => openQuoteModal(e)} className="p-3 border border-slate-200 rounded-lg hover:border-brand-400 hover:bg-brand-50 cursor-pointer transition-colors">
-                  <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
-                  <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
-               </div>
-            ))}
-         </div>
-      </Modal>
-
-      <Modal open={!!lostSelectTarget} onClose={() => setLostSelectTarget(null)} title="Select Enquiry to Mark as Lost" size="sm" footer={<Button variant="secondary" onClick={() => setLostSelectTarget(null)}>Cancel</Button>}>
-         <div className="flex flex-col gap-2">
-            {lostSelectTarget?.map(e => (
-               <div key={e.id} onClick={() => { handleMarkLost(e.id); setLostSelectTarget(null); }} className="p-3 border border-slate-200 rounded-lg hover:border-red-400 hover:bg-red-50 cursor-pointer transition-colors">
-                  <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
-                  <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
-               </div>
-            ))}
-         </div>
-      </Modal>
-
-      <Modal open={!!revertSelectTarget} onClose={() => setRevertSelectTarget(null)} title="Select Enquiry to Revert" size="sm" footer={<Button variant="secondary" onClick={() => setRevertSelectTarget(null)}>Cancel</Button>}>
-         <div className="flex flex-col gap-2">
-            {revertSelectTarget?.map(e => (
-               <div key={e.id} onClick={() => { handleRevertLost(e.id); setRevertSelectTarget(null); }} className="p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors">
                   <p className="font-bold text-sm">{e.lead_no || `LD-${e.enquiry_no}`} - {e.part_name}</p>
                   <p className="text-xs text-slate-500">Qty: {e.quantity}</p>
                </div>

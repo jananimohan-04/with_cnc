@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, Plus } from 'lucide-react';
 import { Button } from './Card';
 
 export interface Column<T> {
@@ -44,6 +44,8 @@ export function DataTable<T extends Record<string, any>>({
   onRowClick,
   filterOptions,
   emptyMessage = 'No records found',
+  toolbarDate,
+  inlineAdd = false,
 }: {
   data: T[];
   columns: Column<T>[];
@@ -55,6 +57,11 @@ export function DataTable<T extends Record<string, any>>({
   onRowClick?: (row: T) => void;
   filterOptions?: { label: string; value: string }[];
   emptyMessage?: string;
+  /** Extra control rendered in the toolbar row right after search (e.g. a date picker). */
+  toolbarDate?: ReactNode;
+  /** When true, the Add button moves into the toolbar row (after the status
+   *  filter, before Export) instead of the top header row. */
+  inlineAdd?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -126,10 +133,10 @@ export function DataTable<T extends Record<string, any>>({
 
   return (
     <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-      {(title || onAdd) && (
+      {(title || (onAdd && !inlineAdd)) && (
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
           <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase">{title}</h3>
-          {onAdd && (
+          {onAdd && !inlineAdd && (
             <Button size="sm" onClick={onAdd} icon={<span className="text-base leading-none font-bold">+</span>}>
               {addLabel || 'Add New'}
             </Button>
@@ -149,6 +156,7 @@ export function DataTable<T extends Record<string, any>>({
             className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
           />
         </div>
+        {toolbarDate}
         {filterOptions && (
           <div className="relative">
             <SlidersHorizontal size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -168,6 +176,11 @@ export function DataTable<T extends Record<string, any>>({
               ))}
             </select>
           </div>
+        )}
+        {inlineAdd && onAdd && (
+          <Button size="sm" onClick={onAdd} icon={<Plus size={14} />}>
+            {addLabel || 'Add New'}
+          </Button>
         )}
         <button onClick={handleExport} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm">
           <Download size={14} />

@@ -106,13 +106,13 @@ export function QuantityTrackingPage() {
     orders.find((x) => String(x.order_no) === String(orderNo))?.lead_no || orderNo;
 
   const exportReport = () => exportCsv(`Order_Quantity_Tracking_${todayISO()}`, [
-    ['Unique Number', 'Date', 'Company', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
+    ['Company ID', 'Date', 'Company', 'Product', 'Status', 'Ordered Qty', 'Good Qty', 'Rejected Qty', 'Remaining to Produce', 'FG Available', 'Delivered Qty', 'Invoiced Qty', 'Invoiceable Qty', 'Progress %'],
     ...filtered.map((q) => {
       const o = orders.find((x) => String(x.order_no) === q.soNo);
       return [uniqueOf(q.soNo), o?.order_date || '', q.customer, q.product, o?.status || '', q.ordered, q.good, q.rejected, q.remaining, q.fgAvailable, q.delivered, q.invoiced, q.invoiceable, q.ordered > 0 ? Math.round((q.good / q.ordered) * 100) : 0];
     }),
     [],
-    ['Rejection: Batch', 'Date', 'Unique Number', 'Product', 'Rejected Qty', 'Rejection Type', 'Rejection Reason', 'Machine', 'Operator'],
+    ['Rejection: Batch', 'Date', 'Company ID', 'Product', 'Rejected Qty', 'Rejection Type', 'Rejection Reason', 'Machine', 'Operator'],
     ...rejections.map((b: any) => [b.batch_no, String(b.created_at || '').slice(0, 10), uniqueOf(b.sales_order_no), b.product_name, Number(b.rejected_qty), b.rejection_type, b.rejection_reason, b.machine, b.operator]),
   ]);
 
@@ -155,7 +155,7 @@ export function QuantityTrackingPage() {
           <table className="w-full text-xs min-w-[1100px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200 bg-slate-50">
-                <th className="px-3 py-2">Unique Number</th><th className="px-3 py-2">Company</th><th className="px-3 py-2">Product</th>
+                <th className="px-3 py-2">Company ID</th><th className="px-3 py-2">Company</th><th className="px-3 py-2">Product</th>
                 <th className="px-3 py-2 text-right">Ordered</th><th className="px-3 py-2 text-right">Good</th>
                 <th className="px-3 py-2 text-right">Rejected</th><th className="px-3 py-2 text-right">Remaining</th>
                 <th className="px-3 py-2 text-right">FG Avail</th><th className="px-3 py-2 text-right">Delivered</th>
@@ -200,7 +200,7 @@ export function QuantityTrackingPage() {
         {batchesAvailable && rejections.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[900px]">
-              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Batch</th><th className="py-2">Date</th><th className="py-2">Unique Number</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected</th><th className="py-2">Type</th><th className="py-2">Reason</th><th className="py-2">Machine</th><th className="py-2">Operator</th></tr></thead>
+              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Batch</th><th className="py-2">Date</th><th className="py-2">Company ID</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected</th><th className="py-2">Type</th><th className="py-2">Reason</th><th className="py-2">Machine</th><th className="py-2">Operator</th></tr></thead>
               <tbody>
                 {rejections.map((b: any) => (
                   <tr key={b.id || b.batch_no} className="border-t border-slate-100">
@@ -221,7 +221,7 @@ export function QuantityTrackingPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[700px]">
-              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Unique Number</th><th className="py-2">Company</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
+              <thead><tr className="text-left text-slate-500 uppercase text-[10px] border-b border-slate-200"><th className="py-2">Company ID</th><th className="py-2">Company</th><th className="py-2">Product</th><th className="py-2 text-right">Rejected Qty</th><th className="py-2 text-right">Good Qty</th></tr></thead>
               <tbody>
                 {filtered.filter((q) => q.rejected > 0).map((q) => (
                   <tr key={`${q.soId ?? ''}-${q.soNo}`} className="border-t border-slate-100">

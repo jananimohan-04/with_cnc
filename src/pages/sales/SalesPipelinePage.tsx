@@ -1683,7 +1683,7 @@ export function SalesPipelinePage() {
             if (title === 'Invoice' && (key === 'customer_name' || key === 'part_name' || key === 'quantity' || key === 'created_at' || key === 'invoice_type' || key === 'basic_value' || key === 'cancelled' || key === 'created_by' || key === 'updated_at')) return null;
             if (title === 'Quotation' && (key === 'valid_till' || key === 'valid_until' || key === 'status' || key === 'created_at' || key === 'part_number' || key === 'part_no')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            if (key === 'lead_no') formattedKey = 'Unique Number';
+            if (key === 'lead_no') formattedKey = 'Company ID';
             if (key === 'part_name') formattedKey = 'Product Name';
             const displayVal = (key === 'part_name' && title !== 'Inward') ? formatLeadProductDisplay(raw) : value;
             return (
@@ -3687,10 +3687,10 @@ export function SalesPipelinePage() {
   };
 
   const [showNewLead, setShowNewLead] = useState(false);
+  // Company-master popup state (Company ID is auto-generated at save).
   const [newLeadForm, setNewLeadForm] = useState<any>({
-    leadNo: generateUniqueProjectNo(rawLeadsList),
-    company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', remarks: '', contacts: [{ person: '', phone: '', email: '' }],
-    items: [{ productName: '', quantity: '', files: [] as File[] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
+    company: '', city: '', gst: '', source: 'Direct',
+    contacts: [{ person: '', phone: '', email: '' }],
   });
 
   // Highlighted context banner shown first in every pipeline popup:
@@ -3702,7 +3702,7 @@ export function SalesPipelinePage() {
         <span className="text-sm font-extrabold text-brand-800 uppercase">{stage}</span>
       </div>
       <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
         <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
       </div>
       <div>
@@ -3730,113 +3730,84 @@ export function SalesPipelinePage() {
     setInwardModalTarget({ id: 'dummy', stage: 'Sales Order', type: 'order', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
   };
 
-  const openNewLeadModal = () => {    const nextNo = generateUniqueProjectNo(rawLeadsList);
+  // Company-master popup: Company ID is generated in the background at save
+  // time — it never appears in the UI. No enquiry/product is created here;
+  // enquiries are added separately when needed.
+  const openNewLeadModal = () => {
     setNewLeadForm({
-      leadNo: nextNo,
-      company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', remarks: '', contacts: [{ person: '', phone: '', email: '' }],
-      items: [{ productName: '', quantity: '', files: [] as File[] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
+      company: '', city: '', gst: '', source: 'Direct',
+      contacts: [{ person: '', phone: '', email: '' }],
     });
     setShowNewLead(true);
   };
 
 
 
+  // Company-master save only: upserts cnc_customers, never creates an
+  // enquiry. The Company ID (CUST-xxxx) is generated in the background.
+  // Extra keys are attempted when the database already has those columns
+  // and skipped otherwise, so the save never breaks on older schemas.
   const saveNewLead = async () => {
-    if (!newLeadForm.company) {
+    const name = String(newLeadForm.company || '').trim();
+    if (!name) {
       alert("Please enter a company name.");
-      return;
-    }
-    const enteredProducts = (newLeadForm.items || []).filter((item: any) => String(item.productName || item.partName || '').trim());
-    if (!enteredProducts.length) { alert('Please enter at least one product name.'); return; }
-    if (enteredProducts.some((item: any) => Number(item.quantity) < 0)) { alert('Product quantities cannot be negative.'); return; }
-    if (enteredProducts.some((item: any) => (item.files || []).length) && !company?.id) {
-      alert('Select a company before uploading product files.');
       return;
     }
     setLoading(true);
     try {
+      const dup = (customerList || []).some((c: any) => String(c.name || '').trim().toLowerCase() === name.toLowerCase());
+      if (dup) {
+        alert(`Company "${name}" already exists in the company master.`);
+        return;
+      }
       const cStr = getContactStrings(newLeadForm);
-      const itemsToSave = await Promise.all(enteredProducts.map(async (item: any) => {
-        const uploadedPaths = company?.id
-          ? await Promise.all((item.files || []).map((file: File) => uploadEnquiryProductFile(company.id!, file)))
-          : [];
-        return {
-          productName: String(item.productName || item.partName).trim(),
-          partName: String(item.productName || item.partName).trim(),
-          quantity: item.quantity || '0',
-          remarks: item.remarks || '',
-          filePaths: [...(item.filePaths || []), ...uploadedPaths],
-        };
-      }));
-        
-      const firstItem = itemsToSave[0];
-      const productNamesList = itemsToSave.map((it: any) => it.productName).join(', ');
-      const multiplePartsString = itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName;
-      const projNo = newLeadForm.leadNo?.trim() || generateUniqueProjectNo(rawLeadsList);
-      const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
-      
-      const payload: any = {
-        id: crypto.randomUUID(),
-        lead_no: projNo,
-        enquiry_no: projNo,
-        customer: newLeadForm.company,
-        contact_person: cStr.person,
-        phone: cStr.phone,
-        email: cStr.email,
-        city: newLeadForm.city,
-        gst: newLeadForm.gst, 
-        enquiring_for: JSON.stringify(itemsToSave),
-        part_name: multiplePartsString,
-        part_no: newLeadForm.partNo || 'N/A',
-        quantity: totalQty,
-        estimated_value: Number(newLeadForm.estimatedValue) || 0,
-        expected_date: newLeadForm.expectedDate || new Date().toISOString().split('T')[0],
-        received_date: new Date().toISOString().split('T')[0],
-        source: newLeadForm.source,
-        status: 'New',
-        pipeline_stage: 'Enquiry'
+      const custPayload: any = {
+        id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+        name,
+        contact: cStr.person || null,
+        phone: cStr.phone || null,
+        email: cStr.email || null,
+        city: newLeadForm.city || null,
+        gst: newLeadForm.gst || null,
+        source: newLeadForm.source || null,
+        status: 'Active'
       };
-
-      if (company?.id) {
-        payload.company_id = company.id;
-      }
-
-      const { error } = await supabase.from('cnc_enquiries').insert([payload]);
-      
-      if (!error) {
-        // Also auto-sync new customer to cnc_customers if not yet present
-        try {
-          const custExists = customerList.some(c => c.name?.toLowerCase() === newLeadForm.company.toLowerCase());
-          if (!custExists) {
-            const custPayload: any = {
-              id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
-              name: newLeadForm.company,
-              contact: cStr.person || null,
-              phone: cStr.phone || null,
-              email: cStr.email || null,
-              city: newLeadForm.city || null,
-              status: 'Active'
-            };
-            if (company?.id) custPayload.company_id = company.id;
-            await supabase.from('cnc_customers').insert([custPayload]);
-          }
-        } catch (cErr) {
-          console.warn('Customer auto-insert error:', cErr);
+      if (company?.id) custPayload.company_id = company.id;
+      const skipped = new Set<string>();
+      let error: any = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const res = await supabase.from('cnc_customers').insert([custPayload]);
+        if (!res.error) { error = null; break; }
+        const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(res.error.message || '');
+        if (m && Object.prototype.hasOwnProperty.call(custPayload, m[1])) {
+          delete custPayload[m[1]];
+          skipped.add(m[1]);
+          continue;
         }
-
-        setShowNewLead(false);
-        const updatedLeads = [...rawLeadsList, { lead_no: projNo, enquiry_no: projNo }];
-        setRawLeadsList(updatedLeads);
-        setNewLeadForm({
-          leadNo: generateUniqueProjectNo(updatedLeads),
-          company: '', city: '', gst: '', enquiringFor: '', source: 'Direct', remarks: '', contacts: [{ person: '', phone: '', email: '' }],
-          items: [{ productName: '', quantity: '', files: [] }], partName: '', partNo: '', quantity: '', estimatedValue: '', expectedDate: ''
-        });
-        await fetchPipeline();
-      } else {
-        console.error('Failed to save lead:', error);
-        alert("Failed to save company: " + error.message);
+        error = res.error;
+        break;
       }
+      if (error) {
+        console.error('Failed to save company:', error);
+        alert("Failed to save company: " + error.message);
+        return;
+      }
+      if (skipped.size) {
+        alert(`Company saved. These fields have no database column yet and were skipped: ${[...skipped].join(', ')}`);
+      }
+      try {
+        setCustomerList((prev: any[]) => [...(prev || []), {
+          id: custPayload.id, name,
+          contact: cStr.person || null, phone: cStr.phone || null, email: cStr.email || null,
+          city: newLeadForm.city || null, gst: newLeadForm.gst || null, status: 'Active',
+        }]);
+      } catch {}
+      setShowNewLead(false);
+      setNewLeadForm({
+        company: '', city: '', gst: '', source: 'Direct',
+        contacts: [{ person: '', phone: '', email: '' }],
+      });
+      await fetchPipeline();
     } catch (err: any) {
       console.error('Exception in saveNewLead:', err);
       alert("Failed to save company: " + (err?.message || "Unknown error"));
@@ -4337,15 +4308,6 @@ export function SalesPipelinePage() {
       {/* New Lead Modal */}
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="New Company" uniqueNo={newLeadForm.leadNo} products={(newLeadForm.items || []).map((i: any) => i.productName || i.partName).filter(Boolean).join(', ')} customer={newLeadForm.company} />
-          <FormField label="Unique Number" required>
-            <input 
-              className={inputClass} 
-              value={newLeadForm.leadNo} 
-              onChange={e => setNewLeadForm({ ...newLeadForm, leadNo: e.target.value })} 
-              placeholder="e.g. 1840 or Custom Unique Number" 
-            />
-          </FormField>
           <CustomerAutocomplete
             label="Company Name"
             required
@@ -4382,7 +4344,7 @@ export function SalesPipelinePage() {
           <div className="col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-500 uppercase">Contact Persons</label>
-              <button type="button" onClick={() => setNewLeadForm({...newLeadForm, contacts: [...(newLeadForm.contacts || []), { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact</button>
+              <button type="button" onClick={() => setNewLeadForm({...newLeadForm, contacts: [...(newLeadForm.contacts || []), { person: '', phone: '', email: '' }]})} className="text-xs text-blue-600 font-bold flex items-center gap-1">+ Add Contact Person</button>
             </div>
             {(newLeadForm.contacts || [{ person: '', phone: '', email: '' }]).map((c: any, i: number) => (
               <div key={i} className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -4392,63 +4354,6 @@ export function SalesPipelinePage() {
               </div>
             ))}
           </div>
-          <div className="col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
-              <div className="space-y-2">
-                {(newLeadForm.items || [{ productName: '', quantity: '', files: [] }]).map((item: any, idx: number) => (
-                  <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_minmax(13rem,0.8fr)_auto] gap-3 items-start rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div>
-                      <input className={inputClass} placeholder="Product Name" value={item.productName ?? item.partName ?? ''} onChange={e => {
-                        const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx] = { ...newItems[idx], productName: e.target.value, partName: e.target.value };
-                        setNewLeadForm({...newLeadForm, items: newItems, partName: newItems[0].productName});
-                      }} />
-                    </div>
-                    <div>
-                      <input type="number" className={inputClass} placeholder="Qty" value={item.quantity} onChange={e => {
-                        const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx] = { ...newItems[idx], quantity: e.target.value };
-                        setNewLeadForm({...newLeadForm, items: newItems, quantity: newItems[0].quantity});
-                      }} />
-                    </div>
-                    <div>
-                      <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                        <UploadCloud size={15}/>{(item.files || []).length ? `${item.files.length} file(s) selected` : 'Upload image / file / PDF'}
-                        <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
-                          const selectedFiles = Array.from(e.currentTarget.files || []);
-                          const newItems = [...(newLeadForm.items || [])];
-                          newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selectedFiles] };
-                          setNewLeadForm({...newLeadForm, items: newItems});
-                          e.currentTarget.value = '';
-                        }} />
-                      </label>
-                      {(item.files || []).length > 0 && <div className="mt-1 space-y-1">{item.files.map((file: File, fileIdx: number) => <div key={`${file.name}-${fileIdx}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-600"><span className="truncate">{file.name}</span><button type="button" className="text-rose-600 hover:text-rose-800" onClick={() => { const newItems = [...newLeadForm.items]; newItems[idx] = {...newItems[idx], files: newItems[idx].files.filter((_: File, j: number) => j !== fileIdx)}; setNewLeadForm({...newLeadForm, items: newItems}); }}>Remove</button></div>)}</div>}
-                    </div>
-                    <div className="col-span-full">
-                      <input className={inputClass} placeholder="Remarks for this product..." value={item.remarks || ''} onChange={e => {
-                        const newItems = [...(newLeadForm.items || [])];
-                        newItems[idx] = { ...newItems[idx], remarks: e.target.value };
-                        setNewLeadForm({...newLeadForm, items: newItems});
-                      }} />
-                    </div>
-                    {idx > 0 && (
-                      <button type="button" className="p-2 text-red-500 hover:bg-red-50 rounded mt-1" onClick={() => {
-                        const newItems = newLeadForm.items.filter((_: any, i: number) => i !== idx);
-                        setNewLeadForm({...newLeadForm, items: newItems});
-                      }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 mt-2" onClick={() => {
-                  setNewLeadForm({...newLeadForm, items: [...(newLeadForm.items || []), { productName: '', quantity: '', files: [] }]});
-                }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  Add Another Product
-                </button>
-              </div>
-            </div>
           <FormField label="Source">
             <select className={inputClass} value={newLeadForm.source} onChange={e => setNewLeadForm({...newLeadForm, source: e.target.value})}>
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
@@ -4462,7 +4367,7 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 gap-4">
           {duplicateSource && (
             <div className="col-span-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
-              Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own unique number.
+              Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own company ID.
             </div>
           )}
           <div className="col-span-2 flex justify-end">
@@ -5079,7 +4984,7 @@ export function SalesPipelinePage() {
           <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Unique Number: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -5146,7 +5051,7 @@ export function SalesPipelinePage() {
               return (
                 <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                   <div>
-                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
+                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
                     <span className="text-sm font-extrabold text-slate-900">{uniq}</span>
                   </div>
                   <div>
@@ -5265,7 +5170,7 @@ export function SalesPipelinePage() {
                     onInlineEdit={(field: string, value: string) => void handleInlineEdit('Sales Order', viewModalData.order.id, field, value)}
                   />
                 ) : null) },
-                { key: 'Quotation', node: viewModalData.quotation ? (
+                { key: 'Quotation', node: viewModalTarget?.stage === 'Inward' ? null : (viewModalData.quotation ? (
                   <>
                     <StageStrip
                       typeLabel="QUOTATION"
@@ -5284,7 +5189,7 @@ export function SalesPipelinePage() {
                       />
                     ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)}
                   </>
-                ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order) },
+                ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)) },
                 { key: 'Enquiry', node: viewModalData.enquiry ? (
                   <EnquiryEditForm
                     key={viewModalData.enquiry.id || 'enq'}

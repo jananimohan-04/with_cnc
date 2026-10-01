@@ -128,9 +128,6 @@ function UploadToPartDialog({
     if (!userId) return toast.error("User session missing.");
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!ext || !ALLOWED_EXTENSIONS.includes(ext as any)) {
-      return toast.error(`Unsupported file type: .${ext}`);
-    }
     if (file.size > MAX_FILE_SIZE) {
       return toast.error("File exceeds maximum allowed size (50MB).");
     }
@@ -305,7 +302,7 @@ function UploadToPartDialog({
                 ) : (
                   <div>
                     <p className="text-sm font-medium text-slate-700">Click to browse file</p>
-                    <p className="text-xs text-slate-400 mt-0.5">PDF, DXF, DWG, STEP, NC, ZIP (up to 50MB)</p>
+                    <p className="text-xs text-slate-400 mt-0.5">All file types (up to 50MB)</p>
                   </div>
                 )}
               </label>
@@ -658,9 +655,6 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
         if (!userId) throw new Error("User session missing.");
 
         const ext = file.name.split('.').pop()?.toLowerCase();
-        if (!ext || !ALLOWED_EXTENSIONS.includes(ext as any)) {
-          throw new Error(`Unsupported file type: .${ext}`);
-        }
         if (file.size > MAX_FILE_SIZE) {
           throw new Error("File exceeds maximum size (50MB).");
         }
@@ -778,7 +772,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
             <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-slate-800">
-                  Unique Number (From All Companies)
+                  Company ID (From All Companies)
                 </Label>
                 {selectedProjectName && selectedProjectName !== "none" && (
                   <button
@@ -789,7 +783,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                     }}
                     className="text-[11px] text-indigo-600 hover:text-indigo-800 underline font-medium"
                   >
-                    Clear Unique Number Selection
+                    Clear Company ID Selection
                   </button>
                 )}
               </div>
@@ -942,7 +936,7 @@ function AddPartDialog({ onAdded }: { onAdded: () => void }) {
                       ) : (
                         <div>
                           <span className="text-sm font-medium text-slate-700">Click to select drawing file</span>
-                          <p className="text-xs text-slate-400">PDF, DXF, DWG, STEP, NC, ZIP</p>
+                          <p className="text-xs text-slate-400">All file types</p>
                         </div>
                       )}
                     </label>

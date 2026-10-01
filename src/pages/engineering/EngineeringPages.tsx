@@ -520,7 +520,7 @@ export function BOMPage() {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/30">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Level</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Unique Number</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company ID</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product / Component</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
@@ -571,9 +571,9 @@ export function BOMPage() {
               <option value="0">L0 (Top Assembly)</option><option value="1">L1 (Sub-assembly / Part)</option><option value="2">L2 (Child Part / Raw Material)</option><option value="3">L3 (Hardware / Fastener)</option>
             </select>
           </FormField>
-          <FormField label="Unique Number">
+          <FormField label="Company ID">
             <select className={inputClass} value={formData.projectName || ''} onChange={e => setFormData({...formData, projectName: e.target.value})}>
-              <option value="">Select Unique Number...</option>
+              <option value="">Select Company ID...</option>
               {projects.map((p, i) => <option key={i} value={p}>{p}</option>)}
             </select>
           </FormField>

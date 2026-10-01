@@ -14,7 +14,7 @@ export function StageStrip({ typeLabel, uniqueNo, products, customer }: {
         <span className="text-sm font-extrabold text-slate-900">{typeLabel}</span>
       </div>
       <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Unique Number</span>
+        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
         <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
       </div>
       <div>
