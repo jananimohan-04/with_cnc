@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@/vault/router-adapter";
 import { useAuth } from "@/vault/hooks/use-auth";
+import { useAuth as useErpAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/vault/hooks/use-permissions";
 import { useEffect, useState } from "react";
 import { supabase } from "@/vault/integrations/supabase/client";
@@ -199,7 +200,10 @@ function FolderTree({ folders, parentId, depth }: { folders: any[], parentId: st
 
 function SettingsPage() {
   const { session, profile } = useAuth();
-  const { can, isSuperAdmin, userPartyId } = usePermissions();
+  const { can } = usePermissions();
+  // Main ERP tenant scope: Super Admin sees every tenant company,
+  // company users see only their own company.
+  const { company: erpCompany, isSuperAdmin: isErpSuperAdmin, profile: erpProfile } = useErpAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -212,16 +216,57 @@ function SettingsPage() {
     }
   }, []);
 
-  // Fetch Parties for Multi-Tenant Drive Connection
-  const { data: parties, isLoading: partiesLoading, refetch: refetchParties } = useQuery({
-    queryKey: ['settings_parties'],
+  // Tenant companies from the main ERP (Company Management master).
+  // Super Admin sees all of them; company users see only their own company.
+  // Drive state still lives per vault party, matched here by company name.
+  const { data: tenantData, isLoading: tenantsLoading, refetch: refetchTenants } = useQuery({
+    queryKey: ['settings_tenant_companies', erpProfile?.company_id, isErpSuperAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase.from("cncvault_parties").select("id, name, drive_email, drive_folder_id, drive_refresh_token, drives:cncvault_party_drives(id, drive_email, drive_folder_id, created_at)").order("name");
+      const { data: comps, error } = await supabase
+        .from("companies" as any)
+        .select("id, company_name, code, status")
+        .order("company_name");
       if (error) throw error;
-      return data;
+      const active = (comps ?? []).filter((c: any) => String(c.status || 'Active') !== 'Inactive');
+      const ownId = (erpCompany as any)?.id || (erpProfile as any)?.company_id || null;
+      const mine = isErpSuperAdmin ? active : active.filter((c: any) => c.id === ownId);
+      const { data: vp } = await supabase
+        .from("cncvault_parties")
+        .select("id, name, drive_email, drive_folder_id, drive_refresh_token, drives:cncvault_party_drives(id, drive_email, drive_folder_id, created_at)");
+      const byName = new Map(((vp as any[]) ?? []).map((p: any) => [String(p.name || '').trim().toLowerCase(), p]));
+      return mine.map((c: any) => ({
+        company: c,
+        party: byName.get(String(c.company_name || '').trim().toLowerCase()) || null,
+      }));
     },
-    enabled: can("manage_settings")
+    enabled: can("manage_settings") && !!session
   });
+
+  const handleConnectCompany = async (company: any, party: any | null) => {
+    try {
+      let partyId: string | null = party?.id || null;
+      if (!partyId) {
+        toast.loading(`Setting up Drive record for ${company.company_name}...`);
+        const fallbackCode = String(company.company_name || '')
+          .trim().split(/\s+/).map((w: string) => w[0]).join('')
+          .toUpperCase().slice(0, 8) || 'CO';
+        const { data, error } = await supabase.from("cncvault_parties").insert({
+          name: String(company.company_name).trim(),
+          code: company.code || fallbackCode,
+          status: "Active",
+        }).select("id").single();
+        toast.dismiss();
+        if (error || !data) throw error || new Error("Could not create the company drive record.");
+        partyId = (data as any).id;
+        refetchTenants();
+      }
+      if (!partyId) throw new Error("Could not resolve the company drive record.");
+      await handleConnectDrive(partyId);
+    } catch (err: any) {
+      toast.dismiss();
+      toast.error(err.message || "Failed to initiate Drive connection.");
+    }
+  };
 
   const handleConnectDrive = async (partyId: string) => {
     try {
@@ -260,7 +305,7 @@ function SettingsPage() {
       
       toast.dismiss();
       toast.success("Drive disconnected successfully!");
-      refetchParties();
+      refetchTenants();
     } catch (err: any) {
       toast.dismiss();
       toast.error(err.message || "Failed to disconnect drive");
@@ -326,11 +371,11 @@ function SettingsPage() {
                       Google Drive Configuration
                     </CardTitle>
                     <CardDescription className="text-indigo-700/70">
-                      Connect Google Drive for each company (Party) to isolate storage.
+                      Connect Google Drive for each company to isolate storage.
                     </CardDescription>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => refetchParties()} disabled={partiesLoading}>
-                    <RefreshCw className={`w-4 h-4 mr-2 ${partiesLoading ? 'animate-spin' : ''}`} />
+                  <Button variant="outline" size="sm" onClick={() => refetchTenants()} disabled={tenantsLoading}>
+                    <RefreshCw className={`w-4 h-4 mr-2 ${tenantsLoading ? 'animate-spin' : ''}`} />
                     Refresh Status
                   </Button>
                 </div>
@@ -342,26 +387,26 @@ function SettingsPage() {
                     Below are all the registered Companies in the system. Click "Connect Drive" to authorize a specific Google Account.
                   </p>
                   
-                  {partiesLoading ? (
+                  {tenantsLoading ? (
                     <div className="flex justify-center p-8">
                       <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
                     </div>
                   ) : (
                     <div className="space-y-3 mt-4">
-                      {parties?.filter(party => isSuperAdmin || party.id === userPartyId).map(party => {
-                        const drives = party.drives && party.drives.length > 0 
-                          ? party.drives 
-                          : (party.drive_refresh_token ? [{ id: 'legacy', drive_email: party.drive_email }] : []);
+                      {tenantData?.map(({ company, party }) => {
+                        const drives = party?.drives && party.drives.length > 0
+                          ? party.drives
+                          : (party?.drive_refresh_token ? [{ id: 'legacy', drive_email: party.drive_email }] : []);
 
                         return (
-                        <div key={party.id} className="p-4 bg-slate-50 border rounded-lg hover:border-indigo-200 transition-colors">
+                        <div key={company.id} className="p-4 bg-slate-50 border rounded-lg hover:border-indigo-200 transition-colors">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className="bg-white p-2 rounded border shadow-sm">
                                 <Building className="w-5 h-5 text-indigo-500" />
                               </div>
                               <div>
-                                <h4 className="font-semibold text-slate-800">{party.name}</h4>
+                                <h4 className="font-semibold text-slate-800">{company.company_name}{company.code ? <span className="ml-2 text-xs font-normal text-slate-400">({company.code})</span> : null}</h4>
                                   {drives.length > 0 ? (
                                     <div className="mt-1 space-y-1">
                                       {drives.map((d: any, idx: number) => (
@@ -369,7 +414,7 @@ function SettingsPage() {
                                           <p className="text-sm text-green-600 flex items-center gap-1 font-medium">
                                             <Check className="w-4 h-4" /> Drive {idx + 1}: {d.drive_email || 'Connected'}
                                           </p>
-                                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDisconnectDrive(d.id, party.id)}>
+                                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => party && handleDisconnectDrive(d.id, party.id)}>
                                             Disconnect
                                           </Button>
                                         </div>
@@ -380,22 +425,22 @@ function SettingsPage() {
                                 )}
                               </div>
                             </div>
-                            <Button 
+                            <Button
                               variant={drives.length > 0 ? "outline" : "default"}
                               className={drives.length > 0 ? "text-slate-600" : "bg-indigo-600 hover:bg-indigo-700"}
-                              onClick={() => handleConnectDrive(party.id)}
+                              onClick={() => handleConnectCompany(company, party)}
                             >
-                              <Cloud className="w-4 h-4 mr-2" /> 
+                              <Cloud className="w-4 h-4 mr-2" />
                               {drives.length > 0 ? "Add Another Drive" : "Connect Drive"}
                             </Button>
                           </div>
-                          <PartyDriveFolderSection party={party} />
+                          {party && <PartyDriveFolderSection party={party} />}
                         </div>
                       )})}
-                      
-                      {parties?.length === 0 && (
+
+                      {tenantData?.length === 0 && (
                         <div className="text-center p-6 text-slate-500 border border-dashed rounded-lg">
-                          No companies found. Add a Party first.
+                          No companies found for your account.
                         </div>
                       )}
                     </div>
