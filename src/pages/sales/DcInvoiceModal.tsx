@@ -6,14 +6,14 @@
 // silent zero. Save reuses financeApi.saveInvoice (DB computes tax authoritatively),
 // and duplicates for the same DC are refused.
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
 import { formatINR, todayISO } from '@/lib/format';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
-import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
+import { downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, type SalesInvoiceInput } from '@/lib/brandedDocument';
 import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
 import { CheckCheck, Download, Eye, Pencil, Printer, X, AlertTriangle } from 'lucide-react';
@@ -70,6 +70,8 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [orderQty, setOrderQty] = useState<OrderQtySummary | null>(null);
+  // Raw DC rows for the print (HSN / address / GSTIN / PO / DC date): read on click.
+  const dcRowsRef = useRef<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +107,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           const r = await supabase.from('cnc_deliveries').select('*').eq('delivery_no', dcNo).order('created_at');
           if (!r.error && (r.data ?? []).length > 0) rows = r.data!;
         }
+        if (!cancelled) dcRowsRef.current = rows;
         if (cancelled) return;
         // 2) Sales order → quotation chain.
         const first = rows[0] ?? {};
@@ -266,28 +269,42 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     }
   };
 
-  const pdfInput = () => ({
-    companyName,
-    title: 'Tax Invoice',
-    documentNo: 'DRAFT',
-    date: invDate,
-    details: [
-      ['Bill To', customer], ['Delivery Challan', dcNo], ['Sales Order', soOrderNo || soNo],
-      ['Quotation', quoteNo], ['Priced From', Array.from(new Set(lines.map((l) => l.sheetRef).filter(Boolean))).join(', ') || '—'],
-    ] as [string, string | number | null | undefined][],
-    columns: ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'],
-    rows: lines.map((l, i) => [
-      i + 1, `${l.itemName}${l.unitInput.trim() !== '' ? ' (edited)' : ''}`, '—',
-      l.qty, l.unit || '', formatINR(effUnit(l)), formatINR(num(l.qty) * effUnit(l)),
-    ] as (string | number)[]),
-    totals: [
-      ['Basic Value', formatINR(basic)],
-      ['CGST', formatINR(c !== null ? basic * c / 100 : 0)],
-      ['SGST', formatINR(s !== null ? basic * s / 100 : 0)],
-      ['IGST', formatINR(ig !== null ? basic * ig / 100 : 0)],
-      ['Total', formatINR(grand)],
-    ] as [string, string][],
-  });
+  const buildInvoicePdfInput = async (): Promise<SalesInvoiceInput> => {
+    const d0: any = dcRowsRef.current[0] ?? raw ?? {};
+    const comp = await fetchCompanyPrintDetails((company as any)?.id);
+    const byDc = new Map((dcRowsRef.current as any[]).map((r: any) => [String(r.id), r]));
+    return {
+      companyName,
+      companyGstin: comp.gstin,
+      title: 'Tax Invoice',
+      docNo: 'DRAFT',
+      invDate,
+      partyName: customer,
+      partyAddress: String(d0.billing_address || d0.customer_address || ''),
+      partyCode: String(d0.customer_code || d0.customer_id || ''),
+      partyGstin: String(d0.customer_gstin || ''),
+      dcNo,
+      dcDate: d0.delivery_date || null,
+      poNo: String(d0.po_no || ''),
+      items: lines.map((l) => {
+        const r: any = (l.dcId && byDc.get(l.dcId)) || {};
+        const u = effUnit(l);
+        const q = num(l.qty);
+        return {
+          description: `${l.itemName}${l.unitInput.trim() !== '' ? ' (edited)' : ''}`,
+          hsn: String(r.hsn || ''),
+          qty: q, unit: l.unit || '', price: u, amount: q * u,
+        };
+      }),
+      basicValue: basic,
+      cgstRate: c, cgstAmt: c !== null ? basic * c / 100 : 0,
+      sgstRate: s, sgstAmt: s !== null ? basic * s / 100 : 0,
+      igstRate: ig, igstAmt: ig !== null ? basic * ig / 100 : 0,
+      roundOff: 0,
+      grandTotal: grand,
+      bankLines: comp.bankLines,
+    };
+  };
 
   const handlePrint = () => {
     const row = (cells: string[]) => `<tr>${cells.map((x) => `<td>${x}</td>`).join('')}</tr>`;
@@ -308,10 +325,10 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       size="2xl"
       footer={
         <>
-          <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { try { viewBrandedDocument(pdfInput()); } catch (e: any) { alert(e?.message ?? e); } }}>
+          <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { void (async () => { try { await viewSalesInvoice(await buildInvoicePdfInput()); } catch (e: any) { alert(e?.message ?? e); } })(); }}>
             Preview Invoice PDF
           </Button>
-          <Button variant="secondary" icon={<Download size={14} />} onClick={() => { downloadBrandedDocument(pdfInput()).catch((e: any) => alert(e?.message ?? e)); }}>
+          <Button variant="secondary" icon={<Download size={14} />} onClick={() => { void (async () => { try { await downloadSalesInvoice(await buildInvoicePdfInput()); } catch (e: any) { alert(e?.message ?? e); } })(); }}>
             Download PDF
           </Button>
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>

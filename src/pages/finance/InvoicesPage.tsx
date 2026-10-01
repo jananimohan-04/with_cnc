@@ -9,7 +9,7 @@ import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { downloadBrandedDocument } from '@/lib/brandedDocument';
+import { downloadSalesInvoice, fetchCompanyPrintDetails } from '@/lib/brandedDocument';
 
 const PAGE = 10;
 const cash = (v: string | number | null | undefined) => formatINR(v, { decimals: 'auto' });
@@ -186,16 +186,49 @@ export function InvoicesPage({ onBack }: { onBack?: () => void } = {}) {
   const downloadInvoice = async () => {
     if (!selected) { setError('Select an invoice first.'); return; }
     try {
-      await downloadBrandedDocument({
-        companyName: company?.company_name || 'ARGUS CNC', title: selected.invoice_type || 'Tax Invoice',
-        documentNo: selected.invoice_no, date: selected.invoice_date,
-        details: [['Bill To', selected.customer_name], ['Billing Address', selected.billing_address],
-          ['GSTIN', selected.customer_gstin], ['PO No', selected.po_no], ['Delivery Challan', selected.dc_no],
-          ['Due Date', selected.due_date ? formatDate(selected.due_date) : ''], ['Payment Terms', selected.payment_terms], ['Status', selected.status]],
-        columns: ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'GST %', 'Amount'],
-        rows: (selected.items || []).map((item, index) => [index + 1, item.description, item.hsn || '—', item.quantity, item.unit || '—', cash(item.rate), item.gst_rate || '—', cash(item.amount)]),
-        totals: [['Basic Value', cash(selected.basic_value)], ['CGST', cash(selected.cgst)], ['SGST', cash(selected.sgst)],
-          ['IGST', cash(selected.igst)], ['Received', cash(selected.received)], ['Balance', cash(selected.balance)], ['Total', cash(selected.total)]],
+      const comp = await fetchCompanyPrintDetails((company as any)?.id);
+      const basic = Number(selected.basic_value) || 0;
+      const cg = Number(selected.cgst) || 0;
+      const sg = Number(selected.sgst) || 0;
+      const ig = Number(selected.igst) || 0;
+      const rateOf = (a: number) => (basic > 0 && a > 0 ? Math.round((a / basic) * 10000) / 100 : null);
+      let dcDate: string | null = null;
+      if (selected.dc_no) {
+        try {
+          const dr = await supabase.from('cnc_deliveries').select('delivery_date').eq('delivery_no', selected.dc_no).order('created_at').limit(1).maybeSingle();
+          if (!dr.error && dr.data) dcDate = (dr.data as any).delivery_date || null;
+        } catch { /* date stays empty */ }
+      }
+      const custMatch: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === String(selected.customer_name || '').trim().toLowerCase()) || {};
+      await downloadSalesInvoice({
+        companyName: company?.company_name || 'ARGUS CNC',
+        companyGstin: comp.gstin,
+        title: selected.invoice_type || 'Sales Invoice',
+        docNo: selected.invoice_no,
+        invDate: selected.invoice_date,
+        partyName: selected.customer_name || '',
+        partyAddress: selected.billing_address || '',
+        partyCode: String(custMatch.id || selected.customer_id || ''),
+        partyGstin: selected.customer_gstin || '',
+        dcNo: selected.dc_no || '',
+        dcDate,
+        poNo: selected.po_no || '',
+        items: (selected.items || []).map((item) => {
+          const q = Number(item.quantity) || 0;
+          const r = Number(item.rate) || 0;
+          return {
+            description: item.description || '', hsn: item.hsn || '',
+            qty: q, unit: item.unit || '', price: r,
+            amount: Number(item.amount ?? q * r) || 0,
+          };
+        }),
+        basicValue: basic,
+        cgstRate: rateOf(cg), cgstAmt: cg,
+        sgstRate: rateOf(sg), sgstAmt: sg,
+        igstRate: rateOf(ig), igstAmt: ig,
+        roundOff: Number(selected.round_off) || 0,
+        grandTotal: Number(selected.total) || 0,
+        bankLines: comp.bankLines,
       });
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to generate the invoice PDF.'); }
   };

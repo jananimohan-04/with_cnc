@@ -17,8 +17,9 @@ import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
 import { FgCostingModal } from './FgCostingModal';
 import { DcInvoiceModal } from './DcInvoiceModal';
+import { SignaturePad } from '@/components/ui/SignaturePad';
 import { StageStrip, SalesOrderSection } from './SalesOrderSection';
-import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
+import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
 import { summarizeSalesOrder, fetchOrderQty, recordProductionBatch, REJECTION_TYPES, type OrderQtySummary } from '@/lib/orderQuantities';
@@ -823,6 +824,369 @@ function quoteProductNames(raw: any): string[] {
   return single ? [single] : [];
 }
 
+/** Tolerant delivery update: drops keys the cloud schema predates. */
+async function updateDeliveryTolerant(id: string, patch: Record<string, any>): Promise<void> {
+  let remaining = { ...patch };
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const { error } = await supabase.from('cnc_deliveries').update(remaining).eq('id', id);
+    if (!error) return;
+    const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String((error as any)?.message || ''));
+    if (m && Object.prototype.hasOwnProperty.call(remaining, m[1])) {
+      delete remaining[m[1]];
+      continue;
+    }
+    throw error;
+  }
+  throw new Error('Delivery update failed after retries.');
+}
+
+/** Delivery Challan view/edit box mirroring the DC entry form: header rows,
+ *  one line per product, signature row. Header edits apply to every row of
+ *  the challan; the footer Done Editing button saves via saveRef. */
+function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies, onSaved }: {
+  rows: any[]; qtyTracking?: any; editMode: boolean;
+  saveRef?: { current: (() => Promise<boolean>) | null };
+  customers: any[]; companies: any[];
+  onSaved: () => void;
+}) {
+  const first = rows[0] || {};
+  const [date, setDate] = useState(String(first.delivery_date || '').slice(0, 10));
+  const [partyName, setPartyName] = useState(String(first.customer_name || ''));
+  const [partyAddress, setPartyAddress] = useState(String(first.billing_address || ''));
+  const [partyGstin, setPartyGstin] = useState(String(first.customer_gstin || ''));
+  const [partyCode, setPartyCode] = useState(String(first.customer_code || ''));
+  const [ewayBill, setEwayBill] = useState(String(first.eway_bill || ''));
+  const [poNumber, setPoNumber] = useState(String(first.po_no || first.sales_order_no || ''));
+  const [placeOfSupply, setPlaceOfSupply] = useState(String(first.place_of_supply || ''));
+  const [packaging, setPackaging] = useState(String(first.packaging_details || ''));
+  const [enquiryNo, setEnquiryNo] = useState(String(first.enquiry_no || ''));
+  const [vehicleNo, setVehicleNo] = useState(String(first.vehicle_no || ''));
+  const [phone, setPhone] = useState(String(first.phone || ''));
+  const [category, setCategory] = useState(String(first.category || ''));
+  const [process, setProcess] = useState(String(first.process || ''));
+  const [receiverName, setReceiverName] = useState(String(first.receiver_name || ''));
+  const [senderName, setSenderName] = useState(String(first.sender_name || ''));
+  const [custSignature, setCustSignature] = useState<string | null>(first.customer_signature || null);
+  const [authSignature, setAuthSignature] = useState<string | null>(first.authorized_signature || null);
+  const [lines, setLines] = useState<any[]>(rows.map((r: any) => ({
+    id: r.id, partName: r.part_name || '', hsn: r.hsn || '',
+    qty: String(r.dispatch_qty ?? r.quantity ?? ''),
+    unit: r.unit || 'Nos', price: String(r.unit_price ?? r.price ?? ''),
+  })));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Single source of truth: header + lines live in local state for BOTH view
+  // and edit modes. The `rows` prop only re-seeds this state when fresh DB
+  // data arrives (post-save refresh) while NOT editing, so clicking Done
+  // Editing never flashes stale DB values.
+  const buildDcLines = (rs: any[]) => (rs || []).map((r: any) => ({
+    id: r.id, partName: r.part_name || '', hsn: r.hsn || '',
+    qty: String(r.dispatch_qty ?? r.quantity ?? ''),
+    unit: r.unit || 'Nos', price: String(r.unit_price ?? r.price ?? ''),
+  }));
+  const rowsFingerprint = (rows || []).map((r: any) => [
+    r.id, r.delivery_date, r.customer_name, r.billing_address, r.customer_gstin,
+    r.customer_code, r.eway_bill, r.po_no, r.sales_order_no, r.place_of_supply,
+    r.packaging_details, r.enquiry_no, r.vehicle_no, r.phone, r.category, r.process,
+    r.receiver_name, r.sender_name, r.customer_signature, r.authorized_signature,
+    r.part_name, r.hsn, r.dispatch_qty ?? r.quantity, r.unit, r.unit_price ?? r.price,
+  ].join('~')).join('|');
+  const syncGuard = useRef(true);
+  useEffect(() => {
+    if (syncGuard.current) { syncGuard.current = false; return; }
+    if (editMode) return;
+    const f = (rows || [])[0] || {};
+    setDate(String(f.delivery_date || '').slice(0, 10));
+    setPartyName(String(f.customer_name || ''));
+    setPartyAddress(String(f.billing_address || ''));
+    setPartyGstin(String(f.customer_gstin || ''));
+    setPartyCode(String(f.customer_code || ''));
+    setEwayBill(String(f.eway_bill || ''));
+    setPoNumber(String(f.po_no || f.sales_order_no || ''));
+    setPlaceOfSupply(String(f.place_of_supply || ''));
+    setPackaging(String(f.packaging_details || ''));
+    setEnquiryNo(String(f.enquiry_no || ''));
+    setVehicleNo(String(f.vehicle_no || ''));
+    setPhone(String(f.phone || ''));
+    setCategory(String(f.category || ''));
+    setProcess(String(f.process || ''));
+    setReceiverName(String(f.receiver_name || ''));
+    setSenderName(String(f.sender_name || ''));
+    setCustSignature(f.customer_signature || null);
+    setAuthSignature(f.authorized_signature || null);
+    setLines(buildDcLines(rows || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowsFingerprint]);
+
+  const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+  const trackFor = (name: string) => (Array.isArray(qtyTracking?.products) ? qtyTracking.products : []).find((p: any) => norm(p.name) === norm(name));
+
+  const save = async (): Promise<boolean> => {
+    if (!String(date || '').trim()) { setError('Enter the date.'); return false; }
+    if (!String(partyName || '').trim()) { setError('Enter the party name.'); return false; }
+    const entered = lines.filter((l: any) => String(l.partName || '').trim());
+    if (!entered.length) { setError('Add at least one product with a part name.'); return false; }
+    for (const l of entered) {
+      const qn = Number(l.qty) || 0;
+      if (!(qn > 0)) { setError(`Enter a dispatch quantity greater than 0 for ${l.partName}.`); return false; }
+      if (!String(l.unit || '').trim()) { setError(`Enter the unit for ${l.partName}.`); return false; }
+      const t = trackFor(l.partName);
+      const row = rows.find((r: any) => r.id === l.id);
+      const already = Number(row?.dispatch_qty ?? row?.quantity) || 0;
+      const cap = t ? (Number(t.available) || 0) + already : null;
+      if (cap != null && qn > cap) { setError(`${l.partName}: quantity exceeds the available ${cap} pcs.`); return false; }
+    }
+    if (saving) return false;
+    setSaving(true);
+    setError('');
+    try {
+      const header: any = {
+        delivery_date: date || null, customer_name: partyName.trim(),
+        billing_address: partyAddress, customer_gstin: partyGstin, customer_code: partyCode,
+        eway_bill: ewayBill, po_no: poNumber, place_of_supply: placeOfSupply, packaging_details: packaging,
+        enquiry_no: enquiryNo, vehicle_no: vehicleNo, phone, category, process,
+        receiver_name: receiverName, sender_name: senderName,
+        customer_signature: custSignature, authorized_signature: authSignature,
+      };
+      for (const l of entered) {
+        const qn = Number(l.qty) || 0;
+        const pr = Number(l.price) || 0;
+        await updateDeliveryTolerant(l.id, {
+          ...header,
+          part_name: l.partName.trim(), quantity: qn, dispatch_qty: qn,
+          hsn: l.hsn || '', unit: l.unit || 'Nos', unit_price: pr, total_amount: qn * pr,
+        });
+      }
+      // Refresh the linked sales order totals from live delivery rows.
+      const soNo = String(first.sales_order_no || '');
+      if (soNo) {
+        try {
+          const soR = await supabase.from('cnc_sales_orders').select('id,quantity').eq('order_no', soNo).maybeSingle();
+          if (!soR.error && soR.data) {
+            const dR = await supabase.from('cnc_deliveries').select('dispatch_qty,quantity,status').eq('sales_order_no', soNo);
+            const act = ((dR.error ? [] : dR.data) ?? []).filter((d: any) => !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')));
+            const delivered = act.reduce((s: number, d: any) => s + (Number(d?.dispatch_qty ?? d?.quantity) || 0), 0);
+            const qty0 = Number((soR.data as any).quantity) || 0;
+            await supabase.from('cnc_sales_orders').update({
+              delivered, status: delivered >= qty0 && qty0 > 0 ? 'Delivered' : delivered > 0 ? 'Partially Delivered' : 'Confirmed',
+            }).eq('id', (soR.data as any).id);
+          }
+        } catch (e) { console.error('SO delivery refresh failed:', e); }
+      }
+      onSaved();
+      return true;
+    } catch (e: any) {
+      setError('Unable to save changes: ' + (e?.message ?? e));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The footer Done Editing button triggers this save; no separate button here.
+  useEffect(() => {
+    if (saveRef) saveRef.current = save;
+    return () => { if (saveRef && saveRef.current === save) saveRef.current = null; };
+  });
+
+  const onSelectParty = (c: any) => {
+    const nm = String(c.company || c.name || '');
+    const m: any = (customers || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
+    setPartyName(nm);
+    setPartyCode(m.id || '');
+    setPartyAddress(m.city || c.city || '');
+    setPartyGstin(m.gst || m.gstin || c.gst || '');
+    setPhone(m.phone || c.phone || '');
+  };
+
+  const textCell = (label: string, v: any) => (
+    <div key={label}>
+      <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
+      <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
+    </div>
+  );
+
+  const inputCls = 'w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500';
+
+  return (
+    <div className="mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">DC No</span>
+          <span className="text-sm text-slate-800 font-mono font-bold break-words">{first.delivery_no || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Date</span>
+          {editMode ? (
+            <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+          ) : (
+            <span className="text-sm text-slate-800 font-medium break-words">{date || '—'}</span>
+          )}
+        </div>
+        <div className="col-span-2 md:col-span-1">
+          {editMode ? (
+            <CustomerAutocomplete
+              label="Party Name"
+              required
+              value={partyName}
+              onChange={(val) => setPartyName(val)}
+              onSelectCustomer={onSelectParty}
+              companies={companies}
+              inputClass={inputClass}
+              placeholder="Type or select party..."
+            />
+          ) : (
+            textCell('Party Name', partyName)
+          )}
+        </div>
+        {editMode ? (
+          <>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party Address</span><input className={inputCls} value={partyAddress} onChange={(e) => setPartyAddress(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party GSTIN</span><input className={inputCls} value={partyGstin} onChange={(e) => setPartyGstin(e.target.value)} /></div>
+          </>
+        ) : (
+          <>
+            {textCell('Party Address', partyAddress)}
+            {textCell('Party GSTIN', partyGstin)}
+          </>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+        {editMode ? (
+          <>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party Code</span><input className={inputCls} value={partyCode} onChange={(e) => setPartyCode(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">E-Way Bill No</span><input className={inputCls} value={ewayBill} onChange={(e) => setEwayBill(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">PO Number</span><input className={inputCls} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Place of Supply</span><input className={inputCls} value={placeOfSupply} onChange={(e) => setPlaceOfSupply(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Packaging Details</span><input className={inputCls} value={packaging} onChange={(e) => setPackaging(e.target.value)} /></div>
+          </>
+        ) : (
+          <>
+            {textCell('Party Code', partyCode)}
+            {textCell('E-Way Bill No', ewayBill)}
+            {textCell('PO Number', poNumber)}
+            {textCell('Place of Supply', placeOfSupply)}
+            {textCell('Packaging Details', packaging)}
+          </>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+        {editMode ? (
+          <>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Enquiry No</span><input className={inputCls} value={enquiryNo} onChange={(e) => setEnquiryNo(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Vehicle No</span><input className={inputCls} value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Phone No</span><input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</span><input className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} /></div>
+            <div><span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Process</span><input className={inputCls} value={process} onChange={(e) => setProcess(e.target.value)} /></div>
+          </>
+        ) : (
+          <>
+            {textCell('Enquiry No', enquiryNo)}
+            {textCell('Vehicle No', vehicleNo)}
+            {textCell('Phone No', phone)}
+            {textCell('Category', category)}
+            {textCell('Process', process)}
+          </>
+        )}
+      </div>
+      <div className="mt-4">
+        <div className="grid grid-cols-[minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
+          {['Part Name', 'HSN', 'Qty', 'Unit', 'Price', 'Amount'].map(h => (
+            <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>
+          ))}
+        </div>
+        {lines.map((it: any, idx: number) => {
+          const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+          return (
+            <div key={it.id || idx} className="grid grid-cols-[minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2 mb-2">
+              <div>
+                {editMode ? (
+                  <input className={inputCls} placeholder="Part name" value={it.partName || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
+                ) : (
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.partName || '—'}</span>
+                )}
+              </div>
+              <div>
+                {editMode ? (
+                  <input className={inputCls} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, hsn: e.target.value } : r)))} />
+                ) : (
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || '—'}</span>
+                )}
+              </div>
+              <div>
+                {editMode ? (
+                  <input type="number" min={0} className={`${inputCls} tabular-nums`} value={it.qty ?? ''} placeholder="0" onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, qty: e.target.value } : r)))} />
+                ) : (
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.qty === '' || it.qty == null ? '—' : it.qty}</span>
+                )}
+              </div>
+              <div>
+                {editMode ? (
+                  <input className={inputCls} placeholder="Nos" value={it.unit || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, unit: e.target.value } : r)))} />
+                ) : (
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.unit || '—'}</span>
+                )}
+              </div>
+              <div>
+                {editMode ? (
+                  <input type="number" min={0} className={inputCls} placeholder="0.00" value={it.price ?? ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r)))} />
+                ) : (
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.price === '' || it.price == null ? '—' : `Rs. ${Number(it.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-sm text-slate-800 font-bold tabular-nums">{amt ? `Rs. ${amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Receiver Name</span>
+          {editMode ? (
+            <input className={inputCls} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
+          ) : (
+            <span className="text-sm text-slate-800 font-medium break-words">{receiverName || '—'}</span>
+          )}
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
+          {editMode ? (
+            <SignaturePad value={custSignature} onChange={(v) => setCustSignature(v)} />
+          ) : custSignature ? (
+            <img src={custSignature} alt="Customer signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
+          ) : (
+            <span className="text-sm text-slate-400">—</span>
+          )}
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Sender Name</span>
+          {editMode ? (
+            <input className={inputCls} value={senderName} onChange={(e) => setSenderName(e.target.value)} />
+          ) : (
+            <span className="text-sm text-slate-800 font-medium break-words">{senderName || '—'}</span>
+          )}
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
+          {editMode ? (
+            <SignaturePad value={authSignature} onChange={(v) => setAuthSignature(v)} />
+          ) : authSignature ? (
+            <img src={authSignature} alt="Authorized signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
+          ) : (
+            <span className="text-sm text-slate-400">—</span>
+          )}
+        </div>
+      </div>
+      {editMode && error && (
+        <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>
+      )}
+    </div>
+  );
+}
+
 export function SalesPipelinePage() {
   const { profile, company } = useAuth();
   const userName = profile?.full_name || '';
@@ -877,18 +1241,46 @@ export function SalesPipelinePage() {
   // Multi-product DC lines (drag path): one selectable row per order product
   // with its own dispatch qty; saved as one delivery row each under the same
   // DC number (which the invoice flow already reads as a multi-item challan).
-  const [dcItems, setDcItems] = useState<{ name: string; avail: number; qty: string; selected: boolean }[]>([]);
+  const [dcItems, setDcItems] = useState<{ name: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>([]);
+  const dcItemNames = (dcItems || []).map((i: any) => i.name).join('|');
   // Approved-price display for the DC form (same source as the DC→Invoice
   // gate: latest Approved costing sheet for the quotation). The DC line can
   // name several products ("p1, p2"), so prices resolve per product and show
   // as a breakdown. Saved challan flow is unchanged.
   const [dcPricing, setDcPricing] = useState<{ lines: { name: string; unit: number; sheetRef: string }[]; loading: boolean }>({ lines: [], loading: false });
+  // Product + process masters for the DC form (autofill only; masters are never written here).
+  const [partsMaster, setPartsMaster] = useState<any[]>([]);
+  const [processList, setProcessList] = useState<any[]>([]);
+  // Snapshot of the opened form so Clear restores the prefilled values.
+  const [dcSnapshot, setDcSnapshot] = useState<{ form: any; items: any[] } | null>(null);
+  // Product + process masters for the DC form (autofill only; masters are never written here).
+  useEffect(() => {
+    if (!dcModalTarget) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pm = await supabase.from('cnc_parts').select('part_name,part_no,unit,category,hsn');
+        let rows: any[] = (!pm.error && pm.data) ? pm.data : [];
+        if (pm.error) {
+          const fb = await supabase.from('cnc_parts').select('part_name,part_no,unit,category');
+          rows = (!fb.error && fb.data) ? fb.data : [];
+        }
+        if (!cancelled) setPartsMaster(rows);
+      } catch { if (!cancelled) setPartsMaster([]); }
+      try {
+        const pr = await supabase.from('cnc_processes').select('process_code,process_name,status').eq('status', 'Active').order('process_name');
+        if (!cancelled) setProcessList(!pr.error ? (pr.data ?? []) : []);
+      } catch { if (!cancelled) setProcessList([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [dcModalTarget]);
+  // Approved-price lookup for the DC form (same source as the DC→Invoice
+  // gate: latest Approved costing sheet for the quotation).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const soNo = String((dcModalTarget as any)?.raw?.sales_order || dcForm.poNumber || '').trim();
-        const pname = String(dcForm.partName || '').trim();
         if (!dcModalTarget || !soNo) {
           if (!cancelled) setDcPricing({ lines: [], loading: false });
           return;
@@ -913,8 +1305,8 @@ export function SalesPipelinePage() {
         if (cancelled) return;
         const sheets = !v.error ? (v.data ?? []) : [];
         const lc = (s: any) => String(s ?? '').trim().toLowerCase();
-        const frags = pname.split(',').map((s) => s.trim()).filter(Boolean);
-        const candidates = [...(frags.length ? frags : []), String(soRow?.part_no ?? '').trim()].filter(Boolean);
+        const frags = dcItemNames.split('|').map((s) => s.trim()).filter(Boolean);
+        const candidates = [...frags, String(soRow?.part_no ?? '').trim()].filter(Boolean);
         const seen = new Set<string>();
         const lines: { name: string; unit: number; sheetRef: string }[] = [];
         for (const nm of candidates) {
@@ -927,19 +1319,37 @@ export function SalesPipelinePage() {
             lines.push({ name: nm, unit: Math.round((Number(pick.approved_price) / Number(pick.quantity)) * 100) / 100, sheetRef: `${qRow.quote_no} V${pick.version}` });
           }
         }
-        if (!cancelled) {
-          setDcPricing({ lines, loading: false });
-          if (lines.length === 1) {
-            setDcForm((prev: any) => (prev.price ? prev : { ...prev, price: String(lines[0].unit) }));
-          }
-        }
+        if (!cancelled) setDcPricing({ lines, loading: false });
       } catch {
         if (!cancelled) setDcPricing({ lines: [], loading: false });
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dcModalTarget, dcForm.poNumber, dcForm.partName]);
+  }, [dcModalTarget, dcForm.poNumber, dcItemNames]);
+  // Fill empty HSN / unit / price on DC lines from the masters above.
+  useEffect(() => {
+    if (!dcModalTarget) return;
+    setDcItems((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        if (!it.name) return it;
+        const key = String(it.name).trim().toLowerCase();
+        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
+        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
+        const patch: any = {};
+        if (!it.hsn && (m as any)?.hsn) patch.hsn = (m as any).hsn;
+        if (!it.unit && m?.unit) patch.unit = m.unit;
+        if (!it.price && l) patch.price = String(l.unit);
+        if (Object.keys(patch).length) { changed = true; return { ...it, ...patch }; }
+        return it;
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dcModalTarget, partsMaster, dcPricing.lines]);
+
+
   const [invoiceModalTarget, setInvoiceModalTarget] = useState<KanbanCard | null>(null);
   const [soModalTarget, setSoModalTarget] = useState<KanbanCard | null>(null);
   const [soForm, setSoForm] = useState<any>({});
@@ -953,6 +1363,8 @@ export function SalesPipelinePage() {
   const soSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   // Pending enquiry save, flushed the same way.
   const enquirySaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  // Pending delivery-challan save, flushed the same way.
+  const dcSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   const handleInlineEdit = async (title: string, id: string, field: string, value: string) => {
@@ -1392,17 +1804,60 @@ export function SalesPipelinePage() {
     const invoice = kind === 'invoice';
     if (invoice) {
       const items = Array.isArray(record.items) ? record.items : [];
+      const comp = await fetchCompanyPrintDetails((company as any)?.id);
+      const invBasic = Number(record.basic_value ?? record.subtotal ?? 0) || 0;
+      const invCgst = Number(record.cgst ?? 0) || 0;
+      const invSgst = Number(record.sgst ?? 0) || 0;
+      const invIgst = Number(record.igst ?? 0) || 0;
+      const invRate = (amt: number) => (invBasic > 0 && amt > 0 ? Math.round((amt / invBasic) * 10000) / 100 : null);
+      const custMatch: any = (customerList || []).find((x: any) =>
+        String(x.name || '').trim().toLowerCase() === String(record.customer_name || record.customer || '').trim().toLowerCase()) || {};
+      let invDcDate: string | null = viewModalData?.dc?.delivery_date || null;
+      const invDcNo = String(record.dc_no || record.delivery_no || '');
+      if (!invDcDate && invDcNo) {
+        try {
+          const dr = await supabase.from('cnc_deliveries').select('delivery_date,po_no,customer_gstin,billing_address,customer_code')
+            .eq('delivery_no', invDcNo).order('created_at').limit(1).maybeSingle();
+          if (!dr.error && dr.data) invDcDate = (dr.data as any).delivery_date || null;
+        } catch { /* date stays empty */ }
+      }
+      const invPo = String(record.po_no || viewModalData?.dc?.po_no || '');
       return {
         companyName: company?.company_name || 'ARGUS CNC',
+        companyGstin: comp.gstin,
         title: record.invoice_type || 'Tax Invoice',
-        documentNo: record.invoice_no || record.inv_no || '',
-        date: record.invoice_date || record.date,
-        details: [['Bill To', record.customer_name || record.customer], ['Billing Address', record.billing_address], ['GSTIN', record.customer_gstin], ['PO No', record.po_no], ['Delivery Challan', record.dc_no], ['Payment Terms', record.payment_terms]] as [string, string | number | null | undefined][],
-        columns: ['#', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount'],
-        rows: items.length
-          ? items.map((item: any, index: number) => [index + 1, item.description || item.partName || item.part_name || '', item.hsn || '—', item.quantity ?? item.qty ?? '', item.unit || '', formatINR(Number(item.rate ?? item.unitPrice ?? 0)), formatINR(Number(item.amount ?? (Number(item.quantity ?? item.qty ?? 0) * Number(item.rate ?? item.unitPrice ?? 0))))] as (string | number)[])
-          : [[1, record.part_name || record.description || '—', record.quantity || record.dispatch_qty || '', record.unit || ''] as (string | number)[]],
-        totals: [['Basic Value', formatINR(Number(record.basic_value || record.subtotal || 0))], ['CGST', formatINR(Number(record.cgst || 0))], ['SGST', formatINR(Number(record.sgst || 0))], ['IGST', formatINR(Number(record.igst || 0))], ['Total', formatINR(Number(record.total || record.total_value || record.value || 0))]] as [string, string][],
+        docNo: String(record.invoice_no || record.inv_no || ''),
+        invDate: record.invoice_date || record.date,
+        partyName: String(record.customer_name || record.customer || ''),
+        partyAddress: String(record.billing_address || viewModalData?.dc?.billing_address || ''),
+        partyCode: String(custMatch.id || viewModalData?.dc?.customer_code || ''),
+        partyGstin: String(record.customer_gstin || viewModalData?.dc?.customer_gstin || ''),
+        dcNo: invDcNo,
+        dcDate: invDcDate,
+        poNo: invPo,
+        items: items.length
+          ? items.map((item: any) => {
+              const q = Number(item.quantity ?? item.qty ?? 0) || 0;
+              const r = Number(item.rate ?? item.unitPrice ?? 0) || 0;
+              return {
+                description: String(item.description || item.partName || item.part_name || ''),
+                hsn: String(item.hsn || ''),
+                qty: q, unit: String(item.unit || ''),
+                price: r, amount: Number(item.amount ?? q * r) || 0,
+              };
+            })
+          : [{
+              description: String(record.part_name || record.description || ''),
+              hsn: '', qty: Number(record.quantity || record.dispatch_qty || 0) || 0,
+              unit: String(record.unit || ''), price: 0, amount: 0,
+            }],
+        basicValue: invBasic,
+        cgstRate: invRate(invCgst), cgstAmt: invCgst,
+        sgstRate: invRate(invSgst), sgstAmt: invSgst,
+        igstRate: invRate(invIgst), igstAmt: invIgst,
+        roundOff: Number((record as any).round_off ?? 0) || 0,
+        grandTotal: Number(record.total || record.total_value || record.value || 0) || 0,
+        bankLines: comp.bankLines,
       };
     }
     // ---- Delivery Challan: gather EVERY item from the same DC object/data shown
@@ -1481,55 +1936,85 @@ export function SalesPipelinePage() {
       return String(record.unit || '').trim() || 'Nos';
     };
     const itemQty = (item: any) => Number(item.quantity ?? item.qty ?? item.dispatch_qty ?? 0) || 0;
-    const rows: (string | number)[][] = items.length
-      ? items.map((item: any, i: number) => [
-          i + 1,
-          itemName(item, i),
-          itemQty(item) || '',
-          itemUnit(item),
-        ])
-      : [[1, stripSummary(record.part_name || record.description) || '—',
-          Number(record.dispatch_qty ?? record.quantity ?? 0) || '', String(record.unit || '').trim() || 'Nos']];
-    const totalQty = items.length
-      ? items.reduce((s: number, it: any) => s + itemQty(it), 0)
-      : (Number(record.dispatch_qty ?? record.quantity ?? 0) || 0);
-    const resolvedUnits = items.map((it: any) => itemUnit(it));
-    const qtyUnit = (resolvedUnits.sort((a, b) =>
-      resolvedUnits.filter(u => u === a).length - resolvedUnits.filter(u => u === b).length).pop()
-      || String(record.unit || '').trim() || 'Nos');
     const customerName = String(record.customer_name || record.customer || '').trim();
     const soRef = String(record.sales_order_no || record.order_no || viewModalData?.order?.order_no || '').trim();
+    // Full-detail challan lines: prefer the raw sibling rows (every column),
+    // fall back to the resolved items, then the header record.
+    const money = (n: number) => (n ? `Rs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '');
+    let dcLines: { partName: string; hsn: string; qty: number; unit: string; price: number }[] = [];
+    if (siblingRows.length) {
+      dcLines = siblingRows.map((r: any) => ({
+        partName: String(r.part_name || '').trim(),
+        hsn: String(r.hsn || '').trim(),
+        qty: Number(r.dispatch_qty ?? r.quantity) || 0,
+        unit: String(r.unit || '').trim() || 'Nos',
+        price: Number(r.unit_price ?? r.price) || 0,
+      })).filter((l) => l.partName);
+    }
+    if (!dcLines.length && items.length) {
+      dcLines = items.map((item: any, i: number) => ({
+        partName: itemName(item, i),
+        hsn: String(item.hsn || '').trim(),
+        qty: itemQty(item),
+        unit: itemUnit(item),
+        price: Number(item.unit_price ?? item.price ?? item.rate) || 0,
+      })).filter((l) => l.partName);
+    }
+    if (!dcLines.length) {
+      dcLines = [{
+        partName: stripSummary(record.part_name || record.description) || '—',
+        hsn: String(record.hsn || '').trim(),
+        qty: Number(record.dispatch_qty ?? record.quantity) || 0,
+        unit: String(record.unit || '').trim() || 'Nos',
+        price: Number(record.unit_price ?? record.price) || 0,
+      }];
+    }
     return {
-      companyName: company?.company_name || 'ARGUS CNC',
-      title: 'Delivery Challan',
-      documentNo: docNo,
-      date: record.delivery_date || record.date,
-      details: [
-        ['Company Name', customerName],
-        ['Company Address', record.billing_address || record.customer_address || record.delivery_address],
-        ['Delivery Address', record.delivery_address || record.billing_address || record.customer_address],
-      ] as [string, string | number | null | undefined][],
-      details2: [
-        ['Sales Order No.', soRef],
-        ['Vehicle No.', record.vehicle_no],
-        ['Transporter', record.transport || record.transporter],
-        ['Delivery Date', record.delivery_date || record.date],
-      ] as [string, string | number | null | undefined][],
-      columns: ['S.No', 'Product / Description', 'Quantity', 'Unit'],
-      rows,
-      totals: [['Total Items', String(items.length || 1)], ['Total Quantity', `${totalQty} ${qtyUnit}`]] as [string, string][],
-      signatures: ['Prepared By', 'Checked By', 'Received By (Customer Signature)'],
-      premium: true,
+      companyName: company?.company_name || 'ARGUS TECHNOLOGIES',
+      dcNo: docNo,
+      dcDate: record.delivery_date || record.date,
+      ewayBill: String(record.eway_bill || ''),
+      poNumber: String(record.po_no || soRef || ''),
+      placeOfSupply: String(record.place_of_supply || ''),
+      customerName,
+      customerAddress: String(record.billing_address || record.customer_address || ''),
+      customerGstin: String(record.customer_gstin || ''),
+      customerCode: String(record.customer_code || ''),
+      category: String(record.category || ''),
+      packaging: String(record.packaging_details || ''),
+      enquiryNo: String(record.enquiry_no || ''),
+      process: String(record.process || ''),
+      transportNo: String(record.vehicle_no || ''),
+      phoneNo: String(record.phone || ''),
+      receiverName: String(record.receiver_name || ''),
+      senderName: String(record.sender_name || ''),
+      items: dcLines.map((l) => ({
+        partName: l.partName, hsn: l.hsn,
+        qty: l.qty ? String(l.qty) : '', unit: l.unit,
+        price: money(l.price), amount: money(l.qty * l.price),
+      })),
+      customerSignature: record.customer_signature || null,
+      authorizedSignature: record.authorized_signature || null,
     };
   };
   const downloadPipelineDocument = async (kind: 'dc' | 'invoice') => {
     const input = await pipelineDocumentInput(kind);
-    try { if (input) await downloadBrandedDocument(input); }
+    try {
+      if (!input) return;
+      if (kind === 'dc') await downloadDeliveryChallan(input as any);
+      else if (kind === 'invoice') await downloadSalesInvoice(input as any);
+      else await downloadBrandedDocument(input as any);
+    }
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to generate the document PDF.'); }
   };
   const viewPipelineDocument = async (kind: 'dc' | 'invoice') => {
     const input = await pipelineDocumentInput(kind);
-    try { if (input) await viewBrandedDocument(input); }
+    try {
+      if (!input) return;
+      if (kind === 'dc') await viewDeliveryChallan(input as any);
+      else if (kind === 'invoice') await viewSalesInvoice(input as any);
+      else await viewBrandedDocument(input as any);
+    }
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to preview the document PDF.'); }
   };
 
@@ -2239,6 +2724,14 @@ export function SalesPipelinePage() {
         }
       } else if (card.type === 'dc') {
         aggregated.dc = card.raw;
+        // Sibling rows of the same challan number render as one multi-line bill.
+        try {
+          const dcNo = String(card.raw?.delivery_no || '').trim();
+          if (dcNo) {
+            const { data: sibs } = await supabase.from('cnc_deliveries').select('*').eq('delivery_no', dcNo).order('created_at', { ascending: true });
+            if (sibs && sibs.length > 1) aggregated.dcRows = sibs;
+          }
+        } catch { /* single-row fallback below */ }
         // Optionally try to fetch order if we had a sales order id
         if (card.raw.sales_order_no) {
            const { data: ord } = await supabase.from('cnc_sales_orders').select('*').eq('order_no', card.raw.sales_order_no).single();
@@ -2334,6 +2827,7 @@ export function SalesPipelinePage() {
     setViewEditMode(false);
     soSaveRef.current = null;
     enquirySaveRef.current = null;
+    dcSaveRef.current = null;
   };
 
   const handleDragStart = (e: React.DragEvent, card: KanbanCard) => {
@@ -2495,28 +2989,36 @@ export function SalesPipelinePage() {
     } else if (card.type === 'finished_goods' && toStage === 'DC') {
       // Prefill with the deliverable quantity: never more than the good FG
       // available for the order (good completed minus already delivered).
-      // Re-validated against live rows on save.
+      // Customer, product and quantity details come from the source
+      // transaction — nothing is re-typed. Re-validated on save.
+      const cardCust = card.customer || '';
+      const cmatch: any = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
+      const kcmatch: any = (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
+      const soRefNo = card.raw.sales_order || card.raw.wo_no || '';
+      const dcInitForm = {
+        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        date: new Date().toISOString().split('T')[0], partyName: cardCust,
+        partyAddress: cmatch.city || kcmatch.city || '',
+        partyGstin: cmatch.gst || cmatch.gstin || kcmatch.gst || '',
+        partyCode: cmatch.id || '',
+        ewayBill: '', poNumber: soRefNo, placeOfSupply: '', packaging: '',
+        enquiryNo: baseUniqueNo(card.refNo || ''), vehicleNo: '', phone: cmatch.phone || kcmatch.phone || '',
+        category: '', process: '',
+        receiverName: '', senderName: '', custSignature: null, authSignature: null,
+      };
       const avail = card.qtyTrack ? Math.max(0, card.qtyTrack.fgAvailable) : null;
       const wanted = Number(card.qty) || 0;
-      setDcForm({
-         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-         date: new Date().toISOString().split('T')[0], partyName: card.customer,
-         partName: card.part, quantity: String(avail == null ? (card.qty?.toString() || '0') : Math.min(wanted, avail)),
-         availableQty: avail, price: '',
-         poNumber: card.raw.sales_order || card.raw.wo_no || '', vehicleNo: '', ewayBill: ''
-      });
+      const mkDcLine = (name: string, a: number | null, q: string) => ({ name, avail: a, qty: q, selected: true, hsn: '', unit: 'Nos', price: '' });
       const prods = ((card as any).qtyTrack?.products ?? []).filter((p: any) => (p.available ?? 0) > 0 || (p.good ?? 0) > 0);
-      if (prods.length > 1) {
-        setDcItems(prods.map((p: any) => ({
-          name: p.name,
-          avail: Math.max(0, Number(p.available) || 0),
-          qty: String(Math.max(0, Number(p.available) || 0)),
-          selected: true,
-        })));
-      } else {
-        setDcItems([]);
-      }
+      const dcInitItems = prods.length > 1
+        ? prods.map((p: any) => mkDcLine(p.name, Math.max(0, Number(p.available) || 0), String(Math.max(0, Number(p.available) || 0))))
+        : [mkDcLine(card.part || '', avail, String(avail == null ? (card.qty?.toString() || '0') : Math.min(wanted, avail)))];
+      setDcForm(dcInitForm);
+      setDcItems(dcInitItems);
+      setDcSnapshot({ form: { ...dcInitForm }, items: dcInitItems.map((l: any) => ({ ...l })) });
       setDcModalTarget(card);
+
+
     } else if (card.type === 'dc' && toStage === 'Invoice') {
       // Approved-price gate: open the invoice modal backed by FG costing instead
       // of the manual-price entry form. Nothing is written until approval there.
@@ -2895,34 +3397,38 @@ export function SalesPipelinePage() {
 
   const saveDeliveryChallan = async () => {
     if (!dcModalTarget || dcSaving) return;
-    // Multi-product lines (drag path) or the single combined line.
-    const picked = dcItems.filter((i) => i.selected);
-    const useItems = !!dcModalTarget.raw?.id && picked.length > 0;
-    const q = useItems ? picked.reduce((s, i) => s + (Number(i.qty) || 0), 0) : (Number(dcForm.quantity) || 0);
-    const fromWorkOrder = !!dcModalTarget.raw?.id;
-    if (q <= 0) {
-       alert("Please enter the dispatch quantity.");
-       return;
+    const f = dcForm;
+    if (!String(f.dcNo || '').trim()) { alert('Enter the DC number.'); return; }
+    if (!String(f.date || '').trim()) { alert('Enter the date.'); return; }
+    if (!String(f.partyName || '').trim()) { alert('Enter the party name.'); return; }
+    // Product lines (selected rows only).
+    const lines = (dcItems || []).filter((i) => i.selected).map((i) => ({
+      name: String(i.name || '').trim(),
+      qty: Number(i.qty) || 0,
+      hsn: String(i.hsn || '').trim(),
+      unit: String(i.unit || '').trim() || 'Nos',
+      price: Number(i.price) || 0,
+      avail: i.avail,
+    })).filter((l) => l.name);
+    if (!lines.length) { alert('Add at least one product with a part name.'); return; }
+    for (const l of lines) {
+      if (!(l.qty > 0)) { alert(`Enter a dispatch quantity greater than 0 for ${l.name}.`); return; }
+      if (l.avail != null && l.qty > l.avail) { alert(`${l.name}: quantity exceeds the available ${l.avail} pcs.`); return; }
     }
+    const q = lines.reduce((s, l) => s + l.qty, 0);
+    const fromWorkOrder = !!dcModalTarget.raw?.id;
     if (fromWorkOrder) {
       const maxQ = Number(dcModalTarget.qty) || 0;
       if (q > maxQ) {
-         alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
-         return;
-      }
-    }
-    if (useItems) {
-      for (const it of picked) {
-        const n = Number(it.qty) || 0;
-        if (!(n > 0)) { alert(`Enter a dispatch quantity greater than 0 for ${it.name}.`); return; }
-        if (n > it.avail) { alert(`${it.name}: quantity exceeds the available ${it.avail} pcs.`); return; }
+        alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
+        return;
       }
     }
     setDcSaving(true);
     try {
       // Duplicate guards: the same challan must never be recorded twice
       // (double-click, double drag, or re-typed manual entry).
-      const dcNoTrimmed = (dcForm.dcNo || '').trim();
+      const dcNoTrimmed = (f.dcNo || '').trim();
       if (dcNoTrimmed) {
         const { data: sameNo, error: sameNoErr } = await supabase.from('cnc_deliveries')
           .select('id,delivery_no').eq('delivery_no', dcNoTrimmed).limit(1);
@@ -2932,7 +3438,7 @@ export function SalesPipelinePage() {
         }
       }
     // Resolve the real sales order (work orders store the SO order_no in `sales_order`)
-    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || dcForm.poNumber || '';
+    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || f.poNumber || '';
     let so: any = null;
     if (soNo) {
       const { data: soRow, error: soErr } = await supabase.from('cnc_sales_orders').select('id, customer_id, quantity, delivered').eq('order_no', soNo).maybeSingle();
@@ -2961,17 +3467,14 @@ export function SalesPipelinePage() {
     }
     // Near-duplicate guard: same order + product + qty + date within minutes.
     // Multi-product challans check each line.
-    const checkEntries = useItems
-      ? picked.map((i) => ({ part: i.name, qty: Number(i.qty) || 0 }))
-      : [{ part: dcForm.partName || '', qty: q }];
     if (soNo) {
       try {
         const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        for (const ce of checkEntries) {
+        for (const ce of lines) {
           const { data: recent } = await supabase.from('cnc_deliveries')
             .select('id,delivery_no').eq('sales_order_no', soNo)
-            .eq('part_name', ce.part).eq('dispatch_qty', ce.qty)
-            .eq('delivery_date', dcForm.date || null).gte('created_at', tenMinAgo).limit(1);
+            .eq('part_name', ce.name).eq('dispatch_qty', ce.qty)
+            .eq('delivery_date', f.date || null).gte('created_at', tenMinAgo).limit(1);
           if (recent && recent.length > 0 && !window.confirm(
             `A nearly identical challan (${recent[0].delivery_no}) was created minutes ago. Create this one anyway?`)) {
             return;
@@ -2981,7 +3484,7 @@ export function SalesPipelinePage() {
     }
     // customer_id is NOT NULL: resolve from the sales order, else match/auto-create the customer by name.
     let customerId: string | null = so?.customer_id || null;
-    const partyName = (dcForm.partyName || '').trim();
+    const partyName = (f.partyName || '').trim();
     if (!customerId && partyName) {
       const match = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === partyName.toLowerCase());
       if (match) {
@@ -2999,46 +3502,66 @@ export function SalesPipelinePage() {
     }
     if (!customerId) { alert('Could not resolve a company for this delivery. Add the party as a company first.'); return; }
     // One delivery row per product under the same challan number (multi-item
-    // challans are read back together by the invoice flow).
-    const rowsToSave = useItems
-      ? picked.map((i) => ({ part: i.name, qty: Number(i.qty) || 0 }))
-      : [{ part: dcForm.partName, qty: q }];
+    // challans are read back together by the invoice flow). Extra columns are
+    // attempted when the database already has them and skipped otherwise, so
+    // the core save never breaks on older schemas.
+    const baseRows = lines.map((l) => ({
+      id: crypto.randomUUID(),
+      delivery_no: f.dcNo, customer_name: f.partyName,
+      customer_id: customerId, sales_order_id: so?.id || null, sales_order_no: soNo || null,
+      part_name: l.name, quantity: l.qty, dispatch_qty: l.qty, delivery_date: f.date || null,
+      vehicle_no: f.vehicleNo || '', status: 'Pending',
+      created_at: new Date().toISOString(),
+      billing_address: f.partyAddress || '', customer_gstin: f.partyGstin || '',
+      customer_code: f.partyCode || '', eway_bill: f.ewayBill || '', po_no: f.poNumber || '',
+      place_of_supply: f.placeOfSupply || '', packaging_details: f.packaging || '',
+      enquiry_no: f.enquiryNo || '', phone: f.phone || '', category: f.category || '', process: f.process || '',
+      hsn: l.hsn, unit: l.unit, unit_price: l.price, total_amount: l.qty * l.price,
+      receiver_name: f.receiverName || '', sender_name: f.senderName || '',
+      customer_signature: f.custSignature || null, authorized_signature: f.authSignature || null,
+    }));
+    const skipped = new Set<string>();
     let error: any = null;
-    for (const r of rowsToSave) {
-      const res = await supabase.from('cnc_deliveries').insert([{
-         id: crypto.randomUUID(), delivery_no: dcForm.dcNo, customer_name: dcForm.partyName,
-         customer_id: customerId, sales_order_id: so?.id || null, sales_order_no: soNo || null,
-         part_name: r.part, quantity: r.qty, dispatch_qty: r.qty, delivery_date: dcForm.date || null,
-         vehicle_no: dcForm.vehicleNo || '', status: 'Pending',
-         created_at: new Date().toISOString()
-      }]);
-      if (res.error) { error = res.error; break; }
+    for (const r of baseRows) {
+      const payload: any = { ...r };
+      skipped.forEach((k) => delete payload[k]);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const res = await supabase.from('cnc_deliveries').insert([payload]);
+        if (!res.error) break;
+        const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(res.error.message || '');
+        if (m && m[1] in payload) { delete payload[m[1]]; skipped.add(m[1]); continue; }
+        error = res.error; break;
+      }
+      if (error) break;
     }
-    if (!error) {
-       if (fromWorkOrder) {
-         // Partial DCs leave the batch open; only a fulfilling dispatch marks
-         // it Dispatched. Orders without production rows keep old behaviour.
-         // Grouped FG cards mark every row in the group.
-         const fulfilled = availNow == null || (goodTotal > 0 && deliveredTotal + q >= goodTotal);
-         if (fulfilled) {
-           const woIds = Array.isArray((dcModalTarget.raw as any)?._groupIds) && (dcModalTarget.raw as any)._groupIds.length
-             ? (dcModalTarget.raw as any)._groupIds : [dcModalTarget.raw.id];
-           const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).in('id', woIds.filter(Boolean));
-           if (woErr) console.error("Failed to update work order status:", woErr);
-         }
-       }
-       if (so) {
-         const delivered = (Number(so.delivered) || 0) + q;
-         const status = delivered >= (Number(so.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
-         const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
-         if (soUpdErr) console.error("Failed to update sales order delivery:", soUpdErr);
-       }
-       setDcModalTarget(null); fetchPipeline();
-    } else { alert("Error: " + error.message); }
+    if (error) { alert("Error: " + error.message); return; }
+    if (skipped.size) {
+      alert(`DC saved. These extra fields have no database column yet and were skipped: ${[...skipped].join(', ')}`);
+    }
+    if (fromWorkOrder) {
+      // Partial DCs leave the batch open; only a fulfilling dispatch marks
+      // it Dispatched. Orders without production rows keep old behaviour.
+      // Grouped FG cards mark every row in the group.
+      const fulfilled = availNow == null || (goodTotal > 0 && deliveredTotal + q >= goodTotal);
+      if (fulfilled) {
+        const woIds = Array.isArray((dcModalTarget.raw as any)?._groupIds) && (dcModalTarget.raw as any)._groupIds.length
+          ? (dcModalTarget.raw as any)._groupIds : [dcModalTarget.raw.id];
+        const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).in('id', woIds.filter(Boolean));
+        if (woErr) console.error("Failed to update work order status:", woErr);
+      }
+    }
+    if (so) {
+      const delivered = (Number(so.delivered) || 0) + q;
+      const status = delivered >= (Number(so.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
+      const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
+      if (soUpdErr) console.error("Failed to update sales order delivery:", soUpdErr);
+    }
+    setDcModalTarget(null); fetchPipeline();
     } finally {
       setDcSaving(false);
     }
   };
+
 
     const saveStandaloneSalesOrder = async () => {
     if (!soModalTarget) return;
@@ -3501,10 +4024,19 @@ export function SalesPipelinePage() {
                       });
                       setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'DC') {
-                      setDcForm({
-                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`, partyName: '', poNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', vehicleNo: '', ewayBill: ''
-                      });
-                      setDcItems([]);
+                      const dcBlankForm = {
+                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+                        date: new Date().toISOString().split('T')[0], partyName: '',
+                        partyAddress: '', partyGstin: '', partyCode: '',
+                        ewayBill: '', poNumber: '', placeOfSupply: '', packaging: '',
+                        enquiryNo: '', vehicleNo: '', phone: '',
+                        category: '', process: '',
+                        receiverName: '', senderName: '', custSignature: null, authSignature: null,
+                      };
+                      const dcBlankItems = [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
+                      setDcForm(dcBlankForm);
+                      setDcItems(dcBlankItems);
+                      setDcSnapshot({ form: { ...dcBlankForm }, items: dcBlankItems.map((l) => ({ ...l })) });
                       setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Invoice') {
                       setInvoiceForm({
@@ -4278,83 +4810,144 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Delivery Challan Modal */}
-      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button variant="secondary" onClick={() => setDcModalTarget(null)}>Cancel</Button><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button></>}>
-        <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="Delivery Challan" uniqueNo={dcModalTarget?.refNo} products={dcForm.partName || dcModalTarget?.part} customer={dcForm.partyName || dcModalTarget?.customer} />
-          <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
-          <CustomerAutocomplete
-            label="Party Name"
-            required
-            value={dcForm.partyName || ''}
-            onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
-            companies={allKnownCompanies}
-            inputClass={inputClass}
-            placeholder="Type or select party..."
-          />
-          <FormField label="PO / WO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
-          <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
-          <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
-          <div className="col-span-2 border-t border-slate-100 mt-2 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Product Details — how much of each product for this DC?</h4>
-            {dcItems.length > 0 ? (
-              <div className="space-y-2">
-                {dcItems.map((it, idx) => (
-                  <div key={it.name} className={`grid grid-cols-[auto_minmax(0,1fr)_7rem] gap-3 items-center rounded-lg border px-3 py-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
-                    <input
-                      type="checkbox"
-                      checked={it.selected}
-                      onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
-                      className="h-4 w-4 accent-orange-600"
-                      aria-label={`Select ${it.name}`}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{it.name}</p>
-                      <p className="text-[11px] text-slate-400">Available: {it.avail}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-400">Qty for DC</p>
-                      <input
-                        type="number" min={0}
-                        disabled={!it.selected}
-                        value={it.qty}
-                        onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
-                        className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-            <div className="grid grid-cols-3 gap-4">
-              <FormField label="Product Name" required><input className={inputClass} value={dcForm.partName || ''} onChange={e=>setDcForm({...dcForm, partName: e.target.value})} /></FormField>
-              <FormField label="Quantity" required><input type="number" min="0" className={inputClass} value={dcForm.quantity || ''} onChange={e=>setDcForm({...dcForm, quantity: e.target.value})} /></FormField>
-              <FormField label="Price"><input type="number" className={inputClass} value={dcForm.price || ''} onChange={e=>setDcForm({...dcForm, price: e.target.value})} /></FormField>
+      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button><Button variant="secondary" onClick={() => { if (dcSnapshot) { const c = JSON.parse(JSON.stringify(dcSnapshot)); setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` }); setDcItems(c.items.map((l: any) => ({ ...l }))); } }}>Clear</Button></>}>
+        <div className="flex flex-col gap-4">
+          <PipelineContextBanner stage="Delivery Challan" uniqueNo={dcModalTarget?.refNo} products={(dcItems || []).map((i: any) => i.name).filter(Boolean).join(', ') || dcModalTarget?.part} customer={dcForm.partyName || dcModalTarget?.customer} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
+            <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
+            <CustomerAutocomplete
+              label="Party Name"
+              required
+              value={dcForm.partyName || ''}
+              onChange={val => setDcForm((prev: any) => ({ ...prev, partyName: val }))}
+              onSelectCustomer={(c: any) => {
+                const nm = String(c.company || '');
+                const m: any = (customerList || []).find((x: any) => String(x.name || '').trim().toLowerCase() === nm.trim().toLowerCase()) || {};
+                setDcForm((prev: any) => ({
+                  ...prev, partyName: nm,
+                  partyCode: m.id || '',
+                  partyAddress: m.city || c.city || '',
+                  partyGstin: m.gst || m.gstin || (c as any).gst || '',
+                  phone: m.phone || c.phone || '',
+                }));
+              }}
+              companies={allKnownCompanies}
+              inputClass={inputClass}
+              placeholder="Type or select party..."
+            />
+            <FormField label="Party Address"><input className={inputClass} value={dcForm.partyAddress || ''} onChange={e=>setDcForm({...dcForm, partyAddress: e.target.value})} /></FormField>
+            <FormField label="Party GSTIN"><input className={inputClass} value={dcForm.partyGstin || ''} onChange={e=>setDcForm({...dcForm, partyGstin: e.target.value})} /></FormField>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="Party Code"><input className={inputClass} value={dcForm.partyCode || ''} onChange={e=>setDcForm({...dcForm, partyCode: e.target.value})} /></FormField>
+            <FormField label="E-Way Bill No"><input className={inputClass} value={dcForm.ewayBill || ''} onChange={e=>setDcForm({...dcForm, ewayBill: e.target.value})} /></FormField>
+            <FormField label="PO Number"><input className={inputClass} value={dcForm.poNumber || ''} onChange={e=>setDcForm({...dcForm, poNumber: e.target.value})} /></FormField>
+            <FormField label="Place of Supply"><input className={inputClass} value={dcForm.placeOfSupply || ''} onChange={e=>setDcForm({...dcForm, placeOfSupply: e.target.value})} /></FormField>
+            <FormField label="Packaging Details"><input className={inputClass} value={dcForm.packaging || ''} onChange={e=>setDcForm({...dcForm, packaging: e.target.value})} /></FormField>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField label="Enquiry No"><input className={inputClass} value={dcForm.enquiryNo || ''} onChange={e=>setDcForm({...dcForm, enquiryNo: e.target.value})} /></FormField>
+            <FormField label="Vehicle No"><input className={inputClass} value={dcForm.vehicleNo || ''} onChange={e=>setDcForm({...dcForm, vehicleNo: e.target.value})} /></FormField>
+            <FormField label="Phone No"><input className={inputClass} value={dcForm.phone || ''} onChange={e=>setDcForm({...dcForm, phone: e.target.value})} /></FormField>
+            <FormField label="Category"><input className={inputClass} list="dc-category-list" value={dcForm.category || ''} onChange={e=>setDcForm({...dcForm, category: e.target.value})} placeholder="Select or type category" /></FormField>
+            <FormField label="Process"><input className={inputClass} list="dc-process-list" value={dcForm.process || ''} onChange={e=>setDcForm({...dcForm, process: e.target.value})} placeholder="Select or type process" /></FormField>
+          </div>
+          <datalist id="dc-category-list">
+            {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
+          </datalist>
+          <datalist id="dc-process-list">
+            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} — ${p.process_name}`} />)}
+          </datalist>
+          <div>
+            <div className="grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
+              <span></span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">HSN</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Price</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Amount</span>
             </div>
-            )}
+            {dcItems.map((it, idx) => {
+              const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+              return (
+                <div key={idx} className={`grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center rounded-lg border px-3 py-2 mb-2 ${it.selected ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                  <input
+                    type="checkbox"
+                    checked={it.selected}
+                    onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, selected: e.target.checked } : x)))}
+                    className="h-4 w-4 accent-orange-600"
+                    aria-label={`Select ${it.name || 'product'}`}
+                  />
+                  <div>
+                    <input
+                      className={inputClass} list="dc-product-list" placeholder="Part name" value={it.name || ''}
+                      onChange={(e) => {
+                        const nm = e.target.value;
+                        const key = nm.trim().toLowerCase();
+                        const m = partsMaster.find((p: any) => String(p.part_name || '').trim().toLowerCase() === key);
+                        const l = dcPricing.lines.find((x) => x.name.trim().toLowerCase() === key);
+                        setDcItems((prev) => prev.map((x, i) => (i === idx ? {
+                          ...x, name: nm,
+                          hsn: x.hsn || (m as any)?.hsn || '',
+                          unit: x.unit || m?.unit || 'Nos',
+                          price: x.price || (l ? String(l.unit) : x.price),
+                        } : x)));
+                      }}
+                    />
+                  </div>
+                  <input className={inputClass} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, hsn: e.target.value } : x)))} />
+                  <div>
+                    <input
+                      type="number" min={0}
+                      disabled={!it.selected}
+                      value={it.qty}
+                      onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))}
+                      className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
+                    />
+                    {it.avail != null && <p className="text-[10px] font-semibold text-violet-700 tabular-nums mt-0.5">Available: {it.avail}</p>}
+                  </div>
+                  <input className={inputClass} placeholder="Nos" value={it.unit || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))} />
+                  <input type="number" min={0} className={inputClass} placeholder="0.00" value={it.price || ''} onChange={(e) => setDcItems((prev) => prev.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
+                  <input className={`${inputClass} bg-white font-bold tabular-nums`} value={amt ? amt.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 0} disabled />
+                </div>
+              );
+            })}
+            <datalist id="dc-product-list">
+              {partsMaster.map((p: any) => <option key={p.id || p.part_name} value={p.part_name} />)}
+            </datalist>
+            <button type="button" onClick={() => setDcItems((prev) => [...prev, { name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }])} className="mt-1 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+              <span className="text-lg">+</span> Add Part
+            </button>
             {dcPricing.loading ? (
               <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
             ) : dcPricing.lines.length > 0 && (
               <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Project cost breakdown (approved)</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
                 {dcPricing.lines.map((l) => (
                   <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
                     {l.name} — {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
                   </p>
                 ))}
-                {dcPricing.lines.length === 1 && (
-                  <p className="text-slate-500 tabular-nums">Line amount: {formatINR((dcItems.length > 0 ? dcItems.filter((i) => i.selected).reduce((s, i) => s + (Number(i.qty) || 0), 0) : (Number(dcForm.quantity) || 0)) * dcPricing.lines[0].unit)}</p>
-                )}
               </div>
             )}
-            {dcForm.availableQty != null && (
-              <p className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 mt-3">
-                Available for Delivery: {Number(dcForm.availableQty).toLocaleString('en-IN')} pcs
-                <span className="font-normal text-violet-600"> (good completed minus already delivered — rejected qty can never be dispatched)</span>
-              </p>
-            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <FormField label="Receiver Name"><input className={inputClass} value={dcForm.receiverName || ''} onChange={e=>setDcForm({...dcForm, receiverName: e.target.value})} /></FormField>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
+              <SignaturePad value={dcForm.custSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, custSignature: v }))} />
+            </div>
+            <FormField label="Sender Name"><input className={inputClass} value={dcForm.senderName || ''} onChange={e=>setDcForm({...dcForm, senderName: e.target.value})} /></FormField>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
+              <SignaturePad value={dcForm.authSignature || null} onChange={(v) => setDcForm((prev: any) => ({ ...prev, authSignature: v }))} />
+            </div>
           </div>
         </div>
       </Modal>
+
 
       {/* DC → Invoice gate (approved FG price, no manual re-entry) */}
       {invoiceCostingTarget && (
@@ -4495,6 +5088,10 @@ export function SalesPipelinePage() {
                         const ok = await enquirySaveRef.current();
                         if (!ok) return;
                       }
+                      if (viewEditMode && viewModalTarget?.stage === 'DC' && dcSaveRef.current) {
+                        const ok = await dcSaveRef.current();
+                        if (!ok) return;
+                      }
                       setViewEditMode(!viewEditMode);
                     })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         {viewModalData ? (
@@ -4574,7 +5171,18 @@ export function SalesPipelinePage() {
               // Show the opened card's own stage details first, then the rest in pipeline order.
               const sections = [
                 { key: 'Invoice', node: renderRecordData('Invoice', viewModalData?.invoice) },
-                { key: 'DC', node: renderRecordData('DC', viewModalData?.dc) },
+                { key: 'DC', node: (viewModalData.dcRows || (viewModalData.dc ? [viewModalData.dc] : [])).length ? (
+                  <DcSection
+                    key={(viewModalData.dcRows?.[0] || viewModalData.dc)?.id || 'dc'}
+                    rows={viewModalData.dcRows || [viewModalData.dc]}
+                    qtyTracking={viewModalData.qtyTracking}
+                    editMode={viewEditMode}
+                    saveRef={dcSaveRef}
+                    customers={customerList}
+                    companies={allKnownCompanies}
+                    onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
+                  />
+                ) : null },
                 { key: 'Finished Goods', node: renderRecordData('Finished Goods', viewModalData?.finished_goods) },
                 { key: 'Inward', node: (() => {
                   // Rows saved from one inward card share product/category/ref/date:
@@ -4646,7 +5254,7 @@ export function SalesPipelinePage() {
                     </div>
                   ))}</>);
                 })() },
-                { key: 'Sales Order', node: viewModalData.order ? (
+                { key: 'Sales Order', node: viewModalTarget?.stage === 'DC' ? null : (viewModalData.order ? (
                   <SalesOrderSection
                     key={viewModalData.order.id || 'so'}
                     order={viewModalData.order}
@@ -4656,7 +5264,7 @@ export function SalesPipelinePage() {
                     onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
                     onInlineEdit={(field: string, value: string) => void handleInlineEdit('Sales Order', viewModalData.order.id, field, value)}
                   />
-                ) : null },
+                ) : null) },
                 { key: 'Quotation', node: viewModalData.quotation ? (
                   <>
                     <StageStrip
