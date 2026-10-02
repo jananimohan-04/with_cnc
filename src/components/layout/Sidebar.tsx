@@ -108,7 +108,7 @@ export function Sidebar({
                         {active && (
                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-500 rounded-r-full shadow-glow-red" />
                         )}
-                        <Icon size={16} className={`flex-shrink-0 ${active ? 'text-brand-500' : 'text-navy-400 group-hover:text-brand-400 transition-colors'}`} />
+                        <Icon size={16} className={`flex-shrink-0 transition-colors ${active ? 'text-brand-500' : `${item.iconClass ?? 'text-navy-400'} group-hover:brightness-125`}`} />
                         {!collapsed && <span className="truncate text-[13px]">{item.label}</span>}
                       </button>
                     );

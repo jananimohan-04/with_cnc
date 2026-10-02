@@ -3598,7 +3598,7 @@ export function SalesPipelinePage() {
       billing_address: '', delivery_address: '',
       shipping_contact: '', shipping_phone: '',
       lead_no: '', order_date: soForm.orderDate || null,
-      customer_po_no: '', customer_po_date: null,
+      customer_po_no: String(soForm.customerPoNo || '').trim(), customer_po_date: null,
       items: finalItems,
       part_name: finalItems.length > 1 ? `${names.join(', ')} (${finalItems.length} Products)` : names[0],
       part_number: '', part_no: '',
@@ -3692,29 +3692,6 @@ export function SalesPipelinePage() {
     company: '', city: '', gst: '', source: 'Direct',
     contacts: [{ person: '', phone: '', email: '' }],
   });
-
-  // Highlighted context banner shown first in every pipeline popup:
-  // what is being created + unique number + products + customer.
-  const PipelineContextBanner = ({ stage, uniqueNo, products, customer }: { stage: string; uniqueNo?: any; products?: any; customer?: any }) => (
-    <div className="col-span-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">You are creating</span>
-        <span className="text-sm font-extrabold text-brand-800 uppercase">{stage}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
-        <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{products || '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
-      </div>
-    </div>
-  );
 
   const stageDetailsTitle = (stage?: string) =>
     !stage ? 'Pipeline History' : stage === 'DC' ? 'Delivery Challan Details' : `${stage} Details`;
@@ -3983,7 +3960,7 @@ export function SalesPipelinePage() {
                       setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
                     } else if (stage.id === 'Sales Order') {
                       setSoForm({
-                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0],
+                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
                         items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
                       });
                       setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
@@ -4450,7 +4427,6 @@ export function SalesPipelinePage() {
       {/* Quotation Modal */}
       <Modal open={!!quotationModalTarget} onClose={() => setQuotationModalTarget(null)} title="Create Quotation" size="xl" footer={<><Button variant="secondary" onClick={() => setQuotationModalTarget(null)}>Cancel</Button><Button onClick={saveQuotation}>Create Quotation</Button></>}>
         <div className="flex flex-col gap-4">
-          <PipelineContextBanner stage="Quotation" uniqueNo={quoteForm.leadNo || quotationModalTarget?.refNo} products={(quoteForm.items || []).map((i: any) => i.partName || i.productName).filter(Boolean).join(', ') || quotationModalTarget?.part} customer={quoteForm.customer || quotationModalTarget?.customer} />
           <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             {quotationModalTarget?.id === 'dummy' && (<>
             <CustomerAutocomplete
@@ -4702,7 +4678,6 @@ export function SalesPipelinePage() {
       {/* Finished Goods Modal */}
       <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="Finished Goods" uniqueNo={fgModalTarget?.refNo} products={fgForm.partName || fgModalTarget?.part} customer={fgForm.customer || fgModalTarget?.customer} />
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
           {fgModalTarget?.raw?.id ? (
@@ -4717,7 +4692,6 @@ export function SalesPipelinePage() {
       {/* Delivery Challan Modal */}
       <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button><Button variant="secondary" onClick={() => { if (dcSnapshot) { const c = JSON.parse(JSON.stringify(dcSnapshot)); setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` }); setDcItems(c.items.map((l: any) => ({ ...l }))); } }}>Clear</Button></>}>
         <div className="flex flex-col gap-4">
-          <PipelineContextBanner stage="Delivery Challan" uniqueNo={dcModalTarget?.refNo} products={(dcItems || []).map((i: any) => i.name).filter(Boolean).join(', ') || dcModalTarget?.part} customer={dcForm.partyName || dcModalTarget?.customer} />
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
             <FormField label="Date" required><input type="date" className={inputClass} value={dcForm.date || ''} onChange={e=>setDcForm({...dcForm, date: e.target.value})} /></FormField>
@@ -4868,7 +4842,6 @@ export function SalesPipelinePage() {
       {/* Invoice Modal */}
       <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Invoice Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
         <div className="grid grid-cols-2 gap-4">
-          <PipelineContextBanner stage="Invoice" uniqueNo={invoiceModalTarget?.refNo || invoiceForm.dcNumber} products={invoiceForm.partName || invoiceModalTarget?.part} customer={invoiceForm.partyName || invoiceModalTarget?.customer} />
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
           <CustomerAutocomplete
             label="Party Name"
@@ -4935,7 +4908,6 @@ export function SalesPipelinePage() {
       {/* Sales Order Modal */}
       <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="md" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
         <div className="flex flex-col gap-4">
-          <PipelineContextBanner stage="Sales Order" uniqueNo={soModalTarget?.refNo} products={(soForm.items || []).map((i: any) => i.partName).filter(Boolean).join(', ') || soModalTarget?.part} customer={soForm.customer || soModalTarget?.customer} />
           <div className="grid grid-cols-2 gap-4">
             <CustomerAutocomplete
               label="Company"
@@ -4981,7 +4953,10 @@ export function SalesPipelinePage() {
             className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
             <span className="text-lg">+</span> Add Another Product
           </button>
-          <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Delivery Date" required><input type="date" className={inputClass} value={soForm.deliveryDate || ''} onChange={e=>setSoForm({...soForm, deliveryDate: e.target.value})} /></FormField>
+            <FormField label="PO Number"><input className={inputClass} placeholder="Customer PO no." value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
+          </div>
         </div>
       </Modal>
 <Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {

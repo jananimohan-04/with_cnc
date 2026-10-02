@@ -11,12 +11,12 @@ import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
 import { formatINR, todayISO } from '@/lib/format';
-import { Badge, Button, statusToVariant } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
 import { downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, type SalesInvoiceInput } from '@/lib/brandedDocument';
 import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckCheck, Download, Eye, Pencil, Printer, X, AlertTriangle } from 'lucide-react';
+import { CheckCheck, Download, Eye, Pencil, Printer, X } from 'lucide-react';
 
 interface InvLine {
   key: string;
@@ -351,32 +351,19 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         <p className="text-sm text-red-600 py-8 text-center">Failed to load invoice data: {loadError}</p>
       ) : (
         <div className="space-y-4">
-          {blocked && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-sm font-bold text-red-800 flex gap-2"><AlertTriangle size={15} className="shrink-0 mt-0.5" />{blocked}</p>
-              {existingInv && <p className="text-xs text-red-600 mt-1">Open the existing invoice from the Invoice column instead.</p>}
-            </div>
-          )}
           {/* header */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Document Type</p><p className="font-semibold">Tax Invoice</p></div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Number</p><p className="font-mono text-slate-500">Auto-generated on save</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p>
                 <input value={customer} disabled={!editing} onChange={(e) => setCustomer(e.target.value)} className={`${inputClass} font-semibold`} />
               </div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-mono font-semibold">{card?.refNo || dcNo || '—'}</p></div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Sales Order No.</p><p className="font-mono font-semibold">{soNo || '—'}</p></div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Date</p>
                 <input type="date" value={invDate} disabled={!editing} onChange={(e) => setInvDate(e.target.value)} className={inputClass} />
               </div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quotation</p><p className="font-semibold">{quoteNo || '—'}</p></div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Status</p>
-                <p><Badge variant={blocked ? 'error' : statusToVariant('Pending')} dot>{blocked ? 'Blocked' : 'Ready'}</Badge></p>
-              </div>
             </div>
             {orderQty && (
               <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs">

@@ -24,6 +24,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   page: string;
+  /** Tailwind text color for the icon (unique per item, visible on dark navy). */
+  iconClass?: string;
   /** Only shown to these roles (visibility only — the database enforces access). */
   roles?: ErpRole[];
 }
@@ -36,69 +38,69 @@ export interface NavSection {
 export const navSections: NavSection[] = [
   {
     label: 'Overview',
-    items: [{ label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard' }],
+    items: [{ label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400' }],
   },
   {
     label: 'Sales',
     items: [
-      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline' },
-      { label: 'All Companies', icon: Users, page: 'sales/leads' },
+      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400' },
+      { label: 'All Companies', icon: Users, page: 'sales/leads', iconClass: 'text-cyan-300' },
     ],
   },
   {
     label: 'Engineering',
     items: [
-      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault' },
+      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400' },
     ],
   },
   {
     label: 'Production',
     items: [
-      { label: 'Production', icon: Cog, page: 'production/planning' },
-      { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling' },
-      { label: 'Machine Log', icon: Cog, page: 'production/tracking' },
-      { label: 'Process Master', icon: Factory, page: 'production/process-master' },
-      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods' },
+      { label: 'Production', icon: Cog, page: 'production/planning', iconClass: 'text-orange-400' },
+      { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling', iconClass: 'text-violet-400' },
+      { label: 'Machine Log', icon: Cog, page: 'production/tracking', iconClass: 'text-teal-300' },
+      { label: 'Process Master', icon: Factory, page: 'production/process-master', iconClass: 'text-rose-400' },
+      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods', iconClass: 'text-lime-400' },
     ],
   },
   {
     label: 'Logistics',
     items: [
-      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery' },
+      { label: 'Delivery Challan', icon: FileText, page: 'operations/delivery', iconClass: 'text-indigo-300' },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { label: 'Invoices', icon: FileText, page: 'finance/invoices' },
-      { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries' },
-      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing' },
+      { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300' },
+      { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries', iconClass: 'text-green-400' },
+      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400' },
     ],
   },
   {
     label: 'Accounts',
     items: [
-      { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger' },
-      { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance' },
-      { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss' },
-      { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet' },
+      { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger', iconClass: 'text-amber-300' },
+      { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300' },
+      { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400' },
+      { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300' },
     ],
   },
   {
     label: 'Supply Chain',
     items: [
-      { label: 'Inventory', icon: Boxes, page: 'inventory/stock' },
-      { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders' },
+      { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300' },
+      { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400' },
     ],
   },
   {
     label: 'System',
     items: [
-      { label: 'Reports', icon: BarChart3, page: 'reports/production' },
-      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking' },
-      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
-      { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'] },
-      { label: 'Settings', icon: Settings, page: 'admin/settings' },
+      { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400' },
+      { label: 'Order Quantity Tracking', icon: Package, page: 'reports/order-tracking', iconClass: 'text-teal-400' },
+      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400' },
+      { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400' },
+      { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400' },
     ],
   },
 ];
