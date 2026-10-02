@@ -3879,9 +3879,9 @@ export function SalesPipelinePage() {
         </div>
         
         {pipelineViewMode !== 'list' && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full md:w-auto">
           <select 
-            className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium"
+            className="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:border-brand-500 shadow-sm font-medium min-w-0 flex-1 md:flex-none md:w-48 truncate"
             value={customerFilter}
             onChange={(e) => setCustomerFilter(e.target.value)}
           >
@@ -3890,14 +3890,14 @@ export function SalesPipelinePage() {
               <option key={customer} value={customer}>{customer}</option>
             ))}
           </select>
-          <div className="relative">
-            <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
+          <div className="relative shrink-0">
+            <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
             <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           </div>
-          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors">
+          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
           </button>
-          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors">
+          <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
           </button>
         </div>

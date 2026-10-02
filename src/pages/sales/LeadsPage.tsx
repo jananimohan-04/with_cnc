@@ -147,8 +147,12 @@ export function LeadsPage() {
     if (company?.id) {
       query = query.eq('company_id', company.id);
     }
-    const { data } = await query;
-    if (data) setCustomerList(data);
+    const { data, error } = await query;
+    if (error) {
+      console.error('[LeadsPage] Error fetching customers:', error);
+    } else if (data) {
+      setCustomerList(data);
+    }
   }
 
   const allKnownCompanies = useMemo(() => {
