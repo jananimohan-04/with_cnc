@@ -10,6 +10,7 @@ import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
+import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
 import { FinishedGoodsModule } from './FinishedGoodsModule';
@@ -1280,7 +1281,7 @@ export function SalesPipelinePage() {
     let cancelled = false;
     (async () => {
       try {
-        const soNo = String((dcModalTarget as any)?.raw?.sales_order || dcForm.poNumber || '').trim();
+        const soNo = String((dcModalTarget as any)?.raw?.sales_order || (dcForm as any).salesOrderNo || '').trim();
         if (!dcModalTarget || !soNo) {
           if (!cancelled) setDcPricing({ lines: [], loading: false });
           return;
@@ -1326,7 +1327,7 @@ export function SalesPipelinePage() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dcModalTarget, dcForm.poNumber, dcItemNames]);
+  }, [dcModalTarget, (dcForm as any).salesOrderNo, dcItemNames]);
   // Fill empty HSN / unit / price on DC lines from the masters above.
   useEffect(() => {
     if (!dcModalTarget) return;
@@ -2995,13 +2996,15 @@ export function SalesPipelinePage() {
       const cmatch: any = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
       const kcmatch: any = (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
       const soRefNo = card.raw.sales_order || card.raw.wo_no || '';
+      const linkedSo: any = (salesOrdersList || []).find((o: any) => String(o.order_no || '') !== '' && String(o.order_no) === String(soRefNo || '')) || {};
+      const customerPo = String((card.raw as any)?.customer_po_no || linkedSo.customer_po_no || '').trim();
       const dcInitForm = {
         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
         date: new Date().toISOString().split('T')[0], partyName: cardCust,
         partyAddress: cmatch.city || kcmatch.city || '',
         partyGstin: cmatch.gst || cmatch.gstin || kcmatch.gst || '',
         partyCode: cmatch.id || '',
-        ewayBill: '', poNumber: soRefNo, placeOfSupply: '', packaging: '',
+        ewayBill: '', poNumber: customerPo, salesOrderNo: soRefNo, placeOfSupply: '', packaging: '',
         enquiryNo: baseUniqueNo(card.refNo || ''), vehicleNo: '', phone: cmatch.phone || kcmatch.phone || '',
         category: '', process: '',
         receiverName: '', senderName: '', custSignature: null, authSignature: null,
@@ -3136,79 +3139,53 @@ export function SalesPipelinePage() {
     }
   };
 
-  const saveQuotation = async () => {
-    if (!quotationModalTarget) return;
-    const cStr = getContactStrings(quoteForm);
-    const leadId = quotationModalTarget.raw?.id || null;
-    if (!quoteForm.customer) { alert("Please enter the company."); return; }
-
-    // Use multi-part items if available, fallback to single-part legacy fields
-    const rawItems = quoteForm.items && Array.isArray(quoteForm.items) && quoteForm.items.length > 0 ? quoteForm.items : [{
-      partName: quoteForm.partName || '', partNumber: quoteForm.partNumber || '',
-      quantity: quoteForm.quantity || '0', unitPrice: quoteForm.unitPrice || '0',
-      discount: quoteForm.discount || '0', unitDiscount: quoteForm.unitDiscount || '0', gst: quoteForm.gst || '18',
-      files: [], filePaths: []
-    }];
-
-    if (rawItems.some((it: any) => (it.files || []).length) && !company?.id) {
-      alert('Select a company before uploading product files.');
-      return;
-    }
-    setLoading(true);
-    let items: any[] = rawItems;
-    try {
-      items = await Promise.all(rawItems.map(async (it: any) => {
-        const uploaded = company?.id
-          ? await Promise.all((it.files || []).map((f: File) => uploadEnquiryProductFile(company.id!, f)))
-          : [];
-        const { files, ...rest } = it;
-        return { ...rest, filePaths: [...(it.filePaths || []), ...uploaded] };
-      }));
-    } catch (err: any) {
-      setLoading(false);
-      alert(err?.message || 'File upload failed.');
-      return;
-    }
-
-    const totalQty = items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0);
-    const totalValue = items.reduce((sum: number, i: any) => {
-      const q = Number(i.quantity) || 0; const p = Number(i.unitPrice) || 0;
-      const d = Number(i.discount) || 0; const ud = Number(i.unitDiscount) || 0; const g = Number(i.gst) || 0;
-      const discountedUnit = Math.max(0, p * (1 - d / 100) - ud);
-      return sum + (q * discountedUnit * (1 + g / 100));
-    }, 0);
-    
-    const firstItem = items[0];
-    const itemNamesList = items.map((i: any) => String(i.partName || i.productName || i.description || '').trim()).filter(Boolean).join(', ');
-    const partNameStr = items.length > 1 ? `${itemNamesList} (${items.length} Products)` : (firstItem.partName || 'TBD');
-
-    const quotePayload: any = {
-      id: crypto.randomUUID(), quote_no: quoteForm.quoteNo, customer: quoteForm.customer, part_name: partNameStr,
-      enquiry_no: quotationModalTarget.raw?.enquiry_no || quotationModalTarget.raw?.lead_no || null,
-      contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
-      part_number: firstItem.partNumber || '', description: JSON.stringify(items), unit_price: Number(firstItem.unitPrice) || 0,
-      unit_discount: Number(firstItem.unitDiscount) || 0,
-      quantity: totalQty, total_value: totalValue, date: quoteForm.quoteDate || null, valid_till: quoteForm.validTill || null, status: 'Sent',
-      salesperson: quoteForm.salesperson, discount_percent: Number(firstItem.discount) || 0, gst_percent: Number(firstItem.gst) || 18,
-      payment_terms: quoteForm.paymentTerms, delivery_terms: quoteForm.deliveryTerms, remarks: quoteForm.remarks, lead_id: leadId
+  // The Create Quotation popup is the same page as Quotation > Create Quotation. Saving or exporting from it
+  // records the quotation in the pipeline (first time inserts, later saves update the same row), which moves the enquiry card.
+  const quoteRecordId = useRef<string | null>(null);
+  const closeQuotationPopup = () => { setQuotationModalTarget(null); quoteRecordId.current = null; fetchPipeline(); };
+  const quotationEmbed = useMemo<QuotationEmbed | undefined>(() => {
+    if (!quotationModalTarget) return undefined;
+    const target = quotationModalTarget;
+    const items: any[] = Array.isArray(quoteForm.items) ? quoteForm.items : [];
+    const contact = Array.isArray(quoteForm.contacts) ? quoteForm.contacts[0] : null;
+    return {
+      client: target.id === 'dummy' || !quoteForm.customer ? undefined : {
+        name: String(quoteForm.customer), email: contact?.email || '', phone: contact?.phone || '', gstin: String(target.raw?.gst || ''), address: String(target.raw?.city || ''),
+      },
+      lines: items.filter(i => String(i.partName || '').trim()).map(i => ({ description: String(i.partName), qty: String(i.quantity || '1') })),
+      onRecord: async (doc, total) => {
+        const lineItems = doc.lines.filter(l => l.description.trim() || l.unitPrice.trim()).map(l => ({
+          id: l.id, partName: l.description.trim(), partNumber: '', quantity: l.qty, unitPrice: l.unitPrice, discount: l.discount || '0', unitDiscount: '0',
+          gst: String((Number(doc.tax.cgst) || 0) + (Number(doc.tax.sgst) || 0) + (Number(doc.tax.igst) || 0)), filePaths: [], files: [],
+        }));
+        const first = lineItems[0];
+        const names = lineItems.map(i => i.partName).filter(Boolean).join(', ');
+        const leadId = target.raw?.id || null;
+        const payload: any = {
+          quote_no: quoteForm.quoteNo, customer: doc.clients[0]?.name || quoteForm.customer, part_name: lineItems.length > 1 ? `${names} (${lineItems.length} Products)` : (first?.partName || 'TBD'),
+          enquiry_no: target.raw?.enquiry_no || target.raw?.lead_no || null,
+          contact_person: '', phone: doc.clients[0]?.phone || '', email: doc.clients[0]?.email || '',
+          part_number: '', description: JSON.stringify(lineItems), unit_price: Number(first?.unitPrice) || 0, unit_discount: 0,
+          quantity: lineItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0), total_value: total, date: doc.date || null, valid_till: quoteForm.validTill || null, status: 'Sent',
+          salesperson: quoteForm.salesperson, discount_percent: Number(first?.discount) || 0, gst_percent: Number(first?.gst) || 18,
+          payment_terms: '', delivery_terms: '', remarks: doc.notes, lead_id: leadId,
+        };
+        const newId = crypto.randomUUID();
+        const write = (pl: any) => quoteRecordId.current
+          ? supabase.from('cnc_quotations').update(pl).eq('id', quoteRecordId.current)
+          : supabase.from('cnc_quotations').insert([{ id: newId, ...pl }]);
+        let { error } = await write(payload);
+        if (error && (error.message?.includes('unit_discount') || error.code === '42703')) { const { unit_discount, ...rest } = payload; ({ error } = await write(rest)); }
+        if (error) throw new Error(`Could not record the quotation in the pipeline: ${error.message}`);
+        if (!quoteRecordId.current) quoteRecordId.current = newId;
+        if (leadId) {
+          const { error: enqErr } = await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', leadId);
+          if (enqErr) console.error('Failed to update enquiry status:', enqErr);
+        }
+      },
     };
-
-    let { error } = await supabase.from('cnc_quotations').insert([quotePayload]);
-    if (error && (error.message?.includes('unit_discount') || error.code === '42703')) {
-      const { unit_discount, ...fallbackPayload } = quotePayload;
-      const retry = await supabase.from('cnc_quotations').insert([fallbackPayload]);
-      error = retry.error;
-    }
-
-    if (error) { alert("Error: " + error.message); setLoading(false); }
-    else {
-      if (leadId) {
-        const { error: enqErr } = await supabase.from('cnc_enquiries').update({ status: 'Quoted', pipeline_stage: 'Quotation' }).eq('id', leadId);
-        if (enqErr) console.error("Failed to update enquiry status:", enqErr);
-      }
-      setQuotationModalTarget(null); fetchPipeline(); setLoading(false);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotationModalTarget]);
 
   // Inwards of these categories flow to Production as Draft work orders
   // (released manually there). 'NEW PROJECT' is the legacy label of NEW PART.
@@ -3438,7 +3415,7 @@ export function SalesPipelinePage() {
         }
       }
     // Resolve the real sales order (work orders store the SO order_no in `sales_order`)
-    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || f.poNumber || '';
+    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || f.salesOrderNo || '';
     let so: any = null;
     if (soNo) {
       const { data: soRow, error: soErr } = await supabase.from('cnc_sales_orders').select('id, customer_id, quantity, delivered').eq('order_no', soNo).maybeSingle();
@@ -3976,7 +3953,7 @@ export function SalesPipelinePage() {
                         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
                         date: new Date().toISOString().split('T')[0], partyName: '',
                         partyAddress: '', partyGstin: '', partyCode: '',
-                        ewayBill: '', poNumber: '', placeOfSupply: '', packaging: '',
+                        ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
                         enquiryNo: '', vehicleNo: '', phone: '',
                         category: '', process: '',
                         receiverName: '', senderName: '', custSignature: null, authSignature: null,
@@ -4425,131 +4402,10 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Quotation Modal */}
-      <Modal open={!!quotationModalTarget} onClose={() => setQuotationModalTarget(null)} title="Create Quotation" size="xl" footer={<><Button variant="secondary" onClick={() => setQuotationModalTarget(null)}>Cancel</Button><Button onClick={saveQuotation}>Create Quotation</Button></>}>
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
-            {quotationModalTarget?.id === 'dummy' && (<>
-            <CustomerAutocomplete
-              label="Company"
-              required
-              value={quoteForm.customer || ''}
-              onChange={val => setQuoteForm((prev: any) => ({ ...prev, customer: val }))}
-              onSelectCustomer={c => {
-                setQuoteForm((prev: any) => ({
-                  ...prev,
-                  customer: c.company,
-                  contacts: (c.contact_person || c.phone || c.email)
-                    ? [{ person: c.contact_person || '', phone: c.phone || '', email: c.email || '' }]
-                    : prev.contacts
-                }));
-              }}
-              companies={allKnownCompanies}
-              inputClass={inputClass}
-              placeholder="Type or select customer..."
-            />
-            <FormField label="Enquiry / Company No." required><input className={inputClass} value={quoteForm.leadNo} disabled /></FormField>
-            </>)}
-            <FormField label="Quotation Date" required><input type="date" className={inputClass} value={quoteForm.quoteDate} onChange={e=>setQuoteForm({...quoteForm, quoteDate: e.target.value})} /></FormField>
-            {quotationModalTarget?.id === 'dummy' && (<>
-            <FormField label="Valid Till" required><input type="date" className={inputClass} value={quoteForm.validTill} onChange={e=>setQuoteForm({...quoteForm, validTill: e.target.value})} /></FormField>
-            <FormField label="Salesperson"><input className={inputClass} value={quoteForm.salesperson} onChange={e=>setQuoteForm({...quoteForm, salesperson: e.target.value})} /></FormField>
-            </>)}
-          </div>
-          {/* Product-wise Items Table */}
-          <div className="border-t border-slate-100 pt-4">
-            <h4 className="font-semibold text-sm text-slate-800 mb-3">Products / Items Breakdown</h4>
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[20%]">Product Name</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
-                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
-                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">File</th>
-                    <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(quoteForm.items || []).map((item: any, idx: number) => (
-                    <tr key={item.id || idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                      <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="px-3 py-2">
-                        <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" value={item.partName || ''} onChange={e => updateQuoteItem(idx, 'partName', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input type="number" min="0" className="w-full min-w-[72px] tabular-nums text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.quantity || ''} onChange={e => updateQuoteItem(idx, 'quantity', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitPrice || ''} onChange={e => updateQuoteItem(idx, 'unitPrice', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.discount || ''} onChange={e => updateQuoteItem(idx, 'discount', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitDiscount || ''} onChange={e => updateQuoteItem(idx, 'unitDiscount', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input type="number" className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst || ''} onChange={e => updateQuoteItem(idx, 'gst', e.target.value)} />
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-700">₹{calcItemTotal(item)}</td>
-                      <td className="px-3 py-2 text-center">
-                        <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                          <UploadCloud size={13} />{((item.files || []).length + (item.filePaths || []).length) ? `${(item.files || []).length + (item.filePaths || []).length} file(s)` : 'Upload'}
-                          <input type="file" multiple accept="*/*" className="hidden" onChange={e => {
-                            const selected = Array.from(e.currentTarget.files || []);
-                            const newItems = [...(quoteForm.items || [])];
-                            newItems[idx] = { ...newItems[idx], files: [...(newItems[idx].files || []), ...selected] };
-                            setQuoteForm({ ...quoteForm, items: newItems });
-                            e.currentTarget.value = '';
-                          }} />
-                        </label>
-                        {((item.files || []).length > 0 || (item.filePaths || []).length > 0) && (
-                          <div className="mt-1 space-y-1 text-left">
-                            {(item.files || []).map((f: File, fi: number) => (
-                              <div key={`n-${fi}`} className="flex items-center justify-between gap-1 text-[10px] text-slate-600"><span className="truncate">{f.name}</span><button type="button" className="text-rose-600" onClick={() => { const n = [...quoteForm.items]; n[idx] = { ...n[idx], files: n[idx].files.filter((_: File, j: number) => j !== fi) }; setQuoteForm({ ...quoteForm, items: n }); }}>x</button></div>
-                            ))}
-                            {(item.filePaths || []).map((p: string, pi: number) => (
-                              <div key={`e-${pi}`} className="truncate text-[10px] text-emerald-700">{String(p).split('/').pop()}</div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {(quoteForm.items || []).length > 1 && (
-                          <button onClick={() => { const newItems = [...quoteForm.items]; newItems.splice(idx, 1); setQuoteForm({...quoteForm, items: newItems}); }} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove product">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-slate-50 border-t border-slate-200">
-                  <tr>
-                    <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
-                    <td className="px-3 py-2 text-right font-bold text-base text-brand-700">₹{calcQuoteTotal()}</td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-            <button onClick={() => { const newItems = [...(quoteForm.items || []), { id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18', files: [], filePaths: [] }]; setQuoteForm({...quoteForm, items: newItems}); }} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
-              <span className="text-lg">+</span> Add Another Product
-            </button>
-          </div>
-
-          <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4">Additional Details</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Payment Terms"><input className={inputClass} value={quoteForm.paymentTerms} onChange={e=>setQuoteForm({...quoteForm, paymentTerms: e.target.value})} /></FormField>
-            <FormField label="Delivery Terms"><input className={inputClass} value={quoteForm.deliveryTerms} onChange={e=>setQuoteForm({...quoteForm, deliveryTerms: e.target.value})} /></FormField>
-            <div className="col-span-2"><FormField label="Notes / Remarks"><textarea className={inputClass} rows={2} value={quoteForm.remarks} onChange={e=>setQuoteForm({...quoteForm, remarks: e.target.value})}></textarea></FormField></div>
-          </div>
-        </div>
+      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" draggable={false}>
+        {quotationModalTarget && (
+          <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />
+        )}
       </Modal>
 
       

@@ -41,6 +41,10 @@ import { DeliveriesPage } from './pages/operations/OperationsPages';
 import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
+import {
+  MetalCalculatorPage, CreateQuotationPage, ClientLibraryPage, ProductLibraryPage,
+  TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage,
+} from './pages/quotation/QuotationToolPages';
 import { TrialBalancePage } from './pages/accounts/TrialBalancePage';
 import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
 import { InvoicesPage } from './pages/finance/InvoicesPage';
@@ -208,6 +212,15 @@ function MainLayout() {
             <Route path="/costing/job-costing" element={<JobCostingPage />} />
             <Route path="/costing/job_costing" element={<JobCostingPage />} />
             <Route path="/costing/quote-costing" element={<QuoteCostingPage />} />
+
+            {/* Create Quotation */}
+            <Route path="/quotation/metal-calculator" element={<MetalCalculatorPage />} />
+            <Route path="/quotation/create" element={<CreateQuotationPage />} />
+            <Route path="/quotation/client-library" element={<ClientLibraryPage />} />
+            <Route path="/quotation/product-library" element={<ProductLibraryPage />} />
+            <Route path="/quotation/terms-library" element={<TermsLibraryPage />} />
+            <Route path="/quotation/library" element={<QuotationLibraryPage />} />
+            <Route path="/quotation/company-profile" element={<CompanyProfilePage />} />
 
             {/* Accounts */}
             <Route path="/accounts/ledger" element={<LedgerPage />} />
