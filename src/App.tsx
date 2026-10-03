@@ -4,6 +4,7 @@ import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
 import { AccessDenied } from './components/AccessDenied';
 import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
+import { AdminAssistant } from './components/AdminAssistant';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { Dashboard } from './pages/Dashboard';
@@ -250,6 +251,7 @@ function MainLayout() {
           </Routes>
         </main>
       </div>
+      <AdminAssistant />
     </div>
   );
 }
