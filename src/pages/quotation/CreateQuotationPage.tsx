@@ -9,7 +9,7 @@ import { loadProducts, saveProducts, newId, validateDraft, type LibraryProduct }
 import { defaultTermsText, loadTerms, type TermsTemplate } from '@/lib/termsLibrary';
 import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
 import { newIdent, takeReuse, upsertQuote, type QuoteIdent } from '@/lib/quotationStore';
-import { WorkingsModal } from './WorkingsModal';
+import { ProductWorkingsPage } from './ProductWorkingsPage';
 import { hasWorkings, type Workings } from '@/lib/quotationWorkings';
 import { PDF_THEMES, downloadQuotePdf, exportQuoteCsv, quoteSummaryText, type PdfThemeId, type QuoteClient, type QuoteDoc } from '@/lib/quotationDocument';
 
@@ -164,6 +164,17 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   const shown = library.filter(c => c.name.toLowerCase().includes(search.trim().toLowerCase()));
   const errAt = (i: number, k: 'qty' | 'unitPrice' | 'discount') => (showIssues ? rowResults[i].issues[k] : undefined);
 
+  // Product Workings replaces the quotation view until you go back (the quotation state is kept as it is).
+  const wl = workingsFor ? lines.find(x => x.id === workingsFor) : undefined;
+  if (wl) {
+    return (
+      <div className={embed ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
+        <ProductWorkingsPage key={wl.id} title={wl.description} initial={wl.workings} onBack={() => setWorkingsFor(null)}
+          onSave={(w: Workings, price: number, leave: boolean) => { setLine(wl.id, { workings: w, unitPrice: String(price) }); if (leave) setWorkingsFor(null); }} />
+      </div>
+    );
+  }
+
   return (
     <div className={embed ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
       <div className={embed ? 'space-y-5' : 'bg-white border border-slate-200 rounded-2xl p-4 lg:p-6 space-y-5'}>
@@ -256,10 +267,6 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
             )}
           </div>
         </section>
-        {workingsFor && (() => { const l = lines.find(x => x.id === workingsFor); return l ? (
-          <WorkingsModal key={l.id} open title={l.description} initial={l.workings} onClose={() => setWorkingsFor(null)}
-            onApply={(w: Workings, price: number) => { setLine(l.id, { workings: w, unitPrice: String(price) }); setWorkingsFor(null); }} />
-        ) : null; })()}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setLines(ls => [...ls, newLine()])} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"><Plus size={16} /> Add Product</button>
           <button onClick={() => { setProdList(loadProducts(company?.id)); setProdOpen(true); }} className="flex items-center gap-2 h-10 px-4 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><Library size={16} /> From Product Library</button>

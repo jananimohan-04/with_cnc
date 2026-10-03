@@ -188,7 +188,11 @@ function MaterialSelect({ value, onChange, badge, density, asOf, issue }: { valu
   );
 }
 
-export function MetalCalculatorPage() {
+/** One metal component handed to a product's cost sheet. */
+export interface BomMetalItem { description: string; weightKg: number; ratePerKg: number | null }
+
+/** `embedded`: used inside the Product Workings page (no page header, adds an "Add to Product BOM" button). */
+export function MetalCalculatorPage({ embedded }: { embedded?: { onAdd: (item: BomMetalItem) => void } } = {}) {
   const [profileId, setProfileId] = useState<ProfileId>('i-beam');
   const [all, setAll] = useState<AllDims>(initialDims);
   const [unitMode, setUnitMode] = useState<'mm' | 'in'>('mm');
@@ -297,15 +301,15 @@ export function MetalCalculatorPage() {
   }, [liveValue]);
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 lg:p-6">
-        <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-100">
+    <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
+      <div className={embedded ? '' : 'bg-white border border-slate-200 rounded-2xl shadow-sm p-5 lg:p-6'}>
+        {!embedded && <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-100">
           <div className="w-9 h-9 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0"><Calculator size={20} /></div>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Metal Weight &amp; Cost Calculator</h1>
             <p className="text-sm text-slate-500">Calculate metal weight and material cost quickly and accurately.</p>
           </div>
-        </div>
+        </div>}
 
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-5">
           {/* ---------------- left column ---------------- */}
@@ -399,7 +403,21 @@ export function MetalCalculatorPage() {
 
               <MarketPanel issue={ratesIssue} rates={rates} state={ratesState} selected={liveMetal} price={price} unit={priceUnit} fromLive={priceFromLive} />
 
-              <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
+              <div className={`flex ${embedded ? 'justify-between gap-3' : 'justify-end'} mt-5 pt-4 border-t border-slate-100`}>
+                {embedded && (
+                  <button type="button" data-testid="add-to-bom" disabled={!ok} onClick={() => {
+                    if (!ok) return;
+                    const dimTxt = [...profile.fields.map(f => ({ short: f.short, v: dims[f.key] })), { short: 'L', v: dims[LENGTH_KEY] }]
+                      .filter(x => x.v && x.v.value.trim()).map(x => `${x.short} ${x.v.value.trim()}${x.v.unit}`).join(' × ');
+                    const mat = MATERIALS.find(m => m.id === materialId)?.name ?? `density ${density}`;
+                    const n = Number(price.replace(/,/g, ''));
+                    const perKg = ok.cost ? ok.cost.perKgRate : (Number.isFinite(n) && n > 0 ? null : null);
+                    embedded.onAdd({ description: `${profile.name} ${dimTxt} · ${mat}${ok.qty > 1 ? ` × ${ok.qty} pcs` : ''}`, weightKg: Math.round(ok.weightKgTotal * 10000) / 10000, ratePerKg: perKg });
+                  }}
+                    className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-600 text-white text-sm font-bold hover:bg-orange-700 disabled:opacity-40">
+                    + Add Metal Item to Product BOM
+                  </button>
+                )}
                 <button type="button" onClick={clearAll}
                   className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50">
                   <RotateCcw size={14} /> Clear
