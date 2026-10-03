@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Calculator, Layers, PencilRuler, Shapes, BarChart3, RotateCcw, Info } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Calculator, Layers, PencilRuler, Shapes, BarChart3, RotateCcw, Info } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
-import { LIVE_METAL_OF, ageLabel, isStale, needsRefresh, parseRates, rateInUnit, type LiveMetal, type MarketRate } from '@/lib/marketRates';
+import { LIVE_METAL_OF, LIVE_METALS, ageLabel, describeRateIssue, inrLabel, quoteStamp, isStale, needsRefresh, parseRates, rateInUnit, type LiveMetal, type MarketRate } from '@/lib/marketRates';
 import {
   PROFILES, PROFILE_BY_ID, MATERIALS, UNITS, PRICE_UNITS, LENGTH_KEY,
   calculate, convertDims, defaultDims,
@@ -46,14 +46,59 @@ function DimField({ label, v, error, onValue, onUnit }: {
   );
 }
 
+const METAL_LABEL: Record<LiveMetal, string> = { aluminum: 'Aluminium', copper: 'Copper', lead: 'Lead', nickel: 'Nickel', zinc: 'Zinc', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', palladium: 'Palladium' };
+const METAL_ORDER: LiveMetal[] = LIVE_METALS;
+
+/** Reference only: today's market price per kg, next to the dealer price the user types. */
+function MarketPanel({ rates, state, selected, price, unit, fromLive, issue }: {
+  issue: string | null;
+  rates: Partial<Record<LiveMetal, MarketRate>>; state: 'loading' | 'ready' | 'error'; selected?: LiveMetal; price: string; unit: PriceUnit; fromLive: boolean;
+}) {
+  const have = METAL_ORDER.filter(m => rates[m]);
+  const newest = have.map(m => rates[m]!.quotedAt ?? rates[m]!.fetchedAt).sort().pop() ?? null;
+  const sel = selected ? rates[selected] : undefined;
+  const typed = Number(price.replace(/,/g, ''));
+  // Compare in the same unit the user typed in.
+  const marketInUnit = sel ? Number(rateInUnit(sel.inrPerKg, unit)) : NaN;
+  const diff = !fromLive && sel && typed > 0 && marketInUnit > 0 ? ((typed - marketInUnit) / marketInUnit) * 100 : null;
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3" data-testid="market-panel">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Market price today <span className="font-medium normal-case text-slate-400">· reference, ₹ per kg</span></h4>
+        {newest && <span className="text-[10px] text-slate-400">{ageLabel(newest)} · Metals.Dev</span>}
+      </div>
+      {state === 'loading' && <p className="text-xs text-slate-400 mt-2">Loading market prices…</p>}
+      {state !== 'loading' && have.length === 0 && (
+        <p className="text-xs text-amber-600 mt-2" data-testid="market-empty">Market prices are not available right now{issue ? ` — ${issue}` : ''}. Enter your dealer price.</p>
+      )}
+      {have.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-2">
+          {have.map(m => (
+            <div key={m} data-testid={`market-${m}`} className={`rounded-md border px-2 py-1.5 ${m === selected ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white'}`}>
+              <p className="text-[10px] text-slate-500">{METAL_LABEL[m]}</p>
+              <p className="font-mono text-sm font-semibold text-slate-800">₹{inrLabel(rates[m]!.inrPerKg)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {diff !== null && (
+        <p className="text-[11px] mt-2 text-slate-600" data-testid="market-diff">
+          Your price is <b className={diff > 0 ? 'text-amber-700' : 'text-emerald-700'}>{Math.abs(diff).toFixed(1)}% {diff >= 0 ? 'above' : 'below'}</b> the market price of {METAL_LABEL[selected!]}.
+        </p>
+      )}
+      <p className="text-[10px] text-slate-400 mt-2">Exchange (LME/MCX-based) prices, before dealer margin, freight and GST. Steel, stainless and brass have no free live feed — use your dealer price.</p>
+    </div>
+  );
+}
+
 let refreshInFlight: Promise<{ error: unknown }> | null = null;
 
-function RateNote({ materialId, liveMetal, rate, fresh, state, unit, isLive, onUse }: {
-  materialId: string; liveMetal?: LiveMetal; rate?: MarketRate; fresh: boolean; state: 'loading' | 'ready' | 'error'; unit: PriceUnit; isLive: boolean; onUse: () => void;
+function RateNote({ materialId, liveMetal, rate, fresh, state, unit, applied, onUse }: {
+  materialId: string; liveMetal?: LiveMetal; rate?: MarketRate; fresh: boolean; state: 'loading' | 'ready' | 'error'; unit: PriceUnit; applied: boolean; onUse: () => void;
 }) {
   const cls = 'text-[11px] mt-1';
   if (materialId === 'custom' || !materialId) return null;
-  if (!liveMetal) return <p className={`${cls} text-slate-400`} data-testid="rate-note">No live market feed for this material — enter your own price.</p>;
+  if (!liveMetal) return <p className={`${cls} text-slate-400`} data-testid="rate-note">No live market feed for this material — enter your dealer price.</p>;
   if (state === 'loading') return <p className={`${cls} text-slate-400`} data-testid="rate-note">Checking live market rate…</p>;
   if (!rate) return <p className={`${cls} text-amber-600`} data-testid="rate-note">Live rate unavailable right now — enter your own price.</p>;
   const when = ageLabel(rate.quotedAt ?? rate.fetchedAt);
@@ -62,8 +107,84 @@ function RateNote({ materialId, liveMetal, rate, fresh, state, unit, isLive, onU
     <p className={`${cls} text-emerald-700`} data-testid="rate-note">
       <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
       Live market rate ₹{rateInUnit(rate.inrPerKg, unit)} / {unit} · Metals.Dev · {when}
-      {isLive ? ' · applied' : <> · <button type="button" onClick={onUse} className="underline font-semibold">Use live rate</button></>}
+      {applied ? ' · applied — type your dealer price to replace it' : <> · <button type="button" onClick={onUse} className="underline font-semibold">Use live rate</button></>}
     </p>
+  );
+}
+
+type Badge = { v: number } | null;
+
+/** The newest quote time across all metals, as an ISO string. */
+function newestQuote(rates: Partial<Record<LiveMetal, MarketRate>>): string | null {
+  const t = LIVE_METALS.map(m => rates[m]).filter(Boolean).map(r => r!.quotedAt ?? r!.fetchedAt).sort().pop();
+  return t ?? null;
+}
+
+/** Material picker: name, density and the ₹/kg rate for each (your saved dealer rate, else today's market price). */
+function MaterialSelect({ value, onChange, badge, density, asOf, issue }: { value: string; onChange: (id: string) => void; badge: (id: string) => Badge; density: string; asOf: string | null; issue: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const current = MATERIALS.find(m => m.id === value);
+  const label = current ? `${current.name} (${current.density} g/cm³)` : `Custom (${density.trim() || '—'} g/cm³)`;
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+
+  const choose = (id: string) => { onChange(id); setOpen(false); };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setOpen(false); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) { setActive(Math.max(0, MATERIALS.findIndex(m => m.id === value))); setOpen(true); return; }
+      setActive(i => (e.key === 'ArrowDown' ? Math.min(MATERIALS.length - 1, i + 1) : Math.max(0, i - 1)));
+    } else if ((e.key === 'Enter' || e.key === ' ') && open) { e.preventDefault(); choose(MATERIALS[active].id); }
+  };
+
+  return (
+    <div ref={box} className="relative" onKeyDown={onKey}>
+      <button type="button" aria-label="Material presets" aria-haspopup="listbox" aria-expanded={open} data-value={value}
+        onClick={() => { setActive(Math.max(0, MATERIALS.findIndex(m => m.id === value))); setOpen(o => !o); }}
+        className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-800 flex items-center justify-between gap-2 text-left focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+        <span className="truncate">{label}</span>
+        <ChevronDown size={16} className="text-slate-400 shrink-0" />
+      </button>
+      {open && (
+        <ul role="listbox" aria-label="Materials" className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg pb-1">
+          <li role="presentation" data-testid="mat-asof" className="sticky top-0 z-10 bg-white/95 backdrop-blur px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-100">
+            {asOf ? <>Live market rates · <b className="text-slate-700">{quoteStamp(asOf)}</b> ({ageLabel(asOf)})</> : <span className="text-amber-700" data-testid="mat-issue">Live market rates not available{issue ? ` — ${issue}` : ' yet'}</span>}
+          </li>
+          {MATERIALS.map((m, i) => {
+            const b = badge(m.id);
+            return (
+              <li key={m.id} role="option" aria-selected={m.id === value} data-testid={`mat-opt-${m.id}`}
+                onMouseEnter={() => setActive(i)} onClick={() => choose(m.id)}
+                className={`flex items-center justify-between gap-3 px-3 py-2 cursor-pointer text-sm ${i === active ? 'bg-slate-50' : ''} ${m.id === value ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
+                <span className="truncate">{m.name}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono text-[11px] text-slate-400">{m.density} g/cm³</span>
+                  {b ? (
+                    <span data-testid={`mat-badge-${m.id}`} title="Market price today (from the live feed)"
+                      className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 text-sky-700 border-sky-200">
+                      ₹{inrLabel(b.v)}/kg
+                    </span>
+                  ) : <span className="text-[11px] text-slate-300 px-2">—</span>}
+                </span>
+              </li>
+            );
+          })}
+          <li role="option" aria-selected={value === 'custom'} data-testid="mat-opt-custom" onClick={() => choose('custom')}
+            className={`flex items-center justify-between gap-3 px-3 py-2 cursor-pointer text-sm border-t border-slate-100 mt-1 ${value === 'custom' ? 'bg-orange-50 font-semibold text-orange-700' : 'text-slate-700 hover:bg-slate-50'}`}>
+            <span>Custom Material</span>
+            <span className="font-mono text-[11px] text-slate-400">{density.trim() || '—'} g/cm³</span>
+          </li>
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -79,6 +200,7 @@ export function MetalCalculatorPage() {
   // Live market rate (INR/kg) for the metals a feed quotes; the price field follows it until you type your own.
   const [rates, setRates] = useState<Partial<Record<LiveMetal, MarketRate>>>({});
   const [ratesState, setRatesState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [ratesIssue, setRatesIssue] = useState<string | null>(null);
   const [priceFromLive, setPriceFromLive] = useState(false);
 
   // Read the stored rates; if they are missing or old, ask the server to refresh them (it refuses to call the
@@ -87,25 +209,31 @@ export function MetalCalculatorPage() {
     let live = true;
     const load = async () => {
       const r = await supabase.from('market_rates').select('metal, inr_per_kg, quoted_at, fetched_at');
-      if (r.error) throw r.error;
+      if (r.error) throw Object.assign(new Error(describeRateIssue('table', r.error)), { already: true });
       return parseRates(r.data);
     };
     (async () => {
       try {
+        let issue: string | null = null;
         let got = await load();
         if (live) setRates(got);
-        const needs = (['aluminum', 'copper', 'lead', 'nickel', 'zinc'] as LiveMetal[]).some(m => needsRefresh(got[m]));
+        const needs = LIVE_METALS.some(m => needsRefresh(got[m]));
         if (needs) {
           // One refresh at a time, even if the page mounts twice (React dev double-mount, quick re-opens).
           refreshInFlight ??= supabase.functions.invoke('refresh-metal-rates').finally(() => { refreshInFlight = null; });
           const f = await refreshInFlight;
-          if (f.error) console.error('Rate refresh failed:', f.error);
-          else got = await load();
+          if (f.error) {
+            console.error('Rate refresh failed:', f.error);
+            const res = (f.error as { context?: Response }).context;
+            let body: unknown = null;
+            try { body = await res?.clone().json(); } catch { /* not JSON */ }
+            issue = describeRateIssue('function', f.error, res?.status, body);
+          } else got = await load();
         }
-        if (live) { setRates(got); setRatesState(Object.keys(got).length ? 'ready' : 'error'); }
+        if (live) { setRates(got); setRatesIssue(Object.keys(got).length ? null : issue); setRatesState(Object.keys(got).length ? 'ready' : 'error'); }
       } catch (e) {
         console.error('Could not load market rates:', e);
-        if (live) setRatesState('error');
+        if (live) { setRatesIssue(e instanceof Error ? e.message : 'Could not load market rates.'); setRatesState('error'); }
       }
     })();
     return () => { live = false; };
@@ -157,8 +285,9 @@ export function MetalCalculatorPage() {
   const liveMetal = LIVE_METAL_OF[materialId];
   const liveRate = liveMetal ? rates[liveMetal] : undefined;
   const liveFresh = !!liveRate && !isStale(liveRate);
-  const liveValue = liveRate && liveFresh ? rateInUnit(liveRate.inrPerKg, priceUnit) : null;
-
+  // The price follows today's market rate (from the API) until the user types their own.
+  const autoPerKg = liveRate && liveFresh ? liveRate.inrPerKg : undefined;
+  const liveValue = autoPerKg !== undefined ? rateInUnit(autoPerKg, priceUnit) : null;
   // Keep the price on the live rate (when it is fresh) until the user types their own; drop a live price that no
   // longer applies (material changed to one with no feed, or the rate went stale).
   useEffect(() => {
@@ -209,14 +338,8 @@ export function MetalCalculatorPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                 <div>
                   <label className={`${labelCls} uppercase tracking-wide`}>Material presets</label>
-                  <select
-                    aria-label="Material presets"
-                    className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                    value={materialId} onChange={e => pickMaterial(e.target.value)}
-                  >
-                    {MATERIALS.map(m => <option key={m.id} value={m.id}>{m.name} ({m.density} g/cm³)</option>)}
-                    {materialId === 'custom' && <option value="custom">Custom density</option>}
-                  </select>
+                  <MaterialSelect value={materialId} onChange={pickMaterial} density={density} asOf={newestQuote(rates)} issue={ratesIssue}
+                    badge={id => { const m = LIVE_METAL_OF[id]; const r = m ? rates[m] : undefined; return r && !isStale(r) ? { v: r.inrPerKg } : null; }} />
                 </div>
                 <div>
                   <label className={`${labelCls} uppercase tracking-wide`}>Density (g/cm³)</label>
@@ -251,7 +374,7 @@ export function MetalCalculatorPage() {
               <h3 className={`${sectionTitle} mt-5 mb-2 pt-4 border-t border-slate-100`}>Costing &amp; quantity</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                 <div>
-                  <label className={labelCls}>Price per unit weight (optional)</label>
+                  <label className={labelCls}>Your / dealer price per unit weight (optional)</label>
                   <div className={fieldBox(!!errorOf.price)}>
                     <span className="h-10 w-9 flex items-center justify-center text-sm text-slate-500 border-r border-slate-200 select-none">₹</span>
                     <input className={inputCls} inputMode="decimal" placeholder="0.00" aria-label="Price per unit weight" aria-invalid={!!errorOf.price}
@@ -262,7 +385,7 @@ export function MetalCalculatorPage() {
                   </div>
                   {errorOf.price && <p className="text-[11px] text-red-600 mt-1">{errorOf.price}</p>}
                   <RateNote materialId={materialId} liveMetal={liveMetal} rate={liveRate} fresh={liveFresh} state={ratesState} unit={priceUnit}
-                    isLive={priceFromLive} onUse={() => { if (liveValue !== null) { setPrice(liveValue); setPriceFromLive(true); } }} />
+                    applied={priceFromLive} onUse={() => { if (liveValue !== null) { setPrice(liveValue); setPriceFromLive(true); } }} />
                 </div>
                 <div>
                   <label className={labelCls}>Quantity (Pcs)</label>
@@ -273,6 +396,8 @@ export function MetalCalculatorPage() {
                   {errorOf.qty && <p className="text-[11px] text-red-600 mt-1">{errorOf.qty}</p>}
                 </div>
               </div>
+
+              <MarketPanel issue={ratesIssue} rates={rates} state={ratesState} selected={liveMetal} price={price} unit={priceUnit} fromLive={priceFromLive} />
 
               <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
                 <button type="button" onClick={clearAll}

@@ -37,6 +37,10 @@ export const MATERIALS: Material[] = [
   { id: 'nickel', name: 'Nickel', density: 8.9 },
   { id: 'lead', name: 'Lead', density: 11.34 },
   { id: 'magnesium', name: 'Magnesium', density: 1.74 },
+  { id: 'silver', name: 'Silver', density: 10.49 },
+  { id: 'gold', name: 'Gold', density: 19.32 },
+  { id: 'platinum', name: 'Platinum', density: 21.45 },
+  { id: 'palladium', name: 'Palladium', density: 12.02 },
 ];
 
 export type ProfileId =

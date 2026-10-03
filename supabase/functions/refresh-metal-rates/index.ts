@@ -8,7 +8,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const MIN_AGE_HOURS = 6;
-const METALS = ['aluminum', 'copper', 'lead', 'nickel', 'zinc'] as const;
+const METALS = ['aluminum', 'copper', 'lead', 'nickel', 'zinc', 'silver', 'gold', 'platinum', 'palladium'] as const;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
