@@ -102,3 +102,6 @@ end;
 $$;
 
 commit;
+
+-- Make the API pick up the new/changed functions immediately.
+notify pgrst, 'reload schema';

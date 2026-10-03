@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Layers, PencilRuler, Shapes, BarChart3, RotateCcw, Info } from 'lucide-react';
 import { formatINR } from '@/lib/format';
+import { supabase } from '@/lib/supabase';
+import { LIVE_METAL_OF, ageLabel, isStale, needsRefresh, parseRates, rateInUnit, type LiveMetal, type MarketRate } from '@/lib/marketRates';
 import {
   PROFILES, PROFILE_BY_ID, MATERIALS, UNITS, PRICE_UNITS, LENGTH_KEY,
   calculate, convertDims, defaultDims,
@@ -44,6 +46,27 @@ function DimField({ label, v, error, onValue, onUnit }: {
   );
 }
 
+let refreshInFlight: Promise<{ error: unknown }> | null = null;
+
+function RateNote({ materialId, liveMetal, rate, fresh, state, unit, isLive, onUse }: {
+  materialId: string; liveMetal?: LiveMetal; rate?: MarketRate; fresh: boolean; state: 'loading' | 'ready' | 'error'; unit: PriceUnit; isLive: boolean; onUse: () => void;
+}) {
+  const cls = 'text-[11px] mt-1';
+  if (materialId === 'custom' || !materialId) return null;
+  if (!liveMetal) return <p className={`${cls} text-slate-400`} data-testid="rate-note">No live market feed for this material — enter your own price.</p>;
+  if (state === 'loading') return <p className={`${cls} text-slate-400`} data-testid="rate-note">Checking live market rate…</p>;
+  if (!rate) return <p className={`${cls} text-amber-600`} data-testid="rate-note">Live rate unavailable right now — enter your own price.</p>;
+  const when = ageLabel(rate.quotedAt ?? rate.fetchedAt);
+  if (!fresh) return <p className={`${cls} text-amber-600`} data-testid="rate-note">Last market rate (₹{rateInUnit(rate.inrPerKg, 'kg')}/kg) is out of date ({when}) — not applied.</p>;
+  return (
+    <p className={`${cls} text-emerald-700`} data-testid="rate-note">
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />
+      Live market rate ₹{rateInUnit(rate.inrPerKg, unit)} / {unit} · Metals.Dev · {when}
+      {isLive ? ' · applied' : <> · <button type="button" onClick={onUse} className="underline font-semibold">Use live rate</button></>}
+    </p>
+  );
+}
+
 export function MetalCalculatorPage() {
   const [profileId, setProfileId] = useState<ProfileId>('i-beam');
   const [all, setAll] = useState<AllDims>(initialDims);
@@ -53,6 +76,40 @@ export function MetalCalculatorPage() {
   const [price, setPrice] = useState('');
   const [priceUnit, setPriceUnit] = useState<PriceUnit>('kg');
   const [qty, setQty] = useState('1');
+  // Live market rate (INR/kg) for the metals a feed quotes; the price field follows it until you type your own.
+  const [rates, setRates] = useState<Partial<Record<LiveMetal, MarketRate>>>({});
+  const [ratesState, setRatesState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [priceFromLive, setPriceFromLive] = useState(false);
+
+  // Read the stored rates; if they are missing or old, ask the server to refresh them (it refuses to call the
+  // provider more than once every few hours, so opening this page often is harmless).
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      const r = await supabase.from('market_rates').select('metal, inr_per_kg, quoted_at, fetched_at');
+      if (r.error) throw r.error;
+      return parseRates(r.data);
+    };
+    (async () => {
+      try {
+        let got = await load();
+        if (live) setRates(got);
+        const needs = (['aluminum', 'copper', 'lead', 'nickel', 'zinc'] as LiveMetal[]).some(m => needsRefresh(got[m]));
+        if (needs) {
+          // One refresh at a time, even if the page mounts twice (React dev double-mount, quick re-opens).
+          refreshInFlight ??= supabase.functions.invoke('refresh-metal-rates').finally(() => { refreshInFlight = null; });
+          const f = await refreshInFlight;
+          if (f.error) console.error('Rate refresh failed:', f.error);
+          else got = await load();
+        }
+        if (live) { setRates(got); setRatesState(Object.keys(got).length ? 'ready' : 'error'); }
+      } catch (e) {
+        console.error('Could not load market rates:', e);
+        if (live) setRatesState('error');
+      }
+    })();
+    return () => { live = false; };
+  }, []);
 
   const profile = PROFILE_BY_ID[profileId];
   const dims = all[profileId];
@@ -91,10 +148,24 @@ export function MetalCalculatorPage() {
       [profileId]: Object.fromEntries(Object.entries(prev[profileId]).map(([k, v]) => [k, { value: '', unit: v.unit }])),
     }));
     setPrice('');
+    setPriceFromLive(false);
     setQty('1');
   };
 
   const ok = outcome.status === 'ok' ? outcome.result : null;
+
+  const liveMetal = LIVE_METAL_OF[materialId];
+  const liveRate = liveMetal ? rates[liveMetal] : undefined;
+  const liveFresh = !!liveRate && !isStale(liveRate);
+  const liveValue = liveRate && liveFresh ? rateInUnit(liveRate.inrPerKg, priceUnit) : null;
+
+  // Keep the price on the live rate (when it is fresh) until the user types their own; drop a live price that no
+  // longer applies (material changed to one with no feed, or the rate went stale).
+  useEffect(() => {
+    if (liveValue !== null) { if (price === '' || priceFromLive) { setPrice(liveValue); setPriceFromLive(true); } }
+    else if (priceFromLive) { setPrice(''); setPriceFromLive(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveValue]);
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
@@ -184,12 +255,14 @@ export function MetalCalculatorPage() {
                   <div className={fieldBox(!!errorOf.price)}>
                     <span className="h-10 w-9 flex items-center justify-center text-sm text-slate-500 border-r border-slate-200 select-none">₹</span>
                     <input className={inputCls} inputMode="decimal" placeholder="0.00" aria-label="Price per unit weight" aria-invalid={!!errorOf.price}
-                      value={price} onChange={e => setPrice(numeric(e.target.value))} />
+                      value={price} onChange={e => { setPrice(numeric(e.target.value)); setPriceFromLive(false); }} />
                     <select className={unitSelectCls} aria-label="Price unit" value={priceUnit} onChange={e => setPriceUnit(e.target.value as PriceUnit)}>
                       {PRICE_UNITS.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
                     </select>
                   </div>
                   {errorOf.price && <p className="text-[11px] text-red-600 mt-1">{errorOf.price}</p>}
+                  <RateNote materialId={materialId} liveMetal={liveMetal} rate={liveRate} fresh={liveFresh} state={ratesState} unit={priceUnit}
+                    isLive={priceFromLive} onUse={() => { if (liveValue !== null) { setPrice(liveValue); setPriceFromLive(true); } }} />
                 </div>
                 <div>
                   <label className={labelCls}>Quantity (Pcs)</label>

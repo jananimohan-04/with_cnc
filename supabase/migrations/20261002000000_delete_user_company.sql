@@ -126,3 +126,6 @@ grant execute on function public.erp_delete_user(uuid) to authenticated;
 grant execute on function public.erp_delete_company(uuid, text) to authenticated;
 
 commit;
+
+-- Make the API pick up the new/changed functions immediately.
+notify pgrst, 'reload schema';
