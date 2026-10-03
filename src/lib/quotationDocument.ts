@@ -1,6 +1,7 @@
 import { calcLine, calcTotals, type QuoteLine, type QuoteTaxInput } from './quotationCalc';
 import { exportCsv } from './reportExport';
 import type { QuoteSeller } from './companyProfile';
+import { calcWorkings, hasWorkings, rowCost } from './quotationWorkings';
 
 export interface QuoteClient { key: string; name: string; email: string; phone: string; address: string; gstin: string }
 
@@ -115,6 +116,24 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.text(title, 14, yy); yy += 5;
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.text(wrapped, 14, yy); yy += wrapped.length * 4.4 + 4;
   };
+  if (withWorkings) {
+    for (const l of doc.lines.filter(x => calcLine(x).active && hasWorkings(x.workings))) {
+      const w = l.workings!; const r = calcWorkings(w);
+      const rows: string[][] = [];
+      for (const [label, list] of [['Material', w.materials], ['Process', w.processes], ['Other', w.others]] as const) {
+        for (const x of list) { const c = rowCost(x); if (!Number.isNaN(c) && c > 0) rows.push([label, x.description || '-', `${x.qty} x ${x.rate}`, inr(c)]); }
+      }
+      rows.push(['', 'Profit margin', `${w.marginPct || 0}%`, inr(r.profit)], ['', 'Cost of one unit', '', inr(r.total)]);
+      // @ts-expect-error lastAutoTable is added by the plugin
+      const startY = (yy > pdf.lastAutoTable.finalY ? yy : pdf.lastAutoTable.finalY) + 4;
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.setTextColor(30);
+      if (startY > 265) { pdf.addPage(); yy = 16; } else yy = startY;
+      pdf.text(`Workings: ${l.description}`, 14, yy);
+      autoTable(pdf, { startY: yy + 2, head: [['Type', 'Item', 'Qty x Rate', 'Cost']], body: rows, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: theme, textColor: 255 }, columnStyles: { 3: { halign: 'right' } } });
+      // @ts-expect-error lastAutoTable is added by the plugin
+      yy = pdf.lastAutoTable.finalY + 6;
+    }
+  }
   block('Terms & Conditions', doc.terms);
   block('Notes', doc.notes);
   if (seller?.bankLines.length) block('Bank & Payment Details', seller.bankLines.join('\n'));

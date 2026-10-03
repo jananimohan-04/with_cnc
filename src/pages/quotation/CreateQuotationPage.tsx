@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Building2, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Library, Search, X } from 'lucide-react';
+import { FileText, Building2, Calculator, Plus, UserCheck, Trash2, Package, Palette, MessageCircle, Mail, FileDown, FileSpreadsheet, Bookmark, BookmarkPlus, Download, Library, Search, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { formatINR, todayISO } from '@/lib/format';
@@ -9,6 +9,8 @@ import { loadProducts, saveProducts, newId, validateDraft, type LibraryProduct }
 import { defaultTermsText, loadTerms, type TermsTemplate } from '@/lib/termsLibrary';
 import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
 import { newIdent, takeReuse, upsertQuote, type QuoteIdent } from '@/lib/quotationStore';
+import { WorkingsModal } from './WorkingsModal';
+import { hasWorkings, type Workings } from '@/lib/quotationWorkings';
 import { PDF_THEMES, downloadQuotePdf, exportQuoteCsv, quoteSummaryText, type PdfThemeId, type QuoteClient, type QuoteDoc } from '@/lib/quotationDocument';
 
 const cell = 'w-full h-9 px-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20';
@@ -46,7 +48,8 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   const { company, email: authEmail } = useAuth();
   const [date, setDate] = useState(todayISO());
   const [clients, setClients] = useState<QuoteClient[]>(() => (embed?.client ? [{ key: embed.client.key || embed.client.name.toLowerCase(), email: '', phone: '', address: '', gstin: '', ...embed.client }] : []));
-  const [lines, setLines] = useState<QuoteLine[]>(() => (embed?.lines ?? []).map(l => ({ ...newLine(), ...l })));
+  const [lines, setLines] = useState<QuoteLine[]>(() => ((embed?.lines ?? []).length ? (embed!.lines!).map(l => ({ ...newLine(), ...l })) : [newLine()]));
+  const [workingsFor, setWorkingsFor] = useState<string | null>(null);
   const [tax, setTax] = useState({ cgst: '9', sgst: '9', igst: '' });
   const [terms, setTerms] = useState(() => defaultTermsText(company?.id));
   const [notes, setNotes] = useState('');
@@ -229,14 +232,16 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
                 {lines.map((l, i) => (
                   <tr key={l.id} className="border-t border-slate-100 align-top">
                     <td className="px-2 py-2 text-slate-500">{i + 1}</td>
-                    <td className="px-2 py-2 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
-                    <td className="px-2 py-2 min-w-[220px]"><input className={cell} aria-label={`Row ${i + 1} description`} placeholder="Product / service description" value={l.description} onChange={e => setLine(l.id, { description: e.target.value })} /></td>
+                    <td className="px-2 py-2 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} placeholder="HSN/SAC" value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
+                    <td className="px-2 py-2 min-w-[300px]"><div className="flex items-center gap-2"><input className={cell} aria-label={`Row ${i + 1} description`} placeholder="Type or select product…" value={l.description} onChange={e => setLine(l.id, { description: e.target.value })} />
+                      <button type="button" data-testid={`workings-${i}`} aria-label={`Row ${i + 1} workings`} onClick={() => setWorkingsFor(l.id)}
+                        className={`shrink-0 h-9 px-2.5 text-xs font-semibold rounded-md border flex items-center gap-1 ${hasWorkings(l.workings) ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'}`}><Calculator size={13} /> Workings</button></div></td>
                     <td className="px-2 py-2 w-24"><input className={`${cell} ${errAt(i, 'qty') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} quantity`} value={l.qty} onChange={e => setLine(l.id, { qty: numeric(e.target.value) })} /></td>
                     <td className="px-2 py-2 w-24"><select className={cell} aria-label={`Row ${i + 1} unit`} value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })}>{QUOTE_UNITS.map(u => <option key={u}>{u}</option>)}</select></td>
-                    <td className="px-2 py-2 w-32"><input className={`${cell} ${errAt(i, 'unitPrice') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} unit price`} value={l.unitPrice} onChange={e => setLine(l.id, { unitPrice: numeric(e.target.value) })} /></td>
-                    <td className="px-2 py-2 w-24"><input className={`${cell} ${errAt(i, 'discount') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} discount`} value={l.discount} onChange={e => setLine(l.id, { discount: numeric(e.target.value) })} /></td>
-                    <td className="px-2 py-2 w-32 pt-3 font-mono text-slate-700" data-testid={`disc-unit-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].discountedUnit, { decimals: 'always' }) : '—'}</td>
-                    <td className="px-2 py-2 w-32 pt-3 font-mono font-semibold text-slate-900" data-testid={`amount-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].amount, { decimals: 'always' }) : '—'}</td>
+                    <td className="px-2 py-2 w-32"><input className={`${cell} ${errAt(i, 'unitPrice') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} unit price`} placeholder="0" value={l.unitPrice} onChange={e => setLine(l.id, { unitPrice: numeric(e.target.value) })} /></td>
+                    <td className="px-2 py-2 w-24"><input className={`${cell} ${errAt(i, 'discount') ? 'border-red-400' : ''}`} inputMode="decimal" aria-label={`Row ${i + 1} discount`} placeholder="0" value={l.discount} onChange={e => setLine(l.id, { discount: numeric(e.target.value) })} /></td>
+                    <td className="px-2 py-2 w-32 pt-3 font-mono text-slate-700" data-testid={`disc-unit-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].discountedUnit, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
+                    <td className="px-2 py-2 w-32 pt-3 font-mono font-semibold text-slate-900" data-testid={`amount-${i}`}>{rowResults[i].active && !Object.keys(rowResults[i].issues).length ? formatINR(rowResults[i].amount, { decimals: 'always' }) : (rowResults[i].active ? '—' : formatINR(0, { decimals: 'always' }))}</td>
                     <td className="px-2 py-2 pt-3 whitespace-nowrap"><button aria-label={`Save row ${i + 1} to product library`} title="Save to Product Library" onClick={() => saveRowToLibrary(l)} className="text-slate-400 hover:text-orange-600 mr-2"><BookmarkPlus size={15} /></button><button aria-label={`Delete row ${i + 1}`} onClick={() => setLines(ls => ls.filter(x => x.id !== l.id))} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button></td>
                   </tr>
                 ))}
@@ -251,6 +256,10 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
             )}
           </div>
         </section>
+        {workingsFor && (() => { const l = lines.find(x => x.id === workingsFor); return l ? (
+          <WorkingsModal key={l.id} open title={l.description} initial={l.workings} onClose={() => setWorkingsFor(null)}
+            onApply={(w: Workings, price: number) => { setLine(l.id, { workings: w, unitPrice: String(price) }); setWorkingsFor(null); }} />
+        ) : null; })()}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setLines(ls => [...ls, newLine()])} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"><Plus size={16} /> Add Product</button>
           <button onClick={() => { setProdList(loadProducts(company?.id)); setProdOpen(true); }} className="flex items-center gap-2 h-10 px-4 text-sm font-medium border border-slate-200 rounded-lg hover:bg-slate-50"><Library size={16} /> From Product Library</button>

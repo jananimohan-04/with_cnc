@@ -3174,6 +3174,49 @@ export function SalesPipelinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotationModalTarget]);
 
+  // Create Sales Order popup: the Create Quotation page sits on top (existing customers who order directly get a
+  // quotation first); saving it records the quotation as Converted and fills the order form underneath from it.
+  const soQuoteId = useRef<string | null>(null);
+  const soQuoteNo = useRef<string>('');
+  const closeSoPopup = () => { setSoModalTarget(null); soQuoteId.current = null; soQuoteNo.current = ''; };
+  const soQuotationEmbed = useMemo<QuotationEmbed | undefined>(() => {
+    if (!soModalTarget) return undefined;
+    return {
+      onRecord: async (doc, total) => {
+        const lineItems = doc.lines.filter(l => l.description.trim() || l.unitPrice.trim()).map(l => ({
+          id: l.id, partName: l.description.trim(), partNumber: '', quantity: l.qty, unitPrice: l.unitPrice, discount: l.discount || '0', unitDiscount: '0',
+          gst: String((Number(doc.tax.cgst) || 0) + (Number(doc.tax.sgst) || 0) + (Number(doc.tax.igst) || 0)), filePaths: [], files: [],
+        }));
+        const first = lineItems[0];
+        const names = lineItems.map(i => i.partName).filter(Boolean).join(', ');
+        if (!soQuoteNo.current) soQuoteNo.current = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        const payload: any = {
+          quote_no: soQuoteNo.current, customer: doc.clients[0]?.name || '', part_name: lineItems.length > 1 ? `${names} (${lineItems.length} Products)` : (first?.partName || 'TBD'),
+          enquiry_no: null, contact_person: '', phone: doc.clients[0]?.phone || '', email: doc.clients[0]?.email || '',
+          part_number: '', description: JSON.stringify(lineItems), unit_price: Number(first?.unitPrice) || 0, unit_discount: 0,
+          quantity: lineItems.reduce((n, i) => n + (Number(i.quantity) || 0), 0), total_value: total, date: doc.date || null, valid_till: null, status: 'Converted',
+          salesperson: userName, discount_percent: Number(first?.discount) || 0, gst_percent: Number(first?.gst) || 18,
+          payment_terms: '', delivery_terms: '', remarks: doc.notes, lead_id: null,
+        };
+        const newId = crypto.randomUUID();
+        const write = (pl: any) => soQuoteId.current
+          ? supabase.from('cnc_quotations').update(pl).eq('id', soQuoteId.current)
+          : supabase.from('cnc_quotations').insert([{ id: newId, ...pl }]);
+        let { error } = await write(payload);
+        if (error && (error.message?.includes('unit_discount') || error.code === '42703')) { const { unit_discount, ...rest } = payload; ({ error } = await write(rest)); }
+        if (error) throw new Error(`Could not record the quotation: ${error.message}`);
+        if (!soQuoteId.current) soQuoteId.current = newId;
+        // Fill the order underneath from the quotation (the quotation is the source of truth for company, products and prices).
+        setSoForm((prev: any) => ({
+          ...prev,
+          customer: doc.clients[0]?.name || prev.customer,
+          items: lineItems.length ? lineItems.map(i => ({ id: i.id, partName: i.partName, quantity: i.quantity, rejectedQty: '', itemStatus: 'Confirmed', unitPrice: i.unitPrice, gst: i.gst || '18' })) : prev.items,
+        }));
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soModalTarget]);
+
   // Inwards of these categories flow to Production as Draft work orders
   // (released manually there). 'NEW PROJECT' is the legacy label of NEW PART.
   const PRODUCTION_CATEGORIES = ['CUSTOMER DC', 'DC', 'NO DC', 'NEW PART', 'NEW PROJECT'];
@@ -3572,12 +3615,12 @@ export function SalesPipelinePage() {
       status: prodStatuses.length === 1 ? prodStatuses[0] : 'Confirmed',
       payment_terms: 'Net 30', special_instructions: '',
       internal_remarks: '',
-      quotation_id: null
+      quotation_id: soQuoteId.current
     }]);
     
     if (!error) {
       fetchPipeline();
-      setSoModalTarget(null);
+      closeSoPopup();
     } else {
       alert("Error creating sales order: " + error.message);
     }
@@ -4749,7 +4792,14 @@ export function SalesPipelinePage() {
 
       
       {/* Sales Order Modal */}
-      <Modal open={!!soModalTarget} onClose={() => setSoModalTarget(null)} title="Create Sales Order" size="md" footer={<><Button variant="secondary" onClick={() => setSoModalTarget(null)}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="full" draggable={false} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+        <section data-testid="so-quotation" className="mb-6">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Step 1 · Quotation <span className="font-medium normal-case text-slate-400">— save or export it and the order below fills in automatically</span></p>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            {soModalTarget && <CreateQuotationPage key={soModalTarget.id + soForm.orderNo} embed={soQuotationEmbed} />}
+          </div>
+        </section>
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Step 2 · Sales order</p>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <CustomerAutocomplete

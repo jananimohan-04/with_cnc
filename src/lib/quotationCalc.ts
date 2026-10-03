@@ -1,6 +1,8 @@
 // Quotation arithmetic. All money is rounded to whole paise at each step so the printed
 // figures always add up to the printed total.
 
+import type { Workings } from './quotationWorkings';
+
 export const QUOTE_UNITS = ['Nos', 'Pcs', 'Kg', 'Set', 'Mtr', 'Ft', 'Sq.Ft', 'Ltr', 'Lot', 'Hrs'] as const;
 
 export interface QuoteLine {
@@ -12,6 +14,8 @@ export interface QuoteLine {
   unitPrice: string;
   /** Discount in percent (0-100). */
   discount: string;
+  /** Cost build-up behind the unit price (see WorkingsModal). */
+  workings?: Workings;
 }
 
 export interface QuoteTaxInput { cgst: string; sgst: string; igst: string }
@@ -44,7 +48,7 @@ const toNum = (s: string): number => {
 /** Rounds to 2 decimals without binary drift (1.005 -> 1.01). */
 export const money = (n: number): number => Math.round((n + Number.EPSILON) * 100 + (n < 0 ? -1e-9 : 1e-9)) / 100;
 
-export const emptyLine = (id: string): QuoteLine => ({ id, hsn: '', description: '', qty: '1', unit: 'Nos', unitPrice: '', discount: '' });
+export const emptyLine = (id: string): QuoteLine => ({ id, hsn: '', description: '', qty: '1', unit: 'Pcs', unitPrice: '', discount: '' });
 
 export function calcLine(l: QuoteLine): LineResult {
   const qty = toNum(l.qty);
