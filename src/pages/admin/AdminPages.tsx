@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Power, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText } from 'lucide-react';
+import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard } from '@/components/ui/Card';
@@ -60,7 +60,7 @@ function useCompanies() {
 const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '' };
 
 export function UsersPage() {
-  const { profile, company, isSuperAdmin } = useAuth();
+  const { profile, company, isSuperAdmin, isCompanyAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const { companies } = useCompanies();
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -69,6 +69,9 @@ export function UsersPage() {
   const [form, setForm] = useState(emptyUserForm);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<UserRow | null>(null);
+  const [toDelete, setToDelete] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -93,7 +96,7 @@ export function UsersPage() {
   // A Super Admin may edit anyone except themselves (self-edit stays blocked
   // so nobody can accidentally remove their own Super Admin access).
   const canEdit = (u: UserRow) =>
-    isSuperAdmin ? u.id !== profile?.id : (u.role === 'USER' && u.company_id === profile?.company_id);
+    u.id !== profile?.id && (isSuperAdmin || (isCompanyAdmin && u.role !== 'SUPER_ADMIN' && u.company_id === profile?.company_id));
 
   const openCreate = () => {
     setForm({ ...emptyUserForm, company_id: isSuperAdmin ? companyFilter || company?.id || '' : profile?.company_id ?? '' });
@@ -135,9 +138,15 @@ export function UsersPage() {
     if ((await save(form)) === null) setShowForm(false);
   };
 
-  const toggleStatus = async (u: UserRow) => {
-    const err = await save({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, company_id: u.company_id ?? '', status: u.status === 'Active' ? 'Inactive' : 'Active' });
-    if (err) alert('Could not change status: ' + err);
+  // Permanent: removes the ERP user and their Google sign-in (erp_delete_user enforces who may do this).
+  const confirmDeleteUser = async () => {
+    if (!toDelete) return;
+    setDeleting(true); setDeleteError(null);
+    const { error } = await supabase.rpc('erp_delete_user', { p_id: toDelete.id });
+    setDeleting(false);
+    if (error) { setDeleteError(error.message); return; }
+    setToDelete(null);
+    await loadUsers();
   };
 
   const columns: Column<UserRow>[] = [
@@ -161,7 +170,7 @@ export function UsersPage() {
           {canEdit(r) && (
             <>
               <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
-              <button title={r.status === 'Active' ? 'Deactivate' : 'Activate'} onClick={() => toggleStatus(r)} className={`p-1.5 rounded transition-colors ${r.status === 'Active' ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}><Power size={15} /></button>
+              {r.id !== profile?.id && <button title="Delete user" aria-label={`Delete user ${r.email}`} onClick={() => { setDeleteError(null); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>}
             </>
           )}
         </div>
@@ -169,7 +178,7 @@ export function UsersPage() {
     },
   ];
 
-  const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER'] : ['USER'];
+  const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER'] : ['COMPANY_ADMIN', 'USER'];
   const ownCompanyName = companies.find(c => c.id === profile?.company_id)?.company_name ?? company?.company_name ?? '';
 
   return (
@@ -257,6 +266,11 @@ export function UsersPage() {
           </dl>
         )}
       </Modal>
+      <Modal open={!!toDelete} onClose={() => !deleting && setToDelete(null)} title="Delete user permanently?" size="sm"
+        footer={<><Button variant="secondary" onClick={() => setToDelete(null)} disabled={deleting}>Cancel</Button><button onClick={confirmDeleteUser} disabled={deleting} className="h-9 px-4 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">{deleting ? 'Deleting…' : 'Delete permanently'}</button></>}>
+        <p className="text-sm text-slate-700"><b>{toDelete?.full_name || toDelete?.email}</b> ({toDelete?.email}) will be removed completely, including their Google sign-in. This cannot be undone.</p>
+        {deleteError && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{deleteError}</p>}
+      </Modal>
     </div>
   );
 }
@@ -276,6 +290,10 @@ export function CompaniesPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<CompanyRow | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from('company_users').select('company_id').then(({ data, error }) => {
@@ -304,9 +322,16 @@ export function CompaniesPage() {
     if ((await save(form)) === null) setShowForm(false);
   };
 
-  const toggleStatus = async (c: CompanyRow) => {
-    const err = await save({ id: c.id, company_name: c.company_name, code: c.code ?? '', status: c.status === 'Active' ? 'Inactive' : 'Active' });
-    if (err) alert('Could not change company status: ' + err);
+  // Permanent: erp_delete_company removes the company, ALL its data and its users, atomically.
+  const confirmDeleteCompany = async () => {
+    if (!toDelete) return;
+    setDeleting(true); setDeleteError(null);
+    const { error } = await supabase.rpc('erp_delete_company', { p_id: toDelete.id, p_confirm_name: confirmText });
+    setDeleting(false);
+    if (error) { setDeleteError(error.message); return; }
+    setToDelete(null); setConfirmText('');
+    await reload();
+    await refresh();
   };
 
   const rows = companies.map(c => ({ ...c, users: userCounts[c.id] || 0 }));
@@ -326,7 +351,7 @@ export function CompaniesPage() {
         <div className="flex items-center justify-center gap-1">
           <button title="View users" onClick={() => navigate(`/admin/users?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><UsersIcon size={15} /></button>
           <button title="Edit" onClick={() => { setForm({ id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status }); setFormError(null); setShowForm(true); }} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
-          <button title={r.status === 'Active' ? 'Deactivate' : 'Activate'} onClick={() => toggleStatus(r)} className={`p-1.5 rounded transition-colors ${r.status === 'Active' ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}><Power size={15} /></button>
+          <button title="Delete company" aria-label={`Delete company ${r.company_name}`} onClick={() => { setDeleteError(null); setConfirmText(''); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
       )
     },
@@ -376,6 +401,16 @@ export function CompaniesPage() {
           </FormField>
         </div>
         {formError && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{formError}</p>}
+      </Modal>
+      <Modal open={!!toDelete} onClose={() => !deleting && setToDelete(null)} title="Delete company permanently?" size="sm"
+        footer={<><Button variant="secondary" onClick={() => setToDelete(null)} disabled={deleting}>Cancel</Button><button onClick={confirmDeleteCompany} disabled={deleting || confirmText.trim() !== toDelete?.company_name} className="h-9 px-4 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40">{deleting ? 'Deleting…' : 'Delete everything'}</button></>}>
+        <div className="space-y-3 text-sm text-slate-700">
+          <p><b>{toDelete?.company_name}</b> and <b>all of its data</b> (enquiries, quotations, orders, inventory, accounts, files records…) will be erased, together with its {userCounts[toDelete?.id ?? ''] || 0} user(s) and their Google sign-ins. <b>This cannot be undone.</b></p>
+          <FormField label={`Type the company name to confirm`}>
+            <input autoFocus aria-label="Confirm company name" className={inputClass} value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={toDelete?.company_name} />
+          </FormField>
+          {deleteError && <p className="text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{deleteError}</p>}
+        </div>
       </Modal>
     </div>
   );
