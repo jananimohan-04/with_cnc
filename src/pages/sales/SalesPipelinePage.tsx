@@ -19,7 +19,7 @@ import { InvoiceModule } from './InvoiceModule';
 import { FgCostingModal } from './FgCostingModal';
 import { DcInvoiceModal } from './DcInvoiceModal';
 import { SignaturePad } from '@/components/ui/SignaturePad';
-import { StageStrip, SalesOrderSection } from './SalesOrderSection';
+import { SalesOrderSection } from './SalesOrderSection';
 import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
@@ -810,19 +810,6 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
       </div>
     </div>
   );
-}
-
-function quoteProductNames(raw: any): string[] {
-  try {
-    const d = raw?.description;
-    const parsed = typeof d === 'string' ? JSON.parse(d) : d;
-    if (Array.isArray(parsed)) {
-      const out = parsed.map((it: any) => String(it.partName || it.productName || it.part_name || it.description || '').trim()).filter(Boolean);
-      if (out.length) return Array.from(new Set(out));
-    }
-  } catch { /* fall through */ }
-  const single = String(raw?.part_name || '').trim().replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
-  return single ? [single] : [];
 }
 
 /** Tolerant delivery update: drops keys the cloud schema predates. */
@@ -4833,69 +4820,6 @@ export function SalesPipelinePage() {
         {viewModalData ? (
           <div className="flex flex-col max-h-[75vh] overflow-y-auto pr-2">
             {/* Top banner hides where a section renders its own live strip (enquiry form, quotation). */}
-            {(viewModalData?.enquiry && viewModalTarget?.stage === 'Enquiry') || (viewModalData?.quotation && (viewModalTarget?.stage === 'Quotation' || viewModalTarget?.stage === 'Sales Order')) ? null : (() => {
-              const enq: any = viewModalData?.enquiry;
-              const quo: any = viewModalData?.quotation;
-              const ord: any = viewModalData?.order;
-              const uniq = ord?.lead_no || enq?.lead_no || enq?.enquiry_no || viewModalTarget?.refNo || '—';
-              const cust = enq?.customer || quo?.customer || ord?.customer || viewModalData?.inward?.party_name || viewModalData?.finished_goods?.customer || viewModalData?.dc?.customer_name || viewModalData?.invoice?.customer_name || viewModalTarget?.customer || '—';
-              const rawNames: string[] = [];
-              // Split on commas: stored summaries like "A, B (2 Products)" dissolve
-              // into real product names before dedupe.
-              const pushRaw = (v: any) => {
-                String(v || '').split(',').forEach(fragment => {
-                  const s = fragment.trim();
-                  if (s) rawNames.push(s);
-                });
-              };
-              const fromItems = (items: any) => { if (Array.isArray(items)) items.forEach((it: any) => pushRaw(it.partName || it.productName || it.part_name)); };
-              fromItems(enq?.items);
-              fromItems(quo?.items);
-              fromItems(ord?.items);
-              try { const parsed = JSON.parse(quo?.description || 'null'); fromItems(parsed); } catch { /* plain-text description */ }
-              if (Array.isArray(enq?.enquiring_for)) enq.enquiring_for.forEach((e: any) => pushRaw(e.partName || e.productName || e.part_name));
-              else if (typeof enq?.enquiring_for === 'string') { try { fromItems(JSON.parse(enq.enquiring_for)); } catch { /* plain text */ } }
-              pushRaw(enq?.part_name); pushRaw(quo?.part_name); pushRaw(ord?.part_name);
-              pushRaw(viewModalData?.inward?.product_name); pushRaw(viewModalData?.finished_goods?.part_name);
-              fromItems(viewModalData?.invoice?.items); pushRaw(viewModalData?.invoice?.part_name);
-              // Drop placeholders and summary labels; keep real names and dedupe across
-              // stages using a normalized key (case/punctuation/whitespace-insensitive).
-              const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-              const seen = new Set<string>();
-              let names: string[] = [];
-              for (const raw of rawNames) {
-                // Strip trailing summary suffixes like "(2 Products)" so they never display.
-                const s = raw.trim().replace(/\s*\(?\d+\s*products?\)?\s*$/i, '').trim().replace(/[,;\s]+$/, '');
-                if (!s || s === '—' || s.toUpperCase() === 'N/A') continue;
-                if (/multiple\s*products?/i.test(s)) continue;
-                const key = normKey(s);
-                if (!key || seen.has(key)) continue;
-                seen.add(key);
-                names.push(s);
-              }
-              // Drop combined entries (e.g. "A, B") when every fragment is listed on its own.
-              names = names.filter(n => {
-                const frags = n.split(',').map(f => f.trim()).filter(Boolean);
-                if (frags.length < 2) return true;
-                return !frags.every(f => seen.has(normKey(f)));
-              });
-              return (
-                <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                  <div>
-                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
-                    <span className="text-sm font-extrabold text-slate-900">{uniq}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
-                    <span className="text-sm font-extrabold text-slate-900 break-words">{cust}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({names.length})</span>
-                    <span className="text-sm font-extrabold text-slate-900 break-words">{names.length ? names.join(', ') : '—'}</span>
-                  </div>
-                </div>
-              );
-            })()}
             {(viewModalTarget?.stage === 'Finished Goods' || viewModalTarget?.stage === 'Inward') && viewModalData?.qtyTracking && (
               <QtyTrackingSection
                 q={viewModalData.qtyTracking}
@@ -5003,12 +4927,6 @@ export function SalesPipelinePage() {
                 ) : null) },
                 { key: 'Quotation', node: viewModalTarget?.stage === 'Inward' ? null : (viewModalData.quotation ? (
                   <>
-                    <StageStrip
-                      typeLabel="QUOTATION"
-                      uniqueNo={viewModalData.quotation.enquiry_no || viewModalData.quotation.lead_no || viewModalData.quotation.quote_no || ''}
-                      products={quoteProductNames(viewModalData.quotation)}
-                      customer={viewModalData.quotation.customer || viewModalData.quotation.customer_name || ''}
-                    />
                     {viewEditMode ? (
                       <QuotationEditForm
                         key={viewModalData.quotation.id || 'quo'}

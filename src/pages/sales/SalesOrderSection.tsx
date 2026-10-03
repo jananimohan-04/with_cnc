@@ -1,34 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
-
-/** Neutral context strip (type / unique number / products / customer), shared
- *  by quotation view and edit modes so both look the same. */
-export function StageStrip({ typeLabel, uniqueNo, products, customer }: {
-  typeLabel: string; uniqueNo: string; products: string[]; customer: string;
-}) {
-  return (
-    <div className="w-full rounded-xl border-2 border-brand-300 bg-brand-50 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Document</span>
-        <span className="text-sm font-extrabold text-slate-900">{typeLabel}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company ID</span>
-        <span className="text-sm font-extrabold text-slate-900">{uniqueNo || '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Products ({products.length})</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{products.length ? products.join(', ') : '—'}</span>
-      </div>
-      <div>
-        <span className="block text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-0.5">Company</span>
-        <span className="text-sm font-extrabold text-slate-900 break-words">{customer || '—'}</span>
-      </div>
-    </div>
-  );
-}
-
 /** Sales-order line items: parsed `items` array, falling back to the header part name. */
 export function soProductItems(order: any): any[] {
   try {
