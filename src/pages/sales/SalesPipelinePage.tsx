@@ -10,6 +10,8 @@ import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
+import { HsnDatalist } from '../../components/HsnDatalist';
+import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
@@ -143,7 +145,7 @@ function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]
   });
   ordersByBase.forEach(list => list.sort((a: any, b: any) =>
     String(b?.created_at || b?.order_date || '') .localeCompare(String(a?.created_at || a?.order_date || ''))));
-  return (enquiries || []).filter((enquiry: any) => !leadNo || enquiry.lead_no === leadNo || enquiry.enquiry_no === leadNo
+  const fromEnquiries = (enquiries || []).filter((enquiry: any) => !leadNo || enquiry.lead_no === leadNo || enquiry.enquiry_no === leadNo
       || (wantBase && (baseOf(enquiry.lead_no) === wantBase || baseOf(enquiry.enquiry_no) === wantBase)))
     .flatMap((enquiry: any) => {
       let items: any[] = [];
@@ -183,6 +185,43 @@ function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]
         });
       });
     });
+
+  // Products on a sales order that has no enquiry behind it (a direct / repeat order). Without this the Inward
+  // product list would be empty even though the order clearly has products.
+  const orderProductOptions: any[] = [];
+  (orders || []).forEach((o: any) => {
+    if (!o) return;
+    const ref = String(o.lead_no || '').trim();
+    const orderNo = String(o.order_no || '').trim();
+    if (leadNo && !(orderNo === leadNo || (ref && (ref === leadNo || (wantBase && baseOf(ref) === wantBase))))) return;
+    let items: any[] = [];
+    try {
+      const parsed = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+      if (Array.isArray(parsed)) items = parsed;
+    } catch { /* plain-text items */ }
+    if (!items.length && o.part_name && !/^multiple products/i.test(String(o.part_name))) {
+      items = [{ partName: String(o.part_name).replace(/\s*\(\d+\s*products?\)\s*$/i, ''), quantity: o.quantity }];
+    }
+    items.forEach((item: any, index: number) => {
+      const name = String(item.partName || item.productName || item.product_name || item.part_name || '').trim();
+      if (!name) return;
+      // Already offered through its enquiry (same product on the same order): do not list it twice.
+      if (fromEnquiries.some((e: any) => e.name.toLowerCase() === name.toLowerCase() && (e.saleOrderRef || '') === orderNo)) return;
+      orderProductOptions.push({
+        key: `order:${o.id || orderNo}:${index}`,
+        name,
+        quantity: item.quantity ?? item.qty ?? '',
+        enquiryId: '',
+        leadNo: ref || orderNo,
+        customer: o.customer || o.customer_name || '',
+        saleLabel: formatSaleOrderDateTime(o),
+        saleStamp: ref,
+        saleOrderRef: orderNo,
+        saleOrderDate: o.order_date || null,
+      });
+    });
+  });
+  return [...fromEnquiries, ...orderProductOptions];
 }
 
 export interface KanbanCard {
@@ -1097,7 +1136,7 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
               </div>
               <div>
                 {editMode ? (
-                  <input className={inputCls} placeholder="HSN" value={it.hsn || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, hsn: e.target.value } : r)))} />
+                  <input className={inputCls} placeholder="Select HSN" list={HSN_LIST_ID} value={it.hsn || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, hsn: e.target.value } : r)))} />
                 ) : (
                   <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || '—'}</span>
                 )}
@@ -4432,6 +4471,7 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Quotation Modal */}
+      <HsnDatalist />
       <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" draggable={false}>
         {quotationModalTarget && (
           <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />

@@ -50,6 +50,7 @@ import { TrialBalancePage } from './pages/accounts/TrialBalancePage';
 import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
 import { InvoicesPage } from './pages/finance/InvoicesPage';
 import { BankCashPage } from './pages/finance/BankCashPage';
+import { BankEntryPage } from './pages/finance/BankEntryPage';
 
 import {
   RawMaterialsPage, ComponentsPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
@@ -154,6 +155,7 @@ function MainLayout() {
             <Route path="/operations/challan" element={<Navigate to="/operations/delivery" replace />} />
             <Route path="/finance/invoices" element={<InvoicesPage />} />
             <Route path="/finance/bank-entries" element={<BankCashPage />} />
+            <Route path="/finance/bank-entry" element={<BankEntryPage />} />
             
             {/* Engineering */}
             <Route path="/engineering/parts" element={<PartsPage />} />

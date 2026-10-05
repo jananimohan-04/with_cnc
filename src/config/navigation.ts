@@ -88,6 +88,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300' },
       { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries', iconClass: 'text-green-400' },
+      { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400' },
     ],
   },
@@ -189,6 +190,7 @@ export const pageTitles: Record<string, string> = {
   'accounts/balance-sheet': 'Balance Sheet',
   'finance/invoices': 'Invoices',
   'finance/bank-entries': 'Bank & Cash',
+  'finance/bank-entry': 'Bank Entry',
   'admin/users': 'User Management',
   'admin/companies': 'Company Management',
   'admin/roles': 'Roles',

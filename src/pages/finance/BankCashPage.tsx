@@ -101,6 +101,7 @@ export function BankCashPage(){
 
   return <div className="p-4 lg:p-6 space-y-4 bg-slate-50 min-h-full">
     <PageHeader title="Bank & Cash" description="Manage bank and cash transactions, receipts and payments." actions={<>
+      <Button variant="secondary" size="sm" onClick={()=>navigate('/finance/bank-entry')}>Bank Entry (Import)</Button>
       <Button size="sm" icon={<Plus size={14}/>} disabled={!options?.can_manage} onClick={()=>setEntryOpen(true)}>Add Entry</Button>
       <Button variant="secondary" size="sm" icon={<ArrowLeftRight size={14}/>} disabled={!options?.can_manage} onClick={()=>setTransferOpen(true)}>Bank Transfer</Button>
       <Button variant="secondary" size="sm" icon={<RefreshCw size={14}/>} disabled={!options?.can_manage||busy} onClick={()=>void showReconcile()}>Reconcile</Button>

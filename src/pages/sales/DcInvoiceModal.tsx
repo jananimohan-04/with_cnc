@@ -31,6 +31,8 @@ interface InvLine {
   sheetRef: string;
   unitInput: string;
   missing: boolean;
+  /** The approved costing sheet row this price came from (full breakdown shown read-only). */
+  sheet?: any;
 }
 
 const num = (v: any): number => {
@@ -59,7 +61,11 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
 
   const [customer, setCustomer] = useState(card?.customer ?? '');
   const [invDate, setInvDate] = useState(todayISO());
-  const [quoteNo, setQuoteNo] = useState('');
+  const [, setQuoteNo] = useState('');
+  // Types the finance module supports. Only a Sales Invoice bills the DC and counts as the invoice for it:
+  // a Proforma never blocks the real invoice, and a Credit Note is a negative document.
+  const [docType, setDocType] = useState<'Sales Invoice' | 'Proforma Invoice' | 'Credit Note'>('Sales Invoice');
+  const docTitle = docType === 'Sales Invoice' ? 'Tax Invoice' : docType;
   const [soNo, setSoNo] = useState('');
   const [soOrderNo, setSoOrderNo] = useState('');
   const [soId, setSoId] = useState<string | null>(null);
@@ -84,7 +90,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           return;
         }
         if (dcId) {
-          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('delivery_id', dcId).limit(1);
+          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('delivery_id', dcId).neq('invoice_type', 'Proforma Invoice').limit(1);
           if (!cancelled && !r.error && (r.data ?? []).length > 0) {
             setExistingInv(r.data![0].invoice_no ?? r.data![0].id);
             setBlocked(`An invoice (${r.data![0].invoice_no ?? 'saved'}) already exists for this Delivery Challan. Duplicate invoicing is blocked.`);
@@ -93,7 +99,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           }
         }
         if (!cancelled && dcNo) {
-          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('dc_no', dcNo).limit(1);
+          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('dc_no', dcNo).neq('invoice_type', 'Proforma Invoice').limit(1);
           if (!r.error && (r.data ?? []).length > 0) {
             setExistingInv(r.data![0].invoice_no ?? r.data![0].id);
             setBlocked(`An invoice (${r.data![0].invoice_no ?? 'saved'}) already exists for DC ${dcNo}. Duplicate invoicing is blocked.`);
@@ -157,25 +163,25 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         let missing: string[] = [];
         let sheets: any[] = [];
         try {
-          const v = await supabase.from('cnc_costing_sheets').select('approved_price,quantity,version,status,product_code,product_name')
+          const v = await supabase.from('cnc_costing_sheets').select('approved_price,quantity,version,status,product_code,product_name,costing_date,quotation_price,calculated_price,adjustment,lines')
             .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
           if (!v.error) sheets = v.data ?? [];
         } catch { /* missing stays missing below */ }
         const lc = (s: any) => String(s ?? '').trim().toLowerCase();
-        const unitOf = (code: string, name: string): { unit: number | null; ref: string } => {
+        const unitOf = (code: string, name: string): { unit: number | null; ref: string; sheet?: any } => {
           const byCode = code.trim() !== ''
             ? sheets.find((s: any) => lc(s.product_code) === lc(code))
             : null;
           const sheet = byCode ?? (name.trim() !== '' ? sheets.find((s: any) => lc(s.product_name) === lc(name)) : null) ?? null;
           if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
-            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow.quote_no} V${sheet.version}` };
+            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow.quote_no} V${sheet.version}`, sheet };
           }
           return { unit: null, ref: '' };
         };
         for (const row of rows) {
           const code = row.part_no || soRow?.part_no || '';
           const name = row.part_name || row.product_name || soRow?.part_name || '';
-          const { unit: approvedUnit, ref: sheetRef } = unitOf(code, name);
+          const { unit: approvedUnit, ref: sheetRef, sheet: sheetRow } = unitOf(code, name);
           if (approvedUnit == null) missing.push(name || code || 'Unnamed item');
           const lineQty = num(row.dispatch_qty ?? row.quantity) || 0;
           built.push({
@@ -190,6 +196,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             sheetRef,
             unitInput: '',
             missing: approvedUnit == null,
+            sheet: sheetRow,
           });
           if (cancelled) return;
         }
@@ -223,6 +230,14 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     && customer.trim() !== '';
   const dcTotal = lines.reduce((s, l) => s + num(l.qty), 0);
 
+  // DC details shown in the header (read from the delivery challan rows loaded for this invoice)
+  const headerRow: any = dcRowsRef.current[0] ?? raw ?? {};
+  const headerPo = String(headerRow.po_no || raw.po_no || '').trim();
+  const headerDcDate = headerRow.delivery_date || raw.delivery_date || null;
+  const hsnOf = (l: InvLine): string => {
+    const r: any = (l.dcId && (dcRowsRef.current as any[]).find((x: any) => String(x.id) === String(l.dcId))) || headerRow;
+    return String(r?.hsn || '').trim();
+  };
   const setLine = (key: string, patch: Partial<InvLine>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -232,14 +247,14 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     try {
       // Re-check duplicates at commit time (second tab / double-click safe).
       if (dcId) {
-        const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('delivery_id', dcId).limit(1);
+        const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('delivery_id', dcId).neq('invoice_type', 'Proforma Invoice').limit(1);
         if (!r.error && (r.data ?? []).length > 0) throw new Error(`Invoice ${r.data![0].invoice_no ?? ''} already exists for this DC.`);
       }
       const gstRate = (c !== null || s !== null || ig !== null) ? (c ?? 0) + (s ?? 0) + (ig ?? 0) : null;
       const refs = Array.from(new Set(lines.map((l) => l.sheetRef).filter(Boolean))).join(', ');
       const res = await financeApi.saveInvoice({
         invoice_no: null,
-        invoice_type: 'Sales Invoice',
+        invoice_type: docType,
         customer_name: customer.trim(),
         customer_id: raw.customer_id || null,
         part_name: lines[0].itemName,
@@ -253,7 +268,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         description: l.itemName, quantity: num(l.qty), unit: l.unit || null,
         rate: effUnit(l), gst_rate: gstRate,
       })));
-      if (dcId) {
+      if (dcId && docType === 'Sales Invoice') {
         // Multi-product challans: every line under the number is billed together.
         const ids = Array.from(new Set(lines.map((l) => l.dcId).filter(Boolean))) as string[];
         const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).in('id', ids.length ? ids : [dcId]);
@@ -276,7 +291,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     return {
       companyName,
       companyGstin: comp.gstin,
-      title: 'Tax Invoice',
+      title: docTitle,
       docNo: 'DRAFT',
       invDate,
       partyName: customer,
@@ -309,7 +324,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const handlePrint = () => {
     const row = (cells: string[]) => `<tr>${cells.map((x) => `<td>${x}</td>`).join('')}</tr>`;
     printHtml(`Invoice - ${dcNo}`, `
-      <h2>${companyName} — Tax Invoice (DRAFT)</h2>
+      <h2>${companyName} — ${docTitle} (DRAFT)</h2>
       <p>Company: ${customer} | DC: ${dcNo} | SO: ${soOrderNo || soNo} | Date: ${invDate}</p>
       <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
       <tbody>${lines.map((l) => row([l.itemName, String(l.qty), formatINR(effUnit(l)), formatINR(num(l.qty) * effUnit(l))])).join('')}</tbody></table>
@@ -340,7 +355,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           <Button icon={<CheckCheck size={14} />} disabled={!canApprove || saving}
             title={!canApprove ? 'Resolve the blocker below first' : 'Create the invoice and move the card'}
             onClick={approve}>
-            {saving ? 'Creating...' : 'Approve & Create Invoice'}
+            {saving ? 'Creating...' : docType === 'Sales Invoice' ? 'Approve & Create Invoice' : `Approve & Create ${docType}`}
           </Button>
         </>
       }
@@ -354,7 +369,16 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           {/* header */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Document Type</p><p className="font-semibold">Tax Invoice</p></div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Document Type</p>
+                <select aria-label="Document type" value={docType} onChange={(e) => setDocType(e.target.value as typeof docType)} className={`${inputClass} font-semibold`}>
+                  <option value="Sales Invoice">Sales Invoice</option>
+                  <option value="Proforma Invoice">Proforma Invoice</option>
+                  <option value="Credit Note">Credit Note</option>
+                </select>
+                {docType === 'Proforma Invoice' && <p className="text-[10px] text-amber-600 mt-1">Proforma: not counted as sales and does not bill the DC.</p>}
+                {docType === 'Credit Note' && <p className="text-[10px] text-amber-600 mt-1">Credit note: reduces sales; does not bill the DC.</p>}
+              </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p>
                 <input value={customer} disabled={!editing} onChange={(e) => setCustomer(e.target.value)} className={`${inputClass} font-semibold`} />
@@ -363,7 +387,10 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Date</p>
                 <input type="date" value={invDate} disabled={!editing} onChange={(e) => setInvDate(e.target.value)} className={inputClass} />
               </div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quotation</p><p className="font-semibold">{quoteNo || '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Document Number</p><p className="font-semibold" data-testid="inv-docno">Auto-generated on approval</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-semibold" data-testid="inv-dcno">{dcNo || '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Date</p><p className="font-semibold" data-testid="inv-dcdate">{headerDcDate ? String(headerDcDate).slice(0, 10).split('-').reverse().join('-') : '—'}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">PO Number</p><p className="font-semibold" data-testid="inv-po">{headerPo || '—'}</p></div>
             </div>
             {orderQty && (
               <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs">
@@ -381,7 +408,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[860px]">
                 <thead><tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                  <th className="text-left py-2">Item Name</th><th className="text-left py-2">Product Code</th>
+                  <th className="text-left py-2">Item Name</th><th className="text-left py-2">Product Code</th><th className="text-left py-2">HSN/SAC</th>
                   <th className="text-right py-2">Qty</th><th className="text-left py-2">Unit</th>
                   <th className="text-right py-2">System Approved Unit Price</th><th className="text-right py-2">Invoice Unit Price</th>
                   <th className="text-right py-2">Basic Amount</th>
@@ -391,6 +418,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                     <tr key={l.key} className="border-b border-slate-100 last:border-0">
                       <td className="py-2 font-medium">{l.itemName || '—'}</td>
                       <td className="py-2 font-mono text-xs">{l.productCode || '—'}</td>
+                      <td className="py-2 font-mono text-xs" data-testid="inv-hsn">{hsnOf(l) || '—'}</td>
                       <td className="py-2 text-right">
                         {editing
                           ? <input type="number" min="0" value={l.qty} onChange={(e) => setLine(l.key, { qty: num(e.target.value) })} className="w-20 text-right text-xs rounded border border-slate-300 px-1.5 py-1" />
@@ -418,6 +446,59 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             )}
             <p className="text-[11px] text-slate-400 mt-2">Unit prices come from the approved Finished Goods costing — never re-entered. The FG approved price itself is never modified here.</p>
           </div>
+
+          {/* project costing: the approved costing sheet behind each price, in full */}
+          {lines.filter((l) => l.sheet).map((l) => {
+            const sh = l.sheet;
+            let ln: any = sh.lines;
+            if (typeof ln === 'string') { try { ln = JSON.parse(ln); } catch { ln = {}; } }
+            const mats: any[] = Array.isArray(ln?.materials) ? ln.materials : [];
+            const ops: any[] = Array.isArray(ln?.ops) ? ln.ops : [];
+            const matTotal = mats.reduce((a, m) => a + num(m.total), 0);
+            const machine = ops.reduce((a, o) => a + num(o.machine_cost), 0);
+            const labour = ops.reduce((a, o) => a + num(o.labour_cost), 0);
+            const processTotal = ops.reduce((a, o) => a + num(o.process_cost), 0);
+            return (
+              <div key={`cost-${l.key}`} data-testid="project-costing" className="bg-white rounded-xl border border-slate-200 p-4">
+                <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">Project Costing — {l.itemName || l.productCode || 'Item'}</h3>
+                <p className="text-[11px] text-slate-500 mb-3">Approved costing sheet {l.sheetRef}{sh.costing_date ? ` · ${String(sh.costing_date).slice(0, 10).split('-').reverse().join('-')}` : ''} · costed quantity {num(sh.quantity)} · status {sh.status}</p>
+
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Raw material</p>
+                <div className="overflow-x-auto mb-3"><table className="w-full text-xs min-w-[640px]">
+                  <thead><tr className="text-[10px] uppercase text-slate-500 border-b border-slate-200"><th className="text-left py-1.5">Code</th><th className="text-left py-1.5">Material</th><th className="text-right py-1.5">Req. qty</th><th className="text-left py-1.5 pl-2">Unit</th><th className="text-right py-1.5">Unit cost</th><th className="text-left py-1.5 pl-3">Supplier</th><th className="text-right py-1.5">Total</th></tr></thead>
+                  <tbody>
+                    {mats.length === 0 && <tr><td colSpan={7} className="py-2 text-center text-slate-400 italic">No material lines in this costing.</td></tr>}
+                    {mats.map((m, i) => (
+                      <tr key={i} className="border-b border-slate-100 last:border-0"><td className="py-1.5 font-mono">{m.material_code || '—'}</td><td className="py-1.5">{m.material_name || '—'}</td><td className="py-1.5 text-right tabular-nums">{num(m.req_qty)}</td><td className="py-1.5 pl-2">{m.unit || '—'}</td><td className="py-1.5 text-right tabular-nums">{formatINR(num(m.unit_cost))}</td><td className="py-1.5 pl-3">{m.supplier || '—'}</td><td className="py-1.5 text-right tabular-nums font-semibold">{formatINR(num(m.total))}</td></tr>
+                    ))}
+                  </tbody>
+                </table></div>
+
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Process operations (machine + labour)</p>
+                <div className="overflow-x-auto mb-3"><table className="w-full text-xs min-w-[820px]">
+                  <thead><tr className="text-[10px] uppercase text-slate-500 border-b border-slate-200"><th className="text-left py-1.5">#</th><th className="text-left py-1.5">Process</th><th className="text-left py-1.5">Machine</th><th className="text-right py-1.5">Mach. hrs × rate</th><th className="text-right py-1.5">Machine cost</th><th className="text-right py-1.5">Lab. hrs × rate</th><th className="text-right py-1.5">Labour cost</th><th className="text-right py-1.5">Setup</th><th className="text-right py-1.5">Process cost</th></tr></thead>
+                  <tbody>
+                    {ops.length === 0 && <tr><td colSpan={9} className="py-2 text-center text-slate-400 italic">No process lines in this costing.</td></tr>}
+                    {ops.map((o, i) => (
+                      <tr key={i} className="border-b border-slate-100 last:border-0"><td className="py-1.5">{o.seq ?? i + 1}</td><td className="py-1.5">{o.process_name || o.process_code || '—'}</td><td className="py-1.5">{o.machine || '—'}</td><td className="py-1.5 text-right tabular-nums">{num(o.machine_hours)} × {num(o.machine_rate)}</td><td className="py-1.5 text-right tabular-nums">{formatINR(num(o.machine_cost))}</td><td className="py-1.5 text-right tabular-nums">{num(o.labour_hours)} × {num(o.labour_rate)}</td><td className="py-1.5 text-right tabular-nums">{formatINR(num(o.labour_cost))}</td><td className="py-1.5 text-right tabular-nums">{formatINR(num(o.setup_cost))}</td><td className="py-1.5 text-right tabular-nums font-semibold">{formatINR(num(o.process_cost))}</td></tr>
+                    ))}
+                  </tbody>
+                </table></div>
+
+                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm max-w-2xl ml-auto">
+                  <p className="flex justify-between"><span className="text-slate-500">Material total</span><span className="tabular-nums">{formatINR(matTotal)}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Machine total</span><span className="tabular-nums">{formatINR(machine)}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Labour total</span><span className="tabular-nums">{formatINR(labour)}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Process total</span><span className="tabular-nums">{formatINR(processTotal)}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Quotation price</span><span className="tabular-nums">{formatINR(num(sh.quotation_price))}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Calculated cost</span><span className="tabular-nums">{formatINR(num(sh.calculated_price))}</span></p>
+                  <p className="flex justify-between"><span className="text-slate-500">Adjustment</span><span className={`tabular-nums ${num(sh.adjustment) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{num(sh.adjustment) >= 0 ? '+' : ''}{formatINR(num(sh.adjustment))}</span></p>
+                  <p className="flex justify-between font-bold border-t border-slate-200 pt-1"><span>Approved price ({num(sh.quantity)} pcs)</span><span className="tabular-nums">{formatINR(num(sh.approved_price))}</span></p>
+                  <p className="flex justify-between font-bold sm:col-start-2"><span>Approved unit price</span><span className="tabular-nums text-brand-700">{l.approvedUnit == null ? '—' : formatINR(l.approvedUnit)}</span></p>
+                </div>
+              </div>
+            );
+          })}
 
           {/* tax */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">

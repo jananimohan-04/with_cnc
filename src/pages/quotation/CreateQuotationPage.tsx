@@ -9,6 +9,8 @@ import { loadProducts, saveProducts, newId, validateDraft, type LibraryProduct }
 import { defaultTermsText, loadTerms, type TermsTemplate } from '@/lib/termsLibrary';
 import { loadProfileStore, resolveSeller } from '@/lib/companyProfile';
 import { newIdent, takeReuse, upsertQuote, type QuoteIdent } from '@/lib/quotationStore';
+import { HsnDatalist } from '@/components/HsnDatalist';
+import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { ProductWorkingsPage } from './ProductWorkingsPage';
 import { hasWorkings, type Workings } from '@/lib/quotationWorkings';
 import { PDF_THEMES, downloadQuotePdf, exportQuoteCsv, quoteSummaryText, type PdfThemeId, type QuoteClient, type QuoteDoc } from '@/lib/quotationDocument';
@@ -232,6 +234,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
           </div>
         </section>
 
+        <HsnDatalist />
         {/* Items */}
         <section className="rounded-xl border border-slate-200">
           <div className="overflow-x-auto">
@@ -243,7 +246,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
                 {lines.map((l, i) => (
                   <tr key={l.id} className="border-t border-slate-100 align-top">
                     <td className="px-2 py-2 text-slate-500">{i + 1}</td>
-                    <td className="px-2 py-2 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} placeholder="HSN/SAC" value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
+                    <td className="px-2 py-2 w-28"><input className={cell} aria-label={`Row ${i + 1} HSN`} list={HSN_LIST_ID} placeholder="Select HSN" value={l.hsn} onChange={e => setLine(l.id, { hsn: e.target.value })} /></td>
                     <td className="px-2 py-2 min-w-[300px]"><div className="flex items-center gap-2"><input className={cell} aria-label={`Row ${i + 1} description`} placeholder="Type or select product…" value={l.description} onChange={e => setLine(l.id, { description: e.target.value })} />
                       <button type="button" data-testid={`workings-${i}`} aria-label={`Row ${i + 1} workings`} onClick={() => setWorkingsFor(l.id)}
                         className={`shrink-0 h-9 px-2.5 text-xs font-semibold rounded-md border flex items-center gap-1 ${hasWorkings(l.workings) ? 'bg-orange-500 text-white border-orange-500' : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'}`}><Calculator size={13} /> Workings</button></div></td>
