@@ -24,7 +24,6 @@ import { SignaturePad } from '@/components/ui/SignaturePad';
 import { SalesOrderSection } from './SalesOrderSection';
 import { downloadBrandedDocument, viewBrandedDocument, downloadDeliveryChallan, viewDeliveryChallan, downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice } from '@/lib/brandedDocument';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
-import { resetAndSeedAllPipelineData } from '@/lib/pipelineSeeder';
 import { summarizeSalesOrder, fetchOrderQty, recordProductionBatch, REJECTION_TYPES, type OrderQtySummary } from '@/lib/orderQuantities';
 import { QtyProgress, QtySummaryGrid, QtyBreakdown } from '@/components/ui/QuantitySummary';
 
@@ -2490,35 +2489,7 @@ export function SalesPipelinePage() {
     setRecentActivities(activities.slice(0, 5));
   };
 
-  const [seeding, setSeeding] = useState(false);
-
-  const handleResetAndSeed = async (silent = false) => {
-    if (!silent && !window.confirm("Are you sure you want to delete all existing pipeline data and generate 5 real-time dummy records for each of the 7 stages?")) {
-      return;
-    }
-    setSeeding(true);
-    setLoading(true);
-    try {
-      await resetAndSeedAllPipelineData(company?.id);
-      await fetchPipeline();
-      await fetchRecentActivities();
-      if (!silent) {
-        alert("Pipeline successfully cleared and seeded with 5 real-time records per stage!");
-      }
-    } catch (err: any) {
-      console.error("Seeder error:", err);
-      if (!silent) {
-        alert("Error while resetting pipeline: " + (err?.message || "Unknown error"));
-      }
-    } finally {
-      setSeeding(false);
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    // Auto-seed permanently disabled: it used to wipe pipeline tables and
-    // re-insert dummy companies on first visit, resurrecting deleted leads.
     fetchPipeline();
     fetchRecentActivities();
   }, [company?.id]);

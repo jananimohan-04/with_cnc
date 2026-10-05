@@ -136,12 +136,13 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           if (!r.error && (r.data ?? []).length > 0) qRow = r.data![0];
         }
         if (cancelled) return;
-        if (!qRow) {
-          setBlocked('No quotation is linked to this Delivery Challan (via Sales Order). Approved selling price is required before creating the invoice.');
+        // A direct order has no quotation: its approved price is the costing sheet saved against the sales order.
+        if (!qRow && !soRow?.order_no) {
+          setBlocked('No quotation or sales order is linked to this Delivery Challan. An approved selling price is required before creating the invoice.');
           setLoading(false);
           return;
         }
-        setQuoteNo(qRow.quote_no ?? '');
+        setQuoteNo(qRow?.quote_no ?? '');
         setSoNo(soRow?.lead_no || soRow?.order_no || '');
         setSoOrderNo(soRow?.order_no ?? '');
         setSoId(soRow?.id != null ? String(soRow.id) : null);
@@ -163,8 +164,11 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         let missing: string[] = [];
         let sheets: any[] = [];
         try {
-          const v = await supabase.from('cnc_costing_sheets').select('approved_price,quantity,version,status,product_code,product_name,costing_date,quotation_price,calculated_price,adjustment,lines')
-            .eq('quotation_no', qRow.quote_no).eq('status', 'Approved').order('version', { ascending: false });
+          const cols = 'approved_price,quantity,version,status,product_code,product_name,costing_date,quotation_price,calculated_price,adjustment,lines';
+          const base = supabase.from('cnc_costing_sheets').select(cols).eq('status', 'Approved');
+          // With a quotation the sheets are keyed by it; a direct order's sheets are keyed by the sales order.
+          const q = qRow ? base.eq('quotation_no', qRow.quote_no) : base.eq('quotation_no', '').eq('sales_order_no', soRow.order_no);
+          const v = await q.order('version', { ascending: false });
           if (!v.error) sheets = v.data ?? [];
         } catch { /* missing stays missing below */ }
         const lc = (s: any) => String(s ?? '').trim().toLowerCase();
@@ -174,7 +178,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             : null;
           const sheet = byCode ?? (name.trim() !== '' ? sheets.find((s: any) => lc(s.product_name) === lc(name)) : null) ?? null;
           if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
-            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow.quote_no} V${sheet.version}`, sheet };
+            return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow ? qRow.quote_no : soRow.order_no} V${sheet.version}`, sheet };
           }
           return { unit: null, ref: '' };
         };

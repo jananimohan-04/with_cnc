@@ -159,10 +159,8 @@ export function validateRows(rows: ImportRow[], existing: ExistingTxn[] = [], re
 export interface EntryType { id: string; name: string; direction: 'IN' | 'OUT' | 'ANY'; ledgerId: string }
 const KEY = (k: string, cid: string | null | undefined) => `argus.bank.${k}.${cid ?? 'all'}`;
 const DEFAULT_TYPES: EntryType[] = [
-  { id: 't-receipt', name: 'Customer Receipt', direction: 'IN', ledgerId: '' },
-  { id: 't-payment', name: 'Supplier Payment', direction: 'OUT', ledgerId: '' },
-  { id: 't-charges', name: 'Bank Charges', direction: 'OUT', ledgerId: '' },
-  { id: 't-interest', name: 'Interest Received', direction: 'IN', ledgerId: '' },
+  { id: 't-others', name: 'OTHERS', direction: 'ANY', ledgerId: '' },
+  { id: 't-internal', name: 'INTERNAL', direction: 'ANY', ledgerId: '' },
 ];
 export function loadTypes(cid: string | null | undefined): EntryType[] {
   try {
@@ -175,10 +173,22 @@ export function loadTypes(cid: string | null | undefined): EntryType[] {
 export function saveTypes(cid: string | null | undefined, t: EntryType[]): boolean {
   try { localStorage.setItem(KEY('types', cid), JSON.stringify(t)); return true; } catch { return false; }
 }
-export function loadOthers(cid: string | null | undefined): string[] {
-  try { const a = JSON.parse(localStorage.getItem(KEY('others', cid)) || '[]'); return Array.isArray(a) ? a.filter((x: unknown) => typeof x === 'string') : []; } catch { return []; }
+/** A named party that is not a customer or supplier. INTERNAL = your own accounts (e.g. a loan or OD account). */
+export interface Other { name: string; /** the name of one of the Types */ kind: string }
+
+export function loadOthers(cid: string | null | undefined): Other[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(KEY('others', cid)) || '[]');
+    if (!Array.isArray(a)) return [];
+    // older versions stored plain names; they become OTHERS
+    return a.flatMap((x: unknown): Other[] => {
+      if (typeof x === 'string') return x.trim() ? [{ name: x.trim(), kind: 'OTHERS' }] : [];
+      const o = x as { name?: unknown; kind?: unknown };
+      return o && typeof o.name === 'string' && o.name.trim() ? [{ name: o.name.trim(), kind: typeof o.kind === 'string' && o.kind.trim() ? o.kind.trim() : 'OTHERS' }] : [];
+    });
+  } catch { return []; }
 }
-export function saveOthers(cid: string | null | undefined, o: string[]): boolean {
+export function saveOthers(cid: string | null | undefined, o: Other[]): boolean {
   try { localStorage.setItem(KEY('others', cid), JSON.stringify(o)); return true; } catch { return false; }
 }
 

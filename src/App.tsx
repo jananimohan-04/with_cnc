@@ -51,6 +51,7 @@ import { ProfitLossPage } from './pages/accounts/ProfitLossPage';
 import { InvoicesPage } from './pages/finance/InvoicesPage';
 import { BankCashPage } from './pages/finance/BankCashPage';
 import { BankEntryPage } from './pages/finance/BankEntryPage';
+import { LedgerDashboardPage } from './pages/finance/LedgerDashboardPage';
 
 import {
   RawMaterialsPage, ComponentsPage, StockMovementsPage, WarehousesPage, MaterialRequestsPage, LowStockPage
@@ -156,6 +157,7 @@ function MainLayout() {
             <Route path="/finance/invoices" element={<InvoicesPage />} />
             <Route path="/finance/bank-entries" element={<BankCashPage />} />
             <Route path="/finance/bank-entry" element={<BankEntryPage />} />
+            <Route path="/finance/ledger-dashboard" element={<LedgerDashboardPage />} />
             
             {/* Engineering */}
             <Route path="/engineering/parts" element={<PartsPage />} />

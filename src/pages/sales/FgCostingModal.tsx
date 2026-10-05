@@ -387,13 +387,23 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     return () => { cancelled = true; };
   }, [code]);
 
+  // The key a costing sheet is stored under: the quotation number, or (direct orders) the sales order number.
+  const soNoForSheets = String(so?.order_no || inward?.sales_order_ref || '').trim();
+  const sheetKey: { quotationNo: string; salesOrderNo: string } | null = quote?.quote_no
+    ? { quotationNo: String(quote.quote_no), salesOrderNo: '' }
+    : (soNoForSheets ? { quotationNo: '', salesOrderNo: soNoForSheets } : null);
+  const sheetsFor = (k: { quotationNo: string; salesOrderNo: string }) => {
+    const q = supabase.from('cnc_costing_sheets').select('*');
+    return (k.quotationNo ? q.eq('quotation_no', k.quotationNo) : q.eq('quotation_no', '').eq('sales_order_no', k.salesOrderNo))
+      .eq('product_code', code ?? '').order('version', { ascending: false });
+  };
+
   // ---- versions follow quotation + product code ----
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!quote?.quote_no) return;
-      const v = await supabase.from('cnc_costing_sheets').select('*')
-        .eq('quotation_no', quote.quote_no).eq('product_code', code ?? '').order('version', { ascending: false });
+      if (!sheetKey) return;
+      const v = await sheetsFor(sheetKey);
       if (cancelled) return;
       if (!v.error) {
         setVersions(v.data ?? []);
@@ -409,7 +419,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       }
     })();
     return () => { cancelled = true; };
-  }, [quote, code]);
+  }, [sheetKey, code]);
 
   const products = useMemo(() => (quote ? parseQuoteProducts(quote) : []), [quote]);
   const product = products[0] ?? null;
@@ -557,7 +567,6 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const blockReasons: string[] = [];
   if (loading) blockReasons.push('Costing data is still loading.');
   if (loadError) blockReasons.push('Costing data failed to load.');
-  if (!quote) blockReasons.push('No quotation is linked to this inward.');
   if (sheetsMissing) blockReasons.push('Costing storage is not provisioned (apply migration 20260930000000_costing_sheets.sql).');
   if (!(baseQty > 0)) blockReasons.push('Enter a finished quantity greater than 0 for at least one product.');
   if (selectedProds.length === 0) blockReasons.push('Select at least one product.');
@@ -646,7 +655,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     if (draftOp) setExtraOps((ls) => [...ls, draftOp]);
     const { error } = await supabase.from('cnc_costing_sheets').insert([
       buildVersionPayload({
-        quote, so, productCode: code, productName, baseQty,
+        quote: quote ?? {}, so, productCode: code, productName, baseQty,
         status, version: nextVersion, totals, approved,
         matLines: effMatLines, opLines: effOpLines, userName, quoteOverrides,
       }),
@@ -655,9 +664,8 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   };
 
   const reloadVersions = async () => {
-    if (!quote?.quote_no) return;
-    const v = await supabase.from('cnc_costing_sheets').select('*')
-      .eq('quotation_no', quote.quote_no).eq('product_code', code ?? '').order('version', { ascending: false });
+    if (!sheetKey) return;
+    const v = await sheetsFor(sheetKey);
     if (!v.error) setVersions(v.data ?? []);
   };
 
@@ -666,8 +674,8 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       alert('Costing storage is not provisioned. Apply supabase/migrations/20260930000000_costing_sheets.sql first.');
       return;
     }
-    if (!quote || baseQty <= 0) {
-      alert('A quotation and a quantity greater than 0 are required before saving.');
+    if (baseQty <= 0) {
+      alert('A quantity greater than 0 is required before saving.');
       return;
     }
     setSaving(true);
@@ -702,7 +710,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
         }
       }
       // 1) Save the Approved costing version (same payload shape as the costing page).
-      if (!quote) throw new Error('No quotation linked to this inward — cannot save costing.');
+      // A quotation is optional: a direct order is costed and approved against its sales order instead.
       await persistVersion('Approved', effectiveApproved);
       // 2) One work-order row + batch per selected product. Good quantity
       // becomes FG stock (via the stock trigger on `completed`); rejected
@@ -812,7 +820,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
           <span className="flex-1" />
           <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
-          <Button variant="secondary" icon={<Save size={14} />} disabled={saving || loading || !quote} onClick={saveDraft}>
+          <Button variant="secondary" icon={<Save size={14} />} disabled={saving || loading} onClick={saveDraft}>
             {saving ? 'Saving...' : 'Save Draft'}
           </Button>
           <Button icon={<CheckCheck size={14} />} disabled={!canApprove || approving}
@@ -909,7 +917,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
             <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Quotation</h3>
             <p className="text-[11px] text-slate-400 mt-1 mb-3">Company quoted price</p>
             {!quote ? (
-              <p className="text-sm text-slate-400">No quotation linked to this inward — costing starts from materials and operations only.</p>
+              <p className="text-sm text-slate-400">No quotation is linked (direct order). Enter the materials, operations and the approved final price below; the price is saved against this sales order.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Quote No</p><p className="font-mono font-semibold">{quote.quote_no}</p></div>

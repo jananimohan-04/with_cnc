@@ -432,24 +432,24 @@ export function InventoryPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+      <div className="flex gap-3 mb-5 overflow-x-auto pb-1" data-testid="inventory-cards">
         {cards.map(c => (
-          <div key={c.label} className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={22} /></div>
+          <div key={c.label} data-testid="inventory-card" className="flex-1 min-w-[132px] bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-3 flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${c.tint}`}><c.icon size={18} /></div>
             <div className="min-w-0">
-              <p className="text-sm text-slate-600">{c.label}</p>
+              <p className="text-xs text-slate-600 leading-tight">{c.label}</p>
               {c.value === null
                 ? (summaryError ? <p className="text-2xl font-bold text-slate-300">—</p> : <div className="h-7 w-24 mt-1 rounded bg-slate-100 animate-pulse" />)
-                : <p className="text-2xl font-bold text-slate-900 tracking-tight truncate">{c.value}</p>}
-              {'hint' in c && c.hint && <p className="text-[11px] text-slate-400">{c.hint}</p>}
+                : <p className="text-lg font-bold text-slate-900 tracking-tight truncate">{c.value}</p>}
+              {'hint' in c && c.hint && <p className="text-[10px] text-slate-400 whitespace-nowrap">{c.hint}</p>}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-5 items-start">
-        {/* Main column */}
-        <div className="w-full xl:w-[78%] min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm">
+      <div className="flex flex-col gap-5 items-stretch">
+        {/* Main column: the table now uses the full page width */}
+        <div className="w-full min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm">
           {/* Tabs */}
           <div className="flex gap-6 px-5 border-b border-slate-200 overflow-x-auto">
             {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-24 my-3.5 rounded bg-slate-100 animate-pulse" />)}
@@ -499,38 +499,38 @@ export function InventoryPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-[13px]">
+            <table className="w-full min-w-[1320px] text-[13px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
-                  <th className="px-2 py-3 text-left w-10">#</th>
-                  <th className="px-2 py-3 text-left">Item Code</th>
-                  <th className="px-2 py-3 text-left">Product / Material Name</th>
-                  <th className="px-2 py-3 text-left">Category</th>
-                  <th className="px-2 py-3 text-left">Warehouse / Location</th>
-                  <th className="px-2 py-3 text-left">Unit</th>
-                  <th className="px-2 py-3 text-right">Available Qty</th>
-                  <th className="px-2 py-3 text-right">Value (₹)</th>
-                  <th className="px-2 py-3 text-right">Reorder Level</th>
-                  <th className="px-2 py-3 text-left">Stock Status</th>
-                  <th className="px-2 py-3 text-left">Last Movement</th>
-                  <th className="px-2 py-3 text-center">Actions</th>
+                  <th className="px-3 py-3 text-left w-10">#</th>
+                  <th className="px-3 py-3 text-left">Item Code</th>
+                  <th className="px-3 py-3 text-left">Product / Material Name</th>
+                  <th className="px-3 py-3 text-left">Category</th>
+                  <th className="px-3 py-3 text-left">Warehouse / Location</th>
+                  <th className="px-3 py-3 text-left">Unit</th>
+                  <th className="px-3 py-3 text-right">Available Qty</th>
+                  <th className="px-3 py-3 text-right">Value (₹)</th>
+                  <th className="px-3 py-3 text-right">Reorder Level</th>
+                  <th className="px-3 py-3 text-left">Stock Status</th>
+                  <th className="px-3 py-3 text-left">Last Movement</th>
+                  <th className="px-3 py-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {(itemsLoading || (!items && !itemsError)) && Array.from({ length: pageSize > 10 ? 10 : pageSize }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     {Array.from({ length: 12 }).map((__, j) => (
-                      <td key={j} className="px-2 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
+                      <td key={j} className="px-3 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
                     ))}
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && (
-                  <tr><td colSpan={12} className="px-2 py-12 text-center text-slate-500">No inventory items found.</td></tr>
+                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">No inventory items found.</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
-                    <td className="px-2 py-2.5 text-slate-500">{firstShown + i}</td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-3 py-2.5 text-slate-500">{firstShown + i}</td>
+                    <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
                         {r.image_url && imageUrls[r.image_url]
                           ? <img src={imageUrls[r.image_url]} alt="" className="w-8 h-8 rounded-md object-cover border border-slate-200 flex-shrink-0" />
@@ -538,23 +538,23 @@ export function InventoryPage() {
                         <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 whitespace-nowrap">{r.code}</button>
                       </div>
                     </td>
-                    <td className="px-2 py-2.5 text-slate-800 max-w-[150px] truncate" title={r.name}>
+                    <td className="px-3 py-2.5 text-slate-800 max-w-[150px] truncate" title={r.name}>
                       {r.name}
                       {r.item_status === 'Inactive' && <span className="ml-2 text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
                     </td>
-                    <td className="px-2 py-2.5 text-slate-600 max-w-[110px] truncate" title={r.category_name ?? ''}>{r.category_name ?? '—'}</td>
-                    <td className="px-2 py-2.5 text-slate-600 max-w-[140px] truncate" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[110px] truncate" title={r.category_name ?? ''}>{r.category_name ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[240px] truncate" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
                       {[r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—'}
                     </td>
-                    <td className="px-2 py-2.5 text-slate-600">{r.unit ?? ''}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
-                    <td className="px-2 py-2.5"><StatusPill status={r.status} /></td>
-                    <td className="px-2 py-2.5 text-slate-600 whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-slate-600">{r.unit ?? ''}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
+                    <td className="px-3 py-2.5"><StatusPill status={r.status} /></td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                       {lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-3 py-2.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <button title="Edit" onClick={() => setEditing(r)}
                           className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><Pencil size={14} /></button>
@@ -596,8 +596,8 @@ export function InventoryPage() {
           </div>
         </div>
 
-        {/* Right column */}
-        <div className="w-full xl:w-[22%] min-w-0 flex flex-col gap-4">
+        {/* Summary panels: at the end of the page */}
+        <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start" data-testid="inventory-panels">
           <CategoryDonut summary={summary} failed={!!summaryError} />
           <StockStatusCard summary={summary} failed={!!summaryError} />
           <Card title="Recent Transactions" action={<button onClick={() => navigate('/inventory/movements')} className="text-xs font-semibold text-blue-600 hover:underline">View All</button>}>

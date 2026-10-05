@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { financeApi, type BankFilters, type BankRow } from '@/lib/finance';
+import { accountingApi, type Account } from '@/lib/accounting';
 import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import {
   applyTypeDefaults, loadOthers, loadTypes, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
-  type EntryType, type ImportRow, type RowIssue,
+  type EntryType, type ImportRow, type Other, type RowIssue,
 } from '@/lib/bankImport';
 
 // Bank Entry: paste or upload a statement, tag each row with a Type and ledger, save it as bank transactions,
@@ -40,7 +41,7 @@ export function BankEntryPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [types, setTypes] = useState<EntryType[]>(() => loadTypes(cid));
-  const [others, setOthers] = useState<string[]>(() => loadOthers(cid));
+  const [others, setOthers] = useState<Other[]>(() => loadOthers(cid));
   const [existing, setExisting] = useState<BankRow[]>([]);
   const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'ledger' | 'manual'>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -95,7 +96,7 @@ export function BankEntryPage() {
   const incomeOpts = options?.income_accounts ?? [];
   const expenseOpts = options?.expense_accounts ?? [];
   const ledgerChoices = (r: ImportRow) => (rowDirection(r) === 'IN' ? incomeOpts : rowDirection(r) === 'OUT' ? expenseOpts : [...incomeOpts, ...expenseOpts]);
-  const parties = useMemo(() => Array.from(new Set([...others, ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name)])).filter(Boolean), [others, options]);
+  const parties = useMemo(() => Array.from(new Set([...others.map(o => o.name), ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name)])).filter(Boolean), [others, options]);
 
   const readExisting = async (list: ImportRow[]) => {
     const dates = list.map(r => r.date).filter((d): d is string => !!d).sort();
@@ -165,7 +166,7 @@ export function BankEntryPage() {
       try {
         await financeApi.addBankEntry({
           direction: dir, account_id: bankId, contra_account_id: r.ledgerId || '', amount: String(dir === 'IN' ? r.credit : r.debit), txn_date: r.date,
-          party_type: cust ? 'Customer' : sup ? 'Supplier' : r.party ? 'Other' : '', party_name: r.party, customer_id: cust?.id ?? '', supplier_id: sup?.id ?? '',
+          party_type: cust ? 'Customer' : sup ? 'Supplier' : r.party ? (/^internal$/i.test(others.find(o => o.name === r.party)?.kind ?? '') ? 'Internal' : 'Other') : '', party_name: r.party, customer_id: cust?.id ?? '', supplier_id: sup?.id ?? '',
           mode: 'Statement import', reference_no: r.reference, description: [t?.name, r.description].filter(Boolean).join(' - '), status: 'Cleared', source_type: 'bank_import',
         });
         savedIds.add(r.id);
@@ -245,7 +246,7 @@ export function BankEntryPage() {
           <div className="flex flex-wrap gap-2">
             {topBtn(<Landmark size={14} />, 'Manage Banks', () => setModal('banks'))}
             {topBtn(<Tags size={14} />, 'Manage Types', () => setModal('types'))}
-            {topBtn(<Layers size={14} />, 'Manage Others', () => setModal('others'))}
+            {topBtn(<Layers size={14} />, 'Manage Others', () => { setOthers(loadOthers(cid)); setModal('others'); })}
             {topBtn(<BookOpen size={14} />, 'Ledger Details', () => setModal('ledger'))}
             {topBtn(<PenLine size={14} />, 'Manual Entry', () => setModal('manual'))}
           </div>
@@ -406,10 +407,14 @@ export function BankEntryPage() {
       <ManualEntryModal open={modal === 'manual'} onClose={() => setModal(null)} bankId={bankId} bankName={bank?.name ?? ''} types={types}
         incomeOpts={incomeOpts} expenseOpts={expenseOpts} onTypes={() => setModal('types')}
         onSaved={() => { setMsg({ kind: 'ok', text: 'Manual entry saved.' }); void loadData(full); }} />
-      <ManageBanks open={modal === 'banks'} onClose={() => setModal(null)} accounts={options?.accounts ?? []} onChart={() => navigate('/accounts/ledger')} />
+      <ManageBanks open={modal === 'banks'} onClose={() => setModal(null)} accounts={options?.accounts ?? []} canManage={!!options?.can_manage} onChanged={() => loadOptions()} />
       <ManageTypes open={modal === 'types'} onClose={() => setModal(null)} types={types} ledgers={[...incomeOpts, ...expenseOpts]}
-        onSave={t => { if (saveTypes(cid, t)) { setTypes(t); setMsg({ kind: 'ok', text: 'Types saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
-      <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others}
+        onChange={(t, renamed) => {
+          if (!saveTypes(cid, t)) { setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); return; }
+          setTypes(t);
+          if (renamed) { const o2 = others.map(o => (o.kind === renamed.from ? { ...o, kind: renamed.to } : o)); if (saveOthers(cid, o2)) setOthers(o2); }
+        }} />
+      <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
         onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Others saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
       <Modal open={modal === 'ledger'} onClose={() => setModal(null)} title="Ledger Details" subtitle="Accounts a statement row can be posted against" size="lg">
         <div className="grid sm:grid-cols-2 gap-4 text-sm">
@@ -424,66 +429,229 @@ export function BankEntryPage() {
   );
 }
 
-function ManageBanks({ open, onClose, accounts, onChart }: { open: boolean; onClose: () => void; accounts: { id: string; code: string; name: string; type: string; balance: string }[]; onChart: () => void }) {
+/** Banks are accounts under "Bank Balances" in the chart of accounts, so adding one here adds a real ledger account
+ *  (code assigned automatically). "Delete" takes a bank out of the lists (inactive); its history stays in the books. */
+function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
+  open: boolean; onClose: () => void; accounts: { id: string; code: string; name: string; type: string; balance: string; system_key?: string | null }[]; canManage: boolean; onChanged: () => void | Promise<void>;
+}) {
+  const [chart, setChart] = useState<Account[]>([]);
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setEditing(null); setConfirmDel(null); setErr(''); setName('');
+    accountingApi.chartOfAccounts().then(setChart).catch(e => setErr(e instanceof Error ? e.message : 'Could not load the chart of accounts.'));
+  }, [open]);
+
+  const group = chart.find(a => a.system_key === 'BANK_GROUP');
+  const taken = (n: string, exceptId?: string) => [...accounts, ...chart.filter(a => a.status === 'Active' && !a.is_group)].some(a => a.name.trim().toLowerCase() === n.trim().toLowerCase() && a.id !== exceptId);
+  const nextCode = () => {
+    const used = new Set(chart.map(a => a.code));
+    const base = Number(group?.code ?? '1540');
+    for (let n = base + 1; n < base + 400; n++) if (!used.has(String(n))) return String(n);
+    return `${base}-${Date.now() % 1000}`;
+  };
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setErr('');
+    try { await fn(); setChart(await accountingApi.chartOfAccounts()); await onChanged(); } catch (e) { setErr(e instanceof Error ? e.message : 'That did not work.'); }
+    finally { setBusy(false); }
+  };
+
+  const add = () => {
+    if (!canManage) return setErr('Only administrators can add banks.');
+    if (!name.trim()) return setErr('Enter a bank name.');
+    if (!group) return setErr('The Bank Balances group was not found in your chart of accounts.');
+    if (taken(name)) return setErr('A bank or account with that name already exists.');
+    void run(async () => { await accountingApi.saveAccount({ id: null, parentId: group.id, code: nextCode(), name: name.trim(), isGroup: false, status: 'Active' }); setName(''); });
+  };
+  const update = (id: string) => {
+    const acc = chart.find(a => a.id === id);
+    if (!acc) return setErr('Account not found.');
+    if (!draft.trim()) return setErr('Enter a bank name.');
+    if (taken(draft, id)) return setErr('A bank or account with that name already exists.');
+    void run(async () => { await accountingApi.saveAccount({ id, parentId: acc.parent_id, code: acc.code, name: draft.trim(), isGroup: false, status: 'Active' }); setEditing(null); });
+  };
+  const remove = (id: string) => {
+    const acc = chart.find(a => a.id === id);
+    if (!acc) return setErr('Account not found.');
+    void run(async () => { await accountingApi.saveAccount({ id, parentId: acc.parent_id, code: acc.code, name: acc.name, isGroup: false, status: 'Inactive' }); setConfirmDel(null); });
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title="Manage Banks" subtitle="Bank and cash accounts in your chart of accounts" size="lg">
-      {accounts.length === 0 ? <p className="text-sm text-slate-500">No bank or cash accounts yet.</p> : (
-        <table className="w-full text-sm"><thead><tr className="text-left text-[10px] uppercase text-slate-500"><th className="py-1">Code</th><th>Name</th><th>Type</th><th className="text-right">Balance</th></tr></thead>
-          <tbody>{accounts.map(a => <tr key={a.id} className="border-t border-slate-100"><td className="py-1.5 font-mono">{a.code}</td><td>{a.name}</td><td>{a.type}</td><td className="text-right tabular-nums">₹{formatINR(a.balance, { decimals: 'always', symbol: false })}</td></tr>)}</tbody></table>
-      )}
-      <p className="text-xs text-slate-500 mt-3">Bank accounts are created in the Ledger (Accounts tab) so they stay in your books. Add a new bank there and press Refresh here.</p>
-      <button className={`${btn} mt-3`} onClick={onChart}>Open Ledger</button>
+    <Modal open={open} onClose={() => !busy && onClose()} title="Manage Banks" subtitle="Bank and cash accounts in your books" size="md"
+      footer={<button className={btn} data-testid="banks-close" onClick={onClose}>Close</button>}>
+      <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+        <input aria-label="New bank name" className={`${inp} flex-1`} placeholder="New bank name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
+        <button className={btn} disabled={busy} onClick={add}><Plus size={14} />Add</button>
+      </div>
+      {err && <p role="alert" data-testid="banks-error" className="mt-2 text-xs text-red-600">{err}</p>}
+      <div className="mt-1 max-h-80 overflow-y-auto divide-y divide-slate-100">
+        {accounts.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No bank or cash accounts yet.</p>}
+        {accounts.map(a => {
+          const system = !!a.system_key;
+          return (
+            <div key={a.id} data-testid="bank-row" className="py-2 text-sm">
+              {editing === a.id ? (
+                <div className="flex items-center gap-2">
+                  <input aria-label="Edit bank name" className={`${inp} flex-1 !h-8`} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') update(a.id); }} />
+                  <button className={`${btn} !h-8`} data-testid="bank-update" disabled={busy} onClick={() => update(a.id)}>Update</button>
+                  <button className={`${btn} !h-8`} onClick={() => { setEditing(null); setErr(''); }}>Cancel</button>
+                </div>
+              ) : confirmDel === a.id ? (
+                <div className="flex items-center gap-2 text-red-700">
+                  <span className="flex-1 text-xs">Remove <b>{a.name}</b> from your banks? Past entries stay in the books.</span>
+                  <button className={`${btn} !h-8 !text-red-700`} data-testid="bank-confirm-delete" disabled={busy} onClick={() => remove(a.id)}>Yes, delete</button>
+                  <button className={`${btn} !h-8`} onClick={() => setConfirmDel(null)}>No</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 min-w-0">
+                    <span className="font-medium text-slate-800 break-words">{a.name}</span>
+                    <span className="ml-2 text-[11px] text-slate-400">{a.code} · {a.type} · ₹{formatINR(a.balance, { decimals: 'always', symbol: false })}</span>
+                  </span>
+                  <button className={`${btn} !h-8`} aria-label={`Edit ${a.name}`} disabled={!canManage || busy} onClick={() => { setEditing(a.id); setDraft(a.name); setErr(''); }}>Edit</button>
+                  <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${a.name}`} disabled={!canManage || busy || system} title={system ? 'System account: used by automatic postings' : ''} onClick={() => { setConfirmDel(a.id); setErr(''); }}>Delete</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Modal>
   );
 }
 
-function ManageTypes({ open, onClose, types, ledgers, onSave }: { open: boolean; onClose: () => void; types: EntryType[]; ledgers: { id: string; code: string; name: string }[]; onSave: (t: EntryType[]) => void }) {
-  const [list, setList] = useState(types);
+function ManageTypes({ open, onClose, types, ledgers, onChange }: {
+  open: boolean; onClose: () => void; types: EntryType[]; ledgers: { id: string; code: string; name: string }[];
+  onChange: (t: EntryType[], renamed?: { from: string; to: string }) => void;
+}) {
   const [name, setName] = useState('');
-  const [dir, setDir] = useState<EntryType['direction']>('OUT');
-  useEffect(() => { if (open) setList(types); }, [open, types]);
-  const dup = list.some(t => t.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const [editing, setEditing] = useState<string | null>(null);
+  const [dName, setDName] = useState('');
+  const [dDir, setDDir] = useState<EntryType['direction']>('ANY');
+  const [dLedger, setDLedger] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => { if (open) { setEditing(null); setErr(''); setName(''); } }, [open]);
+  const taken = (n: string, exceptId?: string) => types.some(t => t.name.trim().toLowerCase() === n.trim().toLowerCase() && t.id !== exceptId);
+
+  const add = () => {
+    if (!name.trim()) return setErr('Enter a type name.');
+    if (taken(name)) return setErr('A type with that name already exists.');
+    onChange([...types, { id: `t-${Date.now()}`, name: name.trim().toUpperCase(), direction: 'ANY', ledgerId: '' }]); setName(''); setErr('');
+  };
+  const startEdit = (t: EntryType) => { setEditing(t.id); setDName(t.name); setDDir(t.direction); setDLedger(t.ledgerId); setErr(''); };
+  const update = () => {
+    const old = types.find(t => t.id === editing);
+    if (!old) return;
+    if (!dName.trim()) return setErr('Enter a type name.');
+    if (taken(dName, old.id)) return setErr('A type with that name already exists.');
+    const to = dName.trim().toUpperCase();
+    onChange(types.map(t => (t.id === old.id ? { ...t, name: to, direction: dDir, ledgerId: dLedger } : t)), old.name !== to ? { from: old.name, to } : undefined);
+    setEditing(null); setErr('');
+  };
+  const dirLabel = (d: EntryType['direction']) => (d === 'IN' ? 'money in' : d === 'OUT' ? 'money out' : '');
+
   return (
-    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="A Type tags a statement row and can set its default ledger" size="lg"
-      footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="types-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
-      <div className="space-y-1.5">
-        {list.length === 0 && <p className="text-sm text-slate-400">No types yet.</p>}
-        {list.map(t => (
-          <div key={t.id} className="flex items-center gap-2 text-sm" data-testid="type-row">
-            <span className="flex-1 font-medium">{t.name}</span>
-            <select aria-label={`Direction ${t.name}`} className={sel} value={t.direction} onChange={e => setList(l => l.map(x => x.id === t.id ? { ...x, direction: e.target.value as EntryType['direction'] } : x))}>
-              <option value="IN">Money in</option><option value="OUT">Money out</option><option value="ANY">Either</option></select>
-            <select aria-label={`Default ledger ${t.name}`} className={`${sel} w-52`} value={t.ledgerId} onChange={e => setList(l => l.map(x => x.id === t.id ? { ...x, ledgerId: e.target.value } : x))}>
-              <option value="">No default ledger</option>{ledgers.map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</select>
-            <button aria-label={`Delete type ${t.name}`} className="text-slate-400 hover:text-red-600" onClick={() => setList(l => l.filter(x => x.id !== t.id))}><Trash2 size={15} /></button>
+    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Types tag statement rows and parties. Changes save as you make them." size="md"
+      footer={<button className={btn} data-testid="types-close" onClick={onClose}>Close</button>}>
+      <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+        <input aria-label="New type name" className={`${inp} flex-1`} placeholder="New type name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
+        <button className={btn} onClick={add}><Plus size={14} />Add Type</button>
+      </div>
+      {err && <p role="alert" data-testid="types-error" className="mt-2 text-xs text-red-600">{err}</p>}
+      <div className="mt-1 max-h-80 overflow-y-auto divide-y divide-slate-100">
+        {types.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No types yet.</p>}
+        {types.map(t => (
+          <div key={t.id} data-testid="type-row" className="py-2 text-sm">
+            {editing === t.id ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input aria-label="Edit type name" className={`${inp} flex-1 !h-8`} value={dName} onChange={e => setDName(e.target.value)} />
+                  <button className={`${btn} !h-8`} data-testid="type-update" onClick={update}>Update</button>
+                  <button className={`${btn} !h-8`} onClick={() => { setEditing(null); setErr(''); }}>Cancel</button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>Used for</span>
+                  <select aria-label="Edit type direction" className={`${sel} !h-8`} value={dDir} onChange={e => setDDir(e.target.value as EntryType['direction'])}><option value="ANY">Money in or out</option><option value="IN">Money in only</option><option value="OUT">Money out only</option></select>
+                  <span>Default ledger</span>
+                  <select aria-label="Edit type ledger" className={`${sel} !h-8 w-52`} value={dLedger} onChange={e => setDLedger(e.target.value)}><option value="">None</option>{ledgers.map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</select>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 font-medium text-slate-800 uppercase tracking-wide">{t.name}
+                  {(dirLabel(t.direction) || t.ledgerId) && <span className="ml-2 normal-case tracking-normal text-[11px] font-normal text-slate-400">{[dirLabel(t.direction), t.ledgerId ? `ledger: ${(ledgers.find(a => a.id === t.ledgerId)?.name) ?? 'set'}` : ''].filter(Boolean).join(' · ')}</span>}
+                </span>
+                <button className={`${btn} !h-8`} aria-label={`Edit ${t.name}`} onClick={() => startEdit(t)}>Edit</button>
+                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${t.name}`} onClick={() => onChange(types.filter(x => x.id !== t.id))}>Delete</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-        <input aria-label="New type name" className={`${inp} flex-1`} placeholder="New type, e.g. Salary" value={name} onChange={e => setName(e.target.value)} />
-        <select aria-label="New type direction" className={sel} value={dir} onChange={e => setDir(e.target.value as EntryType['direction'])}><option value="IN">Money in</option><option value="OUT">Money out</option><option value="ANY">Either</option></select>
-        <button className={btn} disabled={!name.trim() || dup} onClick={() => { setList(l => [...l, { id: `t-${Date.now()}`, name: name.trim(), direction: dir, ledgerId: '' }]); setName(''); }}><Plus size={14} className="inline" /> Add</button>
-      </div>
-      {dup && name.trim() && <p className="text-xs text-red-600 mt-1">A type with that name already exists.</p>}
     </Modal>
   );
 }
 
-function ManageOthers({ open, onClose, others, onSave }: { open: boolean; onClose: () => void; others: string[]; onSave: (o: string[]) => void }) {
-  const [list, setList] = useState(others);
+function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: boolean; onClose: () => void; others: Other[]; typeNames: string[]; onSave: (o: Other[]) => void }) {
+  const [list, setList] = useState<Other[]>(others);
   const [name, setName] = useState('');
-  useEffect(() => { if (open) setList(others); }, [open, others]);
-  const dup = list.some(o => o.toLowerCase() === name.trim().toLowerCase());
+  const [kind, setKind] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftKind, setDraftKind] = useState('OTHERS');
+  const [err, setErr] = useState('');
+  useEffect(() => { if (open) { setList(others); setEditing(null); setErr(''); } }, [open, others]);
+  const exists = (n: string, except?: string) => list.some(o => o.name.toLowerCase() === n.trim().toLowerCase() && o.name !== except);
+
+  const add = () => {
+    setErr('');
+    if (!name.trim()) return setErr('Enter a party name.');
+    if (!kind) return setErr('Select a type.');
+    if (exists(name)) return setErr('A party with that name already exists.');
+    setList(l => [...l, { name: name.trim(), kind }]); setName(''); setKind('');
+  };
+  const startEdit = (o: Other) => { setEditing(o.name); setDraftName(o.name); setDraftKind(o.kind); setErr(''); };
+  const commitEdit = () => {
+    if (!draftName.trim()) return setErr('Enter a party name.');
+    if (exists(draftName, editing ?? undefined)) return setErr('A party with that name already exists.');
+    setList(l => l.map(o => (o.name === editing ? { name: draftName.trim(), kind: draftKind } : o))); setEditing(null); setErr('');
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title="Manage Others" subtitle="Extra names (not customers or suppliers) you can pick as the Party of a row" size="md"
+    <Modal open={open} onClose={onClose} title="Manage Others" subtitle="Parties that are not customers or suppliers, for the Party of a row" size="lg"
       footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="others-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
-      <div className="space-y-1.5">
-        {list.length === 0 && <p className="text-sm text-slate-400">None yet, for example Owner, Petty Cash or Landlord.</p>}
-        {list.map(o => <div key={o} className="flex items-center justify-between text-sm" data-testid="other-row"><span>{o}</span><button aria-label={`Delete ${o}`} className="text-slate-400 hover:text-red-600" onClick={() => setList(l => l.filter(x => x !== o))}><Trash2 size={15} /></button></div>)}
+      <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
+        <input aria-label="New party name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Party name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
+        <select aria-label="New party type" className={`${sel} w-44`} value={kind} onChange={e => setKind(e.target.value)}>
+          <option value="">-- Select Type --</option>{typeNames.map(k => <option key={k} value={k}>{k}</option>)}</select>
+        <button className={btn} onClick={add}><Plus size={14} />Add Party</button>
       </div>
-      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-        <input aria-label="New other name" className={`${inp} flex-1`} placeholder="e.g. Landlord" value={name} onChange={e => setName(e.target.value)} />
-        <button className={btn} disabled={!name.trim() || dup} onClick={() => { setList(l => [...l, name.trim()]); setName(''); }}><Plus size={14} className="inline" /> Add</button>
+      {err && <p role="alert" data-testid="others-error" className="mt-2 text-xs text-red-600">{err}</p>}
+      <div className="mt-2 max-h-80 overflow-y-auto divide-y divide-slate-100">
+        {list.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No parties yet, for example Petrol, Bank Charges or a loan account.</p>}
+        {list.map(o => (
+          <div key={o.name} data-testid="other-row" className="flex items-center gap-2 py-2 text-sm">
+            {editing === o.name ? (
+              <>
+                <input aria-label="Edit party name" className={`${inp} flex-1 !h-8`} value={draftName} onChange={e => setDraftName(e.target.value)} />
+                <select aria-label="Edit party type" className={`${sel} !h-8 w-36`} value={draftKind} onChange={e => setDraftKind(e.target.value)}>{Array.from(new Set([...typeNames, draftKind])).map(k => <option key={k}>{k}</option>)}</select>
+                <button className={`${btn} !h-8`} data-testid="other-update" onClick={commitEdit}>Update</button>
+                <button className={`${btn} !h-8`} onClick={() => { setEditing(null); setErr(''); }}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 font-medium text-slate-800 uppercase tracking-wide">{o.name} <span className="text-slate-400 font-normal">—</span> <span className={`text-xs font-bold ${/^internal$/i.test(o.kind) ? 'text-sky-600' : 'text-slate-500'}`}>{o.kind}</span></span>
+                <button className={`${btn} !h-8`} aria-label={`Edit ${o.name}`} onClick={() => startEdit(o)}>Edit</button>
+                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${o.name}`} onClick={() => setList(l => l.filter(x => x.name !== o.name))}>Delete</button>
+              </>
+            )}
+          </div>
+        ))}
       </div>
     </Modal>
   );
