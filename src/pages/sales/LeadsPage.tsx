@@ -8,6 +8,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { fetchOrderQty } from '@/lib/orderQuantities';
 
 async function uploadLeadProductFile(companyId: string | undefined | null, file: File) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
@@ -30,6 +31,7 @@ export function LeadsPage() {
   const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
   const [viewHistory, setViewHistory] = useState<any[]>([]);
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([]);
+  const [completedInwards, setCompletedInwards] = useState<any[]>([]);
 
   useEffect(() => {
     if (viewTarget) {
@@ -95,6 +97,25 @@ export function LeadsPage() {
             } catch { /* not JSON */ }
           });
         }
+        // Inwards whose production is complete (nothing remaining) no longer show on the pipeline.
+        try {
+          const { data: inws } = await supabase.from('cnc_inwards').select('*').eq('party_name', viewTarget.company);
+          const bySo = new Map<string, any[]>();
+          (inws ?? []).forEach((r: any) => { const k = String(r.sales_order_ref || ''); if (k) bySo.set(k, [...(bySo.get(k) ?? []), r]); });
+          const done: any[] = [];
+          for (const [soNo, rows] of bySo) {
+            const { summary } = await fetchOrderQty(null, soNo);
+            if (summary && summary.ordered > 0 && summary.remaining <= 0) {
+              done.push({
+                inward_no: rows[0].inward_no || soNo, so_no: soNo,
+                products: [...new Set(rows.map((r: any) => r.part_name || r.product_name).filter(Boolean))].join(', ') || '-',
+                ordered: summary.ordered, finished: summary.good,
+                date: rows.map((r: any) => r.created_at).filter(Boolean).sort().reverse()[0]?.split('T')[0] ?? '',
+              });
+            }
+          }
+          setCompletedInwards(done);
+        } catch { setCompletedInwards([]); }
         // Deduplicate by invoice_no
         const seen = new Set();
         setPurchaseHistory(purchaseHist.filter(h => { if (seen.has(h.invoice_no)) return false; seen.add(h.invoice_no); return true; }));
@@ -869,6 +890,34 @@ export function LeadsPage() {
             </div>
 
             <div className="mt-2">
+              {completedInwards.length > 0 && (
+                <div className="mb-6" data-testid="completed-inwards">
+                  <h5 className="font-semibold text-sm text-slate-700 mb-3 uppercase tracking-wider">Completed Production ({completedInwards.length})</h5>
+                  <div className="bg-amber-50/50 rounded-lg border border-amber-200 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-amber-100/50 border-b border-amber-200">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-[10px] font-bold text-amber-700 uppercase">Order</th>
+                          <th className="text-left px-4 py-2 text-[10px] font-bold text-amber-700 uppercase">Product</th>
+                          <th className="text-center px-4 py-2 text-[10px] font-bold text-amber-700 uppercase">Finished / Ordered</th>
+                          <th className="text-right px-4 py-2 text-[10px] font-bold text-amber-700 uppercase">Inward Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completedInwards.map((c: any) => (
+                          <tr key={c.so_no} className="border-b border-amber-100 last:border-0">
+                            <td className="px-4 py-2.5 font-semibold text-amber-800">{c.so_no}</td>
+                            <td className="px-4 py-2.5 text-slate-700">{c.products}</td>
+                            <td className="px-4 py-2.5 text-center font-medium text-slate-700">{c.finished} / {c.ordered}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-600 text-xs">{c.date ? new Date(c.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Purchase History */}
               {purchaseHistory.length > 0 && (
                 <div className="mb-6">

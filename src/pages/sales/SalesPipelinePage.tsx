@@ -2453,7 +2453,9 @@ export function SalesPipelinePage() {
       setCommentCounts(counts);
     }
 
-    setCards(newCards);
+    // An inward whose order is fully produced (nothing remaining) leaves the board;
+    // it is listed under the company's History instead.
+    setCards(newCards.filter(c => !(c.type === 'inward' && c.qtyTrack && c.qtyTrack.ordered > 0 && c.qtyTrack.remaining <= 0)));
     } catch (err) {
       console.error("Error loading pipeline:", err);
     } finally {
