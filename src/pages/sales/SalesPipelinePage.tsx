@@ -2257,7 +2257,9 @@ export function SalesPipelinePage() {
       });
     }
 
-    const { data: fgs } = await supabase.from('cnc_work_orders').select('*').in('status', ['Completed', 'In Progress']);
+    // Quantities count every work order (dispatched ones too); only open ones become Finished Goods cards.
+    const { data: allWos } = await supabase.from('cnc_work_orders').select('*');
+    const fgs = allWos ? allWos.filter((w: any) => ['Completed', 'In Progress'].includes(String(w.status))) : allWos;
     const { data: dcs, error: dcErr } = await supabase.from('cnc_deliveries').select('*');
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);
     let effectiveDcs: any[] = dcs && dcs.length > 0 ? dcs : [];
@@ -2367,7 +2369,7 @@ export function SalesPipelinePage() {
     const qtyBySoNo = new Map<string, OrderQtySummary>();
     const qtyBySoId = new Map<string, OrderQtySummary>();
     (allOrders || []).forEach((o: any) => {
-      const q = summarizeSalesOrder(o, fgs || [], effectiveDcs, invoicesData || [], batchesData);
+      const q = summarizeSalesOrder(o, allWos || [], effectiveDcs, invoicesData || [], batchesData);
       if (o.order_no) qtyBySoNo.set(String(o.order_no), q);
       if (o.id != null) qtyBySoId.set(String(o.id), q);
     });
@@ -2411,7 +2413,7 @@ export function SalesPipelinePage() {
         // orders scoped to the same base unique number).
         const bases = new Set([baseUniqueNo(c.refNo)]);
         const fin = new Map<string, number>();
-        for (const w of (fgs || [])) {
+        for (const w of (allWos || [])) {
           const rawKey = orderMap.get(w.sales_order) || w.sales_order || '';
           const b = rawKey ? baseUniqueNo(rawKey) : '';
           if (b !== '' && !bases.has(b)) continue;
@@ -2626,7 +2628,28 @@ export function SalesPipelinePage() {
         ? await supabase.from(table).delete().in('id', ids)
         : await supabase.from(table).delete().eq('id', card.raw.id);
       if (error) alert("Error deleting: " + error.message);
-      else fetchPipeline();
+      else {
+        // A deleted challan returns its goods to Finished Goods and un-counts them on the order.
+        if (card.type === 'dc') {
+          try {
+            const soNo = String((card.raw as any)?.sales_order_no || '');
+            if (soNo) {
+              await supabase.from('cnc_work_orders').update({ status: 'Completed' }).eq('sales_order', soNo).eq('status', 'Dispatched');
+              const soR = await supabase.from('cnc_sales_orders').select('id,quantity').eq('order_no', soNo).maybeSingle();
+              if (!soR.error && soR.data) {
+                const dR = await supabase.from('cnc_deliveries').select('dispatch_qty,quantity,status').eq('sales_order_no', soNo);
+                const act = ((dR.error ? [] : dR.data) ?? []).filter((d: any) => !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')));
+                const delivered = act.reduce((s: number, d: any) => s + (Number(d?.dispatch_qty ?? d?.quantity) || 0), 0);
+                const qty0 = Number((soR.data as any).quantity) || 0;
+                await supabase.from('cnc_sales_orders').update({
+                  delivered, status: delivered >= qty0 && qty0 > 0 ? 'Delivered' : delivered > 0 ? 'Partially Delivered' : 'Confirmed',
+                }).eq('id', (soR.data as any).id);
+              }
+            }
+          } catch (e) { console.error('DC delete follow-up failed:', e); }
+        }
+        fetchPipeline();
+      }
       setLoading(false);
     }
   };
