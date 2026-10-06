@@ -3553,7 +3553,10 @@ export function SalesPipelinePage() {
       if (fulfilled) {
         const woIds = Array.isArray((dcModalTarget.raw as any)?._groupIds) && (dcModalTarget.raw as any)._groupIds.length
           ? (dcModalTarget.raw as any)._groupIds : [dcModalTarget.raw.id];
-        const { error: woErr } = await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).in('id', woIds.filter(Boolean));
+        // Only fully produced work orders are closed as Dispatched; one with a balance left stays open for it.
+        const { data: woRows } = await supabase.from('cnc_work_orders').select('id,quantity,completed').in('id', woIds.filter(Boolean));
+        const doneIds = (woRows ?? []).filter((w: any) => (Number(w.completed) || 0) >= (Number(w.quantity) || 0)).map((w: any) => w.id);
+        const { error: woErr } = doneIds.length ? await supabase.from('cnc_work_orders').update({ status: 'Dispatched' }).in('id', doneIds) : { error: null };
         if (woErr) console.error("Failed to update work order status:", woErr);
       }
     }

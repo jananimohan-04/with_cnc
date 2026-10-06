@@ -197,6 +197,8 @@ export function WorkOrderDetail({
   const canRelease = ['Draft', 'Planned', 'Planning'].includes(wo.status);
   const canHold = ['Released', 'In Progress'].includes(wo.status);
   const canResume = wo.status === 'On Hold';
+  // A Completed/Dispatched order that did not reach its target can be reopened for the balance.
+  const canReopen = ['Completed', 'Dispatched'].includes(wo.status) && comp < qty;
   const canCancel = !['Completed', 'Cancelled', 'Dispatched'].includes(wo.status);
   const canComplete = wo.status === 'In Progress';
   const allOpsDone = ops.length > 0 && ops.every((o) => o.status === 'Completed');
@@ -219,6 +221,7 @@ export function WorkOrderDetail({
               <Button variant="secondary" onClick={() => onEdit(wo)} icon={<Pencil size={14} />}>Edit</Button>
             )}
             {canRelease && <Button onClick={handleRelease} disabled={busy} icon={<Play size={14} />}>Release Work Order</Button>}
+            {canReopen && <Button onClick={() => updateWO({ status: 'In Progress' })} disabled={busy} icon={<RotateCcw size={14} />}>Reopen for Balance ({qty - comp} pcs)</Button>}
             {canHold && <Button variant="secondary" onClick={() => updateWO({ status: 'On Hold' })} disabled={busy} icon={<Pause size={14} />}>Put On Hold</Button>}
             {canResume && <Button onClick={() => updateWO({ status: comp > 0 ? 'In Progress' : 'Released' })} disabled={busy} icon={<RotateCcw size={14} />}>Resume</Button>}
             {canComplete && <Button variant="success" onClick={() => setConfirmComplete(true)} disabled={busy} icon={<CheckCheck size={14} />}>Mark Completed</Button>}
