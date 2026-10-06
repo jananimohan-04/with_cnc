@@ -148,8 +148,8 @@ export function SchedulingPage() {
   };
   const operationPatch = (op: any) => {
     const fromMaster = machineTypeForOp(op);
-    const machine = [op.machine, fromMaster].map((v: any) => String(v ?? '').trim())
-      .find((v) => v && processMachines.some((m) => m.toLowerCase() === v.toLowerCase())) ?? '';
+    // The operation's own machine wins, then the Process Master machine type; the dropdown always offers the chosen value.
+    const machine = [op.machine, fromMaster].map((v: any) => String(v ?? '').trim()).find((v) => v) ?? '';
     return {
       operationId: String(op.id),
       operationSeq: String(op.operation_sequence ?? ''),
@@ -211,6 +211,17 @@ export function SchedulingPage() {
       .filter(op => !scheduledOpKeys.has(`${wo.wo_no}::${opNoFor(op)}`))
       .sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
   };
+
+  // Process Master machine types first, then machines from the Machine master and the current value.
+  const machineOptions = (() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const add = (v: any) => { const t = String(v ?? '').trim(); if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); out.push(t); } };
+    processMachines.forEach(add);
+    machines.forEach((m: any) => add(m.code));
+    add(newJobForm.machine);
+    return out;
+  })();
 
   const schedulableWOs = workOrders.filter(
     wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length > 0
@@ -993,11 +1004,11 @@ export function SchedulingPage() {
             <FormField label="Machine" required>
               <select className={inputClass} value={newJobForm.machine} onChange={e => setNewJobForm({...newJobForm, machine: e.target.value})}>
                 <option value="">-- Select Machine --</option>
-                {processMachines.map(m => (
+                {machineOptions.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
-              {processMachines.length === 0 && (
+              {machineOptions.length === 0 && (
                 <p className="text-xs text-slate-500 mt-1">No machines entered in Process Master yet — add a machine type to a process first.</p>
               )}
             </FormField>
