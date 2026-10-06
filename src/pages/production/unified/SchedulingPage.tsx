@@ -5,6 +5,32 @@ import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, Grip
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 
+/** 12-hour time entry (hour, minute, AM/PM). Value in and out is "HH:mm" (24-hour), like <input type="time">. */
+function TimeAmPm({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [hh, mm] = (value || '08:00').split(':').map(n => Number(n) || 0);
+  const pm = hh >= 12;
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  const emit = (h: number, m: number, isPm: boolean) => {
+    const h24 = (h % 12) + (isPm ? 12 : 0);
+    onChange(`${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+  const sel = 'bg-transparent py-2 focus:outline-none cursor-pointer';
+  return (
+    <div className="flex items-center gap-0.5 px-2" role="group" aria-label={label}>
+      <select aria-label={`${label} hour`} className={sel} value={h12} onChange={e => emit(Number(e.target.value), mm, pm)}>
+        {Array.from({ length: 12 }, (_, i) => i + 1).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}</option>)}
+      </select>
+      <span className="text-slate-400">:</span>
+      <select aria-label={`${label} minute`} className={sel} value={mm} onChange={e => emit(h12, Number(e.target.value), pm)}>
+        {Array.from({ length: 60 }, (_, i) => i).map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
+      </select>
+      <select aria-label={`${label} AM or PM`} className={`${sel} font-semibold`} value={pm ? 'PM' : 'AM'} onChange={e => emit(h12, mm, e.target.value === 'PM')}>
+        <option>AM</option><option>PM</option>
+      </select>
+    </div>
+  );
+}
+
 export function SchedulingPage() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
@@ -458,10 +484,17 @@ export function SchedulingPage() {
     return Math.max(1, Math.round((totalMins / 60) * 10) / 10);
   };
 
+  // "2 h 30 min" for the scheduled block (setup + qty x cycle time).
+  const formatDuration = (job: any) => {
+    const mins = Math.round(calculateDurationHours(job) * 60);
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
+  };
+
   // Helper to format date strings
   const formatTime = (dateStr: string) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   // Scheduled end = start (created_at) + block length (setup + qty x cycle).
@@ -470,7 +503,7 @@ export function SchedulingPage() {
     const end = new Date(job.created_at);
     if (isNaN(end.getTime())) return '-';
     end.setMinutes(end.getMinutes() + Math.round(calculateDurationHours(job) * 60));
-    return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+    return end.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   // Unscheduled vs Scheduled Jobs
@@ -892,6 +925,9 @@ export function SchedulingPage() {
                     <span className="text-slate-500">End Time</span>
                     <span className="font-medium text-slate-800">: {formatEndTime(selectedJob)}</span>
                     
+                    <span className="text-slate-500">Duration</span>
+                    <span className="font-medium text-slate-800">: {formatDuration(selectedJob)}</span>
+
                     <span className="text-slate-500">Machine</span>
                     <span className="font-medium text-slate-800">: {selectedJob.machine || '-'}</span>
                     
@@ -1049,14 +1085,14 @@ export function SchedulingPage() {
               <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
                 <input type="date" aria-label="Start date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.date} onChange={e => setNewJobForm(prev => withEnd({ ...prev, date: e.target.value }))} />
                 <div className="w-px bg-slate-300 my-1.5 shrink-0" />
-                <input type="time" aria-label="Start time" className="min-w-0 w-28 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.startTime} onChange={e => setNewJobForm(prev => withEnd({ ...prev, startTime: e.target.value }))} />
+                <TimeAmPm label="Start time" value={newJobForm.startTime} onChange={v => setNewJobForm(prev => withEnd({ ...prev, startTime: v }))} />
               </div>
             </FormField>
             <FormField label="End Date & Time" required>
               <div className="flex items-stretch w-full text-sm font-medium rounded border border-slate-300 bg-white text-slate-800 shadow-sm transition-all overflow-hidden focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500">
                 <input type="date" aria-label="End date" className="min-w-0 flex-1 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.endDate} onChange={e => setNewJobForm(prev => withEndEdit({ ...prev, endDate: e.target.value }))} />
                 <div className="w-px bg-slate-300 my-1.5 shrink-0" />
-                <input type="time" aria-label="End time" className="min-w-0 w-28 px-3 py-2 bg-transparent focus:outline-none" value={newJobForm.endTime} onChange={e => setNewJobForm(prev => withEndEdit({ ...prev, endTime: e.target.value }))} />
+                <TimeAmPm label="End time" value={newJobForm.endTime} onChange={v => setNewJobForm(prev => withEndEdit({ ...prev, endTime: v }))} />
               </div>
             </FormField>
           </div>
