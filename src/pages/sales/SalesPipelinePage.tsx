@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
-import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw, Copy } from 'lucide-react';
+import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2 } from 'lucide-react';
+import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
 import { EnquiryModule } from './EnquiryModule';
@@ -1256,6 +1257,9 @@ export function SalesPipelinePage() {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string>('All Companies');
+  // Quotation tools (calculator, libraries ...) open inside this page instead of going to the side menu.
+  const [quoteTool, setQuoteTool] = useState<string | null>(null);
+  useEffect(() => { if (activeView !== 'quotation_list') setQuoteTool(null); }, [activeView]);
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   // Original enquiry number when the form was opened via Duplicate.
@@ -3865,6 +3869,26 @@ export function SalesPipelinePage() {
             className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
         </div>
         
+        {activeView === 'quotation_list' && (
+          <nav aria-label="Quotation tools" data-testid="quotation-tools" className="flex flex-nowrap items-center gap-1 min-w-0 md:flex-1 md:justify-end">
+            {([
+              ['Metal Calculator', 'Calculator', '/quotation/metal-calculator', Calculator, 'text-orange-500'],
+              ['Create Quotation', 'Create', '/quotation/create', FileText, 'text-sky-500'],
+              ['Client Library', 'Clients', '/quotation/client-library', UsersIcon, 'text-cyan-500'],
+              ['Product Library', 'Products', '/quotation/product-library', PackageIcon, 'text-emerald-500'],
+              ['Terms Library', 'Terms', '/quotation/terms-library', ScrollText, 'text-amber-500'],
+              ['Quotation Library', 'History', '/quotation/library', FolderOpen, 'text-violet-500'],
+              ['Company Profile', 'Profile', '/quotation/company-profile', Building2, 'text-lime-600'],
+            ] as const).map(([full, label, to, Icon, tone]) => (
+              <button key={to} type="button" title={full} aria-label={full} aria-pressed={quoteTool === to}
+                onClick={() => setQuoteTool(cur => (cur === to ? null : to))}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-2 border rounded-lg shadow-sm text-xs font-semibold transition-colors ${quoteTool === to ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40'}`}>
+                <Icon size={14} className={tone} />{label}
+              </button>
+            ))}
+          </nav>
+        )}
+
         {pipelineViewMode !== 'list' && (
         <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full md:w-auto">
           <select 
@@ -3877,6 +3901,7 @@ export function SalesPipelinePage() {
               <option key={customer} value={customer}>{customer}</option>
             ))}
           </select>
+          {activeView !== 'quotation_list' && <>
           <div className="relative shrink-0">
             <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
             <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -3887,6 +3912,7 @@ export function SalesPipelinePage() {
           <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
           </button>
+          </>}
         </div>
         )}
       </div>
@@ -3898,7 +3924,20 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'quotation_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <QuotationModule onBack={() => setActiveView('pipeline')} />
+          {quoteTool ? (
+            <div data-testid="quotation-tool">
+              <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">← Back to quotations</button>
+              {quoteTool === '/quotation/metal-calculator' && <MetalCalculatorPage />}
+              {quoteTool === '/quotation/create' && <CreateQuotationPage />}
+              {quoteTool === '/quotation/client-library' && <ClientLibraryPage />}
+              {quoteTool === '/quotation/product-library' && <ProductLibraryPage />}
+              {quoteTool === '/quotation/terms-library' && <TermsLibraryPage />}
+              {quoteTool === '/quotation/library' && <QuotationLibraryPage />}
+              {quoteTool === '/quotation/company-profile' && <CompanyProfilePage />}
+            </div>
+          ) : (
+            <QuotationModule onBack={() => setActiveView('pipeline')} />
+          )}
         </div>
       ) : activeView === 'sales_order_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">

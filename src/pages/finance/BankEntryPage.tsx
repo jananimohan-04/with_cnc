@@ -187,6 +187,17 @@ export function BankEntryPage() {
   const kinds = useMemo(() => Array.from(new Set(data.map(r => r.kind).filter(Boolean))).sort(), [data]);
   const shownRows = rows.filter(r => !onlyErr || (issues.get(r.id) ?? []).length > 0);
 
+  // A ready-to-fill sample in the usual bank-statement layout; the importer reads it as is.
+  const downloadSample = () => {
+    exportCsv('bank-statement-sample', [
+      ['Txn Date', 'Value Date', 'Cheque No.', 'Description', 'Branch Code', 'Debit', 'Credit', 'Balance'],
+      ['03-01-2024 12:39', '03-Jan-24', '', 'UPI/CR/400300688546/SAMPLE CUSTOMER', '33', '', 3500, 103500],
+      ['04-01-2024 07:43', '04-Jan-24', '3176', 'By Clg:CHN ACCT SEC-SAMPLE BANK', '1760', '', 77111, 180611],
+      ['04-01-2024 23:37', '04-Jan-24', '', 'NEFT DR-SAMPLE SUPPLIER', '16138', 31083.89, '', 149527.11],
+      ['08-01-2024 12:55', '08-Jan-24', '', 'IB ITG SAMPLE TRANSFER', '16138', 46000, '', 103527.11],
+    ]);
+  };
+
   const downloadCsv = () => {
     if (!shownData.length) { setMsg({ kind: 'err', text: 'No bank data to download.' }); return; }
     exportCsv(`bank-data-${todayISO()}`, [
@@ -264,6 +275,10 @@ export function BankEntryPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800">Choose a statement file <span className="font-normal text-slate-400">or paste rows below</span></p>
                   <p className="text-xs text-slate-500 mt-0.5">CSV, TSV or TXT · up to 5 MB · Excel: Save As CSV first</p>
+                  <button type="button" data-testid="download-sample" onClick={downloadSample}
+                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700 hover:underline">
+                    <FileDown size={14} /> Download sample format
+                  </button>
                   <input ref={fileRef} type="file" aria-label="Statement file" accept=".csv,.tsv,.txt" onChange={e => void onFile(e.target.files?.[0])} className="mt-2 text-xs text-slate-600 file:mr-3 file:h-8 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-[13px] file:font-semibold file:text-slate-700 file:cursor-pointer" />
                 </div>
               </label>

@@ -16,8 +16,6 @@ import {
   BookOpen,
   Scale,
   Landmark,
-  ScrollText,
-  FolderOpen,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -47,18 +45,6 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400' },
       { label: 'All Companies', icon: Users, page: 'sales/leads', iconClass: 'text-cyan-300' },
-    ],
-  },
-  {
-    label: 'Create Quotation',
-    items: [
-      { label: 'Metal Calculator', icon: Calculator, page: 'quotation/metal-calculator', iconClass: 'text-orange-400' },
-      { label: 'Create Quotation', icon: FileText, page: 'quotation/create', iconClass: 'text-sky-300' },
-      { label: 'Client Library', icon: Users, page: 'quotation/client-library', iconClass: 'text-cyan-300' },
-      { label: 'Product Library', icon: Package, page: 'quotation/product-library', iconClass: 'text-emerald-300' },
-      { label: 'Terms Library', icon: ScrollText, page: 'quotation/terms-library', iconClass: 'text-amber-300' },
-      { label: 'Quotation Library', icon: FolderOpen, page: 'quotation/library', iconClass: 'text-violet-300' },
-      { label: 'Company Profile', icon: Building2, page: 'quotation/company-profile', iconClass: 'text-lime-300' },
     ],
   },
   {

@@ -82,18 +82,24 @@ const HEADERS: Record<string, RegExp> = {
   amount: /^(amount|txn\s*amount|transaction\s*amount)$/i,
 };
 
+/** Excel turns long cheque / UTR numbers into 4.00E+11, which is the same for many rows and not a real reference. */
+const cleanReference = (r: string): string => (/^\d+(\.\d+)?e\+\d+$/i.test(r.trim()) ? '' : r.trim());
+
 /** Parses pasted/uploaded text into rows. Understands a header row (any order); otherwise assumes
  *  Date, Description, Reference, Debit, Credit, Balance. */
 export function parseStatement(text: string): Parsed {
-  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim() !== '');
+  // Real bank exports start with an account-details block and Excel pads rows with empty cells (",,,,,"), so
+  // lines holding only delimiters are dropped and the header row is searched for further down.
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n').filter(l => l.replace(/[\s,;\t"]/g, '') !== '');
   const warnings: string[] = [];
   if (!lines.length) return { rows: [], headerFound: false, delimiter: ',', skipped: 0, warnings };
-  const delimiter = lines.slice(0, 5).some(l => l.includes('\t')) ? '\t' : lines.slice(0, 5).some(l => l.includes(';') && !l.includes(',')) ? ';' : ',';
+  const head = lines.slice(0, 40);
+  const delimiter = head.some(l => l.includes('\t')) ? '\t' : head.some(l => l.includes(';')) && !head.some(l => l.includes(',')) ? ';' : ',';
 
   let map: Record<string, number> = {};
   let headerFound = false;
   let start = 0;
-  for (let i = 0; i < Math.min(lines.length, 8); i++) {
+  for (let i = 0; i < Math.min(lines.length, 80); i++) {
     const cells = splitLine(lines[i], delimiter);
     const found: Record<string, number> = {};
     cells.forEach((c, idx) => { for (const [k, re] of Object.entries(HEADERS)) if (found[k] === undefined && re.test(c.trim())) found[k] = idx; });
@@ -108,6 +114,8 @@ export function parseStatement(text: string): Parsed {
     const get = (k: string) => (map[k] !== undefined ? (c[map[k]] ?? '') : '');
     if (c.every(x => x === '')) { skipped++; continue; }
     const rawDate = get('date');
+    // Notes, "Total" / "Closing balance" lines and page footers (no digits in the date cell) are not entries.
+    if (!parseDate(rawDate) && (!/\d/.test(rawDate) || (get('debit').trim() === '' && get('credit').trim() === '' && get('amount').trim() === ''))) { skipped++; continue; }
     let debit = parseAmount(get('debit'));
     let credit = parseAmount(get('credit'));
     if (map.amount !== undefined && map.debit === undefined && map.credit === undefined) {
@@ -120,7 +128,7 @@ export function parseStatement(text: string): Parsed {
     const bal = get('balance') === '' ? null : parseAmount(get('balance'));
     rows.push({
       id: `r${i}`, line: i + 1, date: parseDate(rawDate), rawDate,
-      description: get('description'), reference: get('reference'),
+      description: get('description'), reference: cleanReference(get('reference')),
       debit: debit === null ? NaN : Math.abs(debit), credit: credit === null ? NaN : Math.abs(credit),
       balance: bal, typeId: '', ledgerId: '', party: '',
     });
