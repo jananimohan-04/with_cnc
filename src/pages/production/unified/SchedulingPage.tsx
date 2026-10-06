@@ -953,6 +953,15 @@ export function SchedulingPage() {
               No released / planned work orders with unscheduled operations. Release a Work Order with operations in Production first.
             </p>
           )}
+          {(() => {
+            const hidden = workOrders.filter(wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length === 0);
+            if (!hidden.length) return null;
+            return (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Not listed because they have no unscheduled operations: {hidden.map(w => w.wo_no).join(', ')}. Open the order in Production and add operations (Process Master) to schedule it.
+              </p>
+            );
+          })()}
 
           <FormField label="Select Operation" required>
             <select

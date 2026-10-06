@@ -217,7 +217,7 @@ export function WorkOrderDetail({
               Print Work Order
             </Button>
             <span className="flex-1" />
-            {EDITABLE_WO.includes(wo.status) && (
+            {(EDITABLE_WO.includes(wo.status) || (['Released', 'In Progress'].includes(wo.status) && ops.length === 0 && !opsMissing)) && (
               <Button variant="secondary" onClick={() => onEdit(wo)} icon={<Pencil size={14} />}>Edit</Button>
             )}
             {canRelease && <Button onClick={handleRelease} disabled={busy} icon={<Play size={14} />}>Release Work Order</Button>}
