@@ -132,7 +132,8 @@ export function summarizeSalesOrder(
     0,
   );
 
-  const remaining = Math.max(0, ordered - good - rejected);
+  // Goods already dispatched were necessarily produced, even when no work order recorded them.
+  const remaining = Math.max(0, ordered - Math.max(good, delivered) - rejected);
   const fgAvailable = Math.max(0, good - delivered);
   const invoiceable = Math.max(0, delivered - invoiced);
 
@@ -209,7 +210,7 @@ export function summarizeSalesOrder(
     return {
       name: display.get(k) ?? k,
       ordered: o, good: gd, rejected: rj, delivered: dl, invoiced: iv,
-      remaining: Math.max(0, o - gd - rj),
+      remaining: Math.max(0, o - Math.max(gd, dl) - rj),
       available: Math.max(0, gd - dl),
     };
   });

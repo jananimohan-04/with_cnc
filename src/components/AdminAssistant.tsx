@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent } from 'react';
 import { Bot, Send, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -55,6 +55,32 @@ export function AdminAssistant() {
   // A different company means different data: start a fresh conversation.
   useEffect(() => { setTurns([]); }, [company?.id]);
 
+  // The Ask AI button can be dragged anywhere on the page; its spot is remembered.
+  const POS_KEY = 'argus.assistant.pos';
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null; } catch { return null; }
+  });
+  const drag = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const clampPos = (x: number, y: number, el: HTMLElement) => ({
+    x: Math.min(Math.max(0, x), window.innerWidth - el.offsetWidth),
+    y: Math.min(Math.max(0, y), window.innerHeight - el.offsetHeight),
+  });
+  const onDown = (e: RPointerEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: RPointerEvent<HTMLButtonElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) return;
+    d.moved = true;
+    setPos(clampPos(e.clientX - d.dx, e.clientY - d.dy, e.currentTarget));
+  };
+  const onUp = () => {
+    if (drag.current?.moved) { try { if (pos) localStorage.setItem(POS_KEY, JSON.stringify(pos)); } catch { /* not persisted */ } }
+  };
+
   if (!isSuperAdmin && !isCompanyAdmin) return null;
 
   const ask = async (q: string) => {
@@ -82,8 +108,11 @@ export function AdminAssistant() {
   return (
     <>
       {!open && (
-        <button type="button" aria-label="Open data assistant" data-testid="assistant-open" onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700">
+        <button type="button" aria-label="Open data assistant" data-testid="assistant-open" title="Click to open · drag to move"
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
+          onClick={() => { if (drag.current?.moved) { drag.current = null; return; } setOpen(true); }}
+          style={pos ? { left: Math.min(pos.x, Math.max(0, window.innerWidth - 110)), top: Math.min(pos.y, Math.max(0, window.innerHeight - 48)) } : undefined}
+          className={`fixed ${pos ? '' : 'bottom-5 right-5'} z-40 flex items-center gap-2 h-12 pl-4 pr-5 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 touch-none select-none cursor-grab active:cursor-grabbing`}>
           <Bot size={20} /> <span className="text-sm font-semibold">Ask AI</span>
         </button>
       )}

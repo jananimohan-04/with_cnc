@@ -851,14 +851,16 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
 }
 
 /** Tolerant delivery update: drops keys the cloud schema predates. */
-async function updateDeliveryTolerant(id: string, patch: Record<string, any>): Promise<void> {
-  let remaining = { ...patch };
+async function updateDeliveryTolerant(id: string, patch: Record<string, any>): Promise<string[]> {
+  const remaining = { ...patch };
+  const dropped: string[] = [];
   for (let attempt = 0; attempt < 40; attempt++) {
     const { error } = await supabase.from('cnc_deliveries').update(remaining).eq('id', id);
-    if (!error) return;
+    if (!error) return dropped;
     const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(String((error as any)?.message || ''));
     if (m && Object.prototype.hasOwnProperty.call(remaining, m[1])) {
       delete remaining[m[1]];
+      dropped.push(m[1]);
       continue;
     }
     throw error;
@@ -975,14 +977,18 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
         receiver_name: receiverName, sender_name: senderName,
         customer_signature: custSignature, authorized_signature: authSignature,
       };
+      const dropped = new Set<string>();
       for (const l of entered) {
         const qn = Number(l.qty) || 0;
         const pr = Number(l.price) || 0;
-        await updateDeliveryTolerant(l.id, {
+        (await updateDeliveryTolerant(l.id, {
           ...header,
           part_name: l.partName.trim(), quantity: qn, dispatch_qty: qn,
           hsn: l.hsn || '', unit: l.unit || 'Nos', unit_price: pr, total_amount: qn * pr,
-        });
+        })).forEach((k) => dropped.add(k));
+      }
+      if (dropped.size) {
+        alert(`Saved, but these fields have no database column yet and were not stored: ${[...dropped].join(', ')}. Apply the latest Supabase migration (deliveries_challan_fields).`);
       }
       // Refresh the linked sales order totals from live delivery rows.
       const soNo = String(first.sales_order_no || '');
