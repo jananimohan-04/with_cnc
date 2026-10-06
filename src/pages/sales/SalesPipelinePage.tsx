@@ -4332,7 +4332,7 @@ export function SalesPipelinePage() {
       </div>
 
       {/* New Lead Modal */}
-      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
+      <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <CustomerAutocomplete
             label="Company Name"
@@ -4389,7 +4389,7 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Enquiry Modal */}
-      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry — Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
+      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry — Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" width={720} footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           {duplicateSource && (
             <div className="col-span-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
@@ -4475,7 +4475,7 @@ export function SalesPipelinePage() {
 
       {/* Quotation Modal */}
       <HsnDatalist />
-      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" draggable={false}>
+      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" width={1040} draggable={false}>
         {quotationModalTarget && (
           <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />
         )}
@@ -4484,7 +4484,7 @@ export function SalesPipelinePage() {
       
 
       {/* Inward Modal */}
-      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
+      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
         <div className="flex flex-col gap-4">
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
@@ -4605,7 +4605,7 @@ export function SalesPipelinePage() {
       )}
 
       {/* Finished Goods Modal */}
-      <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
+      <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
@@ -4619,7 +4619,7 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Delivery Challan Modal */}
-      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" footer={<><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button><Button variant="secondary" onClick={() => { if (dcSnapshot) { const c = JSON.parse(JSON.stringify(dcSnapshot)); setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` }); setDcItems(c.items.map((l: any) => ({ ...l }))); } }}>Clear</Button></>}>
+      <Modal open={!!dcModalTarget} onClose={() => setDcModalTarget(null)} title="Delivery Challan Form" size="lg" width={780} footer={<><Button onClick={saveDeliveryChallan} disabled={dcSaving}>{dcSaving ? 'Saving...' : 'Save'}</Button><Button variant="secondary" onClick={() => { if (dcSnapshot) { const c = JSON.parse(JSON.stringify(dcSnapshot)); setDcForm({ ...c.form, dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}` }); setDcItems(c.items.map((l: any) => ({ ...l }))); } }}>Clear</Button></>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <FormField label="DC No" required><input className={inputClass} value={dcForm.dcNo || ''} onChange={e=>setDcForm({...dcForm, dcNo: e.target.value})} /></FormField>
@@ -4769,7 +4769,7 @@ export function SalesPipelinePage() {
       )}
 
       {/* Invoice Modal */}
-      <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Invoice Entry" size="lg" footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
+      <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Invoice Entry" size="lg" width={780} footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
           <CustomerAutocomplete
@@ -4835,7 +4835,7 @@ export function SalesPipelinePage() {
 
       
       {/* Sales Order Modal */}
-      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="full" draggable={false} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="lg" width={720} draggable={false} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <CustomerAutocomplete
@@ -4850,11 +4850,12 @@ export function SalesPipelinePage() {
             <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           </div>
           {(soForm.items || []).length > 0 && (
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center px-1">
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center px-1">
               <span></span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Rej Qty</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
             </div>
           )}
@@ -4862,18 +4863,15 @@ export function SalesPipelinePage() {
             const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
             return (
               <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_8rem] gap-2 items-center">
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center">
                   <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                   <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                   <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="0" value={item.rejectedQty ?? ''} onChange={e=>upd({ rejectedQty: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
                   <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
                     {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
                 </div>
               </div>
             );
@@ -4888,7 +4886,7 @@ export function SalesPipelinePage() {
           </div>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} width={viewModalTarget?.stage === 'Sales Order' ? 600 : 900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;

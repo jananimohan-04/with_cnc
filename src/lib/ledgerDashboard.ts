@@ -21,6 +21,10 @@ export interface LedgerLine {
   credit: number;
   party: string;
   ledgerType: string;
+  /** Bills only (invoice / inward): what is still unpaid after receipts already linked to it. */
+  due?: number;
+  /** Bank rows only: true when the receipt / payment is already linked to a specific invoice. */
+  linked?: boolean;
 }
 
 const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -32,7 +36,7 @@ export function fromBank(rows: BankRow[]): LedgerLine[] {
     id: `bank:${r.id}`, source: 'Bank' as const, date: day(r.txn_date), ref: r.reference_no ?? '',
     particulars: r.account_name ?? '', narration: r.mode || r.description || '',
     debit: r.direction === 'OUT' ? r2(num(r.amount)) : 0, credit: r.direction === 'IN' ? r2(num(r.amount)) : 0,
-    party: r.party_name ?? '', ledgerType: r.party_type ?? '',
+    party: r.party_name ?? '', ledgerType: r.party_type ?? '', linked: !!r.invoice_id,
   }));
 }
 
@@ -45,6 +49,7 @@ export function fromInvoices(rows: InvoiceRow[]): LedgerLine[] {
       id: `inv:${i.id}`, source: 'Invoice' as const, date: day(i.invoice_date), ref: i.invoice_no ?? '',
       particulars: i.invoice_type || 'Sales Invoice', narration: i.dc_no ? `DC ${i.dc_no}` : (i.part_name ?? ''),
       debit: credit ? 0 : total, credit: credit ? total : 0, party: i.customer_name ?? '', ledgerType: 'Customer',
+      due: credit ? undefined : Math.max(0, i.balance !== undefined && i.balance !== null && i.balance !== '' ? num(i.balance) : total - num(i.received)),
     };
   });
 }
@@ -59,7 +64,7 @@ export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
       id: `inw:${String(r.id ?? r.inward_no)}`, source: 'Inward' as const, date: day(r.inward_date ?? r.created_at),
       ref: String(r.reference_no || r.inward_no || ''), particulars: `Inward ${String(r.category ?? '')}`.trim(),
       narration: String(r.part_name || r.product_name || ''), debit: 0, credit: r2(amount),
-      party: String(r.party_name ?? ''), ledgerType: 'Supplier',
+      party: String(r.party_name ?? ''), ledgerType: 'Supplier', due: r2(amount),
     };
   });
 }
@@ -119,3 +124,46 @@ export function statementFor(lines: LedgerLine[], party: string, from?: string, 
   return { rows, opening, debit, credit, closing: bal };
 }
 export const drCr = (n: number) => (n > 0 ? 'Dr' : n < 0 ? 'Cr' : '');
+
+export interface ReceivablePayable { receivable: number; payable: number; customers: number; suppliers: number }
+/** Receivable = what customers owe (debit balances on Customer ledgers). Payable = what we owe suppliers (credit balances on Supplier ledgers). */
+export function receivablePayable(lines: LedgerLine[]): ReceivablePayable {
+  const out = { receivable: 0, payable: 0, customers: 0, suppliers: 0 };
+  for (const e of summarizeByParty(lines)) {
+    if (e.ledgerType === 'Customer' && e.balance > 0) { out.receivable = r2(out.receivable + e.balance); out.customers++; }
+    else if (e.ledgerType === 'Supplier' && e.balance < 0) { out.payable = r2(out.payable - e.balance); out.suppliers++; }
+  }
+  return out;
+}
+
+export interface Settlement { state: 'Completed' | 'Part' | 'Pending'; paid: number; left: number; days: number }
+const nameKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const dayNumber = (iso: string) => { const t = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`); return Number.isFinite(t) ? Math.floor(t / 86400000) : NaN; };
+
+/** Which invoices / inward bills the bank statement has settled.
+ *  Receipts from a customer (and payments to a supplier) that are not tied to one invoice are applied to that party's
+ *  bills oldest first. Anything still unpaid counts the days since the bill's date: 0 = today, 1, 2, 3 ... */
+export function settleDocuments(lines: LedgerLine[], today: string): Map<string, Settlement> {
+  const out = new Map<string, Settlement>();
+  const pool = new Map<string, number>();
+  for (const l of lines) {
+    if (l.source !== 'Bank' || l.linked || !l.party.trim()) continue;
+    const key = l.ledgerType === 'Customer' && l.credit > 0 ? `C|${nameKey(l.party)}` : l.ledgerType === 'Supplier' && l.debit > 0 ? `S|${nameKey(l.party)}` : '';
+    if (key) pool.set(key, r2((pool.get(key) ?? 0) + (l.credit || l.debit)));
+  }
+  const bills = lines.filter(l => l.due !== undefined && (l.source === 'Invoice' || l.source === 'Inward'))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const now = dayNumber(today);
+  for (const b of bills) {
+    const amount = b.source === 'Invoice' ? b.debit : b.credit;
+    let left = r2(b.due ?? 0);
+    const key = `${b.source === 'Invoice' ? 'C' : 'S'}|${nameKey(b.party)}`;
+    const avail = pool.get(key) ?? 0;
+    if (left > 0.005 && avail > 0) { const use = Math.min(avail, left); pool.set(key, r2(avail - use)); left = r2(left - use); }
+    const paid = r2(Math.max(0, amount - left));
+    const d = dayNumber(b.date);
+    const days = Number.isFinite(d) && Number.isFinite(now) ? Math.max(0, now - d) : 0;
+    out.set(b.id, { state: left <= 0.005 ? 'Completed' : paid > 0.005 ? 'Part' : 'Pending', paid, left: Math.max(0, left), days });
+  }
+  return out;
+}

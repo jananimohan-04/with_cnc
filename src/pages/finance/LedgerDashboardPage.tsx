@@ -7,7 +7,7 @@ import { financeApi, type BankRow, type InvoiceRow } from '@/lib/finance';
 import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import {
-  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, sortLines, statementFor, summarizeByParty,
+  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
 
@@ -87,6 +87,14 @@ export function LedgerDashboardPage() {
   };
 
   const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows], [src]);
+  const recPay = useMemo(() => receivablePayable(all), [all]);
+  const settled = useMemo(() => settleDocuments(all, todayISO()), [all]);
+  const statusText = (id: string): string => {
+    const s = settled.get(id);
+    if (!s) return '';
+    const age = s.days <= 0 ? 'today' : `${s.days} day${s.days === 1 ? '' : 's'}`;
+    return s.state === 'Completed' ? 'Completed' : s.state === 'Part' ? `Part paid · ${age}` : `Pending · ${age}`;
+  };
   const parties = useMemo(() => Array.from(new Set(all.map(l => l.party.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [all]);
   const filtered = useMemo(() => filterLines(all, { from: applied.from, to: applied.to, particulars: applied.part, party: applied.party, search }), [all, applied, search]);
   const sorted = useMemo(() => sortLines(filtered, sort.key, sort.dir), [filtered, sort]);
@@ -104,8 +112,8 @@ export function LedgerDashboardPage() {
 
   const exportRows = () => {
     if (!sorted.length) { setNote('Nothing to export.'); return; }
-    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Particulars', 'Narration', 'Debit', 'Credit', 'Party Name', 'Ledger Type', 'Source'],
-      ...sorted.map(l => [dmy(l.date), l.ref, l.particulars, l.narration, l.debit || '', l.credit || '', l.party, l.ledgerType, l.source])]);
+    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Particulars', 'Narration', 'Debit', 'Credit', 'Party Name', 'Ledger Type', 'Source', 'Status'],
+      ...sorted.map(l => [dmy(l.date), l.ref, l.particulars, l.narration, l.debit || '', l.credit || '', l.party, l.ledgerType, l.source, statusText(l.id)])]);
   };
 
   const srcBtn = (which: LedgerSource, icon: React.ReactNode, label: string) => (
@@ -143,6 +151,19 @@ export function LedgerDashboardPage() {
         )}
         {note && <div role="status" data-testid="ledger-note" className="rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-sm px-3.5 py-2">{note}</div>}
 
+        <div className="grid sm:grid-cols-2 gap-4" data-testid="rec-pay">
+          <button type="button" onClick={() => { setSearch('Customer'); setPage(1); }} className="text-left rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700">Receivable · customers owe you</p>
+            <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="receivable-total">₹{money(recPay.receivable) || '0.00'}</p>
+            <p className="text-xs text-slate-500">{recPay.customers} customer{recPay.customers === 1 ? '' : 's'} with a balance</p>
+          </button>
+          <button type="button" onClick={() => { setSearch('Supplier'); setPage(1); }} className="text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Payable · you owe suppliers</p>
+            <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</p>
+            <p className="text-xs text-slate-500">{recPay.suppliers} supplier{recPay.suppliers === 1 ? '' : 's'} with a balance</p>
+          </button>
+        </div>
+
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center gap-2.5">
             <Filter size={14} className="text-slate-400" />
@@ -172,6 +193,7 @@ export function LedgerDashboardPage() {
                     <span className="inline-flex items-center gap-1">{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={11} className="text-slate-300" />}</span>
                   </th>
                 ))}
+                <th className={th}>Status</th>
               </tr></thead>
               <tbody>
                 {shown.map(l => (
@@ -184,21 +206,27 @@ export function LedgerDashboardPage() {
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{money(l.credit)}</td>
                     <td className="px-3 py-2 uppercase font-medium text-slate-800">{l.party}</td>
                     <td className="px-3 py-2">{l.ledgerType && <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${l.ledgerType === 'Customer' ? 'bg-sky-50 text-sky-700 border-sky-200' : l.ledgerType === 'Supplier' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{l.ledgerType}</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap" data-testid="bill-status">{(() => {
+                      const s = settled.get(l.id);
+                      if (!s) return null;
+                      const cls = s.state === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : s.state === 'Part' ? 'bg-amber-50 text-amber-700 border-amber-200' : s.days > 30 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200';
+                      return <span title={s.state === 'Completed' ? 'Settled by the bank statement' : `Still unpaid: ${money(s.left)}`} className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>{statusText(l.id)}</span>;
+                    })()}</td>
                   </tr>
                 ))}
                 {!anyLoading && shown.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-14 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={9} className="px-3 py-14 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersActive ? 'No ledger rows match these filters' : 'No ledger entries yet'}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{filtersActive ? 'Change or clear the filters.' : 'Bank entries, invoices and inwards will appear here.'}</p></td></tr>
                 )}
-                {anyLoading && shown.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
+                {anyLoading && shown.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
               </tbody>
               {sorted.length > 0 && (
                 <tfoot className="sticky bottom-0 bg-slate-100 border-t border-slate-300 font-bold text-[13px]">
                   <tr><td colSpan={4} className="px-3 py-2 text-right text-slate-600">Total ({sorted.length} rows)</td>
                     <td className="px-3 py-2 text-right tabular-nums text-red-600" data-testid="total-debit">{money(totals.debit) || '0.00'}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-emerald-600" data-testid="total-credit">{money(totals.credit) || '0.00'}</td>
-                    <td colSpan={2} className="px-3 py-2 text-slate-600">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
+                    <td colSpan={3} className="px-3 py-2 text-slate-600">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
                 </tfoot>
               )}
             </table>

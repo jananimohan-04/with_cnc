@@ -20,7 +20,8 @@ export const financeApi={
  bankTransactions:async(a:{kind?:string|null;account?:string|null;type?:string|null;party?:string|null;search?:string;from?:string;to?:string;page?:number;pageSize?:number})=>{
   const page=await call<BankPageResult>('erp_bank_transactions',{p_kind:a.kind??null,p_account_id:a.account??null,p_type:a.type??null,p_party:a.party??null,p_search:a.search??null,p_from:a.from??null,p_to:a.to??null,p_page:a.page??1,p_page_size:a.pageSize??10});
   if(!page.rows.length)return page;
-  const balances=await call<{id:string;balance:string|null}[]>('erp_bank_transaction_balances',{p_transaction_ids:page.rows.map(row=>row.id)});
+  // The running balance is optional: if that database function is not installed yet, the rows still load without it.
+  const balances=await call<{id:string;balance:string|null}[]>('erp_bank_transaction_balances',{p_transaction_ids:page.rows.map(row=>row.id)}).catch(()=>[] as {id:string;balance:string|null}[]);
   const byId=new Map(balances.map(row=>[row.id,row.balance]));
   return {...page,rows:page.rows.map(row=>({...row,balance:byId.get(row.id)??null}))};
  },

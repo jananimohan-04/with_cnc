@@ -7,6 +7,9 @@ import { financeApi, type BankFilters, type BankRow } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
 import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
+import { xlsxToTsv } from '@/lib/xlsxRead';
+import { supabase } from '@/lib/supabase';
+import { suggestRows, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
   applyTypeDefaults, loadOthers, loadTypes, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
@@ -45,6 +48,34 @@ export function BankEntryPage() {
   const [existing, setExisting] = useState<BankRow[]>([]);
   const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'ledger' | 'manual'>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Registered companies (with GSTIN) and the two control ledgers, used to suggest each row's ledger and party.
+  const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
+  const [receivable, setReceivable] = useState<LedgerRef | undefined>();
+  const [payable, setPayable] = useState<LedgerRef | undefined>();
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const gstOf = (r: Record<string, unknown>) => String(r.gst_number ?? r.gstin ?? r.gst ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const [c, su, chart] = await Promise.all([
+          supabase.from('cnc_customers').select('*'),
+          supabase.from('cnc_suppliers').select('*'),
+          accountingApi.chartOfAccounts(),
+        ]);
+        if (off) return;
+        const list: PartyRef[] = [
+          ...((c.error ? [] : c.data) ?? []).map((r: Record<string, unknown>) => ({ id: String(r.id), name: String(r.name ?? '').trim(), gst: gstOf(r), kind: 'Customer' as const })),
+          ...((su.error ? [] : su.data) ?? []).map((r: Record<string, unknown>) => ({ id: String(r.id), name: String(r.name ?? '').trim(), gst: gstOf(r), kind: 'Supplier' as const })),
+        ].filter(x => x.name);
+        setPartyRefs(list);
+        const pick = (key: string) => { const a = chart.find(x => x.system_key === key && !x.is_group); return a ? { id: a.id, code: a.code, name: a.name } : undefined; };
+        setReceivable(pick('TRADE_RECEIVABLES')); setPayable(pick('TRADE_PAYABLES'));
+      } catch { /* suggestions fall back to keywords only */ }
+    })();
+    return () => { off = true; };
+  }, [cid]);
+  const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name });
 
   // Bank Data
   const [data, setData] = useState<BankRow[]>([]);
@@ -96,6 +127,12 @@ export function BankEntryPage() {
   const incomeOpts = options?.income_accounts ?? [];
   const expenseOpts = options?.expense_accounts ?? [];
   const ledgerChoices = (r: ImportRow) => (rowDirection(r) === 'IN' ? incomeOpts : rowDirection(r) === 'OUT' ? expenseOpts : [...incomeOpts, ...expenseOpts]);
+  const ledgerOptions = (r: ImportRow) => (<>
+    <option value="">—</option>
+    {receivable && <optgroup label="Receivable (customers)"><option value={receivable.id}>{receivable.code} {receivable.name}</option></optgroup>}
+    {payable && <optgroup label="Payable (suppliers)"><option value={payable.id}>{payable.code} {payable.name}</option></optgroup>}
+    <optgroup label={rowDirection(r) === 'IN' ? 'Income' : rowDirection(r) === 'OUT' ? 'Expense' : 'Income / Expense'}>{ledgerChoices(r).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</optgroup>
+  </>);
   const parties = useMemo(() => Array.from(new Set([...others.map(o => o.name), ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name)])).filter(Boolean), [others, options]);
 
   const readExisting = async (list: ImportRow[]) => {
@@ -114,24 +151,28 @@ export function BankEntryPage() {
   const parseNow = async (src = text): Promise<ImportRow[]> => {
     const p = parseStatement(src);
     if (!p.rows.length) { setRows([]); setMsg({ kind: 'err', text: 'Nothing to read. Paste rows (TAB or comma separated) or choose a file first.' }); return []; }
-    const withTypes = applyTypeDefaults(p.rows, types);
+    const withTypes = suggestRows(applyTypeDefaults(p.rows, types), suggestCtx());
+    const auto = withTypes.filter(r => r.auto).length;
     setRows(withTypes); setShowTable(true);
     await readExisting(withTypes);
-    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
+    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${auto ? ` · ${auto} filled in automatically (marked ✨ — check them)` : ''}${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
     return withTypes;
   };
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > 5 * 1024 * 1024) { setMsg({ kind: 'err', text: 'File is larger than 5 MB.' }); return; }
-    if (!/\.(csv|tsv|txt)$/i.test(f.name)) { setMsg({ kind: 'err', text: 'Choose a .csv, .tsv or .txt statement. For Excel files, use Save As CSV first.' }); return; }
-    const t = await f.text();
+    if (!/\.(csv|tsv|txt|xlsx)$/i.test(f.name)) { setMsg({ kind: 'err', text: 'Choose an .xlsx, .csv, .tsv or .txt statement. For an old .xls file, use Save As .xlsx or CSV first.' }); return; }
+    let t: string;
+    try { t = /\.xlsx$/i.test(f.name) ? await xlsxToTsv(await f.arrayBuffer()) : await f.text(); }
+    catch (e) { setMsg({ kind: 'err', text: (e as Error).message || 'Could not read this file.' }); return; }
     setText(t); setMsg({ kind: 'info', text: `Loaded ${f.name}. Click “View full Table” to check the rows.` });
   };
 
   const patchRow = (id: string, patch: Partial<ImportRow>) => setRows(rs => rs.map(r => {
     if (r.id !== id) return r;
     const next = { ...r, ...patch };
+    if (patch.typeId !== undefined || patch.ledgerId !== undefined || patch.party !== undefined) delete next.auto;
     if (patch.typeId !== undefined) {
       const t = types.find(x => x.id === patch.typeId);
       if (t && !typeFitsRow(t, next)) { setMsg({ kind: 'err', text: `Type “${t.name}” is for ${t.direction === 'IN' ? 'money in' : 'money out'}, but row ${r.line} is the opposite.` }); return r; }
@@ -143,7 +184,7 @@ export function BankEntryPage() {
   const updateEntries = async () => {
     if (!rows.length) { setMsg({ kind: 'err', text: 'No rows to update. Click “View full Table” first.' }); return; }
     setBusy(true);
-    const re = applyTypeDefaults(rows, types);
+    const re = suggestRows(applyTypeDefaults(rows, types), suggestCtx());
     setRows(re); await readExisting(re);
     setBusy(false);
     setMsg({ kind: 'ok', text: 'Entries updated: type defaults applied and every row re-checked against saved bank data.' });
@@ -274,12 +315,12 @@ export function BankEntryPage() {
                 <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-orange-500 shrink-0"><FileText size={22} /></div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800">Choose a statement file <span className="font-normal text-slate-400">or paste rows below</span></p>
-                  <p className="text-xs text-slate-500 mt-0.5">CSV, TSV or TXT · up to 5 MB · Excel: Save As CSV first</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Excel (.xlsx), CSV, TSV or TXT · up to 5 MB</p>
                   <button type="button" data-testid="download-sample" onClick={downloadSample}
                     className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700 hover:underline">
                     <FileDown size={14} /> Download sample format
                   </button>
-                  <input ref={fileRef} type="file" aria-label="Statement file" accept=".csv,.tsv,.txt" onChange={e => void onFile(e.target.files?.[0])} className="mt-2 text-xs text-slate-600 file:mr-3 file:h-8 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-[13px] file:font-semibold file:text-slate-700 file:cursor-pointer" />
+                  <input ref={fileRef} type="file" aria-label="Statement file" accept=".xlsx,.csv,.tsv,.txt" onChange={e => void onFile(e.target.files?.[0])} className="mt-2 text-xs text-slate-600 file:mr-3 file:h-8 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-[13px] file:font-semibold file:text-slate-700 file:cursor-pointer" />
                 </div>
               </label>
               <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap items-center gap-3">
@@ -343,14 +384,14 @@ export function BankEntryPage() {
                       <tr key={r.id} data-testid="import-row" className={`border-t border-slate-100 transition ${is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{r.date ? dmy(r.date) : <span className="text-red-600">{r.rawDate || '—'}</span>}</td>
-                        <td className="px-3 py-2 max-w-[260px] truncate text-slate-700" title={r.description}>{r.description}</td>
+                        <td className="px-3 py-2 max-w-[260px] truncate text-slate-700" title={r.description}>{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
                         <td className="px-3 py-2 font-mono text-slate-500">{r.reference}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{Number.isNaN(r.debit) ? '?' : r.debit ? money(r.debit) : ''}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{Number.isNaN(r.credit) ? '?' : r.credit ? money(r.credit) : ''}</td>
                         <td className="px-3 py-1.5"><select aria-label={`Type row ${r.line}`} className={`${sel} !h-8 w-40`} value={r.typeId} onChange={e => patchRow(r.id, { typeId: e.target.value })}>
                           <option value="">—</option>{types.filter(t => typeFitsRow(t, r)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                         <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
-                          <option value="">—</option>{ledgerChoices(r).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</select></td>
+                          {ledgerOptions(r)}</select></td>
                         <td className="px-3 py-1.5"><input aria-label={`Party row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
                         <td className="px-3 py-2">{issueBadge(is)}</td>
                       </tr>

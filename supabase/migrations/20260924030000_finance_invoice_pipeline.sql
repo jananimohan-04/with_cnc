@@ -120,7 +120,7 @@ begin
                (e.entry_date = current_entry.entry_date and
                  (e.created_at < current_entry.created_at or
                    (e.created_at = current_entry.created_at and e.id::text <= current_entry.id::text))))
-      ) end), '[]')
+      ) end)), '[]')
     from public.cnc_bank_transactions bt
     where bt.company_id = v_company and bt.id::text = any(coalesce(p_transaction_ids, '{}'::text[]))
   );

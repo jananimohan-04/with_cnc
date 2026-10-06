@@ -15,6 +15,8 @@ export interface ImportRow {
   typeId: string;
   ledgerId: string;
   party: string;
+  /** Why the Type / Ledger / Party were filled in automatically (cleared once the user changes the row). */
+  auto?: string;
 }
 
 export type RowIssue = 'Invalid date' | 'No amount' | 'Both debit and credit' | 'Invalid amount' | 'Duplicate in file' | 'Already saved' | 'No type or ledger';
@@ -166,16 +168,33 @@ export function validateRows(rows: ImportRow[], existing: ExistingTxn[] = [], re
 // ---- Types and Others lists (kept in this browser, per company) ----
 export interface EntryType { id: string; name: string; direction: 'IN' | 'OUT' | 'ANY'; ledgerId: string }
 const KEY = (k: string, cid: string | null | undefined) => `argus.bank.${k}.${cid ?? 'all'}`;
-const DEFAULT_TYPES: EntryType[] = [
+// The standard Types the automatic suggestions use. They are added once to a company's list (never re-added if deleted).
+export const STANDARD_TYPES: EntryType[] = [
   { id: 't-others', name: 'OTHERS', direction: 'ANY', ledgerId: '' },
   { id: 't-internal', name: 'INTERNAL', direction: 'ANY', ledgerId: '' },
+  { id: 't-personal', name: 'PERSONAL', direction: 'ANY', ledgerId: '' },
+  { id: 't-customer', name: 'CUSTOMER', direction: 'ANY', ledgerId: '' },
+  { id: 't-supplier', name: 'SUPPLIER', direction: 'ANY', ledgerId: '' },
+  { id: 't-salary', name: 'SALARY', direction: 'OUT', ledgerId: '' },
+  { id: 't-expense', name: 'EXPENSE', direction: 'OUT', ledgerId: '' },
+  { id: 't-income', name: 'INCOME', direction: 'IN', ledgerId: '' },
 ];
+const DEFAULT_TYPES = STANDARD_TYPES;
 export function loadTypes(cid: string | null | undefined): EntryType[] {
   try {
     const raw = localStorage.getItem(KEY('types', cid));
     if (raw === null) return DEFAULT_TYPES;
     const a = JSON.parse(raw);
-    return Array.isArray(a) ? a.filter((t: EntryType) => t && typeof t.id === 'string' && typeof t.name === 'string') : DEFAULT_TYPES;
+    if (!Array.isArray(a)) return DEFAULT_TYPES;
+    const list: EntryType[] = a.filter((t: EntryType) => t && typeof t.id === 'string' && typeof t.name === 'string');
+    // older lists get the standard Types once, so the Type column can be filled in automatically
+    if (localStorage.getItem(KEY('types-std', cid)) !== '1') {
+      const have = new Set(list.map(t => t.name.trim().toLowerCase()));
+      list.push(...STANDARD_TYPES.filter(t => !have.has(t.name.toLowerCase())));
+      localStorage.setItem(KEY('types', cid), JSON.stringify(list));
+      localStorage.setItem(KEY('types-std', cid), '1');
+    }
+    return list;
   } catch { return DEFAULT_TYPES; }
 }
 export function saveTypes(cid: string | null | undefined, t: EntryType[]): boolean {

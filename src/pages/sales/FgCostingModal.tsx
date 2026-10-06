@@ -809,6 +809,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       title="Finished Goods + Costing"
       subtitle={`Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval`}
       size="3xl"
+      width={960}
       footer={
         <>
           <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { try { viewCostingDocument(pdfInput()); } catch (e: any) { alert(e?.message ?? e); } }}>

@@ -11,8 +11,8 @@ const MAX_W = 1100;
 const MIN_H = 400;
 const MAX_H = 850;
 
-const initialWidth = (size: string, vw: number): number => {
-  const base =
+const initialWidth = (size: string, vw: number, width?: number): number => {
+  const base = width ??
     size === 'sm' ? 520 :
     size === 'md' ? 640 :
     size === 'lg' ? 860 :
@@ -36,6 +36,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  width,
   draggable = true,
   isDirty = false,
   dirtyMessage = 'Discard unsaved changes?',
@@ -47,6 +48,8 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full';
+  /** Starting width in px; overrides the size preset. */
+  width?: number;
   /** Header drag handle. Disable only for flows that must stay centered. */
   draggable?: boolean;
   /** External dirty flag (OR-ed with automatic form-interaction tracking). */
@@ -71,7 +74,7 @@ export function Modal({
   useEffect(() => {
     if (open) {
       const vw = window.innerWidth;
-      setDim({ w: initialWidth(size, vw), h: null });
+      setDim({ w: initialWidth(size, vw, width), h: null });
       setTouched(false);
       setConfirming(false);
       setDragging(false);
@@ -83,7 +86,7 @@ export function Modal({
         const h = el?.offsetHeight ?? 400;
         const vh = window.innerHeight;
         setPos({
-          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw))) / 2),
+          x: Math.max(16, (vw - (el?.offsetWidth ?? initialWidth(size, vw, width))) / 2),
           y: Math.max(16, (vh - h) / 2),
         });
       });

@@ -342,6 +342,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       title="Invoice Entry — Approved Price"
       subtitle={`${dcNo ? `${card?.refNo || dcNo} → Invoice` : '→ Invoice'}`}
       size="2xl"
+      width={960}
       footer={
         <>
           <Button variant="secondary" icon={<Eye size={14} />} onClick={() => { void (async () => { try { await viewSalesInvoice(await buildInvoicePdfInput()); } catch (e: any) { alert(e?.message ?? e); } })(); }}>
