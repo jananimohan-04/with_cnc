@@ -30,7 +30,7 @@ export function soProductNames(order: any, qtyTracking?: any): string[] {
  *  per product (name, qty, rej qty, status). Each product carries its own
  *  status; the order status follows the products when they agree. Rej qty
  *  combines live quantity reconciliation (`qtyTracking`) with manual entries. */
-export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSaved, onInlineEdit }: {
+export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveRef, onSaved, onInlineEdit }: {
   order: any; qtyTracking?: any; editMode: boolean;
   saveRef?: { current: (() => Promise<boolean>) | null };
   onSaved: () => void; onInlineEdit: (field: string, value: string) => void;
@@ -49,6 +49,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
     rejectedQty: it.rejectedQty ?? it.rejected_qty ?? it.rejected ?? '',
     unitPrice: it.unitPrice ?? '',
     itemStatus: it.status || '',
+    gst: it.gst ?? '',
   })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -64,7 +65,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
   // Delivery date stays editable even when empty so it can always be set.
   const extraEntries = Object.entries(order || {}).filter(([k, v]) => {
     if (skipKeys.has(k) || k.startsWith('_') || /_ids?$/.test(k)) return false;
-    if (v === null || v === '' || typeof v === 'object') return editMode && k === 'delivery_date';
+    if (v === null || v === '' || typeof v === 'object') return editing && k === 'delivery_date';
     return true;
   });
   const isDateKey = (k: string) => k === 'date' || /_date$/.test(k);
@@ -91,6 +92,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
           rejectedQty: it.rejectedQty === '' ? 0 : Number(it.rejectedQty) || 0,
           unitPrice: it.unitPrice === '' || it.unitPrice == null ? '0' : it.unitPrice,
           status: it.itemStatus || (prev as any).status || order?.status || 'Confirmed',
+          gst: it.gst === '' || it.gst == null ? ((prev as any).gst ?? '18') : it.gst,
         };
       });
       const totalQty = saved.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0);
@@ -135,110 +137,54 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
     return () => { if (saveRef && saveRef.current === save) saveRef.current = null; };
   });
 
+  // Add, Edit and View share the entry layout (Company, Order Date, one line per product); View just locks it.
+  const inputBox = 'w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500';
+  const updItem = (idx: number, patch: any) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   return (
-    <div className="mb-6">
+    <fieldset disabled={!editing} className="mb-6 min-w-0 border-0 p-0 m-0 [&_input:disabled]:bg-slate-50 [&_input:disabled]:text-slate-700 [&_input:disabled]:cursor-default [&_select:disabled]:bg-slate-50 [&_select:disabled]:text-slate-700">
       <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company</span>
-          {editMode ? (
-            <input className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-              value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{customer || '—'}</span>
-          )}
+          <input className={inputBox} value={customer} onChange={(e) => setCustomer(e.target.value)} />
         </div>
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Order Date</span>
-          {editMode ? (
-            <input type="date" className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-              value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
-          ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{orderDate || '—'}</span>
-          )}
+          <input type="date" className={inputBox} value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
         </div>
       </div>
       <div className="mt-3 space-y-2">
-        {(editMode ? items : baseItems).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_4.5rem_5rem_4.5rem_8rem] gap-2 items-center px-1">
+        {items.length > 0 && (
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center px-1">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Rej Qty</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
           </div>
         )}
-        {(editMode ? items : baseItems).map((it: any, idx: number) => {
-          const name = editMode
-            ? String(it.partName || '')
-            : String(it.partName || it.productName || it.part_name || it.description || '').trim() || '—';
-          const qty = editMode ? it.quantity : (it.quantity ?? it.qty ?? '—');
-          const rej = prodOf(name)?.rejected ?? 0;
-          const upRaw = editMode ? it.unitPrice : (it.unitPrice ?? '');
-          const upText = upRaw === '' || upRaw == null ? '—' : `₹${Number(upRaw).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-          return (
-            <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_5rem_4.5rem_8rem] gap-2 items-center">
-                <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
-                <div>
-                  {editMode ? (
-                    <input className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                      placeholder="Product name" value={it.partName || ''}
-                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
-                  ) : (
-                    <span className="text-sm text-slate-800 font-medium break-words">{name}</span>
-                  )}
-                </div>
-                <div>
-                  {editMode ? (
-                    <input type="number" min={0} className="w-full text-sm font-medium tabular-nums text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                      value={it.quantity ?? ''} placeholder="0"
-                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, quantity: e.target.value } : r)))} />
-                  ) : (
-                    <span className="text-sm text-slate-800 font-medium tabular-nums">{qty === '' ? '—' : String(qty)}</span>
-                  )}
-                </div>
-                <div>
-                  {editMode ? (
-                    <input type="number" min={0} className="w-full text-sm font-medium tabular-nums text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                      value={it.unitPrice ?? ''} placeholder="0.00"
-                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, unitPrice: e.target.value } : r)))} />
-                  ) : (
-                    <span className="text-sm text-slate-800 font-medium tabular-nums">{upText}</span>
-                  )}
-                </div>
-                <div>
-                  {editMode ? (
-                    <input type="number" min={0} className="w-full text-sm font-medium tabular-nums text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                      value={it.rejectedQty ?? ''} placeholder="0"
-                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, rejectedQty: e.target.value } : r)))} />
-                  ) : (
-                    <span className="text-sm text-slate-800 font-medium tabular-nums">{rej}</span>
-                  )}
-                </div>
-                <div>
-                  {editMode ? (
-                    <select className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                      value={it.itemStatus || it.status || order?.status || 'Confirmed'}
-                      onChange={(e) => setItems((list) => list.map((r, i) => (i === idx ? { ...r, itemStatus: e.target.value } : r)))}>
-                      {Array.from(new Set(['Draft', 'Confirmed', 'Waiting for Parts', 'In Production', 'Inwarded', 'Unavailable', it.itemStatus, it.status, order?.status].filter(Boolean))).map((s: string) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="text-sm text-slate-800 font-medium break-words">{String(it.status || order?.status || '—')}</span>
-                  )}
-                </div>
-              </div>
+        {items.map((it: any, idx: number) => (
+          <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center">
+              <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
+              <input className={inputBox} placeholder="Product name" value={it.partName || ''} onChange={(e) => updItem(idx, { partName: e.target.value })} />
+              <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.quantity ?? ''} placeholder="0" onChange={(e) => updItem(idx, { quantity: e.target.value })} />
+              <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.unitPrice ?? ''} placeholder="0.00" onChange={(e) => updItem(idx, { unitPrice: e.target.value })} />
+              <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.gst ?? ''} placeholder="18" onChange={(e) => updItem(idx, { gst: e.target.value })} />
+              <select className={inputBox} value={it.itemStatus || it.status || order?.status || 'Confirmed'} onChange={(e) => updItem(idx, { itemStatus: e.target.value })}>
+                {Array.from(new Set(['Draft', 'Confirmed', 'Waiting for Parts', 'In Production', 'Inwarded', 'Unavailable', it.itemStatus, it.status, order?.status].filter(Boolean))).map((st: string) => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
             </div>
-          );
-        })}
-        {!(editMode ? items : baseItems).length && (
+          </div>
+        ))}
+        {!items.length && (
           <p className="text-xs text-slate-500 italic">No products on this sales order yet.</p>
         )}
       </div>
-      {editMode && (
-        <button onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', unitPrice: '', itemStatus: '' }])}
+      {editing && (
+        <button type="button" onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', unitPrice: '', itemStatus: '', gst: '18' }])}
           className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
           <span className="text-lg">+</span> Add Another Product
         </button>
@@ -250,20 +196,16 @@ export function SalesOrderSection({ order, qtyTracking, editMode, saveRef, onSav
               <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
                 {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
               </span>
-              {editMode ? (
-                <input type={isDateKey(key) ? 'date' : 'text'} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                  defaultValue={isDateKey(key) ? String(value ?? '').slice(0, 10) : String(value ?? '')}
-                  onBlur={(e) => { const cur = isDateKey(key) ? String(value ?? '').slice(0, 10) : String(value ?? ''); if (e.target.value !== cur) onInlineEdit(key, e.target.value); }} />
-              ) : (
-                <span className="text-sm text-slate-800 font-medium break-words">{String(value)}</span>
-              )}
+              <input type={isDateKey(key) ? 'date' : 'text'} className={inputBox}
+                defaultValue={isDateKey(key) ? String(value ?? '').slice(0, 10) : String(value ?? '')}
+                onBlur={(e) => { const cur = isDateKey(key) ? String(value ?? '').slice(0, 10) : String(value ?? ''); if (e.target.value !== cur) onInlineEdit(key, e.target.value); }} />
             </div>
           ))}
         </div>
       )}
-      {editMode && error && (
+      {editing && error && (
         <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>
       )}
-    </div>
+    </fieldset>
   );
 }

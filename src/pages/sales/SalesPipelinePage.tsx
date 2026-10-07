@@ -284,8 +284,10 @@ const ContactsList = ({ form, setForm, readOnly = false }: { form: any, setForm?
 /** Quantity Tracking section (detail view + FG approval): summary +
  *  reconciliation + record-rejected entry. Rejections save as traceable batch
  *  rows (good quantity untouched) and the summary refreshes from live rows. */
-export function QtyTrackingSection({ q, userName, onSaved }: {
+export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }: {
   q: OrderQtySummary; userName: string; onSaved: (q: OrderQtySummary) => void;
+  /** Show the Record rejected quantity form (not wanted on the Inward details). */
+  allowReject?: boolean;
 }) {
   const [rejQty, setRejQty] = useState('');
   const [rejProduct, setRejProduct] = useState('');
@@ -345,6 +347,7 @@ export function QtyTrackingSection({ q, userName, onSaved }: {
         <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
         <div className="mt-2"><QtyBreakdown q={q} /></div>
       </details>
+      {allowReject && (
       <div className="mt-3 rounded-xl border border-rose-200 bg-white p-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">Record rejected quantity</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
@@ -378,6 +381,7 @@ export function QtyTrackingSection({ q, userName, onSaved }: {
         </div>
         <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched — rejected stays traceable and never enters stock, DCs or invoices.</p>
       </div>
+      )}
     </div>
   );
 }
@@ -386,6 +390,9 @@ export function QtyTrackingSection({ q, userName, onSaved }: {
  *  Enquiry entry form — unique number, company, product rows with
  *  name/qty/upload/remarks — plus the summary banner strip. Saves with an
  *  UPDATE (no new record); uploads reuse the existing storage mechanism. */
+/** The entry form's input look; in view mode the same boxes are shown read-only so Add, Edit and View share one layout. */
+const fieldClass = (editable: boolean) => (editable ? inputClass : `${inputClass} !bg-slate-50 !text-slate-700 cursor-default focus:!ring-0 focus:!border-slate-300`);
+
 function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, saveRef, onSaved }: {
   raw: any;
   companies: any[];
@@ -521,10 +528,9 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
             placeholder="Type or select company..."
           />
         ) : (
-          <div>
-            <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Company Name</span>
-            <span className="text-sm text-slate-800 font-medium break-words">{company || '—'}</span>
-          </div>
+          <FormField label="Company Name" required>
+            <input readOnly aria-label="Company name" className={fieldClass(false)} value={company} />
+          </FormField>
         )}
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Products Required *</label>
@@ -539,7 +545,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       setItems(next);
                     }} />
                   ) : (
-                    <span className="text-sm text-slate-800 font-medium break-words">{item.productName || item.partName || '—'}</span>
+                    <input readOnly aria-label="Product name" className={fieldClass(false)} value={item.productName || item.partName || ''} />
                   )}
                 </div>
                 <div>
@@ -550,7 +556,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       setItems(next);
                     }} />
                   ) : (
-                    <span className="text-sm text-slate-800 font-medium tabular-nums">{item.quantity === '' || item.quantity == null ? '—' : String(item.quantity)}</span>
+                    <input readOnly aria-label="Quantity" className={fieldClass(false)} value={item.quantity === '' || item.quantity == null ? '' : String(item.quantity)} />
                   )}
                 </div>
                 <div>
@@ -577,7 +583,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       setItems(next);
                     }} />
                   ) : (
-                    <span className="text-sm text-slate-600 break-words">{item.remarks || '—'}</span>
+                    <input readOnly aria-label="Remarks" className={fieldClass(false)} placeholder="—" value={item.remarks || ''} />
                   )}
                 </div>
                 {editMode ? (
@@ -621,7 +627,9 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
  *  products/items table with computed totals, additional details. Saves with
  *  an UPDATE (totals recomputed with the entry formula); uploads reuse the
  *  existing storage mechanism. */
-function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: {
+function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, readOnly = false }: {
+  /** View mode: the same form, locked, without the save button. */
+  readOnly?: boolean;
   raw: any;
   productNames: string[];
   companyId?: string;
@@ -748,7 +756,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
   };
 
   return (
-    <div className="mb-6">
+    <fieldset disabled={readOnly} className="mb-6 min-w-0 border-0 p-0 m-0 [&_input:disabled]:bg-slate-50 [&_input:disabled]:text-slate-700 [&_input:disabled]:cursor-default [&_select:disabled]:bg-slate-50 [&_select:disabled]:text-slate-700 [&_textarea:disabled]:bg-slate-50 [&_textarea:disabled]:text-slate-700">
       <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
         <FormField label="Quotation Date" required>
           <input type="date" className={inputClass} value={quoteDate} onChange={(e) => setQuoteDate(e.target.value)} />
@@ -833,9 +841,9 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
           </table>
         </div>
         <datalist id="quotation-edit-product-list">{productNames.map((n) => <option key={n} value={n} />)}</datalist>
-        <button onClick={() => setItems([...items, { id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `q-${Date.now()}`, partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18', filePaths: [], files: [] }])} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
+        {!readOnly && <button onClick={() => setItems([...items, { id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `q-${Date.now()}`, partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18', filePaths: [], files: [] }])} className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
           <span className="text-lg">+</span> Add Another Product
-        </button>
+        </button>}
       </div>
       <h4 className="font-semibold text-sm text-slate-800 border-t border-slate-100 pt-4 mt-4">Additional Details</h4>
       <div className="grid grid-cols-2 gap-4">
@@ -844,10 +852,12 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved }: 
         <div className="col-span-2"><FormField label="Notes / Remarks"><textarea className={inputClass} rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></FormField></div>
       </div>
       {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-      <div className="flex justify-end mt-4">
-        <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
-      </div>
-    </div>
+      {!readOnly && (
+        <div className="flex justify-end mt-4">
+          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -872,7 +882,7 @@ async function updateDeliveryTolerant(id: string, patch: Record<string, any>): P
 /** Delivery Challan view/edit box mirroring the DC entry form: header rows,
  *  one line per product, signature row. Header edits apply to every row of
  *  the challan; the footer Done Editing button saves via saveRef. */
-function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies, onSaved }: {
+function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, companies, onSaved }: {
   rows: any[]; qtyTracking?: any; editMode: boolean;
   saveRef?: { current: (() => Promise<boolean>) | null };
   customers: any[]; companies: any[];
@@ -924,7 +934,7 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
   const syncGuard = useRef(true);
   useEffect(() => {
     if (syncGuard.current) { syncGuard.current = false; return; }
-    if (editMode) return;
+    if (editing) return;
     const f = (rows || [])[0] || {};
     setDate(String(f.delivery_date || '').slice(0, 10));
     setPartyName(String(f.customer_name || ''));
@@ -948,6 +958,8 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowsFingerprint]);
 
+  // Add, Edit and View share one layout: the entry form is always drawn, and View just locks it.
+  const editMode = true;
   const norm = (s: any) => String(s ?? '').trim().toLowerCase();
   const trackFor = (name: string) => (Array.isArray(qtyTracking?.products) ? qtyTracking.products : []).find((p: any) => norm(p.name) === norm(name));
 
@@ -1043,7 +1055,7 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
   const inputCls = 'w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500';
 
   return (
-    <div className="mb-6">
+    <fieldset disabled={!editing} className="mb-6 min-w-0 border-0 p-0 m-0 [&_input:disabled]:bg-slate-50 [&_input:disabled]:text-slate-700 [&_input:disabled]:cursor-default [&_select:disabled]:bg-slate-50 [&_select:disabled]:text-slate-700 [&_.sig-pad]:pointer-events-none">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">DC No</span>
@@ -1187,7 +1199,7 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Customer Signature</span>
           {editMode ? (
-            <SignaturePad value={custSignature} onChange={(v) => setCustSignature(v)} />
+            <SignaturePad readOnly={!editing} value={custSignature} onChange={(v) => setCustSignature(v)} />
           ) : custSignature ? (
             <img src={custSignature} alt="Customer signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
@@ -1205,7 +1217,7 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Authorized Signature</span>
           {editMode ? (
-            <SignaturePad value={authSignature} onChange={(v) => setAuthSignature(v)} />
+            <SignaturePad readOnly={!editing} value={authSignature} onChange={(v) => setAuthSignature(v)} />
           ) : authSignature ? (
             <img src={authSignature} alt="Authorized signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
@@ -1213,10 +1225,10 @@ function DcSection({ rows, qtyTracking, editMode, saveRef, customers, companies,
           )}
         </div>
       </div>
-      {editMode && error && (
+      {editing && error && (
         <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>
       )}
-    </div>
+    </fieldset>
   );
 }
 
@@ -1644,7 +1656,7 @@ export function SalesPipelinePage() {
             }}
           />
         ) : (
-          <span className="text-sm text-slate-800 font-medium break-words">{text}</span>
+          <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
         )}
       </div>
     );
@@ -1672,7 +1684,7 @@ export function SalesPipelinePage() {
               }}
             />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{text}</span>
+            <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
           )}
         </div>
       );
@@ -1737,13 +1749,12 @@ export function SalesPipelinePage() {
                      }}
                    />
                 ) : (
-                   <span className="text-sm text-slate-800 font-medium break-words">
-                     {displayVal === null || displayVal === undefined || displayVal === ''
-                       ? '—'
+                   <input readOnly aria-label={formattedKey} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none"
+                     value={displayVal === null || displayVal === undefined || displayVal === ''
+                       ? ''
                        : ['value', 'total_value'].includes(key) && Number.isFinite(Number(displayVal))
                          ? Number(displayVal).toFixed(2)
-                         : String(displayVal)}
-                   </span>
+                         : String(displayVal)} />
                 )}
               </div>
             );
@@ -2628,9 +2639,9 @@ export function SalesPipelinePage() {
       const ids = Array.isArray((card.raw as any)?._groupIds) && (card.raw as any)._groupIds.length
         ? (card.raw as any)._groupIds.filter(Boolean)
         : [card.raw.id];
-      const { error } = ids.length > 1
-        ? await supabase.from(table).delete().in('id', ids)
-        : await supabase.from(table).delete().eq('id', card.raw.id);
+      // .select() returns the rows that were actually removed, so a silent no-op (permissions) is caught.
+      const del = await supabase.from(table).delete().in('id', ids).select('id');
+      const error = del.error ?? ((del.data ?? []).length === 0 ? { message: 'Nothing was deleted (the record may be protected or already gone).' } : null);
       if (error) alert("Error deleting: " + error.message);
       else {
         // A deleted challan returns its goods to Finished Goods and un-counts them on the order.
@@ -2852,6 +2863,21 @@ export function SalesPipelinePage() {
     setMockImages(prev => ({ ...prev, ...loaded }));
     
     setLoading(false);
+  };
+
+  // Delete inward rows from the details window. The rows are removed from the database (the price and cost
+  // calculations read them), and the board is refreshed from the database afterwards.
+  const deleteInwardRows = async (ids: string[], what: string) => {
+    const real = ids.filter(Boolean);
+    if (!real.length) return;
+    if (!window.confirm(`Delete ${what}? It is removed permanently and the totals are recalculated.`)) return;
+    const del = await supabase.from('cnc_inwards').delete().in('id', real).select('id');
+    if (del.error) { alert('Error deleting: ' + del.error.message); return; }
+    if ((del.data ?? []).length !== real.length) {
+      alert(`Only ${(del.data ?? []).length} of ${real.length} row(s) were deleted. The rest may be protected; nothing else was changed.`);
+    }
+    setViewModalTarget(null); setViewEditMode(false);
+    fetchPipeline();
   };
 
   const closeViewModal = () => {
@@ -4910,6 +4936,7 @@ export function SalesPipelinePage() {
               <QtyTrackingSection
                 q={viewModalData.qtyTracking}
                 userName={userName}
+                allowReject={viewModalTarget?.stage !== 'Inward'}
                 onSaved={(summary) => setViewModalData((prev: any) => (prev ? { ...prev, qtyTracking: summary } : prev))}
               />
             )}
@@ -4950,6 +4977,12 @@ export function SalesPipelinePage() {
                     <div key={g[0].id || gi} className="mb-6">
                       <h4 className="font-bold text-sm text-brand-800 border-b border-brand-100 pb-2 mb-3 uppercase flex justify-between items-center">
                         <span>Inward Details #{gi + 1}</span>
+                        {viewEditMode && (
+                          <button type="button" data-testid="delete-inward" onClick={() => void deleteInwardRows(g.map((r: any) => String(r.id)), `inward #${gi + 1}`)}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold normal-case text-red-600 hover:bg-red-50">
+                            <Trash2 size={12} /> Delete inward
+                          </button>
+                        )}
                       </h4>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                         <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
@@ -4973,28 +5006,30 @@ export function SalesPipelinePage() {
                           </div>
                         </div>
                         <div className="overflow-x-auto">
-                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center mb-1 px-1 min-w-[720px]">
+                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-1 px-1 min-w-[760px]">
                           <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
                           {lineHead.map(h => <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>)}
+                          <span />
                         </div>
                         {g.map((row: any, ri: number) => (
-                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center min-w-[720px] bg-white rounded-lg border border-slate-200 p-2 mb-2">
+                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center min-w-[760px] bg-white rounded-lg border border-slate-200 p-2 mb-2">
                             <div>
-                              {viewEditMode ? (
-                                <select
-                                  className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                                  value={row.product_name || ''}
-                                  onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
-                                >
-                                  <option value="">Select product…</option>
-                                  {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
-                                </select>
-                              ) : (
-                                <span className="text-sm text-slate-800 font-medium break-words">{row.product_name || '—'}</span>
-                              )}
+                              <select
+                                disabled={!viewEditMode}
+                                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500 disabled:bg-slate-50 disabled:text-slate-700"
+                                value={row.product_name || ''}
+                                onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
+                              >
+                                <option value="">Select product…</option>
+                                {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
+                              </select>
                             </div>
                             {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}
                             <div>{inwardCellFor(row, 'remarks', '')}</div>
+                            {viewEditMode && g.length > 1 ? (
+                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line “${row.part_name || row.product_name || ri + 1}”`)}
+                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                            ) : <span />}
                           </div>
                         ))}
                         </div>
@@ -5015,16 +5050,15 @@ export function SalesPipelinePage() {
                 ) : null) },
                 { key: 'Quotation', node: viewModalTarget?.stage === 'Inward' ? null : (viewModalData.quotation ? (
                   <>
-                    {viewEditMode ? (
-                      <QuotationEditForm
-                        key={viewModalData.quotation.id || 'quo'}
-                        raw={viewModalData.quotation}
-                        productNames={existingProductNames}
-                        companyId={company?.id}
-                        openFile={(p) => void openProductFile(p)}
-                        onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
-                      />
-                    ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)}
+                    <QuotationEditForm
+                      key={`${viewModalData.quotation.id || 'quo'}-${viewEditMode ? 'edit' : 'view'}`}
+                      readOnly={!viewEditMode}
+                      raw={viewModalData.quotation}
+                      productNames={existingProductNames}
+                      companyId={company?.id}
+                      openFile={(p) => void openProductFile(p)}
+                      onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
+                    />
                   </>
                 ) : renderRecordData('Quotation', viewModalData.quotation, !viewModalData.order)) },
                 { key: 'Enquiry', node: viewModalData.enquiry ? (

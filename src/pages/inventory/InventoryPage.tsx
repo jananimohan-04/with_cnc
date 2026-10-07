@@ -16,6 +16,7 @@ import {
 } from '@/lib/inventory';
 import { formatDate, formatINR, formatPercent, toPaise, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
+import { useFinishedGoods, WarehouseMasterModal } from './FinishedGoodsStock';
 
 // ---------------------------------------------------------------------------------------
 // Inventory. Stock, rates, values and statuses all come from the database
@@ -121,6 +122,10 @@ export function InventoryPage() {
   const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [masterOpen, setMasterOpen] = useState(false);
+  const [fgKey, setFgKey] = useState(0);
+  const fg = useFinishedGoods(fgKey);
+  const fgStockCount = fg.rows?.length ?? 0;
   const [txn, setTxn] = useState<RecentTransaction | null>(null);
 
   // Extra dashboard data: per-item last movement, open work orders (WIP), live status.
@@ -130,6 +135,20 @@ export function InventoryPage() {
 
   const canManage = filters?.can_manage ?? false;
   const categories = useMemo(() => [...(filters?.categories ?? [])].sort((a, b) => a.sort_order - b.sort_order), [filters]);
+  // On the Finished Goods tab the table is replaced by the finished goods waiting for delivery.
+  const allTab = !applied.categoryId;
+  const fgTab = !!applied.categoryId && categories.some(c => c.id === applied.categoryId && (String(c.code ?? '').toUpperCase() === 'FG' || /finished/i.test(String(c.name))));
+  // Finished goods waiting for delivery are listed in the table on the All Items and Finished Goods tabs, narrowed by the same filters.
+  const fgVisible = useMemo(() => {
+    if (!(fgTab || allTab) || applied.supplierId || (applied.status && applied.status !== 'In Stock')) return [];
+    const q = applied.search.trim().toLowerCase();
+    return (fg.rows ?? []).filter(r => {
+      if (q && ![r.product, r.customer, r.salesOrder, 'finished goods'].some(x => x.toLowerCase().includes(q))) return false;
+      if (applied.warehouseId && fg.warehouseOf(r)?.id !== applied.warehouseId) return false;
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fg.rows, fg.whs, fgTab, allTab, applied]);
 
   const refreshAll = useCallback(() => { silentRef.current = true; setRefreshKey(k => k + 1); }, []);
 
@@ -366,11 +385,11 @@ export function InventoryPage() {
   const fgCount = byCat.filter(c => catKind(c.category_id) === 'MANUFACTURED').reduce((s, c) => s + (Number(c.items) || 0), 0);
 
   const cards = [
-    { label: 'Total Items', icon: Box, tint: 'bg-blue-100 text-blue-600', value: summary ? formatQty(summary.total_items) : null },
+    { label: 'Total Items', icon: Box, tint: 'bg-blue-100 text-blue-600', value: summary ? formatQty(summary.total_items + fgStockCount) : null },
     { label: 'Total Stock Value', icon: Layers, tint: 'bg-emerald-100 text-emerald-600', value: summary ? formatINR(summary.total_value) : null },
     { label: 'Raw Materials', icon: Package, tint: 'bg-orange-100 text-orange-600', value: summary ? formatQty(rawCount) : null },
     { label: 'Work In Progress', icon: Factory, tint: 'bg-violet-100 text-violet-600', value: wipCount === null ? null : formatQty(wipCount), hint: 'Open work orders' },
-    { label: 'Finished Goods', icon: Archive, tint: 'bg-indigo-100 text-indigo-600', value: summary ? formatQty(fgCount) : null },
+    { label: 'Finished Goods', icon: Archive, tint: 'bg-indigo-100 text-indigo-600', value: summary ? formatQty(fgCount + fgStockCount) : null },
     { label: 'Low Stock', icon: AlertTriangle, tint: 'bg-amber-100 text-amber-600', value: summary ? formatQty(summary.low_stock) : null },
     { label: 'Out of Stock', icon: XCircle, tint: 'bg-red-100 text-red-600', value: summary ? formatQty(summary.out_of_stock) : null },
   ];
@@ -399,6 +418,9 @@ export function InventoryPage() {
           )}
           {canManage && (
             <button onClick={() => setImportOpen(true)} className={outlineBtn}><Upload size={16} /> Import</button>
+          )}
+          {canManage && (
+            <button onClick={() => setMasterOpen(true)} className={outlineBtn}><Building2 size={16} /> Warehouse Master</button>
           )}
           <div className="relative" data-floating-menu>
             <button onClick={() => setExportOpen(o => !o)} disabled={exporting || !ready} className={outlineBtn}>
@@ -465,6 +487,7 @@ export function InventoryPage() {
             })}
           </div>
 
+          {(<>
           {/* Filter bar */}
           <div className="p-4 flex flex-wrap items-center gap-3 border-b border-slate-100">
             <input
@@ -524,8 +547,8 @@ export function InventoryPage() {
                     ))}
                   </tr>
                 ))}
-                {!itemsLoading && items && items.rows.length === 0 && (
-                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">No inventory items found.</td></tr>
+                {!itemsLoading && items && items.rows.length === 0 && fgVisible.length === 0 && (
+                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory items found.'}</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -568,13 +591,48 @@ export function InventoryPage() {
                     </td>
                   </tr>
                 ))}
+                {!itemsLoading && items && fgVisible.map((r, j) => {
+                  const wh = fg.warehouseOf(r);
+                  return (
+                    <tr key={`fg:${r.key}`} data-testid="fg-row" className="border-b border-slate-100 hover:bg-slate-50/70">
+                      <td className="px-3 py-2.5 text-slate-500">{firstShown + items.rows.length + j}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0"><Archive size={16} /></div>
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">{r.salesOrder || 'FG'}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-800 max-w-[220px]" title={`${r.product} · ${r.customer}`}>
+                        <div className="truncate">{r.product || '—'}</div>
+                        <div className="text-[11px] text-slate-400 truncate">{r.customer}</div>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600">Finished Goods</td>
+                      <td className="px-3 py-2">
+                        {canManage && fg.canAssign ? (
+                          <select aria-label={`Warehouse for ${r.product}`} className="h-8 w-full max-w-[220px] px-2 text-[13px] bg-white border border-slate-300 rounded-md" value={r.warehouseId} disabled={fg.busyKey === r.key} onChange={e => void fg.assign(r, e.target.value)}>
+                            <option value="">{fg.def ? `Default · ${fg.def.name}` : 'Not set'}</option>
+                            {fg.whs.filter(w => w.status === 'Active').map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                          </select>
+                        ) : <span className="text-slate-600">{wh ? `${wh.name}${wh.isDefault ? ' (default)' : ''}` : '—'}</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600">pcs</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800" title={`Finished ${r.finished} · Delivered ${r.delivered}`}>{formatQty(String(r.available))}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">—</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">—</td>
+                      <td className="px-3 py-2.5"><StatusPill status="In Stock" /></td>
+                      <td className="px-3 py-2.5 text-slate-300">—</td>
+                      <td className="px-3 py-2.5" />
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {fg.error && <p role="alert" className="mx-4 mb-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{fg.error}</p>}
 
           {/* Footer / pagination */}
           <div className="px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm text-slate-600">
-            <span>{items ? (items.total === 0 ? 'Showing 0 items' : `Showing ${firstShown} to ${lastShown} of ${formatQty(items.total)} items`) : ' '}</span>
+            <span>{items ? ((items.total === 0 ? (fgVisible.length ? '' : 'Showing 0 items') : `Showing ${firstShown} to ${lastShown} of ${formatQty(items.total)} items`) + (fgVisible.length ? `${items.total ? ' · ' : ''}${fgVisible.length} finished good${fgVisible.length === 1 ? '' : 's'} ready for delivery` : '')) : ' '}</span>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
                 <button aria-label="Previous page" disabled={page <= 1 || !items} onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -594,6 +652,7 @@ export function InventoryPage() {
               </select>
             </div>
           </div>
+          </>)}
         </div>
 
         {/* Summary panels: at the end of the page */}
@@ -691,6 +750,9 @@ export function InventoryPage() {
       )}
       {transferOpen && canManage && (
         <TransferModal onClose={() => setTransferOpen(false)} onSaved={refreshAll} />
+      )}
+      {masterOpen && canManage && (
+        <WarehouseMasterModal onClose={() => setMasterOpen(false)} onChanged={() => { setFgKey(k => k + 1); }} />
       )}
       {importOpen && canManage && (
         <ImportModal onClose={() => setImportOpen(false)} onImported={refreshAll} />

@@ -12,13 +12,14 @@ const MIN_H = 400;
 const MAX_H = 850;
 
 const initialWidth = (size: string, vw: number, width?: number): number => {
-  const base = width ??
+  const preset =
     size === 'sm' ? 520 :
     size === 'md' ? 640 :
     size === 'lg' ? 860 :
     size === 'xl' ? 1024 :
     size === 'full' ? vw - 64 :
     MAX_W; // 2xl, 3xl
+  const base = width ?? preset;
   return Math.min(Math.max(base, Math.min(MIN_W, vw - 32)), Math.min(MAX_W, vw - 32));
 };
 
