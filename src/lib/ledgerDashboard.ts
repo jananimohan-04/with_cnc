@@ -25,8 +25,15 @@ export interface LedgerLine {
   due?: number;
   /** Bank rows only: true when the receipt / payment is already linked to a specific invoice. */
   linked?: boolean;
+  /** Numbers that lead to the order this bill belongs to (order no, challan no, project no ...), used to find its Company ID. */
+  links?: string[];
 }
 
+/** The order's stamped unique number, e.g. 1001-06OCT26-0952AM, without the date and time -> 1001. */
+export const stripStamp = (s: string) => s.replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/i, '');
+
+/** Names compare ignoring capitals and extra spaces, so "Aadhiguru  Engineering" and "AADHIGURU ENGINEERING" are one party. */
+export const nameKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const day = (v: unknown): string => String(v ?? '').slice(0, 10);
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -49,10 +56,16 @@ export function fromInvoices(rows: InvoiceRow[]): LedgerLine[] {
       id: `inv:${i.id}`, source: 'Invoice' as const, date: day(i.invoice_date), ref: i.invoice_no ?? '',
       particulars: i.invoice_type || 'Sales Invoice', narration: i.dc_no ? `DC ${i.dc_no}` : (i.part_name ?? ''),
       debit: credit ? 0 : total, credit: credit ? total : 0, party: i.customer_name ?? '', ledgerType: 'Customer',
+      links: [i.dc_no, i.po_no].filter((x): x is string => !!x),
       due: credit ? undefined : Math.max(0, i.balance !== undefined && i.balance !== null && i.balance !== '' ? num(i.balance) : total - num(i.received)),
     };
   });
 }
+
+/** Inward categories that are bills from a supplier. Material received from a customer (CUSTOMER DC, NO DC, NEW PART ...)
+ *  is not something we owe anyone, so it carries no amount. */
+const PURCHASE_CATEGORIES = new Set(['GOODS PURCHASE', 'SERVICE PURCHASE']);
+export const isPurchaseInward = (category: unknown) => PURCHASE_CATEGORIES.has(String(category ?? '').trim().toUpperCase());
 
 /** A purchase inward is what we owe the supplier: a credit on the supplier's ledger. */
 export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
@@ -60,11 +73,13 @@ export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
     const direct = r.total_amount ?? r.total ?? r.amount;
     const q = num(r.quantity), p = num(r.price), d = num(r.discount), g = num(r.gst);
     const amount = direct !== undefined && direct !== null && direct !== '' ? num(direct) : q * p * (1 - d / 100) * (1 + g / 100);
+    const bill = isPurchaseInward(r.category);
     return {
       id: `inw:${String(r.id ?? r.inward_no)}`, source: 'Inward' as const, date: day(r.inward_date ?? r.created_at),
       ref: String(r.reference_no || r.inward_no || ''), particulars: `Inward ${String(r.category ?? '')}`.trim(),
-      narration: String(r.part_name || r.product_name || ''), debit: 0, credit: r2(amount),
-      party: String(r.party_name ?? ''), ledgerType: 'Supplier', due: r2(amount),
+      narration: String(r.part_name || r.product_name || ''), debit: 0, credit: bill ? r2(amount) : 0,
+      party: String(r.party_name ?? ''), ledgerType: bill ? 'Supplier' : 'Customer', due: bill ? r2(amount) : undefined,
+      links: [r.sales_order_ref, r.project_name].filter(x => !!x).map(String),
     };
   });
 }
@@ -79,7 +94,7 @@ export function filterLines(lines: LedgerLine[], f: LedgerFilter): LedgerLine[] 
     if (f.from && (!l.date || l.date < f.from)) return false;
     if (f.to && (!l.date || l.date > f.to)) return false;
     if (part && !l.particulars.toLowerCase().includes(part)) return false;
-    if (f.party && l.party.trim().toLowerCase() !== f.party.trim().toLowerCase()) return false;
+    if (f.party && nameKey(l.party) !== nameKey(f.party)) return false;
     if (search && ![l.date, l.ref, l.particulars, l.narration, l.party, l.ledgerType, String(l.debit || ''), String(l.credit || '')].some(x => x.toLowerCase().includes(search))) return false;
     return true;
   });
@@ -101,7 +116,7 @@ export interface PartySummary { party: string; ledgerType: string; debit: number
 export function summarizeByParty(lines: LedgerLine[]): PartySummary[] {
   const map = new Map<string, PartySummary>();
   for (const l of lines) {
-    const key = l.party.trim().toLowerCase() || '(no party)';
+    const key = nameKey(l.party) || '(no party)';
     const e = map.get(key) ?? { party: l.party.trim() || '(no party)', ledgerType: l.ledgerType, debit: 0, credit: 0, balance: 0, entries: 0 };
     e.debit = r2(e.debit + l.debit); e.credit = r2(e.credit + l.credit); e.entries++;
     if (!e.ledgerType && l.ledgerType) e.ledgerType = l.ledgerType;
@@ -115,7 +130,7 @@ export interface StatementRow extends LedgerLine { balance: number }
 export interface Statement { rows: StatementRow[]; opening: number; debit: number; credit: number; closing: number }
 /** Party statement: everything before `from` is rolled into the opening balance, the rest runs chronologically. */
 export function statementFor(lines: LedgerLine[], party: string, from?: string, to?: string): Statement {
-  const mine = lines.filter(l => l.party.trim().toLowerCase() === party.trim().toLowerCase());
+  const mine = lines.filter(l => nameKey(l.party) === nameKey(party));
   const opening = r2(mine.filter(l => from && l.date && l.date < from).reduce((n, l) => n + l.debit - l.credit, 0));
   const inRange = mine.filter(l => (!from || !l.date || l.date >= from) && (!to || !l.date || l.date <= to))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
@@ -126,18 +141,24 @@ export function statementFor(lines: LedgerLine[], party: string, from?: string, 
 export const drCr = (n: number) => (n > 0 ? 'Dr' : n < 0 ? 'Cr' : '');
 
 export interface ReceivablePayable { receivable: number; payable: number; customers: number; suppliers: number }
-/** Receivable = what customers owe (debit balances on Customer ledgers). Payable = what we owe suppliers (credit balances on Supplier ledgers). */
+/** Receivable = what customers owe (debit balances on Customer ledgers). Payable = what we owe suppliers (credit balances on Supplier ledgers).
+ *  Customer lines and Supplier lines are totalled separately per party, so a company that is both is counted on each side. */
 export function receivablePayable(lines: LedgerLine[]): ReceivablePayable {
   const out = { receivable: 0, payable: 0, customers: 0, suppliers: 0 };
-  for (const e of summarizeByParty(lines)) {
-    if (e.ledgerType === 'Customer' && e.balance > 0) { out.receivable = r2(out.receivable + e.balance); out.customers++; }
-    else if (e.ledgerType === 'Supplier' && e.balance < 0) { out.payable = r2(out.payable - e.balance); out.suppliers++; }
+  const bal = new Map<string, number>();
+  for (const l of lines) {
+    if ((l.ledgerType !== 'Customer' && l.ledgerType !== 'Supplier') || !nameKey(l.party)) continue;
+    const k = `${l.ledgerType}|${nameKey(l.party)}`;
+    bal.set(k, r2((bal.get(k) ?? 0) + l.debit - l.credit));
+  }
+  for (const [k, b] of bal) {
+    if (k.startsWith('Customer|') && b > 0) { out.receivable = r2(out.receivable + b); out.customers++; }
+    else if (k.startsWith('Supplier|') && b < 0) { out.payable = r2(out.payable - b); out.suppliers++; }
   }
   return out;
 }
 
 export interface Settlement { state: 'Completed' | 'Part' | 'Pending'; paid: number; left: number; days: number }
-const nameKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const dayNumber = (iso: string) => { const t = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`); return Number.isFinite(t) ? Math.floor(t / 86400000) : NaN; };
 
 /** Which invoices / inward bills the bank statement has settled.

@@ -16,6 +16,7 @@ import {
   BookOpen,
   Scale,
   Landmark,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -75,6 +76,7 @@ export const navSections: NavSection[] = [
       { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300' },
       { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries', iconClass: 'text-green-400' },
       { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400' },
+      { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400' },
       { label: 'Ledger Dashboard', icon: BookOpen, page: 'finance/ledger-dashboard', iconClass: 'text-teal-300' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400' },
     ],
@@ -178,6 +180,7 @@ export const pageTitles: Record<string, string> = {
   'finance/invoices': 'Invoices',
   'finance/bank-entries': 'Bank & Cash',
   'finance/bank-entry': 'Bank Entry',
+  'finance/petty-cash': 'Petty Cash Entry',
   'finance/ledger-dashboard': 'Ledger Dashboard',
   'admin/users': 'User Management',
   'admin/companies': 'Company Management',

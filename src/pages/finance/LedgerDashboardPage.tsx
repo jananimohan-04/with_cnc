@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X, MoreVertical, Printer, Eye } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { financeApi, type BankRow, type InvoiceRow } from '@/lib/finance';
 import { formatINR, todayISO } from '@/lib/format';
-import { exportCsv } from '@/lib/reportExport';
+import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
+import { addRoundedLogo } from '@/lib/brandedDocument';
 import {
-  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments,
+  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
 
@@ -21,14 +23,15 @@ const inp = 'h-9 px-3 text-[13px] text-slate-700 bg-white border border-slate-20
 const th = 'px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-600 select-none';
 const money = (n: number) => (n ? formatINR(n, { decimals: 'always', symbol: false }) : '');
 const MAX_ROWS = 5000;
+const item = 'w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-slate-700 hover:bg-orange-50 hover:text-orange-800 disabled:opacity-40 text-left';
 
 type SourceState = { rows: LedgerLine[]; state: 'idle' | 'loading' | 'ok' | 'error'; error: string; at: string };
 const emptySource = (): SourceState => ({ rows: [], state: 'idle', error: '', at: '' });
 
 const COLS: { key: SortKey; label: string; align?: 'right' }[] = [
-  { key: 'date', label: 'Date (dd/MM/yyyy)' }, { key: 'ref', label: 'Reference Number' }, { key: 'particulars', label: 'Particulars' },
-  { key: 'narration', label: 'Narration' }, { key: 'debit', label: 'Debit', align: 'right' }, { key: 'credit', label: 'Credit', align: 'right' },
-  { key: 'party', label: 'Party Name' }, { key: 'ledgerType', label: 'Ledger Type' },
+  { key: 'date', label: 'Date (dd/MM/yyyy)' }, { key: 'ref', label: 'Reference Number' }, { key: 'party', label: 'Party Name' },
+  { key: 'particulars', label: 'Particulars' }, { key: 'narration', label: 'Narration' },
+  { key: 'debit', label: 'Debit', align: 'right' }, { key: 'credit', label: 'Credit', align: 'right' },
 ];
 
 export function LedgerDashboardPage() {
@@ -86,16 +89,61 @@ export function LedgerDashboardPage() {
     setNote(n < 0 ? `${which}: could not update.` : `${which} updated: ${n} row${n === 1 ? '' : 's'}.`);
   };
 
-  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows], [src]);
+  // The Reference Number of an invoice / inward is the order's Company ID with its date and time (1001-06OCT26-0952AM),
+  // found through the sales order / challan it came from; failing that the company's own ID (1001). The document
+  // number moves into the narration. Bank rows keep their cheque / UTR reference.
+  const [ids, setIds] = useState<{ byName: Map<string, string>; bySo: Map<string, string>; byDc: Map<string, string>; byBase: Map<string, string> }>({ byName: new Map(), bySo: new Map(), byDc: new Map(), byBase: new Map() });
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      const byName = new Map<string, string>(), bySo = new Map<string, string>(), byDc = new Map<string, string>(), byBase = new Map<string, string>();
+      const enq = await supabase.from('cnc_enquiries').select('customer,lead_no,enquiry_no,created_at').order('created_at', { ascending: false });
+      for (const e of (enq.error ? [] : enq.data) ?? []) {
+        const k = nameKey(String(e.customer ?? ''));
+        if (k && !byName.has(k)) byName.set(k, stripStamp(String(e.lead_no || (e.enquiry_no ? `LD-${e.enquiry_no}` : ''))));
+      }
+      const cust = await supabase.from('cnc_customers').select('id,name');
+      for (const c of (cust.error ? [] : cust.data) ?? []) {
+        const k = nameKey(String(c.name ?? ''));
+        if (k && !byName.get(k)) byName.set(k, String(c.id));
+      }
+      const sos = await supabase.from('cnc_sales_orders').select('order_no,lead_no').order('created_at', { ascending: false });
+      for (const o of (sos.error ? [] : sos.data) ?? []) {
+        if (!o.lead_no) continue;
+        if (o.order_no) bySo.set(String(o.order_no), String(o.lead_no));
+        byBase.set(String(o.lead_no).toUpperCase(), String(o.lead_no)); // exact stamped number
+        const base = stripStamp(String(o.lead_no));
+        if (!byBase.has(base)) byBase.set(base, String(o.lead_no)); // newest order of that company
+      }
+      const dcs = await supabase.from('cnc_deliveries').select('delivery_no,sales_order_no');
+      for (const d of (dcs.error ? [] : dcs.data) ?? []) {
+        const lead = d.sales_order_no ? bySo.get(String(d.sales_order_no)) : undefined;
+        if (d.delivery_no && lead) byDc.set(String(d.delivery_no), lead);
+      }
+      if (!off) setIds({ byName, bySo, byDc, byBase });
+    })().catch(() => { /* references stay as document numbers */ });
+    return () => { off = true; };
+  }, [cid]);
+  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows].map(l => {
+    if (l.source === 'Bank') return l;
+    let id = '';
+    for (const k of l.links ?? []) { id = ids.bySo.get(k) || ids.byDc.get(k) || ids.byBase.get(k.toUpperCase()) || ids.byBase.get(stripStamp(k)) || ''; if (id) break; }
+    id = (id || ids.byName.get(nameKey(l.party)) || '').toUpperCase();
+    return id ? { ...l, ref: id, narration: [l.ref, l.narration].filter(Boolean).join(' · ') } : l;
+  }), [src, ids]);
   const recPay = useMemo(() => receivablePayable(all), [all]);
   const settled = useMemo(() => settleDocuments(all, todayISO()), [all]);
   const statusText = (id: string): string => {
     const s = settled.get(id);
     if (!s) return '';
     const age = s.days <= 0 ? 'today' : `${s.days} day${s.days === 1 ? '' : 's'}`;
-    return s.state === 'Completed' ? 'Completed' : s.state === 'Part' ? `Part paid · ${age}` : `Pending · ${age}`;
+    return s.state === 'Completed' ? 'Completed' : s.state === 'Part' ? `Part paid · ${age}` : `Due · ${age}`;
   };
-  const parties = useMemo(() => Array.from(new Set(all.map(l => l.party.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [all]);
+  const parties = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const l of all) { const k = nameKey(l.party); if (k && !byKey.has(k)) byKey.set(k, l.party.trim().replace(/\s+/g, ' ')); }
+    return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [all]);
   const filtered = useMemo(() => filterLines(all, { from: applied.from, to: applied.to, particulars: applied.part, party: applied.party, search }), [all, applied, search]);
   const sorted = useMemo(() => sortLines(filtered, sort.key, sort.dir), [filtered, sort]);
   const pages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -112,13 +160,75 @@ export function LedgerDashboardPage() {
 
   const exportRows = () => {
     if (!sorted.length) { setNote('Nothing to export.'); return; }
-    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Particulars', 'Narration', 'Debit', 'Credit', 'Party Name', 'Ledger Type', 'Source', 'Status'],
-      ...sorted.map(l => [dmy(l.date), l.ref, l.particulars, l.narration, l.debit || '', l.credit || '', l.party, l.ledgerType, l.source, statusText(l.id)])]);
+    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Source', 'Status'],
+      ...sorted.map(l => [dmy(l.date), l.ref, l.party, l.particulars, l.narration, l.debit || '', l.credit || '', l.source, statusText(l.id)])]);
+  };
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [menuOpen]);
+
+  // "Statement", from the chosen start date to the chosen end date; without dates, from the first to the last entry shown.
+  const dated = sorted.map(l => l.date).filter(Boolean).sort();
+  const periodFrom = applied.from || dated[0] || '';
+  const periodTo = applied.to || dated[dated.length - 1] || '';
+  const reportTitle = `Statement${applied.party ? ` - ${applied.party}` : ''}`;
+  const reportSub = `${company?.company_name ?? ''}  |  From ${dmy(periodFrom) || '-'} to ${dmy(periodTo) || '-'}  |  ${sorted.length} rows`;
+  const reportBody = () => sorted.map(l => [dmy(l.date), l.ref, l.party, l.particulars, l.narration, l.debit ? money(l.debit) : '', l.credit ? money(l.credit) : '', statusText(l.id)]);
+  const balanceText = `${money(Math.abs(totals.debit - totals.credit)) || '0.00'} ${drCr(totals.debit - totals.credit)}`.trim();
+  const pdfName = `statement${applied.party ? '-' + applied.party.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase() : ''}-${todayISO()}.pdf`;
+  const buildPdf = async () => {
+    const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+    const pdf = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    await addRoundedLogo(pdf, 14, 8, 40, 17);
+    pdf.setFontSize(14); pdf.text(reportTitle, 60, 15);
+    pdf.setFontSize(8); pdf.text(reportSub, 60, 20.5);
+    pdf.setDrawColor(242, 90, 10); pdf.setLineWidth(0.7); pdf.line(14, 27, 283, 27);
+    autoTable(pdf, {
+      startY: 31, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
+      head: [['Date', 'Reference', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status']],
+      body: reportBody(),
+      foot: [['', '', '', '', `Total (${sorted.length} rows)`, money(totals.debit) || '0.00', money(totals.credit) || '0.00', `Balance ${balanceText}`]],
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
+      columnStyles: { 5: { halign: 'right' }, 6: { halign: 'right' } },
+    });
+    return pdf;
+  };
+  const downloadPdf = async () => {
+    if (!sorted.length) { setNote('Nothing to download.'); return; }
+    try { (await buildPdf()).save(pdfName); } catch (e) { setNote(`Could not create the PDF: ${(e as Error).message}`); }
+  };
+  // Preview: the same PDF shown in a window, with Download and Print inside it.
+  const [preview, setPreview] = useState<string | null>(null);
+  const previewFrame = useRef<HTMLIFrameElement>(null);
+  const closePreview = () => setPreview(p => { if (p) URL.revokeObjectURL(p); return null; });
+  const openPreview = async () => {
+    if (!sorted.length) { setNote('Nothing to preview.'); return; }
+    try { setPreview(URL.createObjectURL((await buildPdf()).output('blob'))); } catch (e) { setNote(`Could not create the preview: ${(e as Error).message}`); }
+  };
+  const printPreview = () => {
+    const w = previewFrame.current?.contentWindow;
+    if (w) { try { w.focus(); w.print(); return; } catch { /* fall through */ } }
+    if (preview) window.open(preview, '_blank');
+  };
+  const printReport = () => {
+    if (!sorted.length) { setNote('Nothing to print.'); return; }
+    const cell = (v: string, num = false) => `<td${num ? ' class="num"' : ''}>${escapeHtml(v)}</td>`;
+    const head = ['Date', 'Reference', 'Party Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Status'].map((h, i) => `<th${i === 5 || i === 6 ? ' class="num"' : ''}>${escapeHtml(h)}</th>`).join('');
+    const body = reportBody().map(r => `<tr>${r.map((v, i) => cell(v, i === 5 || i === 6)).join('')}</tr>`).join('');
+    printHtml(reportTitle, `<div class="brand"><img src="${window.location.origin}/arguscnc-logo.jpg" alt="Logo"><div style="text-align:right"><h1>${escapeHtml(reportTitle)}</h1><div class="meta">${escapeHtml(reportSub)}</div></div></div>
+<table><thead><tr>${head}</tr></thead><tbody>${body}<tr class="total"><td colspan="5" style="text-align:right">Total (${sorted.length} rows)</td>${cell(money(totals.debit) || '0.00', true)}${cell(money(totals.credit) || '0.00', true)}<td>Balance ${escapeHtml(balanceText)}</td></tr></tbody></table>`);
   };
 
   const srcBtn = (which: LedgerSource, icon: React.ReactNode, label: string) => (
-    <button className={btn} data-testid={`update-${which.toLowerCase()}`} disabled={src[which].state === 'loading'} onClick={() => void updateOne(which)} title={src[which].error || (src[which].at ? `${src[which].rows.length} rows · ${src[which].at}` : '')}>
-      {icon}{label}<span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${src[which].state === 'error' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{src[which].state === 'loading' ? '…' : src[which].state === 'error' ? '!' : src[which].rows.length}</span>
+    <button role="menuitem" className={item} data-testid={`update-${which.toLowerCase()}`} disabled={src[which].state === 'loading'} onClick={() => { setMenuOpen(false); void updateOne(which); }} title={src[which].error || (src[which].at ? `${src[which].rows.length} rows · ${src[which].at}` : '')}>
+      {icon}{label}<span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold ${src[which].state === 'error' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{src[which].state === 'loading' ? '…' : src[which].state === 'error' ? '!' : src[which].rows.length}</span>
     </button>
   );
 
@@ -133,13 +243,22 @@ export function LedgerDashboardPage() {
               <p className="text-sm text-slate-500">Bank entries, invoices and inwards in one party ledger.</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button className={btn} data-testid="refresh-all" disabled={anyLoading} onClick={() => void refreshAll().then(() => setNote('Everything refreshed.'))}><RefreshCw size={14} className={anyLoading ? 'animate-spin' : ''} />Refresh</button>
-            {srcBtn('Bank', <Landmark size={14} />, 'Update Bank')}
-            {srcBtn('Invoice', <FileText size={14} />, 'Update Invoice')}
-            {srcBtn('Inward', <PackageOpen size={14} />, 'Update Inward')}
-            <button className={btn} onClick={() => { setStmtParty(applied.party || parties[0] || ''); setModal('statement'); }}><BookOpen size={14} />Ledger Statement</button>
-            <button className={`${btn} !border-orange-300 !bg-orange-50 !text-orange-800`} onClick={() => setModal('book')}><BookText size={14} />Ledger Book</button>
+          <div className="relative" ref={menuRef}>
+            <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>
+              <MoreVertical size={18} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />
+            </button>
+            {menuOpen && (
+              <div role="menu" className="absolute right-0 mt-2 w-60 z-30 rounded-xl border border-slate-200 bg-white shadow-xl py-1.5">
+                <button role="menuitem" className={item} data-testid="refresh-all" disabled={anyLoading} onClick={() => { setMenuOpen(false); void refreshAll().then(() => setNote('Everything refreshed.')); }}><RefreshCw size={14} className={anyLoading ? 'animate-spin' : ''} />Refresh all</button>
+                <div className="my-1 border-t border-slate-100" />
+                {srcBtn('Bank', <Landmark size={14} />, 'Update Bank')}
+                {srcBtn('Invoice', <FileText size={14} />, 'Update Invoice')}
+                {srcBtn('Inward', <PackageOpen size={14} />, 'Update Inward')}
+                <div className="my-1 border-t border-slate-100" />
+                <button role="menuitem" className={item} onClick={() => { setMenuOpen(false); setStmtParty(applied.party || parties[0] || ''); setModal('statement'); }}><BookOpen size={14} />Ledger Statement</button>
+                <button role="menuitem" className={`${item} !text-orange-800`} onClick={() => { setMenuOpen(false); setModal('book'); }}><BookText size={14} />Ledger Book</button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -152,12 +271,12 @@ export function LedgerDashboardPage() {
         {note && <div role="status" data-testid="ledger-note" className="rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-sm px-3.5 py-2">{note}</div>}
 
         <div className="grid sm:grid-cols-2 gap-4" data-testid="rec-pay">
-          <button type="button" onClick={() => { setSearch('Customer'); setPage(1); }} className="text-left rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
+          <button type="button" onClick={() => { setSearch(cur => (cur === 'Customer' ? '' : 'Customer')); setPage(1); }} className="text-left rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
             <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700">Receivable · customers owe you</p>
             <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="receivable-total">₹{money(recPay.receivable) || '0.00'}</p>
             <p className="text-xs text-slate-500">{recPay.customers} customer{recPay.customers === 1 ? '' : 's'} with a balance</p>
           </button>
-          <button type="button" onClick={() => { setSearch('Supplier'); setPage(1); }} className="text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
+          <button type="button" onClick={() => { setSearch(cur => (cur === 'Supplier' ? '' : 'Supplier')); setPage(1); }} className="text-left rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-5 py-4 shadow-sm hover:shadow-md transition">
             <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Payable · you owe suppliers</p>
             <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</p>
             <p className="text-xs text-slate-500">{recPay.suppliers} supplier{recPay.suppliers === 1 ? '' : 's'} with a balance</p>
@@ -165,16 +284,21 @@ export function LedgerDashboardPage() {
         </div>
 
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center gap-2.5">
+          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap lg:flex-nowrap items-center gap-2">
             <Filter size={14} className="text-slate-400" />
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Start <input type="date" aria-label="Start date" className={inp} value={from} onChange={e => setFrom(e.target.value)} /></label>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">End <input type="date" aria-label="End date" className={inp} value={to} onChange={e => setTo(e.target.value)} /></label>
-            <input aria-label="Filter particulars" className={`${inp} w-56`} placeholder="Filter: Particulars" value={part} onChange={e => setPart(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') apply(); }} />
-            <select aria-label="Party" className={`${sel} w-64`} value={party} onChange={e => setParty(e.target.value)}>
+            <input aria-label="Filter particulars" className={`${inp} w-40 shrink min-w-0`} placeholder="Filter: Particulars" value={part} onChange={e => setPart(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') apply(); }} />
+            <select aria-label="Party" className={`${sel} w-48 shrink min-w-0`} value={party} onChange={e => { setParty(e.target.value); setApplied(a => ({ ...a, party: e.target.value })); setPage(1); }}>
               <option value="">Party (all)</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
             <button className={btnPrimary} onClick={apply}>Apply</button>
             <button className={btn} onClick={clear}><X size={14} />Clear</button>
-            <button className={`${btn} ml-auto`} onClick={exportRows}><FileSpreadsheet size={14} />Export CSV</button>
+            <span className="ml-auto flex gap-2 shrink-0">
+              <button className={btn} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={14} />Preview</button>
+              <button className={btn} data-testid="ledger-print" onClick={printReport}><Printer size={14} />Print</button>
+              <button className={btn} data-testid="ledger-pdf" title="Download PDF" onClick={() => void downloadPdf()}><FileDown size={14} />PDF</button>
+              <button className={btn} title="Export CSV" onClick={exportRows}><FileSpreadsheet size={14} />CSV</button>
+            </span>
           </div>
 
           <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -200,12 +324,11 @@ export function LedgerDashboardPage() {
                   <tr key={l.id} data-testid="ledger-row" className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50 hover:bg-orange-50/40 transition">
                     <td className="px-3 py-2 whitespace-nowrap">{dmy(l.date)}</td>
                     <td className="px-3 py-2 font-mono text-slate-600">{l.ref}</td>
+                    <td className="px-3 py-2 uppercase font-medium text-slate-800">{l.party}</td>
                     <td className="px-3 py-2 uppercase">{l.particulars}</td>
                     <td className="px-3 py-2">{l.narration}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{money(l.debit)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{money(l.credit)}</td>
-                    <td className="px-3 py-2 uppercase font-medium text-slate-800">{l.party}</td>
-                    <td className="px-3 py-2">{l.ledgerType && <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${l.ledgerType === 'Customer' ? 'bg-sky-50 text-sky-700 border-sky-200' : l.ledgerType === 'Supplier' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{l.ledgerType}</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap" data-testid="bill-status">{(() => {
                       const s = settled.get(l.id);
                       if (!s) return null;
@@ -215,18 +338,18 @@ export function LedgerDashboardPage() {
                   </tr>
                 ))}
                 {!anyLoading && shown.length === 0 && (
-                  <tr><td colSpan={9} className="px-3 py-14 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={8} className="px-3 py-14 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersActive ? 'No ledger rows match these filters' : 'No ledger entries yet'}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{filtersActive ? 'Change or clear the filters.' : 'Bank entries, invoices and inwards will appear here.'}</p></td></tr>
                 )}
-                {anyLoading && shown.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
+                {anyLoading && shown.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-slate-400">Loading…</td></tr>}
               </tbody>
               {sorted.length > 0 && (
                 <tfoot className="sticky bottom-0 bg-slate-100 border-t border-slate-300 font-bold text-[13px]">
-                  <tr><td colSpan={4} className="px-3 py-2 text-right text-slate-600">Total ({sorted.length} rows)</td>
+                  <tr><td colSpan={5} className="px-3 py-2 text-right text-slate-600">Total ({sorted.length} rows)</td>
                     <td className="px-3 py-2 text-right tabular-nums text-red-600" data-testid="total-debit">{money(totals.debit) || '0.00'}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-emerald-600" data-testid="total-credit">{money(totals.credit) || '0.00'}</td>
-                    <td colSpan={3} className="px-3 py-2 text-slate-600">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
+                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
                 </tfoot>
               )}
             </table>
@@ -243,6 +366,12 @@ export function LedgerDashboardPage() {
         </section>
       </div>
 
+      <Modal open={!!preview} onClose={closePreview} title={reportTitle} subtitle="Preview" size="xl" draggable={false}
+        footer={<><Button variant="secondary" onClick={closePreview}>Close</Button>
+          <Button variant="secondary" icon={<Printer size={14} />} onClick={printPreview}>Print</Button>
+          <Button icon={<FileDown size={14} />} onClick={() => void downloadPdf()}>Download PDF</Button></>}>
+        {preview && <iframe ref={previewFrame} title="Ledger preview" data-testid="ledger-preview-frame" src={preview} className="w-full h-[68vh] rounded-lg border border-slate-200 bg-slate-100" />}
+      </Modal>
       <StatementModal open={modal === 'statement'} onClose={() => setModal(null)} lines={all} parties={parties} party={stmtParty} setParty={setStmtParty} initFrom={applied.from} initTo={applied.to} company={company?.company_name ?? ''} />
       <BookModal open={modal === 'book'} onClose={() => setModal(null)} lines={filterLines(all, { from: applied.from, to: applied.to })} onOpen={p => { setStmtParty(p); setModal('statement'); }} />
     </div>

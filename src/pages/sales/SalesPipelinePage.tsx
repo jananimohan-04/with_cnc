@@ -4484,7 +4484,7 @@ export function SalesPipelinePage() {
       
 
       {/* Inward Modal */}
-      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
+      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={820} footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
         <div className="flex flex-col gap-4">
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
@@ -4521,7 +4521,7 @@ export function SalesPipelinePage() {
               return (
               <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase text-slate-600">Inward {index + 1}</span>{inwardForm.parts.length > 1 && <button type="button" onClick={() => setInwardForm({...inwardForm, parts: inwardForm.parts.filter((_: any, i: number) => i !== index)})} className="text-xs font-medium text-rose-600 hover:text-rose-800">Remove</button>}</div>
-                <div className="grid grid-cols-2 md:grid-cols-[9rem_minmax(0,1fr)_9rem_9rem_auto] gap-4 mb-3">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
                   <FormField label="Category" required>
                     <select className={inputClass} value={group.category || 'GOODS PURCHASE'} onChange={e=>setGroup({ category: e.target.value })}>
                       <option>EXPENSES</option>
@@ -4547,37 +4547,39 @@ export function SalesPipelinePage() {
                     </label>
                   </div>
                 </div>
-                <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-1 px-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Part Name *</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Qty *</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Price *</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Disc</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">GST</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Total</span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Remarks</span>
-                  <span></span>
-                </div>
-                {(group.items || []).map((item: any, ii: number) => (
-                  <div key={ii} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)_1.75rem] gap-2 items-center mb-2">
-                    <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
-                      <option value="">Select product</option>
-                      {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
-                    </select>
-                    <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} />
-                    <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} />
-                    <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} />
-                    <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} />
-                    <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} />
-                    <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled />
-                    <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} />
-                    {(group.items || []).length > 1 ? (
-                      <button type="button" className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                      </button>
-                    ) : <span></span>}
-                  </div>
-                ))}
+                {(group.items || []).map((item: any, ii: number) => {
+                  const lbl = 'block text-[10px] font-bold text-slate-500 uppercase mb-0.5';
+                  return (
+                    <div key={ii} className="grid grid-cols-6 gap-x-2 gap-y-2 mb-3 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Product</span>
+                        <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
+                          <option value="">Select product</option>
+                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                        </select></label>
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
+                        <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
+                      <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Remarks</span>
+                        <input className={inputClass} placeholder="Remarks..." value={item.remarks ?? ''} onChange={e=>setItem(ii, { remarks: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Qty *</span>
+                        <input type="number" min="0" className={inputClass} placeholder="Qty" value={item.quantity || ''} onChange={e=>setItem(ii, { quantity: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Price *</span>
+                        <input type="number" min="0" className={inputClass} placeholder="Price" value={item.price || ''} onChange={e=>setItem(ii, { price: e.target.value })} /></label>
+                      <label className="col-span-1 min-w-0"><span className={lbl}>Disc %</span>
+                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.discount || ''} onChange={e=>setItem(ii, { discount: e.target.value })} /></label>
+                      <label className="col-span-1 min-w-0"><span className={lbl}>GST %</span>
+                        <input type="number" min="0" className={inputClass} placeholder="%" value={item.gst || ''} onChange={e=>setItem(ii, { gst: e.target.value })} /></label>
+                      <label className="col-span-2 sm:col-span-1 min-w-0"><span className={lbl}>Total</span>
+                        <input className={`${inputClass} bg-white font-bold`} value={lineTotal(item) || 0} disabled /></label>
+                      <div className="col-span-1 flex items-end justify-end">
+                        {(group.items || []).length > 1 && (
+                          <button type="button" className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove line" onClick={() => setGroup({ items: (group.items || []).filter((_: any, j: number) => j !== ii) })}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 {(inwardForm.productOptions || []).length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
                 <div className="flex items-center justify-between mt-1">
                   <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
@@ -4950,7 +4952,7 @@ export function SalesPipelinePage() {
                         <span>Inward Details #{gi + 1}</span>
                       </h4>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                        <div className="grid grid-cols-2 md:grid-cols-[9rem_minmax(0,1fr)_9rem_9rem_auto] gap-4 mb-3">
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-4 mb-3">
                           {inwardCellFor(g[0], 'category', 'Category')}
                           {inwardCellFor(g[0], 'party_name', 'Company')}
                           {inwardCellFor(g[0], 'inward_date', 'Inward Date')}
@@ -4970,12 +4972,13 @@ export function SalesPipelinePage() {
                             </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center mb-1 px-1">
+                        <div className="overflow-x-auto">
+                        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center mb-1 px-1 min-w-[720px]">
                           <span className="text-[10px] font-bold text-slate-500 uppercase">Product</span>
                           {lineHead.map(h => <span key={h} className="text-[10px] font-bold text-slate-500 uppercase">{h}</span>)}
                         </div>
                         {g.map((row: any, ri: number) => (
-                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center bg-white rounded-lg border border-slate-200 p-2 mb-2">
+                          <div key={row.id || ri} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_4rem_4.75rem_4rem_3.75rem_5rem_minmax(0,1fr)] gap-2 items-center min-w-[720px] bg-white rounded-lg border border-slate-200 p-2 mb-2">
                             <div>
                               {viewEditMode ? (
                                 <select
@@ -4994,6 +4997,7 @@ export function SalesPipelinePage() {
                             <div>{inwardCellFor(row, 'remarks', '')}</div>
                           </div>
                         ))}
+                        </div>
                       </div>
                     </div>
                   ))}</>);

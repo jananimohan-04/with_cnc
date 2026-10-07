@@ -20,7 +20,7 @@ export interface BrandedDocumentInput {
 }
 
 /** Logo on a curved (rounded-corner) white badge so it never looks pasted as a sharp rectangle. */
-async function addRoundedLogo(doc: any, x: number, y: number, w: number, h: number) {
+export async function addRoundedLogo(doc: any, x: number, y: number, w: number, h: number) {
   try {
     const response = await fetch('/arguscnc-logo.jpg');
     if (!response.ok) return;

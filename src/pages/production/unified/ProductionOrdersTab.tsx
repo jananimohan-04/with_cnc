@@ -640,8 +640,8 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4 mb-4">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[220px]">
+        <div className="flex flex-wrap lg:flex-nowrap items-end gap-3">
+          <div className="flex-[1.4] min-w-[180px] lg:min-w-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Search</label>
             <input
               value={search}
@@ -650,39 +650,39 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
               className={inputClass}
             />
           </div>
-          <div className="min-w-[170px]">
+          <div className="flex-1 min-w-[150px] lg:min-w-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Company</label>
             <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className={inputClass}>
               <option>All Companies</option>
               {customers.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div className="min-w-[170px]">
+          <div className="flex-1 min-w-[150px] lg:min-w-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Product</label>
             <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className={inputClass}>
               <option>All Products</option>
               {products.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <div className="min-w-[150px]">
+          <div className="w-36 shrink-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Status</label>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass}>
               <option>All Statuses</option>
               {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          <div>
+          <div className="w-40 shrink-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Start From</label>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputClass} />
           </div>
-          <div>
+          <div className="w-40 shrink-0">
             <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Start To</label>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputClass} />
           </div>
           {filtersActive && (
             <button
               onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+              className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
             >
               <X size={14} /> Clear
             </button>
