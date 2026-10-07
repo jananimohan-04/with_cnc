@@ -10,6 +10,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
+import { loadCustomerDue, type PartyDue } from '@/lib/partyDue';
 import { formatINR, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/Card';
 import { Modal, inputClass } from '@/components/ui/Modal';
@@ -76,6 +77,17 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [orderQty, setOrderQty] = useState<OrderQtySummary | null>(null);
+  // What this company already owes (unpaid earlier invoices, after the receipts in the bank statement).
+  const [due, setDue] = useState<PartyDue | null>(null);
+  const [dueState, setDueState] = useState<'loading' | 'ok' | 'error'>('loading');
+  useEffect(() => {
+    let off = false;
+    const who = String(customer || '').trim();
+    if (!who) { setDue(null); setDueState('ok'); return; }
+    setDueState('loading');
+    loadCustomerDue(who).then(d => { if (!off) { setDue(d); setDueState('ok'); } }).catch(() => { if (!off) { setDue(null); setDueState('error'); } });
+    return () => { off = true; };
+  }, [customer]);
   // Raw DC rows for the print (HSN / address / GSTIN / PO / DC date): read on click.
   const dcRowsRef = useRef<any[]>([]);
 
@@ -371,6 +383,27 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         <p className="text-sm text-red-600 py-8 text-center">Failed to load invoice data: {loadError}</p>
       ) : (
         <div className="space-y-4">
+          {/* what this company already owes: first thing in the popup */}
+          {dueState === 'ok' && due && due.total > 0 && (
+              <div data-testid="due-amount" role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs">
+                <p className="text-amber-900"><span className="font-bold uppercase tracking-wider text-[10px]">Due amount — </span>
+                  <b className="text-base tabular-nums text-amber-800">₹{due.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                  <span className="text-amber-800"> still unpaid by {customer} on {due.invoices.length} earlier invoice{due.invoices.length === 1 ? '' : 's'} (after the bank receipts)</span></p>
+                <ul className="mt-1.5 space-y-0.5 text-amber-900">
+                  {due.invoices.slice(0, 5).map(i => (
+                    <li key={i.invoiceNo + i.date} className="flex justify-between gap-3 tabular-nums">
+                      <span>{i.invoiceNo} · {i.date ? i.date.split('-').reverse().join('/') : ''} · {i.days <= 0 ? 'today' : `${i.days} day${i.days === 1 ? '' : 's'}`}</span>
+                      <b>₹{i.due.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                    </li>
+                  ))}
+                  {due.invoices.length > 5 && <li className="text-amber-700">+ {due.invoices.length - 5} more — see the Ledger Dashboard</li>}
+                </ul>
+              </div>
+            )}
+            {dueState === 'ok' && due && due.total === 0 && (
+              <div data-testid="no-due" className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-800"><span className="font-bold uppercase tracking-wider text-[10px]">Due amount — </span>nothing pending for {customer}.</div>
+            )}
+            {dueState === 'loading' && <p className="text-[11px] text-slate-400">Checking the ledger for dues…</p>}
           {/* header */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
