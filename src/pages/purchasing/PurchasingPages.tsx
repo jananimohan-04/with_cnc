@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Plus, Eye, Edit, Trash2, Users, FileText, ShoppingCart, Package, Activity, TrendingUp, Power, PowerOff, Printer, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { PageHeader, FilterButton, ExportButton } from '@/components/ui/PageHeader';
@@ -6,6 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Card, Badge, Button, StatCard } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { fromInwards } from '@/lib/ledgerDashboard';
 
 export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -700,7 +701,10 @@ export function PurchaseOrdersPage() {
   const [, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [viewTarget, setViewTarget] = useState<any>(null);
-  
+  // Goods Purchase inwards entered in the Sales Pipeline: every one is a purchase, so they are listed here with the POs.
+  const [inwardRows, setInwardRows] = useState<any[]>([]);
+  const [inwardView, setInwardView] = useState<any | null>(null);
+
   // Master Data
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
@@ -730,6 +734,10 @@ export function PurchaseOrdersPage() {
     // 1. Fetch POs
     const { data: poData } = await supabase.from('cnc_purchase_orders').select('*, supplier:cnc_suppliers(name, code, address, gst_number), items:cnc_purchase_order_items(*)').order('created_at', { ascending: false });
     if (poData) setPos(poData);
+
+    // 1b. Goods Purchase inwards
+    const inw = await supabase.from('cnc_inwards').select('*').order('created_at', { ascending: false }).limit(5000);
+    if (!inw.error) setInwardRows(((inw.data ?? []) as any[]).filter(r => String(r.status ?? '') !== 'Deleted' && String(r.category ?? '').trim().toUpperCase() === 'GOODS PURCHASE'));
 
     // 2. Fetch Suppliers
     const { data: supData } = await supabase.from('cnc_suppliers').select('*').eq('status', 'Active');
@@ -918,8 +926,20 @@ export function PurchaseOrdersPage() {
      return new Date(po.expected_date) < new Date();
   };
 
+  // One entry per inward number (a multi-part inward is one purchase); shaped like a PO row so the table can sort and search it.
+  const inwardPOs = useMemo(() => {
+    const byNo = new Map<string, any[]>();
+    inwardRows.forEach(r => { const k = String(r.inward_no || r.id); byNo.set(k, [...(byNo.get(k) ?? []), r]); });
+    return Array.from(byNo.entries()).map(([no, rows]) => ({
+      id: `inw:${no}`, fromInward: true, po_number: no, supplier: { name: String(rows[0].party_name ?? '') },
+      order_date: String(rows[0].inward_date ?? rows[0].created_at ?? '').slice(0, 10), expected_date: null,
+      grand_total: fromInwards(rows).reduce((n, l) => n + l.credit, 0), status: 'Received', inwardRows: rows,
+    }));
+  }, [inwardRows]);
+  const allPOs = useMemo(() => [...pos, ...inwardPOs].sort((a, b) => String(b.order_date ?? '').localeCompare(String(a.order_date ?? ''))), [pos, inwardPOs]);
+
   const columns: Column<any>[] = [
-    { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.po_number}</span> },
+    { key: 'po_number', label: 'PO No', sortable: true, render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.po_number}{r.fromInward && <span className="ml-2 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 font-sans">INWARD</span>}</span> },
     { key: 'supplier', label: 'Supplier', sortable: true, render: (r) => <span className="font-medium text-slate-800">{r.supplier?.name}</span> },
     { key: 'order_date', label: 'Order Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{r.order_date}</span> },
     { key: 'expected_date', label: 'Expected By', sortable: true, render: (r) => (
@@ -937,8 +957,8 @@ export function PurchaseOrdersPage() {
     )},
     { key: 'actions', label: 'Actions', align: 'center', render: (r) => (
        <div className="flex gap-1 justify-center">
-         <Button variant="secondary" size="sm" onClick={() => setViewTarget(r)} icon={<Eye size={14} />}>View</Button>
-         {r.status === 'Draft' && <Button variant="secondary" size="sm" onClick={() => loadPOForEdit(r)} icon={<Edit size={14} />} title="Edit PO">Edit</Button>}
+         <Button variant="secondary" size="sm" onClick={() => (r.fromInward ? setInwardView(r) : setViewTarget(r))} icon={<Eye size={14} />}>View</Button>
+         {!r.fromInward && r.status === 'Draft' && <Button variant="secondary" size="sm" onClick={() => loadPOForEdit(r)} icon={<Edit size={14} />} title="Edit PO">Edit</Button>}
        </div>
     ) }
   ];
@@ -952,16 +972,44 @@ export function PurchaseOrdersPage() {
       />
       
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatCard label="Total POs" value={pos.length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
-        <StatCard label="Draft" value={pos.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
-        <StatCard label="Issued / Sent" value={pos.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={20} />} accent="brand" />
-        <StatCard label="Partially / Fully Rcvd" value={pos.filter(p => ['Partially Received', 'Received'].includes(p.status)).length.toString()} icon={<Package size={20} />} accent="success" />
-        <StatCard label="Delayed" value={pos.filter(p => isDelayed(p)).length.toString()} icon={<Activity size={20} />} accent="error" />
+        <StatCard label="Total POs" value={allPOs.length.toString()} icon={<ShoppingCart size={20} />} accent="brand" />
+        <StatCard label="Draft" value={allPOs.filter(p => p.status === 'Draft').length.toString()} icon={<FileText size={20} />} accent="neutral" />
+        <StatCard label="Issued / Sent" value={allPOs.filter(p => p.status === 'Issued').length.toString()} icon={<Send size={20} />} accent="brand" />
+        <StatCard label="Partially / Fully Rcvd" value={allPOs.filter(p => ['Partially Received', 'Received'].includes(p.status)).length.toString()} icon={<Package size={20} />} accent="success" />
+        <StatCard label="Delayed" value={allPOs.filter(p => isDelayed(p)).length.toString()} icon={<Activity size={20} />} accent="error" />
       </div>
       
       <Card>
-         <DataTable data={pos} columns={columns} searchKeys={['po_number', 'supplier.name', 'supplier.code']} />
+         <DataTable data={allPOs} columns={columns} searchKeys={['po_number', 'supplier.name', 'supplier.code']} />
       </Card>
+
+      {/* A Goods Purchase inward: the lines that were bought */}
+      <Modal open={!!inwardView} onClose={() => setInwardView(null)} title={`Goods Purchase inward: ${inwardView?.po_number ?? ''}`} subtitle={`${inwardView?.supplier?.name ?? ''} · ${inwardView?.order_date ?? ''}`} size="lg"
+        footer={<Button variant="secondary" onClick={() => setInwardView(null)}>Close</Button>}>
+        {inwardView && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Entered as an inward in the Sales Pipeline. Edit or delete it from the inward card there; this list updates automatically.</p>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50"><tr className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  <th className="px-3 py-2">Part</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-right">Price</th><th className="px-3 py-2 text-right">GST %</th><th className="px-3 py-2 text-right">Total</th></tr></thead>
+                <tbody>
+                  {(inwardView.inwardRows as any[]).map((r, i) => (
+                    <tr key={r.id ?? i} className="border-t border-slate-100">
+                      <td className="px-3 py-2">{r.part_name || r.product_name || '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.quantity}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{Number(r.price ?? 0).toLocaleString('en-IN')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.gst_percent ?? 0}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold">₹{(fromInwards([r])[0]?.credit ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="border-t border-slate-300 bg-slate-50 font-bold"><td colSpan={4} className="px-3 py-2 text-right">Total</td><td className="px-3 py-2 text-right tabular-nums">₹{Number(inwardView.grand_total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr></tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* CREATE / EDIT PO MODAL */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={form.id ? "Edit Purchase Order" : "New Purchase Order"} subtitle="Commercial Commitment" size="xl" footer={<>

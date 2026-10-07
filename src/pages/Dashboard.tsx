@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   Boxes,
   Cpu,
+  Wallet,
+  Receipt,
 } from 'lucide-react';
 import { Card, Badge, ProgressBar, statusToVariant } from '@/components/ui/Card';
 import { LineChart, DonutChart, ChartCard } from '@/components/ui/Charts';
@@ -19,6 +21,9 @@ import { supabase } from '@/lib/supabase';
 import { useDateRange } from '@/contexts/DateRangeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchRecentActivity, timeAgo, type ActivityItem } from '@/lib/recentActivity';
+import { accountingApi } from '@/lib/accounting';
+import { financeApi } from '@/lib/finance';
+import { fromInwards } from '@/lib/ledgerDashboard';
 
 const activityIcons: Record<string, typeof Activity> = {
   production: Cog,
@@ -82,6 +87,42 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
   const [salesOrders, setSalesOrders] = useState<SalesOrderRow[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  // Money figures for the selected date range. null = could not be read (shown as a dash).
+  const [money, setMoney] = useState<{ expenses: number | null; goods: number | null; goodsBills: number; service: number | null; serviceBills: number; invoiceValue: number | null; invoiceCount: number }>(
+    { expenses: null, goods: null, goodsBills: 0, service: null, serviceBills: 0, invoiceValue: null, invoiceCount: 0 });
+  const [moneyLoading, setMoneyLoading] = useState(true);
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      setMoneyLoading(true);
+      const { start, end } = dateRange;
+      const [pl, inv, inw] = await Promise.allSettled([
+        accountingApi.profitAndLoss(start, end),
+        financeApi.invoiceSummary(start, end),
+        supabase.from('cnc_inwards').select('*').gte('inward_date', start).lte('inward_date', end).limit(5000),
+      ]);
+      if (off) return;
+      let goods: number | null = null, service: number | null = null, goodsBills = 0, serviceBills = 0;
+      if (inw.status === 'fulfilled' && !inw.value.error) {
+        goods = 0; service = 0;
+        for (const r of (inw.value.data ?? []) as Record<string, unknown>[]) {
+          if (String(r.status ?? '') === 'Deleted') continue;
+          const cat = String(r.category ?? '').trim().toUpperCase();
+          if (cat !== 'GOODS PURCHASE' && cat !== 'SERVICE PURCHASE') continue;
+          const amount = fromInwards([r])[0]?.credit ?? 0;
+          if (cat === 'GOODS PURCHASE') { goods += amount; goodsBills++; } else { service += amount; serviceBills++; }
+        }
+      }
+      setMoney({
+        expenses: pl.status === 'fulfilled' ? Number(pl.value.totals.expenses) || 0 : null,
+        goods, goodsBills, service, serviceBills,
+        invoiceValue: inv.status === 'fulfilled' ? Number(inv.value.total_value) || 0 : null,
+        invoiceCount: inv.status === 'fulfilled' ? inv.value.total_invoices : 0,
+      });
+      setMoneyLoading(false);
+    })();
+    return () => { off = true; };
+  }, [dateRange.start, dateRange.end, company?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,6 +218,14 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         <ExecutiveKPI title="Quality Rate" value={loading || stats.qualityRate === null ? '—' : stats.qualityRate.toFixed(1)} unit={stats.qualityRate === null ? undefined : '%'} note="Good ÷ (good + rejected)" icon={<ShieldCheck size={80} />} />
         <ExecutiveKPI title="Open Order Value" value={loading ? '—' : inr(stats.openOrderValue)} note={`${stats.openOrderCount} open sales orders`} icon={<AlertTriangle size={80} />} />
         <ExecutiveKPI title="Inventory Value" value={loading ? '—' : inr(inventoryValue)} note="Stock × unit price" icon={<Boxes size={80} />} />
+      </div>
+
+      {/* Money for the selected date range */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" data-testid="money-kpis">
+        <ExecutiveKPI title="Total Expenses" value={moneyLoading || money.expenses === null ? '—' : inr(money.expenses)} note="Booked in the ledger" icon={<Wallet size={80} />} />
+        <ExecutiveKPI title="Goods Purchase" value={moneyLoading || money.goods === null ? '—' : inr(money.goods)} note={`${money.goodsBills} purchase inward${money.goodsBills === 1 ? '' : 's'}`} icon={<ShoppingCart size={80} />} />
+        <ExecutiveKPI title="Service Purchase" value={moneyLoading || money.service === null ? '—' : inr(money.service)} note={`${money.serviceBills} service inward${money.serviceBills === 1 ? '' : 's'}`} icon={<Wrench size={80} />} />
+        <ExecutiveKPI title="Invoice Value" value={moneyLoading || money.invoiceValue === null ? '—' : inr(money.invoiceValue)} note={`${money.invoiceCount} invoice${money.invoiceCount === 1 ? '' : 's'}`} icon={<Receipt size={80} />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

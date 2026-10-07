@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, BookOpen, ChevronDown, ChevronRight, Download, Edit, ExternalLink, FileText, ListTree, Lock, Plus,
+  AlertTriangle, LayoutList, BookOpen, ChevronDown, ChevronRight, Download, Edit, ExternalLink, FileText, ListTree, Lock, Plus,
   Printer, Search, Trash2, X,
 } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { LedgerDashboardPage } from '@/pages/finance/LedgerDashboardPage';
 import {
   accountingApi, childrenMap, SOURCE_LABELS, SOURCE_ROUTES,
   type Account, type AccountType, type FinancialYearsResponse, type JournalEntry, type Ledger, type VoucherType,
@@ -20,8 +21,9 @@ import { exportCsv, printHtml, escapeHtml } from '@/lib/reportExport';
 // (accountingApi); this page only formats and displays it.
 // ---------------------------------------------------------------------------------------
 
-type Tab = 'ledger' | 'vouchers' | 'accounts';
+type Tab = 'dashboard' | 'ledger' | 'vouchers' | 'accounts';
 const TABS: { id: Tab; label: string; icon: typeof BookOpen }[] = [
+  { id: 'dashboard', label: 'Ledger Dashboard', icon: LayoutList },
   { id: 'ledger', label: 'Account Ledger', icon: BookOpen },
   { id: 'vouchers', label: 'Vouchers', icon: FileText },
   { id: 'accounts', label: 'Chart of Accounts', icon: ListTree },
@@ -105,7 +107,8 @@ export function LedgerPage() {
   const { company, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const tab: Tab = rawTab === 'vouchers' || rawTab === 'accounts' ? rawTab : 'ledger';
+  // The party Ledger Dashboard is the first tab and opens by default.
+  const tab: Tab = rawTab === 'vouchers' || rawTab === 'accounts' || rawTab === 'ledger' ? rawTab : searchParams.get('account') ? 'ledger' : 'dashboard';
 
   const [fyr, setFyr] = useState<FinancialYearsResponse | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -174,7 +177,9 @@ export function LedgerPage() {
 
           {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
-          {loading || !fyr ? (
+          {tab === 'dashboard' && <LedgerDashboardPage embedded />}
+
+          {tab === 'dashboard' ? null : loading || !fyr ? (
             loading ? <Card><LoadingState message="Loading accounts…" /></Card> : null
           ) : (
             <>

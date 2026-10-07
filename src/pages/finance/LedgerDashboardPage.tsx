@@ -34,7 +34,8 @@ const COLS: { key: SortKey; label: string; align?: 'right' }[] = [
   { key: 'debit', label: 'Debit', align: 'right' }, { key: 'credit', label: 'Credit', align: 'right' },
 ];
 
-export function LedgerDashboardPage() {
+/** `embedded` = shown as a tab inside Ledger & Vouchers (no page padding, compact heading). */
+export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { company } = useAuth();
   const cid = company?.id ?? null;
   const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource() });
@@ -233,9 +234,12 @@ export function LedgerDashboardPage() {
   );
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
+    <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
       <div className="space-y-5 max-w-[1500px] mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4">
+          {embedded ? (
+            <p className="text-sm text-slate-500"><span className="font-semibold text-slate-700" data-testid="row-count">{sorted.length} rows</span> · Bank entries, invoices and inwards in one party ledger.</p>
+          ) : (
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><BookText size={22} /></div>
             <div>
@@ -243,6 +247,7 @@ export function LedgerDashboardPage() {
               <p className="text-sm text-slate-500">Bank entries, invoices and inwards in one party ledger.</p>
             </div>
           </div>
+          )}
           <div className="relative" ref={menuRef}>
             <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>
               <MoreVertical size={18} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />

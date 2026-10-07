@@ -74,10 +74,8 @@ export const navSections: NavSection[] = [
     label: 'Finance',
     items: [
       { label: 'Invoices', icon: FileText, page: 'finance/invoices', iconClass: 'text-yellow-300' },
-      { label: 'Bank & Cash', icon: Landmark, page: 'finance/bank-entries', iconClass: 'text-green-400' },
       { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400' },
       { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400' },
-      { label: 'Ledger Dashboard', icon: BookOpen, page: 'finance/ledger-dashboard', iconClass: 'text-teal-300' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400' },
     ],
   },
