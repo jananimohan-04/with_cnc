@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Card';
+import { UploadCloud } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { itemFilePaths, openStoredFile, uploadOrderFile } from '@/lib/orderFiles';
 /** Sales-order line items: parsed `items` array, falling back to the header part name. */
 export function soProductItems(order: any): any[] {
   try {
@@ -35,6 +38,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
   saveRef?: { current: (() => Promise<boolean>) | null };
   onSaved: () => void; onInlineEdit: (field: string, value: string) => void;
 }) {
+  const { company } = useAuth();
   const norm = (s: any) => String(s ?? '').trim().toLowerCase();
   const trackBy = new Map<string, any>();
   (Array.isArray(qtyTracking?.products) ? qtyTracking.products : []).forEach((p: any) => {
@@ -50,6 +54,9 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
     unitPrice: it.unitPrice ?? '',
     itemStatus: it.status || '',
     gst: it.gst ?? '',
+    // files already stored on the order (paths) and new ones picked now (uploaded on save)
+    filePaths: itemFilePaths(it),
+    files: [] as File[],
   })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +89,8 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
     setSaving(true);
     setError('');
     try {
+      if (entered.some((it: any) => (it.files || []).length) && !company?.id) throw new Error('Select a company before uploading files.');
+      const uploaded: string[][] = await Promise.all(entered.map((it: any) => Promise.all(((it.files || []) as File[]).map(f => uploadOrderFile(company!.id, f)))));
       const prevItems = soProductItems(order);
       const saved = entered.map((it: any, idx: number) => {
         const prev = prevItems[idx] && typeof prevItems[idx] === 'object' ? prevItems[idx] : {};
@@ -93,6 +102,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
           unitPrice: it.unitPrice === '' || it.unitPrice == null ? '0' : it.unitPrice,
           status: it.itemStatus || (prev as any).status || order?.status || 'Confirmed',
           gst: it.gst === '' || it.gst == null ? ((prev as any).gst ?? '18') : it.gst,
+          filePaths: [...((it.filePaths || []) as { path: string }[]).map(f => f.path), ...(uploaded[idx] ?? [])],
         };
       });
       const totalQty = saved.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0);
@@ -152,20 +162,21 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
           <input type="date" className={inputBox} value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
         </div>
       </div>
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-2 overflow-x-auto">
         {items.length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center px-1">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] min-w-[640px] gap-2 items-center px-1">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
           </div>
         )}
         {items.map((it: any, idx: number) => (
           <div key={idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center">
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] min-w-[640px] gap-2 items-center">
               <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
               <input className={inputBox} placeholder="Product name" value={it.partName || ''} onChange={(e) => updItem(idx, { partName: e.target.value })} />
               <input type="number" min={0} className={`${inputBox} tabular-nums`} value={it.quantity ?? ''} placeholder="0" onChange={(e) => updItem(idx, { quantity: e.target.value })} />
@@ -176,7 +187,29 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
                   <option key={st} value={st}>{st}</option>
                 ))}
               </select>
+              {editing ? (
+                <label className="inline-flex h-[30px] w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                  <UploadCloud size={13} />Upload
+                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={(e) => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) updItem(idx, { files: [...(it.files || []), ...picked] }); }} />
+                </label>
+              ) : <span className="text-xs text-slate-400">{(it.filePaths || []).length ? `${it.filePaths.length} file${it.filePaths.length === 1 ? '' : 's'}` : '—'}</span>}
             </div>
+            {((it.filePaths || []).length > 0 || (it.files || []).length > 0) && (
+              <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-item-files">
+                {(it.filePaths as { name: string; path: string }[]).map((f) => (
+                  <span key={f.path} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px]">
+                    <button type="button" className="max-w-[220px] truncate text-blue-700 hover:underline" onClick={() => void openStoredFile(f.path)}>{f.name}</button>
+                    {editing && <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => updItem(idx, { filePaths: (it.filePaths as { path: string }[]).filter(x => x.path !== f.path) })}>×</button>}
+                  </span>
+                ))}
+                {(it.files as File[] || []).map((f, fi) => (
+                  <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    <span className="max-w-[200px] truncate">{f.name} (new)</span>
+                    <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => updItem(idx, { files: (it.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {!items.length && (
@@ -184,7 +217,7 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
         )}
       </div>
       {editing && (
-        <button type="button" onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', unitPrice: '', itemStatus: '', gst: '18' }])}
+        <button type="button" onClick={() => setItems((list) => [...list, { partName: '', quantity: '', rejectedQty: '', unitPrice: '', itemStatus: '', gst: '18', filePaths: [], files: [] }])}
           className="mt-2 text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
           <span className="text-lg">+</span> Add Another Product
         </button>

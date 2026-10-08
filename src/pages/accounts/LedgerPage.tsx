@@ -24,8 +24,6 @@ import { exportCsv, printHtml, escapeHtml } from '@/lib/reportExport';
 type Tab = 'dashboard' | 'ledger' | 'vouchers' | 'accounts';
 const TABS: { id: Tab; label: string; icon: typeof BookOpen }[] = [
   { id: 'dashboard', label: 'Ledger Dashboard', icon: LayoutList },
-  { id: 'ledger', label: 'Account Ledger', icon: BookOpen },
-  { id: 'vouchers', label: 'Vouchers', icon: FileText },
   { id: 'accounts', label: 'Chart of Accounts', icon: ListTree },
 ];
 
@@ -161,6 +159,12 @@ export function LedgerPage() {
       ) : (
         <>
           <div className="flex items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto">
+            {/* The Account Ledger and Vouchers views are no longer tabs; they still open from a report's drill-down link. */}
+            {(tab === 'ledger' || tab === 'vouchers') && (
+              <button onClick={() => setTab('dashboard')} className="inline-flex items-center gap-1.5 pb-3 text-sm font-medium text-brand-600 hover:text-brand-700 whitespace-nowrap">
+                ← Back to Ledger Dashboard
+              </button>
+            )}
             {TABS.map(t => (
               <button
                 key={t.id}

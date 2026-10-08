@@ -6,6 +6,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { Plus, Trash2, Eye, UploadCloud , Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Users as UsersIcon, Package as PackageIcon, ScrollText, FolderOpen, Building2 } from 'lucide-react';
+import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -3612,8 +3613,15 @@ export function SalesPipelinePage() {
     if (!entered.length) { alert('Enter at least one product.'); return; }
     if (entered.some((it: any) => Number(it.quantity) < 0)) { alert('Product quantities cannot be negative.'); return; }
     if (entered.some((it: any) => Number(it.rejectedQty) < 0)) { alert('Rejected quantities cannot be negative.'); return; }
-    const finalItems = entered.map((it: any) => ({
+    const hasFiles = entered.some((it: any) => (it.files || []).length);
+    if (hasFiles && !company?.id) { alert('Select a company before uploading files.'); return; }
+    let uploadedPaths: string[][];
+    try {
+      uploadedPaths = await Promise.all(entered.map((it: any) => Promise.all(((it.files || []) as File[]).map(f => uploadOrderFile(company!.id, f)))));
+    } catch (e: any) { alert(e?.message || 'Could not upload the files.'); return; }
+    const finalItems = entered.map((it: any, fileIdx: number) => ({
        id: it.id || crypto.randomUUID(),
+       filePaths: uploadedPaths[fileIdx] ?? [],
        partName: it.partName,
        partNumber: '',
        description: '',
@@ -4863,7 +4871,7 @@ export function SalesPipelinePage() {
 
       
       {/* Sales Order Modal */}
-      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="lg" width={720} draggable={false} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
+      <Modal open={!!soModalTarget} onClose={closeSoPopup} title="Create Sales Order" size="lg" width={900} footer={<><Button variant="secondary" onClick={closeSoPopup}>Cancel</Button><Button onClick={saveStandaloneSalesOrder}>Save Order</Button></>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <CustomerAutocomplete
@@ -4878,20 +4886,21 @@ export function SalesPipelinePage() {
             <FormField label="Order Date" required><input type="date" className={inputClass} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
           </div>
           {(soForm.items || []).length > 0 && (
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center px-1">
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center px-1">
               <span></span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
             </div>
           )}
           {(soForm.items || []).map((item: any, idx: number) => {
             const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
             return (
               <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-2">
-                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4.5rem_8rem] gap-2 items-center">
+                <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_7.5rem_6.5rem] gap-2 items-center">
                   <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                   <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                   <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
@@ -4900,11 +4909,25 @@ export function SalesPipelinePage() {
                   <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
                     {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
+                  <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                    <UploadCloud size={14} />{(item.files || []).length ? `${item.files.length} file${item.files.length === 1 ? '' : 's'}` : 'Upload'}
+                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) upd({ files: [...(item.files || []), ...picked] }); }} />
+                  </label>
                 </div>
+                {(item.files || []).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
+                    {(item.files as File[]).map((f, fi) => (
+                      <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                        <span className="max-w-[200px] truncate">{f.name}</span>
+                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
-          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }] }))}
+          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
             className="text-sm text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1">
             <span className="text-lg">+</span> Add Another Product
           </button>
@@ -4914,7 +4937,7 @@ export function SalesPipelinePage() {
           </div>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size={viewModalTarget?.stage === 'Sales Order' ? 'md' : 'xl'} width={viewModalTarget?.stage === 'Sales Order' ? 600 : 900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;

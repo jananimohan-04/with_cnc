@@ -50,22 +50,72 @@ interface MachineRow { id: string; code: string; name: string; status: string; u
 interface JobCardRow { id: string; work_order: string; machine: string; op_no: number | null; qty_planned: number; qty_completed: number; status: string }
 interface SalesOrderRow { id: string; status: string; value: number | null; total_value: number | null; created_at: string }
 
-function ExecutiveKPI({ title, value, unit, note, icon }: { title: string; value: string; unit?: string; note?: string; icon: React.ReactNode }) {
+type Tone = 'indigo' | 'sky' | 'violet' | 'emerald' | 'amber' | 'rose' | 'teal' | 'slate';
+const TONES: Record<Tone, { chip: string; bar: string; value: string }> = {
+  indigo: { chip: 'bg-indigo-50 text-indigo-600', bar: 'bg-indigo-500', value: 'text-slate-900' },
+  sky: { chip: 'bg-sky-50 text-sky-600', bar: 'bg-sky-500', value: 'text-slate-900' },
+  violet: { chip: 'bg-violet-50 text-violet-600', bar: 'bg-violet-500', value: 'text-slate-900' },
+  emerald: { chip: 'bg-emerald-50 text-emerald-600', bar: 'bg-emerald-500', value: 'text-slate-900' },
+  amber: { chip: 'bg-amber-50 text-amber-600', bar: 'bg-amber-500', value: 'text-slate-900' },
+  rose: { chip: 'bg-rose-50 text-rose-600', bar: 'bg-rose-500', value: 'text-slate-900' },
+  teal: { chip: 'bg-teal-50 text-teal-600', bar: 'bg-teal-500', value: 'text-slate-900' },
+  slate: { chip: 'bg-slate-100 text-slate-600', bar: 'bg-slate-400', value: 'text-slate-900' },
+};
+
+/** A group of KPI tiles under a clear heading: what it shows and for which period. */
+function KpiSection({ title, subtitle, icon, accent, children, testId }: { title: string; subtitle: string; icon: React.ReactNode; accent: string; children: React.ReactNode; testId: string }) {
   return (
-    <Card className="p-5 flex flex-col justify-between border border-transparent hover:border-brand-200 transition-colors cursor-default group relative overflow-hidden">
-      <div className="absolute -right-6 -top-6 text-slate-100 group-hover:text-brand-50/50 transition-colors transform group-hover:scale-110 duration-500 pointer-events-none">
-        {icon}
-      </div>
-      <div className="relative z-10">
-        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{title}</p>
-        <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-black text-slate-800 tracking-tight">{value}</span>
-          {unit && <span className="text-sm font-semibold text-slate-500">{unit}</span>}
+    <section data-testid={testId} className="mb-4 rounded-xl border border-slate-200 bg-white/80 backdrop-blur shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+        <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-white shadow ${accent}`}>{icon}</span>
+        <div>
+          <h2 className="text-xs font-extrabold tracking-wider uppercase text-slate-800 leading-tight">{title}</h2>
+          <p className="text-[11px] text-slate-500 leading-tight">{subtitle}</p>
         </div>
-        {note && <p className="mt-3 text-xs font-semibold text-slate-400">{note}</p>}
       </div>
-    </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 min-[1900px]:grid-cols-8 gap-2.5 p-3">{children}</div>
+    </section>
   );
+}
+
+function KpiTile({ title, value, unit, note, icon, tone, hint }: { title: string; value: string; unit?: string; note?: string; icon: React.ReactNode; tone: Tone; hint?: string }) {
+  const t = TONES[tone];
+  return (
+    <div title={hint} className="relative rounded-lg border border-slate-200 bg-white px-3 py-2.5 pl-4 shadow-sm hover:shadow-md hover:border-slate-300 transition overflow-hidden">
+      <span className={`absolute left-0 top-0 bottom-0 w-1 ${t.bar}`} />
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{title}</p>
+          <p className="mt-0.5 flex items-baseline gap-1">
+            <span className={`text-lg font-black tracking-tight tabular-nums ${t.value}`}>{value}</span>
+            {unit && <span className="text-xs font-semibold text-slate-500">{unit}</span>}
+          </p>
+        </div>
+        <span className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center ${t.chip} [&_svg]:w-4 [&_svg]:h-4`}>{icon}</span>
+      </div>
+      {note && <p className="mt-1 text-[11px] leading-tight font-medium text-slate-400 truncate" title={note}>{note}</p>}
+    </div>
+  );
+}
+
+/** Invoice figures for a date range, summed from the invoice list itself so they always match what the Invoices page lists.
+ *  Cancelled and Proforma invoices are left out; a Credit Note reduces the value. */
+async function invoiceTotals(start: string, end: string) {
+  const rows: Awaited<ReturnType<typeof financeApi.invoices>>['rows'] = [];
+  for (let page = 1; page <= 10; page++) {
+    const r = await financeApi.invoices({ from: start, to: end, page, pageSize: 200 });
+    rows.push(...r.rows);
+    if (rows.length >= r.total || !r.rows.length) break;
+  }
+  let value = 0, received = 0, outstanding = 0, count = 0;
+  for (const i of rows) {
+    if (i.cancelled || i.invoice_type === 'Proforma Invoice') continue;
+    const credit = i.invoice_type === 'Credit Note';
+    count++;
+    value += (credit ? -1 : 1) * (Number(i.total) || 0);
+    if (!credit) { received += Number(i.received) || 0; outstanding += Math.max(0, Number(i.balance) || 0); }
+  }
+  return { value, received, outstanding, count };
 }
 
 const inr = (n: number) =>
@@ -86,10 +136,11 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
   const [jobCards, setJobCards] = useState<JobCardRow[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrderRow[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
+  const [batchRejected, setBatchRejected] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   // Money figures for the selected date range. null = could not be read (shown as a dash).
-  const [money, setMoney] = useState<{ expenses: number | null; goods: number | null; goodsBills: number; service: number | null; serviceBills: number; invoiceValue: number | null; invoiceCount: number }>(
-    { expenses: null, goods: null, goodsBills: 0, service: null, serviceBills: 0, invoiceValue: null, invoiceCount: 0 });
+  const [money, setMoney] = useState<{ expenses: number | null; goods: number | null; goodsBills: number; service: number | null; serviceBills: number; invoiceValue: number | null; invoiceCount: number; received: number | null; outstanding: number | null }>(
+    { expenses: null, goods: null, goodsBills: 0, service: null, serviceBills: 0, invoiceValue: null, invoiceCount: 0, received: null, outstanding: null });
   const [moneyLoading, setMoneyLoading] = useState(true);
   useEffect(() => {
     let off = false;
@@ -98,26 +149,31 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
       const { start, end } = dateRange;
       const [pl, inv, inw] = await Promise.allSettled([
         accountingApi.profitAndLoss(start, end),
-        financeApi.invoiceSummary(start, end),
+        invoiceTotals(start, end),
         supabase.from('cnc_inwards').select('*').gte('inward_date', start).lte('inward_date', end).limit(5000),
       ]);
       if (off) return;
       let goods: number | null = null, service: number | null = null, goodsBills = 0, serviceBills = 0;
       if (inw.status === 'fulfilled' && !inw.value.error) {
         goods = 0; service = 0;
+        const goodsNos = new Set<string>(), serviceNos = new Set<string>();
         for (const r of (inw.value.data ?? []) as Record<string, unknown>[]) {
           if (String(r.status ?? '') === 'Deleted') continue;
           const cat = String(r.category ?? '').trim().toUpperCase();
           if (cat !== 'GOODS PURCHASE' && cat !== 'SERVICE PURCHASE') continue;
           const amount = fromInwards([r])[0]?.credit ?? 0;
-          if (cat === 'GOODS PURCHASE') { goods += amount; goodsBills++; } else { service += amount; serviceBills++; }
+          const no = String(r.inward_no ?? r.id);
+          if (cat === 'GOODS PURCHASE') { goods += amount; goodsNos.add(no); } else { service += amount; serviceNos.add(no); }
         }
+        goodsBills = goodsNos.size; serviceBills = serviceNos.size;
       }
       setMoney({
         expenses: pl.status === 'fulfilled' ? Number(pl.value.totals.expenses) || 0 : null,
         goods, goodsBills, service, serviceBills,
-        invoiceValue: inv.status === 'fulfilled' ? Number(inv.value.total_value) || 0 : null,
-        invoiceCount: inv.status === 'fulfilled' ? inv.value.total_invoices : 0,
+        invoiceValue: inv.status === 'fulfilled' ? inv.value.value : null,
+        invoiceCount: inv.status === 'fulfilled' ? inv.value.count : 0,
+        received: inv.status === 'fulfilled' ? inv.value.received : null,
+        outstanding: inv.status === 'fulfilled' ? inv.value.outstanding : null,
       });
       setMoneyLoading(false);
     })();
@@ -129,7 +185,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
     (async () => {
       setLoading(true);
       try {
-        const [wo, mc, jc, so, parts, raw, act] = await Promise.all([
+        const [wo, mc, jc, so, parts, raw, act, batches] = await Promise.all([
           supabase.from('cnc_work_orders').select('id, wo_no, part_name, part_no, quantity, completed, rejected, status, created_at').order('created_at', { ascending: false }),
           supabase.from('cnc_machines').select('id, code, name, status, utilization').order('code'),
           supabase.from('cnc_job_cards').select('id, work_order, machine, op_no, qty_planned, qty_completed, status'),
@@ -137,6 +193,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
           supabase.from('cnc_parts').select('stock_qty, unit_price'),
           supabase.from('cnc_raw_materials').select('stock_qty, unit_price'),
           fetchRecentActivity(8),
+          supabase.from('cnc_production_batches').select('rejected_qty').limit(10000),
         ]);
         for (const r of [wo, mc, jc, so, parts, raw]) if (r.error) console.error('Dashboard query failed:', r.error);
         if (cancelled) return;
@@ -148,6 +205,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
           (rows || []).reduce((s, r) => s + (Number(r.stock_qty) || 0) * (Number(r.unit_price) || 0), 0);
         setInventoryValue(stockValue(parts.data) + stockValue(raw.data));
         setActivity(act);
+        // Rejections entered in the pipeline are saved as production batches; if that table is missing they count as 0.
+        setBatchRejected(batches.error ? 0 : (batches.data ?? []).reduce((n: number, b: { rejected_qty: number | string | null }) => n + (Number(b.rejected_qty) || 0), 0));
       } catch (err) {
         console.error('Dashboard load failed:', err);
       } finally {
@@ -160,7 +219,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
   const stats = useMemo(() => {
     const openWOs = workOrders.filter(w => !CLOSED_WO.includes(w.status));
     const completed = workOrders.reduce((s, w) => s + (Number(w.completed) || 0), 0);
-    const rejected = workOrders.reduce((s, w) => s + (Number(w.rejected) || 0), 0);
+    const rejected = workOrders.reduce((s, w) => s + (Number(w.rejected) || 0), 0) + batchRejected;
     const running = machines.filter(m => m.status === 'Running').length;
     const utilValues = machines.map(m => Number(m.utilization)).filter(v => !Number.isNaN(v));
     const openOrders = salesOrders.filter(o => o.status !== 'Delivered');
@@ -173,7 +232,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
       openOrderValue: openOrders.reduce((s, o) => s + (Number(o.total_value ?? o.value) || 0), 0),
       openOrderCount: openOrders.length,
     };
-  }, [workOrders, machines, jobCards, salesOrders]);
+  }, [workOrders, machines, jobCards, salesOrders, batchRejected]);
 
   // Planned / completed / rejected quantity of work orders raised per month in the selected range.
   const productionTrend = useMemo(() => {
@@ -210,23 +269,29 @@ export function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }
         actions={<DateSelector />}
       />
 
-      {/* Executive KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <ExecutiveKPI title="Open Work Orders" value={loading ? '—' : String(stats.openWOs.length)} note={`${workOrders.length} in total`} icon={<Package size={80} />} />
-        <ExecutiveKPI title="Active Jobs" value={loading ? '—' : String(stats.activeJobs)} note="Job cards in progress" icon={<Cog size={80} />} />
-        <ExecutiveKPI title="Machines Running" value={loading ? '—' : String(stats.running)} unit={machines.length ? `/ ${machines.length}` : undefined} note="From machine master" icon={<Gauge size={80} />} />
-        <ExecutiveKPI title="Quality Rate" value={loading || stats.qualityRate === null ? '—' : stats.qualityRate.toFixed(1)} unit={stats.qualityRate === null ? undefined : '%'} note="Good ÷ (good + rejected)" icon={<ShieldCheck size={80} />} />
-        <ExecutiveKPI title="Open Order Value" value={loading ? '—' : inr(stats.openOrderValue)} note={`${stats.openOrderCount} open sales orders`} icon={<AlertTriangle size={80} />} />
-        <ExecutiveKPI title="Inventory Value" value={loading ? '—' : inr(inventoryValue)} note="Stock × unit price" icon={<Boxes size={80} />} />
-      </div>
+      {/* 1. Operations: counts */}
+      <KpiSection testId="kpi-operations" title="Operations" subtitle="Counts from the shop floor and the order book, as of today" accent="bg-indigo-600" icon={<Cog size={18} />}>
+        <KpiTile tone="indigo" title="Open Work Orders" value={loading ? '—' : String(stats.openWOs.length)} note={`${workOrders.length} work orders in total`} icon={<Package size={20} />} />
+        <KpiTile tone="violet" title="Active Jobs" value={loading ? '—' : String(stats.activeJobs)} note="Job cards in progress" icon={<Cog size={20} />} />
+        <KpiTile tone="teal" title="Machines Running" value={loading ? '—' : String(stats.running)} unit={machines.length ? `/ ${machines.length}` : undefined} note="Out of all machines" icon={<Gauge size={20} />} />
+        <KpiTile tone="emerald" title="Quality Rate" value={loading || stats.qualityRate === null ? '—' : stats.qualityRate.toFixed(1)} unit={stats.qualityRate === null ? undefined : '%'} note="Good ÷ (good + rejected)" icon={<ShieldCheck size={20} />} />
+        <KpiTile tone="sky" title="Open Sales Orders" value={loading ? '—' : String(stats.openOrderCount)} note="Not yet delivered" icon={<ShoppingCart size={20} />} />
+        <KpiTile tone="amber" title="Goods Purchase" value={moneyLoading || money.goods === null ? '—' : String(money.goodsBills)} note="Purchase inwards in the dates chosen" icon={<Boxes size={20} />} />
+        <KpiTile tone="rose" title="Service Purchase" value={moneyLoading || money.service === null ? '—' : String(money.serviceBills)} note="Service inwards in the dates chosen" icon={<Wrench size={20} />} />
+        <KpiTile tone="slate" title="Invoices Raised" value={moneyLoading || money.invoiceValue === null ? '—' : String(money.invoiceCount)} note="In the dates chosen" icon={<Receipt size={20} />} />
+      </KpiSection>
 
-      {/* Money for the selected date range */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" data-testid="money-kpis">
-        <ExecutiveKPI title="Total Expenses" value={moneyLoading || money.expenses === null ? '—' : inr(money.expenses)} note="Booked in the ledger" icon={<Wallet size={80} />} />
-        <ExecutiveKPI title="Goods Purchase" value={moneyLoading || money.goods === null ? '—' : inr(money.goods)} note={`${money.goodsBills} purchase inward${money.goodsBills === 1 ? '' : 's'}`} icon={<ShoppingCart size={80} />} />
-        <ExecutiveKPI title="Service Purchase" value={moneyLoading || money.service === null ? '—' : inr(money.service)} note={`${money.serviceBills} service inward${money.serviceBills === 1 ? '' : 's'}`} icon={<Wrench size={80} />} />
-        <ExecutiveKPI title="Invoice Value" value={moneyLoading || money.invoiceValue === null ? '—' : inr(money.invoiceValue)} note={`${money.invoiceCount} invoice${money.invoiceCount === 1 ? '' : 's'}`} icon={<Receipt size={80} />} />
-      </div>
+      {/* 2. Financials: rupee values */}
+      <KpiSection testId="kpi-financials" title="Financials" subtitle={`Money values · ${dateRange.start.split('-').reverse().join('/')} to ${dateRange.end.split('-').reverse().join('/')} unless marked "today"`} accent="bg-emerald-600" icon={<Wallet size={18} />}>
+        <KpiTile tone="emerald" title="Invoice Value" value={moneyLoading || money.invoiceValue === null ? '—' : inr(money.invoiceValue)} note={`${money.invoiceCount} invoice${money.invoiceCount === 1 ? '' : 's'} raised`} hint={money.invoiceValue === null ? undefined : `₹${money.invoiceValue.toLocaleString('en-IN')}`} icon={<Receipt size={20} />} />
+        <KpiTile tone="teal" title="Received" value={moneyLoading || money.received === null ? '—' : inr(money.received)} note="Collected against those invoices" hint={money.received === null ? undefined : `₹${money.received.toLocaleString('en-IN')}`} icon={<TrendingUp size={20} />} />
+        <KpiTile tone="amber" title="To Collect" value={moneyLoading || money.outstanding === null ? '—' : inr(money.outstanding)} note="Invoiced but not yet received" hint={money.outstanding === null ? undefined : `₹${money.outstanding.toLocaleString('en-IN')}`} icon={<AlertTriangle size={20} />} />
+        <KpiTile tone="rose" title="Total Expenses" value={moneyLoading || money.expenses === null ? '—' : inr(money.expenses)} note="Booked in the ledger" hint={money.expenses === null ? undefined : `₹${money.expenses.toLocaleString('en-IN')}`} icon={<Wallet size={20} />} />
+        <KpiTile tone="sky" title="Goods Purchase" value={moneyLoading || money.goods === null ? '—' : inr(money.goods)} note={`${money.goodsBills} purchase inward${money.goodsBills === 1 ? '' : 's'}`} hint={money.goods === null ? undefined : `₹${money.goods.toLocaleString('en-IN')}`} icon={<ShoppingCart size={20} />} />
+        <KpiTile tone="violet" title="Service Purchase" value={moneyLoading || money.service === null ? '—' : inr(money.service)} note={`${money.serviceBills} service inward${money.serviceBills === 1 ? '' : 's'}`} hint={money.service === null ? undefined : `₹${money.service.toLocaleString('en-IN')}`} icon={<Wrench size={20} />} />
+        <KpiTile tone="indigo" title="Open Order Value" value={loading ? '—' : inr(stats.openOrderValue)} note={`${stats.openOrderCount} open sales orders · today`} hint={`₹${stats.openOrderValue.toLocaleString('en-IN')}`} icon={<Package size={20} />} />
+        <KpiTile tone="slate" title="Inventory Value" value={loading ? '—' : inr(inventoryValue)} note="Stock × unit price · today" hint={`₹${inventoryValue.toLocaleString('en-IN')}`} icon={<Boxes size={20} />} />
+      </KpiSection>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Machine status */}
