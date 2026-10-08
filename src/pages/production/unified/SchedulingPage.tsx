@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { TimeAmPm } from '@/components/ui/TimeAmPm';
 import { PlannedTimeline } from './PlannedTimeline';
+import { ComparisonTimeline } from './ComparisonPage';
 
 function ActualScheduling() {
   const [loading, setLoading] = useState(true);
@@ -1131,12 +1132,7 @@ export function SchedulingPage() {
       </div>
       {tab === 'planned' && <PlannedTimeline />}
       {tab === 'actual' && <ActualScheduling />}
-      {tab === 'comparison' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500" data-testid="comparison-soon">
-          <p className="font-semibold text-slate-700">Comparison is coming next</p>
-          <p className="text-sm mt-1">It will set the planned timeline against the actual one, operation by operation.</p>
-        </div>
-      )}
+      {tab === 'comparison' && <ComparisonTimeline />}
     </div>
   );
 }
