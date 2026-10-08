@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { WorkOrderDetail } from './WorkOrderDetail';
 import { fetchActiveRouting } from '@/lib/partRouting';
+import { PlanEditor } from './PlanEditor';
+import { emptyPlan, expandPlan, isMissingTable, planError, planFromRows, planIsBlank, type PlanDraft } from '@/lib/operationPlans';
 
 export const WO_STATUSES = ['Draft', 'Planned', 'Released', 'In Progress', 'Completed', 'On Hold', 'Cancelled'];
 // Rows created by older screens / other modules keep working (shown as-is).
@@ -25,6 +27,12 @@ export interface OpDraft {
   cycleTime: string;
   setupTime: string;
   operator: string;
+  /** Planned timeline of this operation: date range + time slots per day (optional). */
+  plan?: PlanDraft;
+  /** An existing plan that is not one regular range: kept untouched on save (edit it in Scheduling -> Planned). */
+  planLocked?: boolean;
+  /** Sequence of this operation when the order was opened, to carry its plan over if the order is re-sequenced. */
+  origSeq?: number;
 }
 
 interface WOForm {
@@ -54,6 +62,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const [processesMissing, setProcessesMissing] = useState(false);
   const [operations, setOperations] = useState<any[]>([]);
   const [opsMissing, setOpsMissing] = useState(false);
+  const [planRows, setPlanRows] = useState<any[]>([]);
   const [machineCodes, setMachineCodes] = useState<string[]>([]);
 
   const [search, setSearch] = useState('');
@@ -124,8 +133,16 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
     }
   };
 
+  const loadPlans = async () => {
+    try {
+      const { data, error } = await supabase.from('cnc_operation_plans').select('*').order('plan_date').order('start_time');
+      setPlanRows(error ? [] : (data ?? []));
+    } catch { setPlanRows([]); }
+  };
+
   useEffect(() => {
     fetchExtras();
+    void loadPlans();
   }, []);
 
   const refreshOps = async () => {
@@ -228,7 +245,13 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       finishDate: (wo.due_date ?? '').slice(0, 10),
       priority: wo.priority ?? 'Normal',
     });
-    const existing = (opsByWO[String(wo.id)] ?? []).map((op) => ({
+    const existing = (opsByWO[String(wo.id)] ?? []).map((op) => {
+      const mine = planRows.filter((r) => String(r.work_order_id) === String(wo.id) && Number(r.operation_sequence) === Number(op.operation_sequence));
+      const plan = planFromRows(mine);
+      return {
+      origSeq: Number(op.operation_sequence) || 0,
+      plan: mine.length > 0 && plan ? plan : undefined,
+      planLocked: mine.length > 0 && !plan,
       key: newOpKey(),
       processId: op.process_id ?? '',
       machine: op.machine ?? '',
@@ -236,7 +259,8 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       cycleTime: String(op.est_cycle_time ?? ''),
       setupTime: String(op.setup_time ?? ''),
       operator: op.operator ?? '',
-    }));
+    };
+    });
     setOpDrafts(existing);
     // Preserve the routing reference when every operation still points at one revision.
     const allOps = opsByWO[String(wo.id)] ?? [];
@@ -375,6 +399,10 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         const n = Number(o.plannedQty);
         if (!Number.isFinite(n) || n < 0) next[`op_${o.key}`] = `Operation ${i + 1}: Planned Qty must be 0 or more.`;
       }
+      if (o.plan && !planIsBlank(o.plan)) {
+        const pe = planError(o.plan);
+        if (pe) next[`op_${o.key}`] = `Operation ${i + 1} plan: ${pe}`;
+      }
       for (const [k, label] of [['cycleTime', 'Cycle Time'], ['setupTime', 'Setup Time']] as const) {
         if (o[k].trim() !== '') {
           const n = Number(o[k]);
@@ -415,6 +443,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
           .eq('id', editWO.id);
         if (error) throw error;
         await saveOpDrafts(String(editWO.id), editWO);
+        await savePlans(String(editWO.id));
       } else {
         const so = selectedSO;
         const woId = crypto.randomUUID();
@@ -435,6 +464,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         }]);
         if (error) throw error;
         await saveOpDrafts(woId, { wo_no: '', sales_order: so?.order_no ?? '' });
+        await savePlans(woId);
       }
       setShowForm(false);
       refresh();
@@ -443,6 +473,43 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       alert('Failed to save work order: ' + (err?.message ?? err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Planned timeline of the operations: replaced per work order. Plans that are not one regular range stay as they are
+  // (re-numbered if the operations were re-ordered).
+  const savePlans = async (workOrderId: string) => {
+    const wanted = opDrafts.some((o) => o.plan && !planIsBlank(o.plan) && !planError(o.plan));
+    const hadAny = planRows.some((r) => String(r.work_order_id) === workOrderId);
+    if (!wanted && !hadAny) return;
+    try {
+      const out: any[] = [];
+      opDrafts.forEach((o, i) => {
+        const seq = i + 1;
+        const proc = processes.find((p) => String(p.id) === o.processId);
+        if (o.planLocked && o.origSeq) {
+          planRows.filter((r) => String(r.work_order_id) === workOrderId && Number(r.operation_sequence) === o.origSeq).forEach((r) => {
+            out.push({ id: crypto.randomUUID(), work_order_id: workOrderId, operation_sequence: seq, process_name: proc?.process_name ?? r.process_name ?? '',
+              machine: r.machine ?? '', plan_date: String(r.plan_date).slice(0, 10), start_time: String(r.start_time).slice(0, 5), end_time: String(r.end_time).slice(0, 5) });
+          });
+        } else if (o.plan && !planIsBlank(o.plan)) {
+          expandPlan(o.plan).forEach((seg) => out.push({
+            id: crypto.randomUUID(), work_order_id: workOrderId, operation_sequence: seq, process_name: proc?.process_name ?? '',
+            machine: o.machine.trim(), plan_date: seg.date, start_time: seg.start, end_time: seg.end,
+          }));
+        }
+      });
+      const del = await supabase.from('cnc_operation_plans').delete().eq('work_order_id', workOrderId);
+      if (del.error) throw del.error;
+      if (out.length > 0) {
+        const ins = await supabase.from('cnc_operation_plans').insert(out);
+        if (ins.error) throw ins.error;
+      }
+      void loadPlans();
+    } catch (err: any) {
+      alert(isMissingTable(err)
+        ? 'The work order was saved, but its planned timeline was not: run migration 20261009000000_operation_plans.sql in Supabase first.'
+        : `The work order was saved, but its planned timeline was not: ${err?.message ?? err}`);
     }
   };
 
@@ -861,6 +928,20 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
                       <FormField label="Setup Time (min)">
                         <input type="number" min="0" step="0.5" value={o.setupTime} onChange={(e) => updateOpDraft(o.key, { setupTime: e.target.value })} placeholder="minutes" className={inputClass} />
                       </FormField>
+                    </div>
+                    <div className="mt-3 border-t border-slate-100 pt-3" data-testid="op-plan">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Planned timeline</span>
+                        {o.planLocked ? (
+                          <span className="text-[11px] text-slate-500">This operation already has a custom plan - edit it in Scheduling, Planned Timeline.</span>
+                        ) : o.plan ? (
+                          <button type="button" onClick={() => updateOpDraft(o.key, { plan: undefined })} className="text-[11px] font-semibold text-red-600 hover:underline">Clear plan</button>
+                        ) : (
+                          <button type="button" onClick={() => updateOpDraft(o.key, { plan: { ...emptyPlan(), from: woForm.startDate, to: woForm.finishDate || woForm.startDate } })}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-800"><Plus size={13} /> Plan dates &amp; time</button>
+                        )}
+                      </div>
+                      {o.plan && <PlanEditor value={o.plan} onChange={(plan) => updateOpDraft(o.key, { plan })} />}
                     </div>
                     {formErrors[`op_${o.key}`] && <p className="text-xs font-medium text-red-600 mt-2">{formErrors[`op_${o.key}`]}</p>}
                   </div>
