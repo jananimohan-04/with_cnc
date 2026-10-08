@@ -572,13 +572,17 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const projectCost = totals.material + totals.process;
   const costDiff = effQuoteTotal - projectCost;
   const costDiffPct = effQuoteTotal > 0 ? (costDiff / effQuoteTotal) * 100 : null;
-  // Default the approved price to the quotation amount (quotation wins over the
-  // system calculation). Runs when the quote loads and follows quote overrides
-  // until a saved version's price arrives or the user types their own.
+  // Default the approved price to the quotation's ex-GST basic value (the
+  // invoice adds GST on top of this rate, so copying the GST-inclusive
+  // quotation total here would tax the tax: 1,18,000 billed as 1,39,240).
+  // Follows quote overrides until a saved version's price arrives or the user
+  // types their own. Header gst_percent mirrors the line rate (single-rate
+  // quotes are exact; mixed-rate quotes stay editable).
+  const quoteGstRate = (() => { const g = Number(quote?.gst_percent); return Number.isFinite(g) && g > 0 ? g : 18; })();
   useEffect(() => {
     if (approvedTouched || approvedInput.trim() !== '' || !(effQuoteTotal > 0)) return;
-    setApprovedInput(String(Math.round(effQuoteTotal)));
-  }, [effQuoteTotal, approvedTouched, approvedInput]);
+    setApprovedInput(String(Math.round(effQuoteTotal / (1 + quoteGstRate / 100))));
+  }, [effQuoteTotal, approvedTouched, approvedInput, quoteGstRate]);
   const nextVersion = (versions[0]?.version ?? 0) + 1;
   const blockReasons: string[] = [];
   if (loading) blockReasons.push('Costing data is still loading.');
