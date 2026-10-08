@@ -5,9 +5,12 @@ import { supabase } from './supabase';
 
 const BUCKET = 'inventory-images';
 
-export async function uploadOrderFile(companyId: string, file: File): Promise<string> {
+export const uploadOrderFile = (companyId: string, file: File) => uploadStoredFile(companyId, 'sales-orders', file);
+
+/** Uploads any file to the company's folder `folder` and returns its storage path. */
+export async function uploadStoredFile(companyId: string, folder: string, file: File): Promise<string> {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'attachment';
-  const path = `${companyId}/sales-orders/${crypto.randomUUID()}-${safeName}`;
+  const path = `${companyId}/${folder}/${crypto.randomUUID()}-${safeName}`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
   if (error) throw new Error(`Unable to upload ${file.name}: ${error.message}`);
   return path;
@@ -22,18 +25,12 @@ export async function openStoredFile(path: string): Promise<void> {
   tab.location.href = data.signedUrl;
 }
 
-/** Stored file paths of one item (strings or {path|url, name} objects) as name + path. */
-export function itemFilePaths(item: { filePaths?: unknown } | null | undefined): { name: string; path: string }[] {
-  const out: { name: string; path: string }[] = [];
-  const list = Array.isArray(item?.filePaths) ? (item!.filePaths as unknown[]) : [];
-  for (const fp of list) {
-    if (!fp) continue;
-    if (typeof fp === 'string') out.push({ name: fp.split('/').pop() || fp, path: fp });
-    else {
-      const o = fp as { path?: string; url?: string; name?: string };
-      const path = o.path || o.url || '';
-      if (path) out.push({ name: o.name || path.split('/').pop() || path, path });
-    }
-  }
-  return out;
+/** Downloads a stored file under its own name (short-lived signed link). */
+export async function downloadStoredFile(path: string, name: string): Promise<void> {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 300, { download: name || true });
+  if (error || !data?.signedUrl) { alert(error?.message || 'Unable to download the file.'); return; }
+  const a = document.createElement('a');
+  a.href = data.signedUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
+
+export { itemFilePaths } from './filePaths';

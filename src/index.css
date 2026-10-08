@@ -95,3 +95,12 @@
 
 
 .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Table column headings stay at the top of their table while the rows scroll (see useStickyTableHeads).
+   :where() keeps this at zero specificity, so a heading that sets its own background keeps it. */
+:where(main thead th) {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background-color: #f8fafc;
+}

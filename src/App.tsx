@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
+import { useStickyTableHeads } from './lib/useStickyTableHeads';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
@@ -107,6 +108,8 @@ function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  useStickyTableHeads(mainRef, location.pathname);
 
   // Remove leading slash for matching with Lovable's navigation config
   const currentPage = location.pathname.substring(1) || 'dashboard';
@@ -140,7 +143,7 @@ function MainLayout() {
           onMenuClick={() => setMobileMenuOpen(true)}
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
-        <main key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark">
+        <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />

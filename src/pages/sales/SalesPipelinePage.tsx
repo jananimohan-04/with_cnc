@@ -3858,13 +3858,13 @@ export function SalesPipelinePage() {
         ].map(stat => {
            const count = cards.filter(c => c.stage === stat.stage).length;
            const stageColors: Record<string, { tile: string; icon: string }> = {
-             Enquiry: { tile: 'bg-blue-50 border-blue-300 hover:border-blue-500', icon: 'bg-blue-100 text-blue-700' },
-             Quotation: { tile: 'bg-violet-50 border-violet-300 hover:border-violet-500', icon: 'bg-violet-100 text-violet-700' },
-             'Sales Order': { tile: 'bg-emerald-50 border-emerald-300 hover:border-emerald-500', icon: 'bg-emerald-100 text-emerald-700' },
-             Inward: { tile: 'bg-amber-50 border-amber-300 hover:border-amber-500', icon: 'bg-amber-100 text-amber-700' },
-             'Finished Goods': { tile: 'bg-cyan-50 border-cyan-300 hover:border-cyan-500', icon: 'bg-cyan-100 text-cyan-700' },
-             DC: { tile: 'bg-rose-50 border-rose-300 hover:border-rose-500', icon: 'bg-rose-100 text-rose-700' },
-             Invoice: { tile: 'bg-indigo-50 border-indigo-300 hover:border-indigo-500', icon: 'bg-indigo-100 text-indigo-700' },
+             Enquiry: { tile: 'bg-gradient-to-br from-blue-700 to-blue-900 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             Quotation: { tile: 'bg-gradient-to-br from-violet-700 to-violet-900 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             'Sales Order': { tile: 'bg-gradient-to-br from-emerald-700 to-emerald-900 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             Inward: { tile: 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-900 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             'Finished Goods': { tile: 'bg-gradient-to-br from-cyan-700 to-cyan-900 border-cyan-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             DC: { tile: 'bg-gradient-to-br from-rose-700 to-rose-900 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             Invoice: { tile: 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
            };
            const stageColor = stageColors[stat.stage] ?? stageColors.Enquiry;
            return (
@@ -3878,8 +3878,8 @@ export function SalesPipelinePage() {
                else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
              }} className={`${stageColor.tile} rounded-xl p-4 shadow-sm border cursor-pointer flex items-center justify-between hover:-translate-y-1 transition-transform`}>
                <div>
-                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.title}</p>
-                 <p className={`text-2xl font-bold text-${stat.color}-600`}>{count}</p>
+                 <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider mb-1">{stat.title}</p>
+                 <p className="text-2xl font-bold text-white">{count}</p>
                </div>
                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${stageColor.icon}`}>
                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
