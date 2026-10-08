@@ -78,10 +78,16 @@ async function healWorkOrderPartNos(salesOrderRef: string): Promise<void> {
   } catch { /* backfill best-effort */ }
 }
 
-export function FgCostingModal({ card, onClose, onMoved }: {
+export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptions = [], pickCompanies = [], onPick }: {
   card: any;
   onClose: () => void;
   onMoved: () => void;
+  /** Direct add: the sales orders / inwards the user can choose from (card.raw.__pick marks the blank starting card). */
+  pickOptions?: { company: string; product: string }[];
+  pickCompanies?: string[];
+  onPick?: (company: string, product: string) => void;
+  /** add: move an inward to Finished Goods. edit: revise the costing of an existing FG card. view: read-only. */
+  mode?: 'add' | 'edit' | 'view';
 }) {  const { company, profile } = useAuth() as any;
   const companyName: string = company?.company_name ?? 'ARGUS CNC';
   const userName: string = profile?.email ?? '';
@@ -91,7 +97,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
   const inwardGroupIds: string[] = Array.isArray(inward._groupIds) && inward._groupIds.length
     ? inward._groupIds : (inward.id ? [inward.id] : []);
 
-  const [fgDate, setFgDate] = useState(todayISO());
+  const [fgDate, setFgDate] = useState(mode !== 'add' && card?.date ? String(card.date).slice(0, 10) : todayISO());
   // Current production batch: good vs rejected are entered separately.
   // Rejected quantity is traceable but never becomes FG stock, DC qty or invoice qty.
   const [rejQty, setRejQty] = useState('');
@@ -802,12 +808,38 @@ export function FgCostingModal({ card, onClose, onMoved }: {
     }
   };
 
+  const [pickCompany, setPickCompany] = useState('');
+  const [pickProduct, setPickProduct] = useState('');
+  if (card?.raw?.__pick) {
+    const companies = Array.from(new Set([...pickCompanies, ...pickOptions.map((o) => o.company)].map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    const key = (v: string) => v.trim().toLowerCase();
+    const products = Array.from(new Set(pickOptions.filter((o) => !pickCompany.trim() || key(o.company) === key(pickCompany)).map((o) => o.product).filter(Boolean)));
+    return (
+      <Modal open onClose={onClose} title="Finished Goods + Costing" subtitle="Add Finished Goods" size="3xl" width={960}
+        footer={<><span className="flex-1" /><Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
+          <Button disabled={!pickCompany.trim() || !pickProduct.trim()} onClick={() => onPick?.(pickCompany.trim(), pickProduct.trim())}>Continue</Button></>}>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Company *</p>
+              <input className={inputClass} list="fg-pick-companies" placeholder="Type or select company" value={pickCompany} onChange={(e) => { setPickCompany(e.target.value); setPickProduct(''); }} />
+              <datalist id="fg-pick-companies">{companies.map((c) => <option key={c} value={c} />)}</datalist></div>
+            <div><p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">Product *</p>
+              <input className={inputClass} list="fg-pick-products" placeholder="Type or select product" value={pickProduct} onChange={(e) => setPickProduct(e.target.value)} />
+              <datalist id="fg-pick-products">{products.map((p) => <option key={p} value={p} />)}</datalist></div>
+          </div>
+          <p className="text-xs text-slate-400 mt-3">Pick a product from an order, or type a new one. Then enter how many are finished and review the costing.</p>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open
       onClose={onClose}
-      title="Finished Goods + Costing"
-      subtitle={`Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval`}
+      title={mode === 'view' ? 'View Finished Goods + Costing' : mode === 'edit' ? 'Edit Finished Goods + Costing' : 'Finished Goods + Costing'}
+      subtitle={mode === 'add' ? `Inward ${card?.refNo ?? inward.project_name ?? ''} → Finished Goods with pricing approval` : `Finished Goods ${card?.refNo ?? inward.project_name ?? ''}`}
       size="3xl"
       width={960}
       footer={
@@ -820,15 +852,19 @@ export function FgCostingModal({ card, onClose, onMoved }: {
           </Button>
           <Button variant="secondary" icon={<Printer size={14} />} onClick={handlePrint}>Print</Button>
           <span className="flex-1" />
-          <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>Cancel</Button>
-          <Button variant="secondary" icon={<Save size={14} />} disabled={saving || loading} onClick={saveDraft}>
-            {saving ? 'Saving...' : 'Save Draft'}
-          </Button>
-          <Button icon={<CheckCheck size={14} />} disabled={!canApprove || approving}
-            title={canApprove ? 'Approve pricing and move the card' : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
-            onClick={approveAndMove}>
-            {approving ? 'Moving...' : 'Approve & Move to Finished Goods'}
-          </Button>
+          <Button variant="secondary" icon={<X size={14} />} onClick={onClose}>{mode === 'view' ? 'Close' : 'Cancel'}</Button>
+          {mode !== 'view' && (
+            <Button variant={mode === 'edit' ? undefined : 'secondary'} icon={<Save size={14} />} disabled={saving || loading} onClick={saveDraft}>
+              {saving ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Save Draft'}
+            </Button>
+          )}
+          {mode === 'add' && (
+            <Button icon={<CheckCheck size={14} />} disabled={!canApprove || approving}
+              title={canApprove ? 'Approve pricing and move the card' : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
+              onClick={approveAndMove}>
+              {approving ? 'Moving...' : 'Approve & Move to Finished Goods'}
+            </Button>
+          )}
         </>
       }
     >
@@ -837,6 +873,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
       ) : loadError ? (
         <p className="text-sm text-red-600 py-8 text-center">Failed to load costing data: {loadError}</p>
       ) : (
+        <fieldset disabled={mode === 'view'} className="min-w-0 border-0 p-0 m-0">
         <div className="space-y-4">
           {/* 1 — transaction details */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -1172,6 +1209,7 @@ export function FgCostingModal({ card, onClose, onMoved }: {
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
         </div>
+        </fieldset>
       )}
     </Modal>
   );

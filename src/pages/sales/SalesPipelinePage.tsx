@@ -1283,6 +1283,9 @@ export function SalesPipelinePage() {
   const [fgModalTarget, setFgModalTarget] = useState<KanbanCard | null>(null);
   const [fgForm, setFgForm] = useState<any>({});
   const [costingModalTarget, setCostingModalTarget] = useState<KanbanCard | null>(null);
+  const [costingMode, setCostingMode] = useState<'add' | 'edit' | 'view'>('add');
+  const [fgPickOpen, setFgPickOpen] = useState(false);
+  const [fgPickId, setFgPickId] = useState('');
   const [invoiceCostingTarget, setInvoiceCostingTarget] = useState<KanbanCard | null>(null);
   const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
   const [dcSaving, setDcSaving] = useState(false);
@@ -2479,7 +2482,13 @@ export function SalesPipelinePage() {
 
     // An inward whose order is fully produced (nothing remaining) leaves the board;
     // it is listed under the company's History instead.
-    setCards(newCards.filter(c => !(c.type === 'inward' && c.qtyTrack && c.qtyTrack.ordered > 0 && c.qtyTrack.remaining <= 0)));
+    setCards(newCards.filter(c => {
+      if (c.type !== 'inward') return true;
+      if (c.qtyTrack && c.qtyTrack.ordered > 0) return c.qtyTrack.remaining > 0;
+      // No linked sales order: everything received has been produced when no product has any left.
+      const prod = ((c.raw as any)?._inwardProd ?? []) as { recv: number; left: number }[];
+      return !(prod.length > 0 && prod.some(x => x.recv > 0) && prod.every(x => x.left <= 0));
+    }));
     } catch (err) {
       console.error("Error loading pipeline:", err);
     } finally {
@@ -2679,7 +2688,27 @@ export function SalesPipelinePage() {
     };
   };
 
+  // Finished Goods cards open the Finished Goods + Costing popup (view / edit), built from the order's inward lines.
+  const openFgPopup = async (card: KanbanCard, mode: 'edit' | 'view') => {
+    const rows: any[] = Array.isArray((card.raw as any)?._groupRows) && (card.raw as any)._groupRows.length ? (card.raw as any)._groupRows : [card.raw];
+    const soNo = String(rows.map((w: any) => w?.sales_order).find(Boolean) ?? '');
+    let ids: string[] = [];
+    try {
+      const r = await supabase.from('cnc_inwards').select('*').neq('status', 'Deleted');
+      if (!r.error) {
+        const base = baseUniqueNo(card.refNo);
+        ids = (r.data ?? []).filter((x: any) => (soNo && String(x.sales_order_ref ?? '') === soNo) || (base !== '' && baseUniqueNo(x.project_name || '') === base)).map((x: any) => String(x.id));
+      }
+    } catch { /* the popup falls back to the order's products */ }
+    setCostingMode(mode);
+    setCostingModalTarget({
+      ...card, stage: 'Inward', type: 'inward',
+      raw: { ...(card.raw as any), id: ids[0] ?? (card.raw as any)?.id, sales_order_ref: soNo, project_name: card.refNo, _groupIds: ids },
+    } as KanbanCard);
+  };
+
   const openViewModal = async (card: KanbanCard) => {
+    if (card.type === 'finished_goods') { void openFgPopup(card, 'view'); return; }
     setViewModalTarget(card);
     setLoading(true);
     const aggregated: any = { enquiry: null, quotation: null, order: null, inward: null, finished_goods: null, dc: null, invoice: null };
@@ -3045,6 +3074,7 @@ export function SalesPipelinePage() {
       // Costing gate: open the Finished Goods + Costing modal instead of moving.
       // Nothing is written until the user approves inside the modal; Cancel
       // leaves the card (and the database) exactly where it was.
+      setCostingMode('add');
       setCostingModalTarget(card);
     } else if (card.type === 'finished_goods' && toStage === 'DC') {
       // Prefill with the deliverable quantity: never more than the good FG
@@ -4050,10 +4080,9 @@ export function SalesPipelinePage() {
                     } else if (stage.id === 'Inward') {
                       openDummyInward();
                     } else if (stage.id === 'Finished Goods') {
-                      setFgForm({
-                        woNo: `WO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', partName: '', partNo: '', orderQty: '', completedQty: '', date: new Date().toISOString().split('T')[0]
-                      });
-                      setFgModalTarget({ id: 'dummy', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                      // Add Finished Good: the Finished Goods + Costing popup opens first; company and product are chosen inside it.
+                      setCostingMode('add');
+                      setCostingModalTarget({ id: 'fg-pick', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 0, value: 0, date: '', raw: { __pick: true } } as KanbanCard);
                     } else if (stage.id === 'DC') {
                       const dcBlankForm = {
                         dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -4271,7 +4300,7 @@ export function SalesPipelinePage() {
                           <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
                             <Eye size={14} />
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
+                          <button onClick={(e) => { e.stopPropagation(); if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
                             <Edit2 size={14} />
                           </button>
                           {card.type === 'lead' && (
@@ -4640,12 +4669,57 @@ export function SalesPipelinePage() {
       {costingModalTarget && (
         <ErrorBoundary title="Finished Goods costing failed to open" onClose={() => setCostingModalTarget(null)}>
           <FgCostingModal
+            key={costingModalTarget.id}
             card={costingModalTarget}
+            pickOptions={(salesOrdersList || []).flatMap((o: any) => {
+              let items: any[] = [];
+              try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; if (Array.isArray(r)) items = r; } catch { /* no lines */ }
+              return items.map((it: any) => ({ company: String(o.customer || o.customer_name || ''), product: String(it.partName || it.productName || it.part_name || it.description || '').trim() })).filter((x: any) => x.product);
+            })}
+            pickCompanies={allKnownCompanies.map((c: any) => String(c.company || ""))}
+            onPick={(company, product) => {
+              const k = (v: any) => String(v ?? '').trim().toLowerCase();
+              // The product of an existing order is costed against that order; anything else is a direct entry.
+              const order: any = (salesOrdersList || []).find((o: any) => {
+                if (k(o.customer || o.customer_name) !== k(company)) return false;
+                try { const r = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; return Array.isArray(r) && r.some((it: any) => k(it.partName || it.productName || it.part_name || it.description) === k(product)); } catch { return false; }
+              });
+              const base = { id: `fg-${Date.now()}`, stage: 'Inward', type: 'inward', customer: company, part: product, qty: 0, value: 0, date: '' };
+              setCostingModalTarget((order
+                ? { ...base, refNo: order.lead_no || order.order_no, raw: { sales_order_ref: order.order_no || '', project_name: order.lead_no || order.order_no, _groupIds: [] } }
+                : { ...base, refNo: '', raw: { sales_order_ref: '', project_name: '', part_name: product, product_name: product, _groupIds: [] } }) as KanbanCard);
+            }}
+            mode={costingMode}
             onClose={() => setCostingModalTarget(null)}
             onMoved={() => { setCostingModalTarget(null); fetchPipeline(); }}
           />
         </ErrorBoundary>
       )}
+
+      {/* Add Finished Good: choose the inward, then the Finished Goods + Costing popup */}
+      <Modal open={fgPickOpen} onClose={() => setFgPickOpen(false)} title="Add Finished Good" size="sm" width={460}
+        footer={<><Button variant="secondary" onClick={() => setFgPickOpen(false)}>Cancel</Button>
+          <Button disabled={!fgPickId} onClick={() => {
+            const c = cards.find(x => x.id === fgPickId);
+            if (!c) return;
+            setFgPickOpen(false); setCostingMode('add');
+            // A sales order has no inward: the popup is built from the order's own products.
+            setCostingModalTarget(c.type === 'order'
+              ? { ...c, stage: 'Inward', type: 'inward', raw: { sales_order_ref: (c.raw as any)?.order_no || '', project_name: c.refNo, _groupIds: [] } } as KanbanCard
+              : c);
+          }}>Continue</Button></>}>
+        <FormField label="Add finished goods for" required>
+          <select className={inputClass} value={fgPickId} onChange={e => setFgPickId(e.target.value)}>
+            <option value="">Select sales order or inward</option>
+            <optgroup label="Sales orders (direct, no inward)">
+              {cards.filter(c => c.type === 'order').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
+            </optgroup>
+            <optgroup label="Inwards">
+              {cards.filter(c => c.type === 'inward').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
+            </optgroup>
+          </select>
+        </FormField>
+      </Modal>
 
       {/* Finished Goods Modal */}
       <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
