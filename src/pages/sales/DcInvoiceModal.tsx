@@ -7,6 +7,7 @@
 // and duplicates for the same DC are refused.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { sameProduct } from '@/lib/productMatch';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { fetchOrderQty, type OrderQtySummary } from '@/lib/orderQuantities';
@@ -138,6 +139,27 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           const r = await supabase.from('cnc_sales_orders').select('*').eq('order_no', first.sales_order_no || first.sales_order_ref).limit(1);
           if (!r.error && (r.data ?? []).length > 0) soRow = r.data![0];
         }
+        // A challan made by hand may carry no order number: find the order through the card's unique number, else
+        // through the company and the product being delivered.
+        if (!soRow) {
+          const ref = String(card?.refNo || first.project_name || '').trim().toLowerCase();
+          const cust = String(first.customer_name || first.customer || card?.customer || '').trim().toLowerCase();
+          const r = await supabase.from('cnc_sales_orders').select('*');
+          if (!r.error) {
+            const all = (r.data ?? []) as any[];
+            soRow = (ref && all.find((o: any) => String(o.order_no ?? '').trim().toLowerCase() === ref || String(o.lead_no ?? '').trim().toLowerCase() === ref)) || null;
+            if (!soRow && cust) {
+              const names = rows.map((x: any) => x.part_name || x.product_name).filter(Boolean);
+              const hits = all.filter((o: any) => {
+                if (String(o.customer || o.customer_name || '').trim().toLowerCase() !== cust) return false;
+                let items: any[] = [];
+                try { const p = typeof o.items === 'string' ? JSON.parse(o.items) : o.items; if (Array.isArray(p)) items = p; } catch { /* no lines */ }
+                return names.some((n: string) => items.some((it: any) => sameProduct(it.partName || it.productName || it.part_name || it.description, n)));
+              });
+              if (hits.length === 1) soRow = hits[0];
+            }
+          }
+        }
         let qRow: any = null;
         if (soRow?.quotation_id) {
           const r = await supabase.from('cnc_quotations').select('*').eq('id', soRow.quotation_id).limit(1);
@@ -188,7 +210,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           const byCode = code.trim() !== ''
             ? sheets.find((s: any) => lc(s.product_code) === lc(code))
             : null;
-          const sheet = byCode ?? (name.trim() !== '' ? sheets.find((s: any) => lc(s.product_name) === lc(name)) : null) ?? null;
+          const sheet = byCode ?? (name.trim() !== '' ? (sheets.find((s: any) => lc(s.product_name) === lc(name)) ?? sheets.find((s: any) => sameProduct(s.product_name, name))) : null) ?? null;
           if (sheet && num(sheet.quantity) > 0 && sheet.approved_price != null) {
             return { unit: num(sheet.approved_price) / num(sheet.quantity), ref: `${qRow ? qRow.quote_no : soRow.order_no} V${sheet.version}`, sheet };
           }
@@ -383,6 +405,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         <p className="text-sm text-red-600 py-8 text-center">Failed to load invoice data: {loadError}</p>
       ) : (
         <div className="space-y-4">
+          {blocked && (
+            <div data-testid="inv-blocked" role="alert" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">Cannot create this invoice</p>
+              <p>{blocked}</p>
+            </div>
+          )}
           {/* what this company already owes: first thing in the popup */}
           {dueState === 'ok' && due && due.total > 0 && (
               <div data-testid="due-amount" role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs">

@@ -2345,6 +2345,11 @@ export function SalesPipelinePage() {
       const first = list[0];
       const ref = uniqueForDelivery(first);
       if (first.delivery_no) dcMap.set(first.delivery_no, ref);
+      // A challan that has been invoiced has nothing left to do here: it moved on to Invoice.
+      const billed = list.every(x => String(x.status ?? '') === 'Billed')
+        || (invoicesData || []).some((inv: any) => String(inv.invoice_type ?? '') !== 'Proforma Invoice'
+          && ((inv.delivery_id != null && list.some(x => String(x.id) === String(inv.delivery_id))) || (inv.dc_no && String(inv.dc_no) === String(first.delivery_no))));
+      if (billed) return;
       const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
       newCards.push({
         id: `dc_${first.id}`, stage: 'DC', type: 'dc', refNo: ref,

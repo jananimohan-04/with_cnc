@@ -151,6 +151,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const [versions, setVersions] = useState<any[]>([]);
   const [sheetsMissing, setSheetsMissing] = useState(false);
   const [approvedInput, setApprovedInput] = useState('');
+  // True once the approved price came from a saved version or the user typed
+  // it — the quotation auto-fill below never overwrites either of those.
+  const [approvedTouched, setApprovedTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
 
@@ -414,7 +417,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       if (!v.error) {
         setVersions(v.data ?? []);
         const latest = (v.data ?? [])[0];
-        if (latest?.approved_price != null) setApprovedInput(String(latest.approved_price));
+        if (latest?.approved_price != null) { setApprovedInput(String(latest.approved_price)); setApprovedTouched(true); }
         if (latest?.lines?.quoteOverrides) {
           const qo = latest.lines.quoteOverrides;
           if (qo.qty != null) setQuoteQty(String(qo.qty));
@@ -569,6 +572,13 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const projectCost = totals.material + totals.process;
   const costDiff = effQuoteTotal - projectCost;
   const costDiffPct = effQuoteTotal > 0 ? (costDiff / effQuoteTotal) * 100 : null;
+  // Default the approved price to the quotation amount (quotation wins over the
+  // system calculation). Runs when the quote loads and follows quote overrides
+  // until a saved version's price arrives or the user types their own.
+  useEffect(() => {
+    if (approvedTouched || approvedInput.trim() !== '' || !(effQuoteTotal > 0)) return;
+    setApprovedInput(String(Math.round(effQuoteTotal)));
+  }, [effQuoteTotal, approvedTouched, approvedInput]);
   const nextVersion = (versions[0]?.version ?? 0) + 1;
   const blockReasons: string[] = [];
   if (loading) blockReasons.push('Costing data is still loading.');
@@ -859,7 +869,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             </Button>
           )}
           {mode === 'add' && (
-            <Button icon={<CheckCheck size={14} />} disabled={!canApprove || approving}
+            // Stays clickable when blocked: approveAndMove alerts the exact
+            // blocking reasons, and they are also listed inline below.
+            <Button icon={<CheckCheck size={14} />} disabled={approving}
               title={canApprove ? 'Approve pricing and move the card' : `Blocked: ${blockReasons[0] ?? 'resolving'}`}
               onClick={approveAndMove}>
               {approving ? 'Moving...' : 'Approve & Move to Finished Goods'}
@@ -1190,7 +1202,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-slate-300">Approved Final Price</p>
-                <input type="number" min="0" value={approvedInput} onChange={(e) => setApprovedInput(e.target.value)}
+                <input type="number" min="0" value={approvedInput} onChange={(e) => { setApprovedInput(e.target.value); setApprovedTouched(true); }}
                   placeholder={String(Math.round(totals.calculated))}
                   className="w-48 text-right font-bold text-navy-900 rounded-lg px-3 py-1.5 text-lg" />
               </div>
@@ -1208,6 +1220,14 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             <span className="text-slate-500">Sheet status:</span>
             <Badge variant={statusToVariant(versions[0]?.status ?? 'Draft')} dot>{versions[0] ? `V${versions[0].version} ${versions[0].status}` : 'Unsaved'}</Badge>
           </div>
+          {mode === 'add' && !canApprove && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p className="text-[10px] font-bold uppercase tracking-wider">Before approval — fix {blockReasons.length === 1 ? 'this' : 'these'}</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {blockReasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
+          )}
         </div>
         </fieldset>
       )}
