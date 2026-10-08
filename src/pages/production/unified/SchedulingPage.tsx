@@ -156,7 +156,7 @@ export function SchedulingPage() {
     };
     // Single eligible operation: select it immediately.
     if (eligible.length === 1) {
-      setNewJobForm(prev => withEnd({ ...prev, ...base, ...operationPatch(eligible[0]) }));
+      setNewJobForm(prev => withEnd({ ...prev, ...base, ...operationPatch(eligible[0], remainingQtyFor(wo, eligible[0])) }));
     } else {
       setNewJobForm(prev => withEnd({ ...prev, ...base }));
     }
@@ -172,7 +172,7 @@ export function SchedulingPage() {
       (op.process_name && p.process_name === op.process_name));
     return String(proc?.machine_type ?? '').trim();
   };
-  const operationPatch = (op: any) => {
+  const operationPatch = (op: any, remaining?: number | null) => {
     const fromMaster = machineTypeForOp(op);
     // The operation's own machine wins, then the Process Master machine type; the dropdown always offers the chosen value.
     const machine = [op.machine, fromMaster].map((v: any) => String(v ?? '').trim()).find((v) => v) ?? '';
@@ -180,7 +180,7 @@ export function SchedulingPage() {
       operationId: String(op.id),
       operationSeq: String(op.operation_sequence ?? ''),
       processName: op.process_name || op.process_code || '',
-      qty: op.planned_qty != null ? String(op.planned_qty) : '',
+      qty: remaining != null ? String(remaining) : (op.planned_qty != null ? String(op.planned_qty) : ''),
       cycleTime: op.est_cycle_time != null ? String(op.est_cycle_time) : '15',
       setupTime: op.setup_time != null ? String(op.setup_time) : '0',
       machine,
@@ -193,7 +193,7 @@ export function SchedulingPage() {
     if (!wo) return;
     const op = eligibleOpsForWO(wo).find(o => String(o.id) === opId);
     if (!op) return;
-    setNewJobForm(prev => withEnd({ ...prev, ...operationPatch(op) }));
+    setNewJobForm(prev => withEnd({ ...prev, ...operationPatch(op, remainingQtyFor(wo, op)) }));
   };
 
   const openAddJob = () => {
@@ -229,12 +229,22 @@ export function SchedulingPage() {
 
   const selectedWOForForm = workOrders.find(w => w.wo_no === newJobForm.workOrder) || null;
 
+  // An operation can be scheduled more than once (e.g. split over several machines) until its whole planned quantity is
+  // on the board. null = no plan quantity, so it stays available.
+  const scheduledQtyFor = (woNo: string, opNo: number) =>
+    jobs.filter((j: any) => j.work_order === woNo && Number(j.op_no) === opNo).reduce((n: number, j: any) => n + (Number(j.qty_planned) || 0), 0);
+  const remainingQtyFor = (wo: any, op: any): number | null => {
+    const planned = Number(op?.planned_qty ?? wo?.quantity);
+    if (!Number.isFinite(planned) || planned <= 0) return null;
+    return Math.max(0, planned - scheduledQtyFor(wo.wo_no, opNoFor(op)));
+  };
+
   const eligibleOpsForWO = (wo: any) => {
     if (!wo) return [];
     return operations
       .filter(op => String(op.work_order_id) === String(wo.id))
       .filter(op => !['Completed', 'Cancelled'].includes(op.status))
-      .filter(op => !scheduledOpKeys.has(`${wo.wo_no}::${opNoFor(op)}`))
+      .filter(op => { const r = remainingQtyFor(wo, op); return r === null || r > 0; })
       .sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
   };
 
@@ -249,8 +259,11 @@ export function SchedulingPage() {
     return out;
   })();
 
+  // An order with no operations at all can still be scheduled: the job takes a machine (and optionally a process) directly.
+  const woHasNoOps = (wo: any) => !!wo && !operations.some(op => String(op.work_order_id) === String(wo.id));
+
   const schedulableWOs = workOrders.filter(
-    wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length > 0
+    wo => SCHEDULABLE_WO_STATUSES.includes(wo.status)
   );
 
   const closeScheduleModal = () => {
@@ -324,14 +337,20 @@ export function SchedulingPage() {
       return;
     }
 
-    if (!newJobForm.workOrder || !newJobForm.operationId || !newJobForm.machine || !newJobForm.date)
-      return alert('Please select a Work Order, Operation and Machine, and set the Start Date');
-
     const wo = workOrders.find(w => w.wo_no === newJobForm.workOrder);
-    const op = operations.find(o => String(o.id) === newJobForm.operationId);
+    const direct = woHasNoOps(wo);
+    if (!newJobForm.workOrder || (!direct && !newJobForm.operationId) || !newJobForm.machine || !newJobForm.date)
+      return alert(direct ? 'Please select a Work Order and Machine, and set the Start Date' : 'Please select a Work Order, Operation and Machine, and set the Start Date');
+
+    const op = direct ? null : operations.find(o => String(o.id) === newJobForm.operationId);
     // The operation may have been scheduled elsewhere since the popup opened.
-    if (!op || scheduledOpKeys.has(`${newJobForm.workOrder}::${opNoFor(op)}`))
-      return alert('This operation was already scheduled. Please choose another operation.');
+    if (!direct && !op) return alert('Please choose an operation.');
+    if (!direct && op) {
+      const left = remainingQtyFor(wo, op);
+      if (left !== null && qtyNum > left) return alert(`Only ${left} pcs of this operation are left to schedule.`);
+    }
+    // An order without operations numbers its jobs itself: 10, 20, 30 ...
+    const directOpNo = (Math.max(0, ...jobs.filter((j: any) => j.work_order === newJobForm.workOrder).map((j: any) => Number(j.op_no) || 0)) || 0) + 10;
 
     // Create new job card, linked to its operation by (work_order, op_no).
     setSaving(true);
@@ -340,8 +359,8 @@ export function SchedulingPage() {
       job_no: `JC-${Math.floor(1000 + Math.random() * 9000)}`,
       work_order: newJobForm.workOrder,
       part_name: newJobForm.partName || wo?.part_name || '',
-      op_no: opNoFor(op),
-      operation: op.process_name || op.process_code || 'Machining',
+      op_no: op ? opNoFor(op) : directOpNo,
+      operation: op ? (op.process_name || op.process_code || 'Machining') : (newJobForm.processName || 'Machining'),
       machine: newJobForm.machine,
       operator: newJobForm.operator || null,
       qty_planned: qtyNum,
@@ -1001,15 +1020,25 @@ export function SchedulingPage() {
             </p>
           )}
           {(() => {
-            const hidden = workOrders.filter(wo => SCHEDULABLE_WO_STATUSES.includes(wo.status) && eligibleOpsForWO(wo).length === 0);
-            if (!hidden.length) return null;
+            const done = selectedWOForForm && !woHasNoOps(selectedWOForForm) && eligibleOpsForWO(selectedWOForForm).length === 0;
+            if (!done) return null;
             return (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Not listed because they have no unscheduled operations: {hidden.map(w => w.wo_no).join(', ')}. Open the order in Production and add operations (Process Master) to schedule it.
+                Every operation of {selectedWOForForm.wo_no} is already scheduled for its full quantity. Edit or remove an existing job to change it.
               </p>
             );
           })()}
 
+          {woHasNoOps(selectedWOForForm) ? (
+          <FormField label="Process (optional)">
+            <select className={inputClass} value={newJobForm.processName} disabled={!!editingJob}
+              onChange={e => { const pr = processes.find((x: any) => (x.process_name || x.process_code) === e.target.value); setNewJobForm(prev => ({ ...prev, processName: e.target.value, machine: prev.machine || String(pr?.machine_type ?? '').trim() })); }}>
+              <option value="">-- No process (just a machine) --</option>
+              {processes.map((x: any) => <option key={x.id ?? x.process_code} value={x.process_name || x.process_code}>{x.process_name || x.process_code}</option>)}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">This order has no operations, so the job is scheduled straight on a machine.</p>
+          </FormField>
+          ) : (
           <FormField label="Select Operation" required>
             <select
               className={inputClass}
@@ -1020,11 +1049,12 @@ export function SchedulingPage() {
               <option value="">-- Select Operation --</option>
               {selectedWOForForm && eligibleOpsForWO(selectedWOForForm).map(op => (
                 <option key={op.id} value={op.id}>
-                  Seq {op.operation_sequence} - {op.process_name || op.process_code}{op.machine ? ` (${op.machine})` : ''}
+                  Seq {op.operation_sequence} - {op.process_name || op.process_code}{op.machine ? ` (${op.machine})` : ''}{selectedWOForForm && remainingQtyFor(selectedWOForForm, op) != null ? ` · ${remainingQtyFor(selectedWOForForm, op)} pcs left` : ''}
                 </option>
               ))}
             </select>
           </FormField>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Company"><input className={inputClass + ' bg-slate-50'} value={newJobForm.customer} readOnly disabled/></FormField>
