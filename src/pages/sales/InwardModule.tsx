@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText, Download, Plus } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Download, Plus, Receipt } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,9 @@ export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: (
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Expense entries are kept out of the inward list; the Expenses button switches to them.
+  const [showExpenses, setShowExpenses] = useState(false);
+  const isExpense = (r: any) => String(r.category || '').trim().toUpperCase() === 'EXPENSES';
 
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
@@ -93,7 +96,7 @@ export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: (
     catch (error) { alert(error instanceof Error ? error.message : 'Unable to download the bill.'); }
   };
 
-  const filteredRecords = records.filter(r =>
+  const filteredRecords = records.filter(r => isExpense(r) === showExpenses && r.status !== 'Deleted').filter(r =>
     (r.inward_no || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.party_name || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -116,11 +119,15 @@ export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: (
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h2 className="text-lg font-bold text-slate-800">Inwards</h2>
-            <p className="text-xs text-slate-500">Manage raw materials inward</p>
+            <h2 className="text-lg font-bold text-slate-800">{showExpenses ? 'Expenses' : 'Inwards'}</h2>
+            <p className="text-xs text-slate-500">{showExpenses ? 'Expenses entered per product / project' : 'Manage raw materials inward'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setShowExpenses(v => !v)} title={showExpenses ? 'Back to inwards' : 'View expenses'} aria-label="Expenses"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold border rounded-lg transition-colors whitespace-nowrap ${showExpenses ? 'bg-brand-600 text-white border-brand-600' : 'text-slate-700 border-slate-300 hover:bg-slate-100'}`}>
+            <Receipt size={15} /> Expenses
+          </button>
           {onAddInward && (
             <button onClick={onAddInward} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
               <Plus size={15} /> Add Inward

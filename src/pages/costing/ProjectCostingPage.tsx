@@ -99,6 +99,7 @@ const tabs = [
   'Process Costing',
   'Material Cost',
   'Machine & Labour',
+  'Expenses',
 ];
 
 // Helper to check if category is Goods Purchase
@@ -134,6 +135,8 @@ export function ProjectCostingPage() {
   const pageSize = 10;
   // Process Master rates for valuing production operations (missing table tolerated).
   const [procRates, setProcRates] = useState<any[]>([]);
+  // Expense inwards entered for this project (typed product / project name).
+  const [expenseRows, setExpenseRows] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +328,15 @@ export function ProjectCostingPage() {
 
       const currParty = (p.party_name || '').trim().toLowerCase();
       const currPart = (p.part_name || '').trim().toLowerCase();
+
+      const lc = (v: any) => String(v ?? '').trim().toLowerCase();
+      setExpenseRows((inwardRows || []).filter((inv: any) => {
+        if (String(inv.category || '').trim().toUpperCase() !== 'EXPENSES' || inv.status === 'Deleted') return false;
+        const names = [inv.project_name, inv.product_name].map(lc).filter(Boolean);
+        if (lc(inv.sales_order_ref) && matchingSo.has(lc(inv.sales_order_ref))) return true;
+        if (names.some(n => n === lc(p.project_name) || n === currPart || matchingSo.has(n) || matchingWo.has(n))) return true;
+        return !!lc(inv.party_name) && lc(inv.party_name) === currParty && lc(inv.part_name) === currPart;
+      }));
 
       const matchedInwards = purchaseInwards.filter((inv: any) => {
         const soRef = (inv.sales_order_ref || '').trim().toLowerCase();
@@ -728,62 +740,17 @@ export function ProjectCostingPage() {
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   {tab === 'Process Costing' && (
-                    <Card className="overflow-hidden">
-                      <div className="p-3 border-b bg-slate-50">
-                        <h3 className="font-bold text-sm">
-                          Process Wise Costing
-                        </h3>
-                      </div>
-                      <div className="overflow-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-slate-50 text-slate-500">
-                              <th className="p-2 text-left">Process</th>
-                              <th className="p-2 text-left">Supplier / Party</th>
-                              <th className="p-2 text-right">Quantity</th>
-                              <th className="p-2 text-right">Duration</th>
-                              <th className="p-2 text-right">Rate</th>
-                              <th className="p-2 text-right">Recorded Cost</th>
-                              <th className="p-2">Date</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(report?.processes || []).map((x) => (
-                              <tr key={x.id} className="border-t">
-                                <td className="p-2">{x.process}</td>
-                                <td className="p-2">{x.supplier || '—'}</td>
-                                <td className="p-2 text-right">{x.quantity || '—'}</td>
-                                <td className="p-2 text-right">{x.duration || '—'}</td>
-                                <td className="p-2 text-right">{money(x.rate)}</td>
-                                <td className="p-2 text-right">{money(x.amount)}</td>
-                                <td className="p-2">{formatDate(x.created_at)}</td>
-                              </tr>
-                            ))}
-                            {!report?.processes?.length && (
-                              <tr>
-                                <td colSpan={7} className="p-8 text-center text-slate-500">
-                                  No process cost records for this project.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </Card>
-                  )}
-
-                                    {tab === 'Process Costing' && (
-                    <Card className="overflow-hidden">
+                    <Card className="overflow-hidden xl:col-span-2">
                       <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h3 className="font-bold text-sm">Production Operations — Process Master Rates</h3>
+                          <h3 className="font-bold text-sm">Process Costing</h3>
                           <p className="text-[10px] text-slate-500">
-                            Job card operations valued with live Process Master rates. Process Cost = (Time x Cost/Hour) + Cost/Component + Setup Cost.
+                            Outside processes are the costs recorded for this project. In-house operations come from job cards, valued with live Process Master rates: (Time x Cost/Hour) + Cost/Component + Setup Cost.
                           </p>
                         </div>
-                        {processOpsTotal > 0 && (
+                        {(processOpsTotal > 0 || (report?.processes?.length ?? 0) > 0) && (
                           <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                            Total Process: {money(processOpsTotal.toFixed(2))}
+                            Total Process: {money((processOpsTotal + (report?.processes || []).reduce((n, x) => n + (Number(x.amount) || 0), 0)).toFixed(2))}
                           </Badge>
                         )}
                       </div>
@@ -791,20 +758,32 @@ export function ProjectCostingPage() {
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500">
-                              <th className="p-2">Job</th>
-                              <th className="p-2 text-left">Operation / Process</th>
-                              <th className="p-2">Machine / Operator</th>
-                              <th className="p-2 text-right">Hours</th>
-                              <th className="p-2 text-right">Rate / Hour</th>
-                              <th className="p-2 text-right">Comp + Setup</th>
-                              <th className="p-2 text-right">Process Cost</th>
-                              <th className="p-2">Status</th>
+                              <th className="p-2 text-left">Type</th>
+                              <th className="p-2 text-left">Process / Operation</th>
+                              <th className="p-2 text-left">Party / Machine</th>
+                              <th className="p-2 text-right">Qty / Hours</th>
+                              <th className="p-2 text-right">Rate</th>
+                              <th className="p-2 text-right">Cost</th>
+                              <th className="p-2 text-left">Job / Date</th>
+                              <th className="p-2 text-left">Status</th>
                             </tr>
                           </thead>
                           <tbody>
+                            {(report?.processes || []).map((x) => (
+                              <tr key={`p-${x.id}`} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2"><span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">Outside</span></td>
+                                <td className="p-2 font-medium text-slate-800">{x.process}</td>
+                                <td className="p-2">{x.supplier || '—'}</td>
+                                <td className="p-2 text-right">{x.quantity || x.duration || '—'}</td>
+                                <td className="p-2 text-right">{money(x.rate)}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{money(x.amount)}</td>
+                                <td className="p-2">{formatDate(x.created_at)}</td>
+                                <td className="p-2">—</td>
+                              </tr>
+                            ))}
                             {processOps.map((x) => (
-                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
-                                <td className="p-2 font-mono text-[11px]">{x.job_no}</td>
+                              <tr key={`o-${x.id}`} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2"><span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">In-house</span></td>
                                 <td className="p-2 font-medium text-slate-800">
                                   {x.operation || '—'}
                                   {!x.matched && (
@@ -814,34 +793,69 @@ export function ProjectCostingPage() {
                                   )}
                                 </td>
                                 <td className="p-2">{x.machine} / {x.operator || '—'}</td>
-                                <td className="p-2 text-right">{x.hours}</td>
+                                <td className="p-2 text-right">{x.hours} h</td>
                                 <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
-                                <td className="p-2 text-right">{x.matched ? money(x.compSetup) : '—'}</td>
                                 <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
+                                <td className="p-2 font-mono text-[11px]">{x.job_no}</td>
                                 <td className="p-2">{x.status || '—'}</td>
                               </tr>
                             ))}
-                            {!processOps.length && (
+                            {!report?.processes?.length && !processOps.length && (
                               <tr>
                                 <td colSpan={8} className="p-8 text-center text-slate-500">
-                                  No linked job card records.
+                                  No process cost or job card records for this project.
                                 </td>
                               </tr>
                             )}
                           </tbody>
-                          {processOpsTotal > 0 && (
-                            <tfoot>
-                              <tr className="border-t bg-slate-50/90 font-bold">
-                                <td colSpan={6} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">
-                                  Total Process Cost (Operations)
-                                </td>
-                                <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">
-                                  {money(processOpsTotal.toFixed(2))}
-                                </td>
-                                <td />
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+{tab === 'Expenses' && (
+                    <Card className="overflow-hidden xl:col-span-2">
+                      <div className="p-3 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Expenses</h3>
+                          <p className="text-[10px] text-slate-500">Expense inward entries made for this project.</p>
+                        </div>
+                        {expenseRows.length > 0 && (
+                          <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
+                            Total Expenses: {money(expenseRows.reduce((n, x) => n + (Number(x.total_amount) || 0), 0).toFixed(2))}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500">
+                              <th className="p-2 text-left">Date</th>
+                              <th className="p-2 text-left">Reference</th>
+                              <th className="p-2 text-left">Expense</th>
+                              <th className="p-2 text-left">Party</th>
+                              <th className="p-2 text-left">Remarks</th>
+                              <th className="p-2 text-right">Qty</th>
+                              <th className="p-2 text-right">Rate</th>
+                              <th className="p-2 text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {expenseRows.map((x) => (
+                              <tr key={x.id} className="border-t hover:bg-slate-50/70">
+                                <td className="p-2">{formatDate(x.inward_date || x.created_at)}</td>
+                                <td className="p-2 font-mono text-[11px]">{x.inward_no}{x.reference_no ? ` (${x.reference_no})` : ''}</td>
+                                <td className="p-2 font-medium text-slate-800">{x.part_name || x.product_name || '—'}</td>
+                                <td className="p-2">{x.party_name || '—'}</td>
+                                <td className="p-2">{x.remarks || '—'}</td>
+                                <td className="p-2 text-right">{x.quantity}</td>
+                                <td className="p-2 text-right">{money(x.price)}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{money(x.total_amount)}</td>
                               </tr>
-                            </tfoot>
-                          )}
+                            ))}
+                            {!expenseRows.length && (
+                              <tr><td colSpan={8} className="p-8 text-center text-slate-500">No expenses for this project.</td></tr>
+                            )}
+                          </tbody>
                         </table>
                       </div>
                     </Card>

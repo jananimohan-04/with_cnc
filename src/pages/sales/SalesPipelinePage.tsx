@@ -2245,7 +2245,7 @@ export function SalesPipelinePage() {
       // Strip the order-time stamp suffix (e.g. 1010-28Sep26-0994PM -> 1010) so
       // repeat inwards for the same company + unique number land on one card.
       const groups = new Map<string, any[]>();
-      inwards.forEach(i => {
+      inwards.filter(i => String(i.category || '').trim().toUpperCase() !== 'EXPENSES').forEach(i => {
         const key = baseUniqueNo(orderMap.get(i.sales_order_ref) || i.project_name || i.inward_no || i.id);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(i);
@@ -4586,10 +4586,17 @@ export function SalesPipelinePage() {
                   return (
                     <div key={ii} className="grid grid-cols-6 gap-x-2 gap-y-2 mb-3 pb-3 border-b border-slate-200 last:border-b-0 last:pb-0">
                       <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Product</span>
+                        {(group.category || 'GOODS PURCHASE') === 'EXPENSES' ? (
+                          <>
+                            <input className={inputClass} list={`expense-products-${index}`} placeholder="Type the product / project" value={item.productName || ''}
+                              onChange={e => { const v = e.target.value; const m = (inwardForm.productOptions || []).find((o: any) => String(o.name).trim().toLowerCase() === v.trim().toLowerCase()); setItem(ii, { productName: v, productKey: v.trim() ? (m?.key || 'expense') : '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || v }); }} />
+                            <datalist id={`expense-products-${index}`}>{(inwardForm.productOptions || []).map((o: any) => <option key={o.key} value={o.name} />)}</datalist>
+                          </>
+                        ) : (
                         <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
                           <option value="">Select product</option>
                           {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
-                        </select></label>
+                        </select>)}</label>
                       <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
                         <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
                       <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Remarks</span>
@@ -4614,7 +4621,7 @@ export function SalesPipelinePage() {
                     </div>
                   );
                 })}
-                {(inwardForm.productOptions || []).length === 0 && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
+                {(inwardForm.productOptions || []).length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No enquired products found. Add the product to an Enquiry first.</span>}
                 <div className="flex items-center justify-between mt-1">
                   <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1" onClick={() => setGroup({ items: [...(group.items || []), emptyInwardItem()] })}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
