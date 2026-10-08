@@ -159,10 +159,35 @@ export function summarizeSalesOrder(
     display.set(norm(name), name);
     orderedBy.set(norm(name), ordered);
   }
+  // Work orders, deliveries and invoices often spell the product a little differently from the order line
+  // (spacing, a slipped letter). Such a name is the same product, not a second one.
+  const flat = (s: string) => s.replace(/[^a-z0-9]/g, '');
+  const dist = (a: string, b: string) => {
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[b.length];
+  };
+  const resolve = (k: string): string => {
+    if (!k || orderedBy.has(k)) return k;
+    const f = flat(k); const digits = f.replace(/[^0-9]/g, ''); const letters = f.replace(/[0-9]/g, '');
+    for (const o of orderedBy.keys()) {
+      const of = flat(o);
+      if (of === f) return o;
+      if (of.replace(/[^0-9]/g, '') === digits) {
+        const ol = of.replace(/[0-9]/g, '');
+        if (letters.length >= 6 && Math.abs(ol.length - letters.length) <= 2 && dist(ol, letters) <= 2) return o;
+      }
+    }
+    return k;
+  };
   const sumBy = (rows: any[], key: (r: any) => string, val: (r: any) => number) => {
     const m = new Map<string, number>();
     for (const r of rows || []) {
-      const k = key(r);
+      const k = resolve(key(r));
       if (!k) continue;
       if (!display.has(k)) display.set(k, String(r?.part_name ?? r?.product_name ?? r?.description ?? k));
       m.set(k, (m.get(k) ?? 0) + val(r));
