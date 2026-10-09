@@ -703,6 +703,13 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     }
     setSaving(true);
     try {
+      if (mode === 'edit') {
+        // Editing a finished-goods entry: save the costing as a new approved version, then refresh the board and lists.
+        await persistVersion('Approved', effectiveApproved);
+        onMoved();
+        onClose();
+        return;
+      }
       await persistVersion('Draft', effectiveApproved);
       await reloadVersions();
       alert(`Costing draft saved as version ${nextVersion}. The card stays in Inward until approval.`);

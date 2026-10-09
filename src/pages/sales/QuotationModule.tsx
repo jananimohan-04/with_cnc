@@ -4,7 +4,7 @@ import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText, Plus
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
-export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
+export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void }) {
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -185,7 +185,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${(quote.status === 'Converted' || quote.status === 'Accepted') ?'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
                   </td>
                   <td className="p-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => openQuotation(quote)}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(quote)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(quote)}>Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(quote) : openQuotation(quote))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(quote)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(quote)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

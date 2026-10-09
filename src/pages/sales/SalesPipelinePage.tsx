@@ -2782,6 +2782,13 @@ export function SalesPipelinePage() {
       customer: record.customer || record.customer_name || record.party_name || '', part: record.part_name || '', qty: Number(record.quantity) || 0, value: 0, date: '',
     } as KanbanCard;
   };
+  // View from a stage list opens the same view as the eye icon on the board card.
+  const listView = (type: KanbanCard['type'], stage: Stage) => (record: any) => {
+    const card = listCard(type, stage, record, true);
+    setViewEditMode(false);
+    if (type === 'finished_goods') { void openFgPopup(card, 'view'); return; }
+    void openViewModal(card);
+  };
   const listEdit = (type: KanbanCard['type'], stage: Stage) => (record: any) => {
     const card = listCard(type, stage, record, true);
     if (type === 'finished_goods') { void openFgPopup(card, 'edit'); return; }
@@ -4075,7 +4082,7 @@ export function SalesPipelinePage() {
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
       {activeView === 'enquiry_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <EnquiryModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Enquiry')} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
+          <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} onAdd={() => addForStage('Enquiry')} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'quotation_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
@@ -4091,16 +4098,16 @@ export function SalesPipelinePage() {
               {quoteTool === '/quotation/company-profile' && <CompanyProfilePage />}
             </div>
           ) : (
-            <QuotationModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} />
+            <QuotationModule onBack={() => setActiveView('pipeline')} onView={listView('quotation', 'Quotation')} onAdd={() => addForStage('Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} />
           )}
         </div>
       ) : activeView === 'sales_order_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <SalesOrderModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Sales Order')} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
+          <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={listEdit('order', 'Sales Order')} onAdd={() => addForStage('Sales Order')} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'inward_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <InwardModule onBack={() => setActiveView('pipeline')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
+          <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
         </div>
       ) : activeView === 'rejected_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
@@ -4108,15 +4115,15 @@ export function SalesPipelinePage() {
         </div>
       ) : activeView === 'fg_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Finished Goods')} onView={(rec) => void openFgPopup(listCard('finished_goods', 'Finished Goods', rec, true), 'view')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
+          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Finished Goods')} onView={listView('finished_goods', 'Finished Goods')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'dc_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('DC')} onEdit={listEdit('dc', 'DC')} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
+          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onAdd={() => addForStage('DC')} onEdit={listEdit('dc', 'DC')} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'invoice_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <InvoiceModule onBack={() => setActiveView('pipeline')} />
+          <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
         </div>
       ) : pipelineViewMode === 'list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">

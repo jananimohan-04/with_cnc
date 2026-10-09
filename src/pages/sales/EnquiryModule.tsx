@@ -4,7 +4,7 @@ import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText, Plus
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
-export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
+export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void }) {
   const [enquiries, setEnquiries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -134,7 +134,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd }
                     <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
                   </td>
                   <td className="p-3">
-                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => openEnquiry(enq)}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

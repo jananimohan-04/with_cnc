@@ -10,7 +10,7 @@ const orderValue = (r: any) => r.total_value ?? r.value;
 
 const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
-export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
+export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onView, onEdit }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -187,8 +187,8 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd }: { o
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => void openRecord(record, false)}>View Details</Button>
-                      <Button variant="secondary" size="sm" onClick={() => void openRecord(record, true)}>Edit</Button>
+                      <Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : void openRecord(record, false))}>View Details</Button>
+                      <Button variant="secondary" size="sm" onClick={() => (onEdit ? onEdit(record) : void openRecord(record, true))}>Edit</Button>
                       {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}
                     </div>
                     {(() => {
