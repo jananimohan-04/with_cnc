@@ -1288,6 +1288,9 @@ export function SalesPipelinePage() {
   const [fgPickOpen, setFgPickOpen] = useState(false);
   // The stage lists (opened from the top tiles) refetch whenever the board reloads, so edits and deletes show at once.
   const [listRefresh, setListRefresh] = useState(0);
+  // How many inwards were saved in this popup session with "Save & Add Another Inward".
+  const [inwardSavedCount, setInwardSavedCount] = useState(0);
+  useEffect(() => { if (!inwardModalTarget) setInwardSavedCount(0); }, [inwardModalTarget]);
   // Pieces rejected so far (the Rejected tile); kept as production batches, so nothing is added to the board.
   const [rejectedTotal, setRejectedTotal] = useState(0);
   useEffect(() => {
@@ -3416,7 +3419,8 @@ export function SalesPipelinePage() {
     return created;
   };
 
-  const saveInward = async () => {
+  // another: keep the popup open on a fresh, blank inward after saving (the saved one is not shown again).
+  const saveInward = async (another = false) => {
     if (!inwardModalTarget) return;
     const cStr = getContactStrings(inwardForm);
     const groups = (inwardForm.parts || [])
@@ -3519,9 +3523,20 @@ export function SalesPipelinePage() {
         const { error: soErr } = await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', inwardModalTarget.raw.id);
         if (soErr) console.error("Failed to update sales order status:", soErr);
     }
-    setInwardModalTarget(null);
     fetchPipeline();
     setInwardRefreshSignal((n) => n + 1);
+    if (another) {
+      // Next inward: same company, category and date for convenience, nothing else carried over.
+      const first = (inwardForm.parts || [])[0] || {};
+      setInwardForm((f: any) => ({
+        ...f,
+        parts: [{ ...emptyInwardPart({ category: first.category || f.category || 'GOODS PURCHASE', referenceNo: '', inwardDate: first.inwardDate || f.inwardDate || new Date().toISOString().split('T')[0], partyName: first.partyName ?? f.partyName ?? '' }), productKey: '', productName: '', enquiryId: '' }],
+      }));
+      setInwardSavedCount((n) => n + 1);
+      return;
+    }
+    setInwardSavedCount(0);
+    setInwardModalTarget(null);
   };
 
   const saveFinishedGoods = async () => {
@@ -4607,7 +4622,7 @@ export function SalesPipelinePage() {
       
 
       {/* Inward Modal */}
-      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={820} footer={<><Button variant="secondary" onClick={() => setInwardModalTarget(null)}>Cancel</Button><Button onClick={saveInward}>Create Inward</Button></>}>
+      <Modal open={!!inwardModalTarget} onClose={() => setInwardModalTarget(null)} title="Create Inward Entry" size="lg" width={820} footer={<><Button variant="secondary" onClick={() => { setInwardSavedCount(0); setInwardModalTarget(null); }}>{inwardSavedCount > 0 ? 'Done' : 'Cancel'}</Button><Button variant="secondary" onClick={() => void saveInward(true)}>Save &amp; Add Another Inward</Button><Button onClick={() => void saveInward(false)}>Submit</Button></>}>
         <div className="flex flex-col gap-4">
           <datalist id="inward-customer-list">
             {(allKnownCompanies || []).map((c: any) => <option key={c.company} value={c.company} />)}
@@ -4615,13 +4630,8 @@ export function SalesPipelinePage() {
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
             <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts — one line per part.</p></div>
-            <Button variant="secondary" onClick={() => {
-              const opts = inwardForm.productOptions || [];
-              const m = opts.find((o: any) => o.name === inwardForm.productName) || null;
-              const prev = (inwardForm.parts || []).slice(-1)[0] || {};
-              const prevParty = (prev.items || []).slice(-1)[0]?.partyName || prev.partyName || inwardForm.partyName || m?.customer || '';
-              setInwardForm({...inwardForm, parts: [...inwardForm.parts, { ...emptyInwardPart({ category: prev.category || 'GOODS PURCHASE', referenceNo: prev.referenceNo || '', inwardDate: prev.inwardDate || new Date().toISOString().split('T')[0], partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '', partyName: prevParty, items: [{ ...emptyInwardItem({ partyName: prevParty }), productKey: m?.key || '', productName: m?.name || '', enquiryId: m?.enquiryId || '', projectName: m?.leadNo || '' }] }]});
-            }}><Plus size={14}/> Add Inward</Button>
+            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">✓ {inwardSavedCount} saved — add the next inward</span>}
+
           </div>
           <div className="space-y-4">
             {(inwardForm.parts || []).map((group: any, index: number) => {
