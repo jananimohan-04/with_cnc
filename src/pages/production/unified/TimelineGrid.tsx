@@ -63,7 +63,30 @@ export function CalendarNav({ nav, onToday, loading }: { nav: ReturnType<typeof 
   );
 }
 
-export function TimelineGrid({ days, blocks, testId = 'timeline-grid' }: { days: string[]; blocks: GridBlock[]; testId?: string }) {
+const SNAP = 30; // minutes
+const snap = (min: number) => Math.max(0, Math.min(24 * 60, Math.round(min / SNAP) * SNAP));
+
+export function TimelineGrid({ days, blocks, testId = 'timeline-grid', onDragRange }: {
+  days: string[]; blocks: GridBlock[]; testId?: string;
+  /** Drag on an empty part of a day to pick a time range (a plain click picks one hour). */
+  onDragRange?: (r: { date: string; start: string; end: string }) => void;
+}) {
+  const [drag, setDrag] = useState<{ date: string; a: number; b: number } | null>(null);
+  const dragRef = useRef<typeof drag>(null);
+  const yToMin = (e: React.MouseEvent, el: HTMLElement) => snap(((e.clientY - el.getBoundingClientRect().top) / HOUR_PX) * 60);
+  const endDrag = useCallback(() => {
+    const d = dragRef.current; dragRef.current = null; setDrag(null);
+    if (!d || !onDragRange) return;
+    let a = Math.min(d.a, d.b); let b = Math.max(d.a, d.b);
+    if (b - a < SNAP) b = Math.min(24 * 60, a + 60);
+    if (b > 24 * 60 - 1) { b = 24 * 60 - 1; a = Math.min(a, b - SNAP); }
+    onDragRange({ date: d.date, start: minToHhmm(a), end: minToHhmm(b) });
+  }, [onDragRange]);
+  useEffect(() => {
+    if (!onDragRange) return;
+    window.addEventListener('mouseup', endDrag);
+    return () => window.removeEventListener('mouseup', endDrag);
+  }, [endDrag, onDragRange]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
   const today = ymd(new Date());
@@ -90,8 +113,16 @@ export function TimelineGrid({ days, blocks, testId = 'timeline-grid' }: { days:
           ))}
         </div>
         {days.map(d => (
-          <div key={d} className="relative border-l border-slate-200" style={{ height: 24 * HOUR_PX }} data-testid="tl-day" data-date={d}>
+          <div key={d} className={`relative border-l border-slate-200 ${onDragRange ? 'cursor-crosshair select-none' : ''}`} style={{ height: 24 * HOUR_PX }} data-testid="tl-day" data-date={d}
+            onMouseDown={e => { if (!onDragRange || (e.target as HTMLElement).closest('[data-testid="tl-block"]')) return; const m = yToMin(e, e.currentTarget); const v = { date: d, a: m, b: m }; dragRef.current = v; setDrag(v); }}
+            onMouseMove={e => { if (!dragRef.current || dragRef.current.date !== d) return; const v = { ...dragRef.current, b: yToMin(e, e.currentTarget) }; dragRef.current = v; setDrag(v); }}>
             {Array.from({ length: 24 }, (_, h) => <div key={h} className="absolute inset-x-0 border-t border-slate-100" style={{ top: h * HOUR_PX }} />)}
+            {drag && drag.date === d && (
+              <div className="absolute left-0.5 right-0.5 rounded-md border-2 border-dashed border-brand-500 bg-brand-100/60 pointer-events-none z-10" data-testid="tl-drag"
+                style={{ top: (Math.min(drag.a, drag.b) / 60) * HOUR_PX, height: Math.max(SNAP, Math.abs(drag.b - drag.a)) / 60 * HOUR_PX }}>
+                <span className="text-[10px] font-bold text-brand-700 px-1">{fmtTime12(minToHhmm(Math.min(drag.a, drag.b)))} – {fmtTime12(minToHhmm(Math.min(24 * 60 - 1, Math.max(Math.max(drag.a, drag.b), Math.min(drag.a, drag.b) + SNAP))))}</span>
+              </div>
+            )}
             {d === today && <div className="absolute inset-x-0 z-10 pointer-events-none" style={{ top: (nowMin / 60) * HOUR_PX }}><div className="h-0.5 bg-red-500" /><div className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" /></div>}
             {blocks.filter(b => b.date === d).map(b => {
               const lanes = b.lanes ?? 1; const lane = b.lane ?? 0;

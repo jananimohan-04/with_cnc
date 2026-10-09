@@ -154,6 +154,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   // True once the approved price came from a saved version or the user typed
   // it — the quotation auto-fill below never overwrites either of those.
   const [approvedTouched, setApprovedTouched] = useState(false);
+  // Set once the person types in the Approved Final Price box: a later reload of the saved sheet must not overwrite it.
+  const approvedEdited = useRef(false);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
 
@@ -417,7 +419,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       if (!v.error) {
         setVersions(v.data ?? []);
         const latest = (v.data ?? [])[0];
-        if (latest?.approved_price != null) { setApprovedInput(String(latest.approved_price)); setApprovedTouched(true); }
+        if (latest?.approved_price != null && !approvedEdited.current) { setApprovedInput(String(latest.approved_price)); setApprovedTouched(true); }
         if (latest?.lines?.quoteOverrides) {
           const qo = latest.lines.quoteOverrides;
           if (qo.qty != null) setQuoteQty(String(qo.qty));
@@ -428,7 +430,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       }
     })();
     return () => { cancelled = true; };
-  }, [sheetKey, code]);
+  // Keyed by the values, not the object: sheetKey is rebuilt on every render and would refetch (and reset the price) after every keystroke.
+  }, [sheetKey?.quotationNo, sheetKey?.salesOrderNo, code]);
 
   const products = useMemo(() => (quote ? parseQuoteProducts(quote) : []), [quote]);
   const product = products[0] ?? null;
@@ -891,79 +894,70 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       ) : (
         <fieldset disabled={mode === 'view'} className="min-w-0 border-0 p-0 m-0">
         <div className="space-y-4">
-          {/* 1 — transaction details */}
+          {/* 1 — transaction details, with the products to finish (and how many) right next to the product */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-3 border-b border-brand-100 pb-2">Section 1 — Transaction Details</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_11rem] gap-4 text-sm">
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Company</p><p className="font-semibold">{card?.customer ?? '—'}</p></div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Product</p><p className="font-semibold">{selectedProds.length > 0 ? selectedProds.map((p) => p.name).join(', ') : (productName || '—')}</p></div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Product · how many finish ({selectedProds.length} of {prodRows.length} selected)</p>
+                {prodRows.length === 0 ? (
+                  <p className="text-xs text-slate-400 mt-1">Loading products…</p>
+                ) : (
+                  <div className="mt-1 space-y-1">
+                    {prodRows.map((r) => {
+                      const checked = prodSel[r.key] !== undefined;
+                      const fq = checked ? Math.max(0, num(prodSel[r.key])) : 0;
+                      // Finished goods so far for this product (from the order's reconciliation), then what is left of the order.
+                      const doneSoFar = (qtySum?.products ?? []).find((x) => String(x.name).trim().toLowerCase() === String(r.name).trim().toLowerCase())?.good ?? 0;
+                      const rem = Math.max(0, r.qty - doneSoFar - (mode === 'add' ? fq : 0));
+                      return (
+                        <div key={r.key} className={`flex items-center gap-2 rounded-lg border px-3 h-[42px] ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => setProdSel((prev) => {
+                              const next = { ...prev };
+                              if (e.target.checked) next[r.key] = String((r as any).inwardQty > 0 ? (r as any).inwardQty : '');
+                              else delete next[r.key];
+                              return next;
+                            })}
+                            className="h-3.5 w-3.5 accent-orange-600"
+                            aria-label={`Select ${r.name}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800" title={r.name}>{r.name}</span>
+                          <span className="hidden sm:inline text-[10px] text-slate-400 whitespace-nowrap">
+                            Ordered {r.qty} · Finished {doneSoFar}
+                            {r.qty > 0 && <b className="text-amber-700"> · Remaining {rem}</b>}
+                          </span>
+                          <input
+                            type="number" min={0} aria-label={`How many ${r.name} finished`} placeholder="Qty"
+                            disabled={!checked}
+                            value={checked ? (prodSel[r.key] ?? '') : ''}
+                            onChange={(e) => setProdSel((prev) => ({ ...prev, [r.key]: e.target.value }))}
+                            className={`${inputClass} !w-20 !py-1 text-right tabular-nums disabled:bg-slate-100`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-400 mt-1">Each selected product gets its own entry + batch. Costing follows {firstProd ? <b>{firstProd.name}</b> : 'the first selected product'}.</p>
+              </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Date</p>
                 <input type="date" value={fgDate} onChange={(e) => setFgDate(e.target.value)} className={inputClass} />
               </div>
             </div>
-          </div>
-
-          {/* 1a — products in this inward: select any, set finished qty each */}          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">
-              Section 1A — Sale Order Products ({selectedProds.length} of {prodRows.length} selected)
-            </h3>
-            {prodRows.length === 0 ? (
-              <p className="text-xs text-slate-400 mt-2">Loading inward products…</p>
-            ) : (
-              <div className="mt-2 space-y-2">
-                {prodRows.map((r) => {
-                  const checked = prodSel[r.key] !== undefined;
-                  const fq = checked ? Math.max(0, num(prodSel[r.key])) : 0;
-                  const rem = Math.max(0, r.qty - fq);
-                  return (
-                    <div key={r.key} className={`grid grid-cols-[auto_minmax(0,1fr)_7rem] gap-3 items-center rounded-lg border px-3 py-2 ${checked ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200'}`}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => setProdSel((prev) => {
-                          const next = { ...prev };
-                          if (e.target.checked) next[r.key] = String((r as any).inwardQty > 0 ? (r as any).inwardQty : '');
-                          else delete next[r.key];
-                          return next;
-                        })}
-                        className="h-4 w-4 accent-orange-600"
-                        aria-label={`Select ${r.name}`}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{r.name}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {(r as any).inwardQty !== r.qty
-                            ? `Order qty: ${r.qty} · Inward: ${(r as any).inwardQty}`
-                            : `Inward qty: ${r.qty}`}
-                          {r.qty > 0 && <span className="font-semibold text-amber-700"> · Remaining: {rem}</span>}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400">How many finish?</p>
-                        <input
-                          type="number" min={0}
-                          disabled={!checked}
-                          value={checked ? (prodSel[r.key] ?? '') : ''}
-                          onChange={(e) => setProdSel((prev) => ({ ...prev, [r.key]: e.target.value }))}
-                          className={`${inputClass} !py-1.5 tabular-nums disabled:bg-slate-100`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+            {/* quantity tracking sits right under the product it describes */}
+            {qtySum && (
+              <div className="mt-3">
+                <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} allowReject={false} />
               </div>
             )}
-            <p className="text-[11px] text-slate-400 mt-2">
-              Each selected product gets its own Finished Goods entry + batch on approval. Costing below follows {firstProd ? <b>{firstProd.name}</b> : 'the first selected product'}.
-            </p>
           </div>
 
           {/* Rejection capture removed — batches record good quantity only. */}
-          {qtySum && (
-            <QtyTrackingSection q={qtySum} userName={userName} onSaved={(s) => setQtySum(s)} />
-          )}
-
           {/* comparison workspace: quotation vs project costing */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           {/* LEFT — quotation (reference only, master never modified) */}
@@ -1206,7 +1200,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-slate-300">Approved Final Price</p>
-                <input type="number" min="0" value={approvedInput} onChange={(e) => { setApprovedInput(e.target.value); setApprovedTouched(true); }}
+                <input type="text" inputMode="decimal" autoComplete="off" value={approvedInput} onChange={(e) => { approvedEdited.current = true; setApprovedInput(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')); setApprovedTouched(true); }}
                   placeholder={String(Math.round(totals.calculated))}
                   className="w-48 text-right font-bold text-navy-900 rounded-lg px-3 py-1.5 text-lg" />
               </div>
@@ -1238,3 +1232,4 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     </Modal>
   );
 }
+

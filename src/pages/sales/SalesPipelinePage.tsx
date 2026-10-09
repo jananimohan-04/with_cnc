@@ -17,6 +17,7 @@ import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
+import { RejectedModule } from './RejectedModule';
 import { FinishedGoodsModule } from './FinishedGoodsModule';
 import { DeliveryChallanModule } from './DeliveryChallanModule';
 import { InvoiceModule } from './InvoiceModule';
@@ -1236,7 +1237,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
 export function SalesPipelinePage() {
   const { profile, company } = useAuth();
   const userName = profile?.full_name || '';
-  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
+  const [activeView, setActiveView] = useState<'pipeline' | 'enquiry_list' | 'quotation_list' | 'sales_order_list' | 'inward_list' | 'rejected_list' | 'fg_list' | 'dc_list' | 'invoice_list'>('pipeline');
   const columns: Stage[] = ['Enquiry', 'Quotation', 'Sales Order', 'Inward', 'Finished Goods', 'DC', 'Invoice'];
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
@@ -1285,6 +1286,18 @@ export function SalesPipelinePage() {
   const [costingModalTarget, setCostingModalTarget] = useState<KanbanCard | null>(null);
   const [costingMode, setCostingMode] = useState<'add' | 'edit' | 'view'>('add');
   const [fgPickOpen, setFgPickOpen] = useState(false);
+  // The stage lists (opened from the top tiles) refetch whenever the board reloads, so edits and deletes show at once.
+  const [listRefresh, setListRefresh] = useState(0);
+  // Pieces rejected so far (the Rejected tile); kept as production batches, so nothing is added to the board.
+  const [rejectedTotal, setRejectedTotal] = useState(0);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data, error } = await supabase.from('cnc_production_batches').select('rejected_qty').gt('rejected_qty', 0);
+        setRejectedTotal(error ? 0 : (data ?? []).reduce((n: number, r: any) => n + (Number(r.rejected_qty) || 0), 0));
+      } catch { setRejectedTotal(0); }
+    })();
+  }, [listRefresh]);
   const [fgPickId, setFgPickId] = useState('');
   const [invoiceCostingTarget, setInvoiceCostingTarget] = useState<KanbanCard | null>(null);
   const [dcModalTarget, setDcModalTarget] = useState<KanbanCard | null>(null);
@@ -2712,6 +2725,75 @@ export function SalesPipelinePage() {
     } as KanbanCard);
   };
 
+  // Edit / Delete from the stage lists reuse the board's own edit view and delete (a record without a card gets one built from it).
+  useEffect(() => { setListRefresh(n => n + 1); }, [cards]);
+
+  // Add a record of a stage: the same form the board's "Add ..." button opens, also used by the stage lists.
+  const addForStage = (stageId: string) => {
+                    if (stageId === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setEnquiryModalOpen(true); }
+                    else if (stageId === 'Quotation') {
+                      setQuoteForm({
+                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
+                        items: [{ id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }],
+                        paymentTerms: '', deliveryTerms: '', remarks: ''
+                      });
+                      setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                    } else if (stageId === 'Sales Order') {
+                      setSoForm({
+                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
+                        items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
+                      });
+                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                    } else if (stageId === 'Inward') {
+                      openDummyInward();
+                    } else if (stageId === 'Finished Goods') {
+                      // Add Finished Good: the Finished Goods + Costing popup opens first; company and product are chosen inside it.
+                      setCostingMode('add');
+                      setCostingModalTarget({ id: 'fg-pick', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 0, value: 0, date: '', raw: { __pick: true } } as KanbanCard);
+                    } else if (stageId === 'DC') {
+                      const dcBlankForm = {
+                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+                        date: new Date().toISOString().split('T')[0], partyName: '',
+                        partyAddress: '', partyGstin: '', partyCode: '',
+                        ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
+                        enquiryNo: '', vehicleNo: '', phone: '',
+                        category: '', process: '',
+                        receiverName: '', senderName: '', custSignature: null, authSignature: null,
+                      };
+                      const dcBlankItems = [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
+                      setDcForm(dcBlankForm);
+                      setDcItems(dcBlankItems);
+                      setDcSnapshot({ form: { ...dcBlankForm }, items: dcBlankItems.map((l) => ({ ...l })) });
+                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                    } else if (stageId === 'Invoice') {
+                      setInvoiceForm({
+                        invoiceNo: '', partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '', sgst: '', igst: ''
+                      });
+                      setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
+                    }
+  };
+
+  const listCard = (type: KanbanCard['type'], stage: Stage, record: any, grouped: boolean): KanbanCard => {
+    const found = grouped ? cards.find(c => c.type === type && (String((c.raw as any)?.id) === String(record.id) || ((c.raw as any)?._groupIds ?? []).includes(record.id))) : null;
+    if (found) return found;
+    return {
+      id: `${type}_${record.id}`, stage, type, raw: record,
+      refNo: record.lead_no || record.enquiry_no || record.quote_no || record.order_no || record.wo_no || record.delivery_no || record.inward_no || '',
+      customer: record.customer || record.customer_name || record.party_name || '', part: record.part_name || '', qty: Number(record.quantity) || 0, value: 0, date: '',
+    } as KanbanCard;
+  };
+  const listEdit = (type: KanbanCard['type'], stage: Stage) => (record: any) => {
+    const card = listCard(type, stage, record, true);
+    if (type === 'finished_goods') { void openFgPopup(card, 'edit'); return; }
+    setViewEditMode(true);
+    void openViewModal(card);
+  };
+  // Delete removes exactly the row that was clicked, never a whole grouped card.
+  const listDelete = (type: KanbanCard['type'], stage: Stage) => async (record: any) => {
+    await handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, listCard(type, stage, record, false));
+    setListRefresh(n => n + 1);
+  };
+
   const openViewModal = async (card: KanbanCard) => {
     if (card.type === 'finished_goods') { void openFgPopup(card, 'view'); return; }
     setViewModalTarget(card);
@@ -3881,22 +3963,25 @@ export function SalesPipelinePage() {
     <div className="p-4 lg:p-6 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
 
       {/* 2. Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-6">
         {[
           { title: 'Total Enquiries', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Enquiry' },
           { title: 'Quotations', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'purple', stage: 'Quotation' },
           { title: 'Sales Orders', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'emerald', stage: 'Sales Order' },
           { title: 'Inward', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', color: 'orange', stage: 'Inward' },
           { title: 'Finished Goods', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', color: 'teal', stage: 'Finished Goods' },
+          { title: 'Rejected', icon: 'M6 18L18 6M6 6l12 12', color: 'red', stage: 'Rejected' },
           { title: 'Delivery Challans', icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', color: 'rose', stage: 'DC' },
           { title: 'Invoices', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Invoice' }
         ].map(stat => {
-           const count = cards.filter(c => c.stage === stat.stage).length;
+           // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
+           const count = stat.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === stat.stage).length;
            const stageColors: Record<string, { tile: string; icon: string }> = {
              Enquiry: { tile: 'bg-gradient-to-br from-blue-700 to-blue-900 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              Quotation: { tile: 'bg-gradient-to-br from-violet-700 to-violet-900 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              'Sales Order': { tile: 'bg-gradient-to-br from-emerald-700 to-emerald-900 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              Inward: { tile: 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-900 hover:brightness-110', icon: 'bg-white/20 text-white' },
+             Rejected: { tile: 'bg-gradient-to-br from-fuchsia-700 to-fuchsia-900 border-fuchsia-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              'Finished Goods': { tile: 'bg-gradient-to-br from-cyan-700 to-cyan-900 border-cyan-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              DC: { tile: 'bg-gradient-to-br from-rose-700 to-rose-900 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
              Invoice: { tile: 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
@@ -3908,6 +3993,7 @@ export function SalesPipelinePage() {
                else if (stat.stage === 'Quotation') setActiveView('quotation_list'); 
                else if (stat.stage === 'Sales Order') setActiveView('sales_order_list'); 
                else if (stat.stage === 'Inward') setActiveView('inward_list'); 
+               else if (stat.stage === 'Rejected') setActiveView('rejected_list'); 
                else if (stat.stage === 'Finished Goods') setActiveView('fg_list'); 
                else if (stat.stage === 'DC') setActiveView('dc_list'); 
                else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
@@ -3989,7 +4075,7 @@ export function SalesPipelinePage() {
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
       {activeView === 'enquiry_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <EnquiryModule onBack={() => setActiveView('pipeline')} />
+          <EnquiryModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Enquiry')} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'quotation_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
@@ -4005,24 +4091,28 @@ export function SalesPipelinePage() {
               {quoteTool === '/quotation/company-profile' && <CompanyProfilePage />}
             </div>
           ) : (
-            <QuotationModule onBack={() => setActiveView('pipeline')} />
+            <QuotationModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Quotation')} onEdit={listEdit('quotation', 'Quotation')} onDelete={listDelete('quotation', 'Quotation')} refreshSignal={listRefresh} />
           )}
         </div>
       ) : activeView === 'sales_order_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <SalesOrderModule onBack={() => setActiveView('pipeline')} />
+          <SalesOrderModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Sales Order')} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'inward_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <InwardModule onBack={() => setActiveView('pipeline')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal} />
+          <InwardModule onBack={() => setActiveView('pipeline')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
+        </div>
+      ) : activeView === 'rejected_list' ? (
+        <div className="flex-1 h-full min-h-[500px] mb-4">
+          <RejectedModule onBack={() => setActiveView('pipeline')} refreshSignal={listRefresh} onChanged={() => setListRefresh(n => n + 1)} />
         </div>
       ) : activeView === 'fg_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} />
+          <FinishedGoodsModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Finished Goods')} onView={(rec) => void openFgPopup(listCard('finished_goods', 'Finished Goods', rec, true), 'view')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'dc_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
-          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} />
+          <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('DC')} onEdit={listEdit('dc', 'DC')} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'invoice_list' ? (
         <div className="flex-1 h-full min-h-[500px] mb-4">
@@ -4067,49 +4157,7 @@ export function SalesPipelinePage() {
                 
                 {stage.id !== 'Quotation' && (
                 <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
-                  onClick={() => {
-                    if (stage.id === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setEnquiryModalOpen(true); }
-                    else if (stage.id === 'Quotation') {
-                      setQuoteForm({
-                        quoteNo: `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', leadNo: '', quoteDate: new Date().toISOString().split('T')[0], validTill: '', salesperson: userName, contacts: [{ person: '', phone: '', email: '' }], partName: '', partNumber: '', description: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18',
-                        items: [{ id: crypto.randomUUID(), partName: '', partNumber: '', quantity: '', unitPrice: '', discount: '0', unitDiscount: '0', gst: '18' }],
-                        paymentTerms: '', deliveryTerms: '', remarks: ''
-                      });
-                      setQuotationModalTarget({ id: 'dummy', stage: 'Enquiry', type: 'lead', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
-                    } else if (stage.id === 'Sales Order') {
-                      setSoForm({
-                        orderNo: `SO-2026-${Math.floor(1000 + Math.random() * 9000)}`, customer: '', orderDate: new Date().toISOString().split('T')[0], deliveryDate: new Date().toISOString().split('T')[0], customerPoNo: '',
-                        items: [{ id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18' }],
-                      });
-                      setSoModalTarget({ id: 'dummy', stage: 'Quotation', type: 'quotation', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
-                    } else if (stage.id === 'Inward') {
-                      openDummyInward();
-                    } else if (stage.id === 'Finished Goods') {
-                      // Add Finished Good: the Finished Goods + Costing popup opens first; company and product are chosen inside it.
-                      setCostingMode('add');
-                      setCostingModalTarget({ id: 'fg-pick', stage: 'Inward', type: 'inward', refNo: '', customer: '', part: '', qty: 0, value: 0, date: '', raw: { __pick: true } } as KanbanCard);
-                    } else if (stage.id === 'DC') {
-                      const dcBlankForm = {
-                        dcNo: `DC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-                        date: new Date().toISOString().split('T')[0], partyName: '',
-                        partyAddress: '', partyGstin: '', partyCode: '',
-                        ewayBill: '', poNumber: '', salesOrderNo: '', placeOfSupply: '', packaging: '',
-                        enquiryNo: '', vehicleNo: '', phone: '',
-                        category: '', process: '',
-                        receiverName: '', senderName: '', custSignature: null, authSignature: null,
-                      };
-                      const dcBlankItems = [{ name: '', avail: null, qty: '', selected: true, hsn: '', unit: 'Nos', price: '' }];
-                      setDcForm(dcBlankForm);
-                      setDcItems(dcBlankItems);
-                      setDcSnapshot({ form: { ...dcBlankForm }, items: dcBlankItems.map((l) => ({ ...l })) });
-                      setDcModalTarget({ id: 'dummy', stage: 'Finished Goods', type: 'finished_goods', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
-                    } else if (stage.id === 'Invoice') {
-                      setInvoiceForm({
-                        invoiceNo: '', partyName: '', dcNumber: '', date: new Date().toISOString().split('T')[0], partName: '', quantity: '', price: '', cgst: '', sgst: '', igst: ''
-                      });
-                      setInvoiceModalTarget({ id: 'dummy', stage: 'DC', type: 'dc', refNo: '', customer: '', part: '', qty: 1, value: 0, date: '', raw: {} });
-                    }
-                  }}
+                  onClick={() => addForStage(stage.id)}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
                   Add {stage.title === 'DELIVERY CHALLAN' ? 'Delivery Challan' : stage.title === 'FINISHED GOODS' ? 'Finished Good' : stage.id}

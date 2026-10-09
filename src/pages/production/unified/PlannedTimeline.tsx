@@ -23,7 +23,7 @@ const minToHhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, 
 const dayLabel = (s: string) => parseYmd(s).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
 
 interface PlanRow {
-  id: string; work_order_id: string; operation_sequence: number; process_name: string; machine: string;
+  id: string; work_order_id: string; operation_sequence: number; process_name: string; machine: string; operator?: string;
   plan_date: string; start_time: string; end_time: string;
 }
 
@@ -32,6 +32,8 @@ export function PlannedTimeline() {
   const [wos, setWos] = useState<any[]>([]);
   const [ops, setOps] = useState<any[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
+  const [operators, setOperators] = useState<string[]>([]);
+  const [operatorFilter, setOperatorFilter] = useState('All');
   const [missing, setMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'Week' | 'Day'>('Week');
@@ -47,16 +49,17 @@ export function PlannedTimeline() {
 
   const [showPlan, setShowPlan] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', plan: emptyPlan() });
+  const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', plan: emptyPlan() });
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, w, o, m, pr] = await Promise.all([
+    const [p, w, o, m, pr, jc] = await Promise.all([
       supabase.from('cnc_operation_plans').select('*').order('plan_date').order('start_time'),
       supabase.from('cnc_work_orders').select('id,wo_no,part_name,customer,status,quantity').not('status', 'in', '("Completed","Dispatched","Cancelled")'),
       supabase.from('cnc_work_order_operations').select('*'),
       supabase.from('cnc_machines').select('code'),
       supabase.from('cnc_processes').select('machine_type'),
+      supabase.from('cnc_job_cards').select('operator'),
     ]);
     setMissing(!!p.error && isMissingTable(p.error));
     setRows(p.error ? [] : ((p.data ?? []) as PlanRow[]));
@@ -65,6 +68,10 @@ export function PlannedTimeline() {
     const set = new Set<string>();
     [...(m.data ?? []).map((x: any) => x.code), ...(pr.data ?? []).map((x: any) => x.machine_type)].forEach(v => { const t = String(v ?? '').trim(); if (t) set.add(t); });
     setMachines([...set].sort((a, b) => a.localeCompare(b)));
+    // Operators come from job history and from earlier plans (never from login users).
+    const men = new Map<string, string>();
+    [...(jc.data ?? []).map((x: any) => x.operator), ...(((p.data ?? []) as PlanRow[]).map(x => x.operator))].forEach(v => { const t = String(v ?? '').trim(); if (t && t !== '—' && t !== '-' && !men.has(t.toLowerCase())) men.set(t.toLowerCase(), t); });
+    setOperators([...men.values()].sort((a, b) => a.localeCompare(b)));
     setLoading(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -93,21 +100,23 @@ export function PlannedTimeline() {
   const q = search.trim().toLowerCase();
   const shown = useMemo(() => rows.filter(r => {
     if (machineFilter !== 'All' && r.machine !== machineFilter) return false;
+    if (operatorFilter !== 'All' && (r.operator ?? '') !== operatorFilter) return false;
     if (!q) return true;
     const wo = woById.get(String(r.work_order_id));
-    return `${wo?.wo_no ?? ''} ${wo?.part_name ?? ''} ${wo?.customer ?? ''} ${r.process_name} ${r.machine}`.toLowerCase().includes(q);
-  }), [rows, machineFilter, q, woById]);
+    return `${wo?.wo_no ?? ''} ${wo?.part_name ?? ''} ${wo?.customer ?? ''} ${r.process_name} ${r.machine} ${r.operator ?? ''}`.toLowerCase().includes(q);
+  }), [rows, machineFilter, operatorFilter, q, woById]);
 
   // Same machine, same day, overlapping times.
-  const overlaps = (cand: { machine: string; date: string; start: string; end: string }, ignoreWo?: string, ignoreSeq?: number) =>
-    rows.filter(r => r.machine && r.machine === cand.machine && String(r.plan_date).slice(0, 10) === cand.date
+  // Same machine or same man, same day, overlapping times.
+  const overlaps = (cand: { machine: string; operator?: string; date: string; start: string; end: string }, ignoreWo?: string, ignoreSeq?: number) =>
+    rows.filter(r => ((r.machine && r.machine === cand.machine) || (!!cand.operator && !!r.operator && r.operator === cand.operator)) && String(r.plan_date).slice(0, 10) === cand.date
       && !(ignoreWo && String(r.work_order_id) === ignoreWo && Number(r.operation_sequence) === ignoreSeq)
       && toMinutes(hh(r.start_time)) < toMinutes(cand.end) && toMinutes(cand.start) < toMinutes(hh(r.end_time)));
 
   const clash = useMemo(() => {
     const set = new Set<string>();
     for (const r of shown) {
-      const mine = { machine: r.machine, date: String(r.plan_date).slice(0, 10), start: hh(r.start_time), end: hh(r.end_time) };
+      const mine = { machine: r.machine, operator: r.operator ?? '', date: String(r.plan_date).slice(0, 10), start: hh(r.start_time), end: hh(r.end_time) };
       if (overlaps(mine).some(o => o.id !== r.id)) set.add(r.id);
     }
     return set;
@@ -116,11 +125,11 @@ export function PlannedTimeline() {
 
   const opsForWo = ops.filter(o => String(o.work_order_id) === form.woId).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
   const segments = expandPlan(form.plan);
-  const conflicts = form.machine ? segments.flatMap(s => overlaps({ machine: form.machine, date: s.date, start: s.start, end: s.end }).map(o => ({ s, o }))) : [];
+  const conflicts = (form.machine || form.operator) ? segments.flatMap(s => overlaps({ machine: form.machine, operator: form.operator.trim(), date: s.date, start: s.start, end: s.end }).map(o => ({ s, o }))) : [];
 
   const openPlan = (pre?: { date: string; start: string; end: string }) => {
     setForm({
-      woId: '', seq: '', process: '', machine: '',
+      woId: '', seq: '', process: '', machine: '', operator: '',
       plan: pre ? { from: pre.date, to: pre.date, slots: [{ start: pre.start, end: pre.end }] } : { ...emptyPlan(), from: anchor, to: anchor },
     });
     setShowPlan(true);
@@ -143,11 +152,11 @@ export function PlannedTimeline() {
   const pickWo = (id: string) => {
     const list = ops.filter(o => String(o.work_order_id) === id).sort((a, b) => (a.operation_sequence ?? 0) - (b.operation_sequence ?? 0));
     const first = list.length === 1 ? list[0] : null;
-    setForm(f => ({ ...f, woId: id, seq: first ? String(first.operation_sequence) : '', process: first ? (first.process_name || first.process_code || '') : '', machine: first?.machine || '' }));
+    setForm(f => ({ ...f, woId: id, seq: first ? String(first.operation_sequence) : '', process: first ? (first.process_name || first.process_code || '') : '', machine: first?.machine || '', operator: first?.operator || '' }));
   };
   const pickOp = (seq: string) => {
     const op = opsForWo.find(o => String(o.operation_sequence) === seq);
-    setForm(f => ({ ...f, seq, process: op ? (op.process_name || op.process_code || '') : '', machine: op?.machine || f.machine }));
+    setForm(f => ({ ...f, seq, process: op ? (op.process_name || op.process_code || '') : '', machine: op?.machine || f.machine, operator: op?.operator || f.operator }));
   };
 
   const savePlan = async () => {
@@ -156,16 +165,21 @@ export function PlannedTimeline() {
     if (!form.machine.trim()) return alert('Select the machine.');
     const err = planError(form.plan);
     if (err) return alert(err);
-    if (conflicts.length > 0 && !window.confirm(`${form.machine} is already planned at the same time on ${conflicts.length} slot(s). Plan anyway?`)) return;
+    if (conflicts.length > 0 && !window.confirm(`${form.machine}${form.operator.trim() ? ' / ' + form.operator.trim() : ''} is already planned at the same time on ${conflicts.length} slot(s). Plan anyway?`)) return;
     setSaving(true);
     try {
       const out = expandPlan(form.plan).map(s => ({
         id: crypto.randomUUID(), work_order_id: form.woId,
         operation_id: opsForWo.find(o => String(o.operation_sequence) === form.seq)?.id ?? null,
-        operation_sequence: Number(form.seq) || 0, process_name: form.process, machine: form.machine.trim(),
+        operation_sequence: Number(form.seq) || 0, process_name: form.process, machine: form.machine.trim(), operator: form.operator.trim(),
         plan_date: s.date, start_time: s.start, end_time: s.end,
       }));
-      const r = await supabase.from('cnc_operation_plans').insert(out);
+      let r = await supabase.from('cnc_operation_plans').insert(out);
+      // Databases that have not run the operator migration yet save the plan without the man.
+      if (r.error && /'operator' column/.test(String(r.error.message))) {
+        r = await supabase.from('cnc_operation_plans').insert(out.map(({ operator: _o, ...rest }) => rest));
+        if (!r.error && form.operator.trim()) alert('Saved without the operator: run migration 20261009010000_operation_plans_operator.sql in Supabase to keep the man on plans.');
+      }
       if (r.error) throw r.error;
       setShowPlan(false);
       await load();
@@ -205,6 +219,10 @@ export function PlannedTimeline() {
         <select aria-label="Machine filter" value={machineFilter} onChange={e => setMachineFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
           <option value="All">All machines</option>
           {machines.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select aria-label="Operator filter" value={operatorFilter} onChange={e => setOperatorFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+          <option value="All">All operators</option>
+          {operators.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
         <input aria-label="Search plans" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
         <Badge variant="neutral">{Math.round(totalHours * 10) / 10} h planned in view</Badge>
@@ -253,7 +271,7 @@ export function PlannedTimeline() {
                       className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm hover:brightness-95 ${colorFor(String(r.work_order_id))} ${clash.has(r.id) ? 'ring-2 ring-red-500' : ''}`}
                       style={{ top, height }}>
                       <div className="font-bold truncate">{wo?.wo_no ?? 'Work order'}{r.process_name ? ` · ${r.process_name}` : ''}</div>
-                      <div className="truncate">{r.machine} · {fmtTime12(hh(r.start_time))}–{fmtTime12(hh(r.end_time))}</div>
+                      <div className="truncate">{r.machine}{r.operator ? ` · ${r.operator}` : ''} · {fmtTime12(hh(r.start_time))}–{fmtTime12(hh(r.end_time))}</div>
                     </button>
                   );
                 })}
@@ -281,12 +299,13 @@ export function PlannedTimeline() {
               </select>
             </FormField>
           )}
-          {form.woId && opsForWo.length === 0 && (
-            <FormField label="Process (optional)"><input className={inputClass} value={form.process} onChange={e => setForm(f => ({ ...f, process: e.target.value }))} placeholder="e.g. Machining" /></FormField>
-          )}
           <FormField label="Machine" required>
             <input className={inputClass} list="plan-machines" value={form.machine} onChange={e => setForm(f => ({ ...f, machine: e.target.value }))} placeholder="Select or type a machine" />
             <datalist id="plan-machines">{machines.map(m => <option key={m} value={m} />)}</datalist>
+          </FormField>
+          <FormField label="Operator (man)">
+            <input className={inputClass} list="plan-operators" value={form.operator} onChange={e => setForm(f => ({ ...f, operator: e.target.value }))} placeholder="Select or type the operator" />
+            <datalist id="plan-operators">{operators.map(m => <option key={m} value={m} />)}</datalist>
           </FormField>
           <PlanEditor value={form.plan} onChange={plan => setForm(f => ({ ...f, plan }))} />
           {conflicts.length > 0 && (
@@ -309,6 +328,7 @@ export function PlannedTimeline() {
               <p><b>{wo?.wo_no ?? 'Work order'}</b> — {wo?.part_name} {wo?.customer ? `(${wo.customer})` : ''}</p>
               <p>Operation: {picked.process_name || '—'}{picked.operation_sequence ? ` (Seq ${picked.operation_sequence})` : ''}</p>
               <p>Machine: {picked.machine || '—'}</p>
+              <p>Operator: {picked.operator || '—'}</p>
               <p>{dayLabel(String(picked.plan_date).slice(0, 10))}, {fmtTime12(hh(picked.start_time))} – {fmtTime12(hh(picked.end_time))}</p>
               <p className="text-xs text-slate-500">This operation has {same.length} planned slot{same.length === 1 ? '' : 's'} in all.</p>
               {clash.has(picked.id) && <p className="text-xs text-red-600">Another plan uses this machine at the same time.</p>}

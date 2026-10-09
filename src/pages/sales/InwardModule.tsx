@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 
-export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: () => void; onAddInward?: () => void; refreshSignal?: number }) {
+export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDelete }: { onBack: () => void; onAddInward?: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void }) {
   const { company } = useAuth();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,7 +173,7 @@ export function InwardModule({ onBack, onAddInward, refreshSignal }: { onBack: (
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
                   <td className="p-3">
-                    <Button variant="secondary" size="sm" onClick={() => openRecord(record)}>View Details</Button>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => openRecord(record)}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

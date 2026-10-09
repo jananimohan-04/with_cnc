@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, ArrowLeft, FileText } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Plus } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
-export function FinishedGoodsModule({ onBack }: { onBack: () => void }) {
+export function FinishedGoodsModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, onView }: { onBack: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -13,7 +13,7 @@ export function FinishedGoodsModule({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [refreshSignal]);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -47,6 +47,11 @@ export function FinishedGoodsModule({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onAdd && (
+            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
+              <Plus size={15} /> Add Finished Good
+            </button>
+          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -84,7 +89,7 @@ export function FinishedGoodsModule({ onBack }: { onBack: () => void }) {
                   <td className="p-3 text-sm text-slate-700">{record.completed ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
                   <td className="p-3">
-                    <Button variant="secondary" size="sm" onClick={() => openRecord(record)}>View Details</Button>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(record) : openRecord(record))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

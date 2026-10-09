@@ -250,8 +250,8 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
       const plan = planFromRows(mine);
       return {
       origSeq: Number(op.operation_sequence) || 0,
-      plan: mine.length > 0 && plan ? plan : undefined,
-      planLocked: mine.length > 0 && !plan,
+      plan: mine.length > 0 ? plan : undefined,
+      planLocked: false,
       key: newOpKey(),
       processId: op.process_id ?? '',
       machine: op.machine ?? '',
@@ -490,19 +490,21 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         if (o.planLocked && o.origSeq) {
           planRows.filter((r) => String(r.work_order_id) === workOrderId && Number(r.operation_sequence) === o.origSeq).forEach((r) => {
             out.push({ id: crypto.randomUUID(), work_order_id: workOrderId, operation_sequence: seq, process_name: proc?.process_name ?? r.process_name ?? '',
-              machine: r.machine ?? '', plan_date: String(r.plan_date).slice(0, 10), start_time: String(r.start_time).slice(0, 5), end_time: String(r.end_time).slice(0, 5) });
+              machine: r.machine ?? '', operator: r.operator ?? '', plan_date: String(r.plan_date).slice(0, 10), start_time: String(r.start_time).slice(0, 5), end_time: String(r.end_time).slice(0, 5) });
           });
         } else if (o.plan && !planIsBlank(o.plan)) {
           expandPlan(o.plan).forEach((seg) => out.push({
             id: crypto.randomUUID(), work_order_id: workOrderId, operation_sequence: seq, process_name: proc?.process_name ?? '',
-            machine: o.machine.trim(), plan_date: seg.date, start_time: seg.start, end_time: seg.end,
+            machine: o.machine.trim(), operator: o.operator.trim(), plan_date: seg.date, start_time: seg.start, end_time: seg.end,
           }));
         }
       });
       const del = await supabase.from('cnc_operation_plans').delete().eq('work_order_id', workOrderId);
       if (del.error) throw del.error;
       if (out.length > 0) {
-        const ins = await supabase.from('cnc_operation_plans').insert(out);
+        let ins = await supabase.from('cnc_operation_plans').insert(out);
+        // Databases that have not run the operator migration yet keep the plan without the man.
+        if (ins.error && /'operator' column/.test(String(ins.error.message))) ins = await supabase.from('cnc_operation_plans').insert(out.map(({ operator: _o, ...rest }) => rest));
         if (ins.error) throw ins.error;
       }
       void loadPlans();

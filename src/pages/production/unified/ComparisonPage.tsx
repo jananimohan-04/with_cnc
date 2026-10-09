@@ -8,13 +8,13 @@ import { CalendarNav, TimelineGrid, colorFor, minToHhmm, useCalendarNav, type Gr
 // Comparison: the planned timeline set against what actually ran (job cards' actual start / end), operation by
 // operation, with how late or early each one started and finished.
 
-interface PlanRow { id: string; work_order_id: string; operation_sequence: number; process_name: string; machine: string; plan_date: string; start_time: string; end_time: string }
+export interface PlanRow { id: string; work_order_id: string; operation_sequence: number; process_name: string; machine: string; operator?: string; plan_date: string; start_time: string; end_time: string }
 
 const hh = (t: unknown) => String(t ?? '').slice(0, 5);
 const minOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
 /** Split a time span into one piece per calendar day (local time). */
-function splitByDay(start: Date, end: Date): { date: string; startMin: number; endMin: number }[] {
+export function splitByDay(start: Date, end: Date): { date: string; startMin: number; endMin: number }[] {
   const out: { date: string; startMin: number; endMin: number }[] = [];
   if (!(end.getTime() > start.getTime())) return out;
   let cur = new Date(start);
@@ -27,16 +27,16 @@ function splitByDay(start: Date, end: Date): { date: string; startMin: number; e
   return out;
 }
 
-const dur = (mins: number) => {
+export const dur = (mins: number) => {
   const a = Math.abs(Math.round(mins)); const h = Math.floor(a / 60); const m = a % 60;
   return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
 };
 const signed = (mins: number) => (Math.round(mins) === 0 ? 'on time' : `${mins > 0 ? '+' : '−'}${dur(mins)}`);
-const dt = (d: Date | null) => (d ? `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${fmtTime12(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}` : '—');
+export const dt = (d: Date | null) => (d ? `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${fmtTime12(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}` : '—');
 // Job cards are linked to an operation by (work order, op_no = operation sequence x 10).
-const seqOfJob = (j: any) => Math.round((Number(j.op_no) || 0) / 10);
+export const seqOfJob = (j: any) => Math.round((Number(j.op_no) || 0) / 10);
 
-function useTimelineData() {
+export function useTimelineData() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [wos, setWos] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -59,11 +59,12 @@ function useTimelineData() {
   const woById = useMemo(() => new Map(wos.map(w => [String(w.id), w])), [wos]);
   const woByNo = useMemo(() => new Map(wos.map(w => [String(w.wo_no), w])), [wos]);
   const machines = useMemo(() => [...new Set([...plans.map(p => p.machine), ...jobs.map(j => j.machine)].map(v => String(v ?? '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [plans, jobs]);
-  return { plans, wos, jobs, missing, loading, woById, woByNo, machines };
+  const operators = useMemo(() => [...new Map([...plans.map(p => p.operator), ...jobs.map(j => j.operator)].map(v => String(v ?? '').trim()).filter(v => v && v !== '—' && v !== '-').map(v => [v.toLowerCase(), v] as const)).values()].sort((a, b) => a.localeCompare(b)), [plans, jobs]);
+  return { plans, wos, jobs, missing, loading, woById, woByNo, machines, operators, reload: load };
 }
 
 /** Where a job card really ran: actual_start to actual_end (still running = until now). */
-function jobSpan(j: any, now: Date): { start: Date; end: Date; running: boolean } | null {
+export function jobSpan(j: any, now: Date): { start: Date; end: Date; running: boolean } | null {
   if (!j.actual_start) return null;
   const start = new Date(j.actual_start); if (Number.isNaN(start.getTime())) return null;
   const endRaw = j.actual_end ? new Date(j.actual_end) : null;
@@ -72,7 +73,7 @@ function jobSpan(j: any, now: Date): { start: Date; end: Date; running: boolean 
 }
 
 interface CompareRow {
-  key: string; woNo: string; part: string; customer: string; operation: string; machine: string;
+  key: string; woNo: string; part: string; customer: string; operation: string; machine: string; operator: string;
   plannedStart: Date | null; plannedEnd: Date | null; plannedMin: number;
   actualStart: Date | null; actualEnd: Date | null; actualMin: number; running: boolean;
   status: string; group: 'Unplanned' | 'Overdue' | 'Should be running' | 'Upcoming' | 'In progress' | 'On time' | 'Early' | 'Late';
@@ -90,6 +91,7 @@ export function ComparisonTimeline() {
   const data = useTimelineData();
   const nav = useCalendarNav();
   const [machine, setMachine] = useState('All');
+  const [operator, setOperator] = useState('All');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<typeof STATUS_FILTERS[number]>('All');
   const [range, setRange] = useState(monthRange());
@@ -120,6 +122,7 @@ export function ComparisonTimeline() {
       const wo = data.woByNo.get(e.woNo);
       const mach = e.plans[0]?.machine || e.jobs[0]?.machine || '';
       const opName = e.plans[0]?.process_name || e.jobs[0]?.operation || '';
+      const man = String(e.plans.find(p => p.operator)?.operator || e.jobs.find(j => j.operator && j.operator !== '—' && j.operator !== '-')?.operator || '').trim();
       const segs = e.plans.map(p => ({ s: new Date(`${String(p.plan_date).slice(0, 10)}T${hh(p.start_time)}:00`), e: new Date(`${String(p.plan_date).slice(0, 10)}T${hh(p.end_time)}:00`) }));
       const plannedStart = segs.length ? new Date(Math.min(...segs.map(x => x.s.getTime()))) : null;
       const plannedEnd = segs.length ? new Date(Math.max(...segs.map(x => x.e.getTime()))) : null;
@@ -141,7 +144,7 @@ export function ComparisonTimeline() {
       else if ((endDelta ?? 0) > LATE_MIN) { label = `Finished late (${signed(endDelta!)})`; group = 'Late'; tone = 'bad'; }
       else if ((endDelta ?? 0) < -LATE_MIN) { label = `Finished early (${signed(endDelta!)})`; group = 'Early'; tone = 'ok'; }
       else { label = 'Finished on time'; group = 'On time'; tone = 'ok'; }
-      out.push({ key: k, woNo: e.woNo, part: wo?.part_name ?? '', customer: wo?.customer ?? '', operation: opName, machine: mach, plannedStart, plannedEnd, plannedMin, actualStart, actualEnd, actualMin, running, status: label, group, tone, startDelta, endDelta, plans: e.plans, jobs: e.jobs });
+      out.push({ key: k, woNo: e.woNo, part: wo?.part_name ?? '', customer: wo?.customer ?? '', operation: opName, machine: mach, operator: man, plannedStart, plannedEnd, plannedMin, actualStart, actualEnd, actualMin, running, status: label, group, tone, startDelta, endDelta, plans: e.plans, jobs: e.jobs });
     }
     return out.sort((a, b) => (a.plannedStart ?? a.actualStart ?? new Date(0)).getTime() - (b.plannedStart ?? b.actualStart ?? new Date(0)).getTime());
   }, [data.plans, data.jobs, data.woById, data.woByNo]);
@@ -152,14 +155,15 @@ export function ComparisonTimeline() {
     const touches = (a: Date | null, b: Date | null) => !!a && !!b && a.getTime() <= to && b.getTime() >= from;
     if (!touches(r.plannedStart, r.plannedEnd) && !touches(r.actualStart, r.actualEnd ?? new Date())) return false;
     if (machine !== 'All' && r.machine !== machine) return false;
+    if (operator !== 'All' && r.operator !== operator) return false;
     if (status === 'Late / overdue' && !['Late', 'Overdue'].includes(r.group)) return false;
     if (status === 'On time' && !['On time', 'Early'].includes(r.group)) return false;
     if (status === 'In progress' && !['In progress', 'Should be running'].includes(r.group)) return false;
     if (status === 'Upcoming' && r.group !== 'Upcoming') return false;
     if (status === 'Unplanned' && r.group !== 'Unplanned') return false;
-    if (q && !`${r.woNo} ${r.part} ${r.customer} ${r.operation} ${r.machine}`.toLowerCase().includes(q)) return false;
+    if (q && !`${r.woNo} ${r.part} ${r.customer} ${r.operation} ${r.machine} ${r.operator}`.toLowerCase().includes(q)) return false;
     return true;
-  }), [all, range, machine, status, q]);
+  }), [all, range, machine, operator, status, q]);
 
   const kpi = useMemo(() => {
     const finished = rows.filter(r => ['On time', 'Early', 'Late'].includes(r.group));
@@ -258,6 +262,10 @@ export function ComparisonTimeline() {
           <option value="All">All machines</option>
           {data.machines.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+        <select aria-label="Operator filter" value={operator} onChange={e => setOperator(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+          <option value="All">All operators</option>
+          {data.operators.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
         <select aria-label="Status filter" value={status} onChange={e => setStatus(e.target.value as typeof status)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
           {STATUS_FILTERS.map(s => <option key={s} value={s}>{s === 'All' ? 'All statuses' : s}</option>)}
         </select>
@@ -305,7 +313,7 @@ export function ComparisonTimeline() {
                 <tr key={r.key} className="border-t hover:bg-slate-50/70 cursor-pointer" data-testid="comparison-row" onClick={() => setPicked(r)}>
                   <td className="p-2"><div className="font-mono font-semibold text-slate-800">{r.woNo}</div><div className="text-[10px] text-slate-500">{r.part}{r.customer ? ` · ${r.customer}` : ''}</div></td>
                   <td className="p-2">{r.operation || '—'}</td>
-                  <td className="p-2">{r.machine || '—'}</td>
+                  <td className="p-2">{r.machine || '—'}{r.operator ? <div className="text-[10px] text-slate-500">{r.operator}</div> : null}</td>
                   <td className="p-2 whitespace-nowrap">{r.plannedStart ? `${dt(r.plannedStart)} → ${dt(r.plannedEnd)}` : '—'}</td>
                   <td className="p-2 text-right">{r.plannedMin ? dur(r.plannedMin) : '—'}</td>
                   <td className="p-2 whitespace-nowrap">{r.actualStart ? `${dt(r.actualStart)} → ${r.running ? 'running' : dt(r.actualEnd)}` : '—'}</td>
@@ -351,7 +359,7 @@ export function ComparisonTimeline() {
           <div className="space-y-4 text-sm" data-testid="cmp-detail">
             <div>
               <p><b>{picked.woNo}</b> — {picked.part} {picked.customer ? `(${picked.customer})` : ''}</p>
-              <p className="text-slate-600">{picked.operation || '—'} · {picked.machine || '—'}</p>
+              <p className="text-slate-600">{picked.operation || '—'} · {picked.machine || '—'}{picked.operator ? ` · ${picked.operator}` : ''}</p>
               <p className="mt-1"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${toneClass[picked.tone]}`}>{picked.status}</span></p>
             </div>
             <div className="grid grid-cols-2 gap-4">

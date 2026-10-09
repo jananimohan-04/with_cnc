@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText } from 'lucide-react';
+import { Search, Calendar, List, Kanban as KanbanIcon, ArrowLeft, FileText, Plus } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 
-export function QuotationModule({ onBack }: { onBack: () => void }) {
+export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onAdd }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -23,7 +23,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchQuotations();
-  }, []);
+  }, [refreshSignal]);
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -134,6 +134,11 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onAdd && (
+            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
+              <Plus size={15} /> Add Quotation
+            </button>
+          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
@@ -180,7 +185,7 @@ export function QuotationModule({ onBack }: { onBack: () => void }) {
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${(quote.status === 'Converted' || quote.status === 'Accepted') ?'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>{quote.status || 'Sent'}</span>
                   </td>
                   <td className="p-3">
-                    <Button variant="secondary" size="sm" onClick={() => openQuotation(quote)}>View Details</Button>
+                    <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => openQuotation(quote)}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(quote)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(quote)}>Delete</Button>}</div>
                   </td>
                 </tr>
               ))}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fetchOrderQty, summarizeSalesOrder } from '@/lib/orderQuantities';
-import { Search, ArrowLeft } from 'lucide-react';
+import { Search, ArrowLeft, Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { SalesOrderSection } from './SalesOrderSection';
@@ -10,7 +10,7 @@ const orderValue = (r: any) => r.total_value ?? r.value;
 
 const ORDER_STATUSES = ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'];
 
-export function SalesOrderModule({ onBack }: { onBack: () => void }) {
+export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd }: { onBack: () => void; onDelete?: (record: any) => void; refreshSignal?: number; onAdd?: () => void }) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -24,7 +24,7 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [refreshSignal]);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -129,6 +129,11 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onAdd && (
+            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-brand-700 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap">
+              <Plus size={15} /> Add Sales Order
+            </button>
+          )}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -184,6 +189,7 @@ export function SalesOrderModule({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => void openRecord(record, false)}>View Details</Button>
                       <Button variant="secondary" size="sm" onClick={() => void openRecord(record, true)}>Edit</Button>
+                      {onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}
                     </div>
                     {(() => {
                       const q = qtyMap[record.order_no];

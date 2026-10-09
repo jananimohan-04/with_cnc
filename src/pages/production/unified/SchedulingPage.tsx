@@ -7,6 +7,7 @@ import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { TimeAmPm } from '@/components/ui/TimeAmPm';
 import { PlannedTimeline } from './PlannedTimeline';
 import { ComparisonTimeline } from './ComparisonPage';
+import { ActualTimeline } from './ActualPage';
 
 function ActualScheduling() {
   const [loading, setLoading] = useState(true);
@@ -1006,16 +1007,7 @@ function ActualScheduling() {
             );
           })()}
 
-          {woHasNoOps(selectedWOForForm) ? (
-          <FormField label="Process (optional)">
-            <select className={inputClass} value={newJobForm.processName} disabled={!!editingJob}
-              onChange={e => { const pr = processes.find((x: any) => (x.process_name || x.process_code) === e.target.value); setNewJobForm(prev => ({ ...prev, processName: e.target.value, machine: prev.machine || String(pr?.machine_type ?? '').trim() })); }}>
-              <option value="">-- No process (just a machine) --</option>
-              {processes.map((x: any) => <option key={x.id ?? x.process_code} value={x.process_name || x.process_code}>{x.process_name || x.process_code}</option>)}
-            </select>
-            <p className="text-xs text-slate-500 mt-1">This order has no operations, so the job is scheduled straight on a machine.</p>
-          </FormField>
-          ) : (
+          {!woHasNoOps(selectedWOForForm) && (
           <FormField label="Select Operation" required>
             <select
               className={inputClass}
@@ -1118,9 +1110,9 @@ function ActualScheduling() {
 // Scheduling has three views: what is planned, what actually ran, and the two compared.
 // Planned is the new timeline; Actual keeps the machine scheduling board for now; Comparison follows.
 export function SchedulingPage() {
-  const [tab, setTab] = useState<'planned' | 'actual' | 'comparison'>('planned');
+  const [tab, setTab] = useState<'planned' | 'actual' | 'comparison' | 'board'>('planned');
   const tabs: { id: typeof tab; label: string }[] = [
-    { id: 'planned', label: 'Planned Timeline' }, { id: 'actual', label: 'Actual Timeline' }, { id: 'comparison', label: 'Comparison' },
+    { id: 'planned', label: 'Planned Timeline' }, { id: 'actual', label: 'Actual Timeline' }, { id: 'comparison', label: 'Comparison' }, { id: 'board', label: 'Job Board (Machines & Manpower)' },
   ];
   return (
     <div className="space-y-4">
@@ -1131,8 +1123,9 @@ export function SchedulingPage() {
         ))}
       </div>
       {tab === 'planned' && <PlannedTimeline />}
-      {tab === 'actual' && <ActualScheduling />}
+      {tab === 'actual' && <ActualTimeline />}
       {tab === 'comparison' && <ComparisonTimeline />}
+      {tab === 'board' && <ActualScheduling />}
     </div>
   );
 }

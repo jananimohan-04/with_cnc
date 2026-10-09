@@ -58,4 +58,5 @@ alter table public.cnc_production_batches
 create index if not exists cnc_pb_job_idx
   on public.cnc_production_batches (job_card_id);
 
+notify pgrst, 'reload schema';
 commit;
