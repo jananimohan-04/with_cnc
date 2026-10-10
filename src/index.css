@@ -104,3 +104,28 @@
   z-index: 5;
   background-color: #f8fafc;
 }
+
+/* List tables: dark header bar with bold white column titles (add `erp-table` to the <table>). */
+.erp-table thead {
+  background-color: #111c33;
+}
+.erp-table thead tr,
+.erp-table thead th,
+.erp-table thead th button {
+  background-color: transparent;
+  color: #ffffff;
+}
+.erp-table thead th {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Row colours on every page table: a soft repeating tint per row (opt out with class `no-stripe`). */
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: #fff7ed; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: #eff6ff; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3) { background-color: #f0fdf4; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4) { background-color: #faf5ff; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5) { background-color: #fdf2f8; }
+main table:not(.no-stripe) > tbody > tr:hover { background-color: #e2e8f0; }

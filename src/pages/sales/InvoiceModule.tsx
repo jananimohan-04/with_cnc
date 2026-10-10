@@ -4,6 +4,7 @@ import { Search, ArrowLeft, FileText } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { InvoicesPage } from '@/pages/finance/InvoicesPage';
+import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const [records, setRecords] = useState<any[]>([]);
@@ -33,8 +34,10 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
     (r.customer_name || '').toLowerCase().includes(search.toLowerCase())
   );
 
+  const pager = usePager(filteredRecords, filteredRecords.length);
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
@@ -59,11 +62,11 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="erp-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Invoice No</th>
@@ -76,7 +79,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map(record => (
+              {pager.pageItems.map(record => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.invoice_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer_name || '-'}</td>
@@ -96,6 +99,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
           </table>
         )}
       </div>
+      <PagerFooter pager={pager} />
 
       <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Invoices Details: ' + (selectedRecord?.invoice_no || 'Pending')} size="xl" footer={
         <div className="flex justify-end w-full">

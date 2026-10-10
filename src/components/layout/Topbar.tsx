@@ -66,9 +66,9 @@ export function Topbar({
   const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
   return (
-    <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-16 flex items-center px-4 lg:px-6 gap-6">
+    <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-12 flex items-center px-4 lg:px-5 gap-4">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
+      <div className="flex items-center gap-1.5 text-[13px] flex-1 min-w-0">
         <Menu size={18} className="text-slate-400 lg:hidden flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
         {breadcrumbs.map((bc, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
@@ -86,7 +86,7 @@ export function Topbar({
 
       {/* Company: fixed for normal users, switchable for the Super Admin */}
       {isSuperAdmin ? (
-        <label className="hidden md:flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md">
+        <label className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md">
           <Building2 size={14} className="text-slate-400" />
           <select
             value={company?.id ?? ''}
@@ -101,36 +101,36 @@ export function Topbar({
           </select>
         </label>
       ) : company && (
-        <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
+        <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
           <Building2 size={14} className="text-slate-400" />
           {company.company_name}
         </div>
       )}
 
-      <div className="hidden xl:flex items-center gap-2.5 pl-2 pr-3.5 py-1.5 rounded-xl bg-gradient-to-r from-brand-50 via-white to-brand-50 border border-brand-100 shadow-sm">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shadow-sm shrink-0">
-          <CalendarDays size={15} />
+      <div className="hidden xl:flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-lg bg-gradient-to-r from-brand-50 via-white to-brand-50 border border-brand-100 shadow-sm">
+        <div className="w-6 h-6 rounded-md bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shadow-sm shrink-0">
+          <CalendarDays size={12} />
         </div>
         <div className="leading-tight">
-          <p className="text-xs font-extrabold text-slate-800 whitespace-nowrap tracking-wide">{datePart}</p>
-          <p className="text-[11px] font-bold text-brand-600 tabular-nums whitespace-nowrap tracking-widest">{timePart}</p>
+          <p className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap tracking-wide">{datePart}</p>
+          <p className="text-[10px] font-bold text-brand-600 tabular-nums whitespace-nowrap tracking-widest">{timePart}</p>
         </div>
       </div>
 
       {/* System Status */}
-      <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full">
+      <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-100 rounded-full">
         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse-ring" />
-        <span className="text-[10px] font-bold text-green-700 tracking-wide uppercase">System Online</span>
+        <span className="text-[9px] font-bold text-green-700 tracking-wide uppercase">System Online</span>
       </div>
 
       {/* Notifications */}
       <div className="relative" ref={notifRef}>
         <button
           onClick={() => setShowNotif(!showNotif)}
-          className="relative p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-lg transition-colors"
+          className="relative p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-lg transition-colors"
         >
-          <Bell size={19} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full ring-2 ring-white" />
+          <Bell size={16} />
+          <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-brand-500 rounded-full ring-2 ring-white" />
         </button>
         {showNotif && (
           <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 animate-scale-in overflow-hidden z-50">
@@ -156,14 +156,14 @@ export function Topbar({
       <div className="relative" ref={profileRef}>
         <button
           onClick={() => setShowProfile(!showProfile)}
-          className="flex items-center gap-2.5 p-1 pr-2 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+          className="flex items-center gap-2 p-0.5 pr-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
         >
-          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
             {initials}
           </div>
           <div className="hidden lg:block text-left">
-            <p className="text-xs font-bold text-slate-700 max-w-[160px] truncate">{displayName}</p>
-            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{ROLE_LABELS[profile?.role ?? ''] ?? ''}</p>
+            <p className="text-[11px] font-bold text-slate-700 max-w-[160px] truncate leading-tight">{displayName}</p>
+            <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wider leading-tight">{ROLE_LABELS[profile?.role ?? ''] ?? ''}</p>
           </div>
           <ChevronDown size={14} className="hidden lg:block text-slate-400" />
         </button>

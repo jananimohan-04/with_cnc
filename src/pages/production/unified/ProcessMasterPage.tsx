@@ -494,7 +494,6 @@ export function ProcessMasterPage() {
             { label: 'Active', value: 'Active' },
             { label: 'Inactive', value: 'Inactive' },
           ]}
-          pageSize={10}
           emptyMessage={tableMissing ? 'Process table not provisioned yet' : 'No processes found'}
         />
       )}

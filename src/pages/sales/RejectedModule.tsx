@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { REJECTION_TYPES, recordProductionBatch, summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
+import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 // Rejected: one row per order (company + order) with how much was ordered, finished, rejected and what is left. The rejections
 // themselves are kept as production batches (the same records the order's quantity tracking reads), so they reduce what can
@@ -178,8 +179,10 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const view = dlg?.mode === 'view';
 
+  const pager = usePager(shown, shown.length);
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]" data-testid="rejected-list">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]" data-testid="rejected-list">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600"><ArrowLeft className="w-5 h-5" /></button>
@@ -198,13 +201,14 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
           </div>
         </div>
       </div>
+      <PagerFooter pager={pager} />
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="overflow-x-auto p-4">
         {missing && <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Rejections are stored with production batches. Apply the production-batches migration (20260929010000_production_batches.sql) to use this list.</p>}
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="erp-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Company (Order)</th>
@@ -214,7 +218,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               </tr>
             </thead>
             <tbody>
-              {shown.map(g => (
+              {pager.pageItems.map(g => (
                 <tr key={g.orderNo} className="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-testid="rejected-row">
                   <td className="p-3">
                     <div className="font-semibold text-brand-700 text-sm">{g.company || '—'}</div>

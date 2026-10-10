@@ -1,6 +1,7 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, Search, Download, SlidersHorizontal, Plus } from 'lucide-react';
 import { Button } from './Card';
+import { PagerFooter, usePager } from './TablePager';
 
 export interface Column<T> {
   key: string;
@@ -37,7 +38,6 @@ export function DataTable<T extends Record<string, any>>({
   data,
   columns,
   searchKeys,
-  pageSize = 10,
   title,
   onAdd,
   addLabel,
@@ -50,7 +50,6 @@ export function DataTable<T extends Record<string, any>>({
   data: T[];
   columns: Column<T>[];
   searchKeys?: string[];
-  pageSize?: number;
   title?: string;
   onAdd?: () => void;
   addLabel?: string;
@@ -66,8 +65,7 @@ export function DataTable<T extends Record<string, any>>({
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [page, setPage] = useState(1);
-  const [filterValue, setFilterValue] = useState('all');
+    const [filterValue, setFilterValue] = useState('all');
 
   const filtered = useMemo(() => {
     let result = [...(data ?? [])];
@@ -93,9 +91,8 @@ export function DataTable<T extends Record<string, any>>({
     return result;
   }, [data, search, sortKey, sortDir, filterValue, filterOptions, searchKeys]);
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const currentPage = Math.min(page, totalPages || 1);
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pager = usePager(filtered, `${search}|${filterValue}`);
+  const paginated = pager.pageItems;
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -150,7 +147,6 @@ export function DataTable<T extends Record<string, any>>({
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
-              setPage(1);
             }}
             placeholder="Search records..."
             className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
@@ -164,8 +160,7 @@ export function DataTable<T extends Record<string, any>>({
               value={filterValue}
               onChange={(e) => {
                 setFilterValue(e.target.value);
-                setPage(1);
-              }}
+                }}
               className="pl-9 pr-8 py-2 text-sm font-medium rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none cursor-pointer"
             >
               <option value="all">All Status</option>
@@ -188,14 +183,14 @@ export function DataTable<T extends Record<string, any>>({
         </button>
       </div>
       <div className="overflow-x-auto scrollbar-thin flex-1">
-        <table className="w-full text-sm">
+        <table className="erp-table w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   style={{ width: col.width }}
-                  className={`px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest ${
+                  className={`px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest ${
                     col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                   }`}
                 >
@@ -240,7 +235,7 @@ export function DataTable<T extends Record<string, any>>({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-6 py-4 text-slate-700 ${
+                      className={`px-6 py-2.5 text-slate-700 ${
                         col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                       }`}
                     >
@@ -253,32 +248,7 @@ export function DataTable<T extends Record<string, any>>({
           </tbody>
         </table>
       </div>
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-white">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} records
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold text-slate-700 px-2">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+      <PagerFooter pager={pager} />
     </div>
   );
 }

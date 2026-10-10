@@ -3982,10 +3982,11 @@ export function SalesPipelinePage() {
 
 
   return (
-    <div className="p-4 lg:p-6 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
+    <div className="p-4 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
 
       {/* 2. Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-6">
+      <div className="flex flex-col gap-2 mb-2">
+      <div className="grid flex-1 min-w-0 grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
         {[
           { title: 'Total Enquiries', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Enquiry' },
           { title: 'Quotations', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'purple', stage: 'Quotation' },
@@ -4019,31 +4020,32 @@ export function SalesPipelinePage() {
                else if (stat.stage === 'Finished Goods') setActiveView('fg_list'); 
                else if (stat.stage === 'DC') setActiveView('dc_list'); 
                else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
-             }} className={`${stageColor.tile} rounded-xl p-4 shadow-sm border cursor-pointer flex items-center justify-between hover:-translate-y-1 transition-transform`}>
-               <div>
-                 <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider mb-1">{stat.title}</p>
-                 <p className="text-2xl font-bold text-white">{count}</p>
+             }} className={`${stageColor.tile} rounded-lg px-2.5 py-1.5 shadow-sm border cursor-pointer flex items-center justify-between gap-1.5 hover:-translate-y-0.5 transition-transform`}>
+               <div className="flex items-baseline gap-2 min-w-0">
+                 <p className="text-[10px] font-bold text-white/80 uppercase tracking-wide whitespace-nowrap truncate">{stat.title}</p>
+                 <p className="text-lg font-bold leading-tight text-white">{count}</p>
                </div>
-               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${stageColor.icon}`}>
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
+               <div className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center ${stageColor.icon}`}>
+                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
                </div>
              </div>
            );
         })}
       </div>
+      </div>
 
       {/* 3. Tabs & Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-        <div className="flex p-1 bg-white rounded-lg shadow-sm border border-slate-200">
-          <button 
-            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Kanban Board</button>
-          <button 
-            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
-          <button 
-            onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
+            <button 
+              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Kanban Board</button>
+            <button 
+              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>List View</button>
+            <button 
+              onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md shadow-sm transition-all ${pipelineViewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>Calendar</button>
         </div>
         
         {activeView === 'quotation_list' && (
@@ -4096,11 +4098,11 @@ export function SalesPipelinePage() {
 
       {/* 4. Kanban Pipeline (Horizontal Scroll) */}
       {activeView === 'enquiry_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <EnquiryModule onBack={() => setActiveView('pipeline')} onView={listView('lead', 'Enquiry')} onAdd={() => addForStage('Enquiry')} onEdit={listEdit('lead', 'Enquiry')} onDelete={listDelete('lead', 'Enquiry')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'quotation_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           {quoteTool ? (
             <div data-testid="quotation-tool">
               <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">← Back to quotations</button>
@@ -4117,35 +4119,40 @@ export function SalesPipelinePage() {
           )}
         </div>
       ) : activeView === 'sales_order_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <SalesOrderModule onBack={() => setActiveView('pipeline')} onView={listView('order', 'Sales Order')} onEdit={listEdit('order', 'Sales Order')} onAdd={() => addForStage('Sales Order')} onDelete={listDelete('order', 'Sales Order')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'inward_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <InwardModule onBack={() => setActiveView('pipeline')} onView={listView('inward', 'Inward')} onAddInward={openDummyInward} refreshSignal={inwardRefreshSignal + listRefresh} onEdit={listEdit('inward', 'Inward')} onDelete={listDelete('inward', 'Inward')} />
         </div>
       ) : activeView === 'rejected_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <RejectedModule onBack={() => setActiveView('pipeline')} refreshSignal={listRefresh} onChanged={() => setListRefresh(n => n + 1)} />
         </div>
       ) : activeView === 'fg_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <FinishedGoodsModule onBack={() => setActiveView('pipeline')} onAdd={() => addForStage('Finished Goods')} onView={listView('finished_goods', 'Finished Goods')} onEdit={listEdit('finished_goods', 'Finished Goods')} onDelete={listDelete('finished_goods', 'Finished Goods')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'dc_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <DeliveryChallanModule onBack={() => setActiveView('pipeline')} onView={listView('dc', 'DC')} onAdd={() => addForStage('DC')} onEdit={listEdit('dc', 'DC')} onDelete={listDelete('dc', 'DC')} refreshSignal={listRefresh} />
         </div>
       ) : activeView === 'invoice_list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <InvoiceModule key={listRefresh} onBack={() => setActiveView('pipeline')} />
         </div>
       ) : pipelineViewMode === 'list' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
-          <PipelineListView cards={cards} onView={openViewModal} />
+        <div>
+          <PipelineListView
+            cards={cards}
+            onView={openViewModal}
+            onEdit={card => { if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
+            onDelete={card => { void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}
+          />
         </div>
       ) : pipelineViewMode === 'calendar' ? (
-        <div className="flex-1 h-full min-h-[500px] mb-4">
+        <div className="min-h-[500px] mb-4">
           <PipelineCalendarView cards={cards} onView={openViewModal} />
         </div>
       ) : (
@@ -4397,77 +4404,6 @@ export function SalesPipelinePage() {
         </div>
       </div>
       )}
-
-      {/* 5. Bottom Section */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
-          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            Recent Activities
-          </h3>
-          <div className="space-y-4">
-            {recentActivities.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">No recent activities</p>
-            ) : (
-              recentActivities.map((act, i) => (
-                <div key={i} className="flex gap-3">
-                  <div className={`w-2 h-2 rounded-full ${act.color} mt-1.5 flex-shrink-0`}></div>
-                  <div>
-                    <p className="text-xs text-slate-700"><span className="font-semibold">{act.ref || 'Record'}</span> {act.action}{act.customer ? ` for ${act.customer}` : ''}</p>
-                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">{act.time ? new Date(act.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : ''}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
-          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-            Pipeline Summary
-          </h3>
-          <div className="space-y-3">
-            {columns.map(col => {
-              const count = cards.filter(c => c.stage === col).length;
-              return (
-                <div key={col} className="flex items-center justify-between">
-                  <span className="text-xs text-slate-600 font-medium">{col}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(100, (count / Math.max(1, cards.length)) * 100)}%` }}></div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-700 w-6 text-right">{count}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 relative overflow-hidden">
-          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 relative z-10">
-            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            Quick Links
-          </h3>
-          <div className="grid grid-cols-2 gap-2 relative z-10">
-            <button onClick={() => { setEnquiryForm(resetEnquiryForm()); setEnquiryModalOpen(true); }} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Enquiry</button>
-            <button onClick={() => setActiveView('quotation_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Quotation</button>
-            <button onClick={() => setActiveView('sales_order_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Sales Order</button>
-            <button onClick={() => setActiveView('inward_list')} className="text-left text-xs font-semibold text-slate-600 hover:text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-brand-100">New Inward</button>
-          </div>
-          
-          <div className="mt-6 pt-4 border-t border-slate-100 relative z-10 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ARGUSCNC™</p>
-              <p className="text-xs font-bold text-slate-800">Manufacturing Made Simple</p>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 shadow-sm border border-brand-100">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* New Lead Modal */}
       <Modal open={showNewLead} onClose={() => setShowNewLead(false)} title="Create New Company" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setShowNewLead(false)}>Cancel</Button><Button onClick={saveNewLead}>Save Company</Button></>}>

@@ -104,7 +104,7 @@ function RequireRole({ roles, children }: { roles: ErpRole[]; children: ReactEle
 }
 
 function MainLayout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();

@@ -5,6 +5,7 @@ import { Search, ArrowLeft, Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { SalesOrderSection } from './SalesOrderSection';
+import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 const orderValue = (r: any) => r.total_value ?? r.value;
 
@@ -116,8 +117,10 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
     (r.customer || '').toLowerCase().includes(search.toLowerCase())
   );
 
+  const pager = usePager(filteredRecords, filteredRecords.length);
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
@@ -147,11 +150,11 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="erp-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Order No</th>
@@ -165,7 +168,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map(record => (
+              {pager.pageItems.map(record => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.order_no || '-'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer || '-'}</td>
@@ -214,6 +217,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onAdd, onVie
           </table>
         )}
       </div>
+      <PagerFooter pager={pager} />
 
       <Modal open={!!selectedRecord} onClose={closeRecord} title={'Sales Order Details: ' + (selectedRecord?.order_no || 'Pending')} size="md" footer={
         <div className="flex justify-end w-full gap-2">

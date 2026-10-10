@@ -764,7 +764,6 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         columns={columns}
         title="Work Orders"
         searchKeys={['wo_no', 'sales_order', 'customer', 'part_name', 'status']}
-        pageSize={10}
         onRowClick={(r) => setDetailWO(r)}
         emptyMessage="No work orders found"
       />

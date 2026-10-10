@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
+import { PagerFooter, usePager } from '@/components/ui/TablePager';
 
 export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDelete, onView }: { onBack: () => void; onAddInward?: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void }) {
   const { company } = useAuth();
@@ -111,8 +112,10 @@ export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDel
     return groups;
   }, new Map<string, { key: string; label: string; records: any[] }>()).values());
 
+  const pager = usePager(productGroups, productGroups.length);
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 hover:bg-slate-200 rounded-md transition-colors text-slate-600">
@@ -146,11 +149,11 @@ export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDel
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="overflow-x-auto p-4">
         {loading ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="erp-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">Inward No</th>
@@ -161,7 +164,7 @@ export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDel
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
-            {productGroups.map(group => <tbody key={group.key}>
+            {pager.pageItems.map(group => <tbody key={group.key}>
               <tr className="border-b border-slate-200 bg-brand-50/70">
                 <td colSpan={6} className="p-3 text-sm font-bold text-brand-800">{group.label}<span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{group.records.length} inward{group.records.length === 1 ? '' : 's'}</span></td>
               </tr>
@@ -186,6 +189,7 @@ export function InwardModule({ onBack, onAddInward, refreshSignal, onEdit, onDel
           </table>
         )}
       </div>
+      <PagerFooter pager={pager} />
 
       <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title={'Inward Details: ' + (selectedRecord?.inward_no || 'Pending')} size="lg" footer={
         <div className="flex justify-between w-full">

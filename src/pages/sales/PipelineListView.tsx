@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Search, Download, Eye } from 'lucide-react';
+import { Search, Download, Eye, Edit2, Trash2 } from 'lucide-react';
+import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { KanbanCard } from './SalesPipelinePage';
 
 interface PipelineListViewProps {
   cards: KanbanCard[];
   onView: (card: KanbanCard) => void;
+  onEdit?: (card: KanbanCard) => void;
+  onDelete?: (card: KanbanCard) => void;
 }
 
-export function PipelineListView({ cards, onView }: PipelineListViewProps) {
+
+export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineListViewProps) {
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('All');
   const [stageFilter, setStageFilter] = useState('All');
@@ -40,9 +44,12 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
     return matchesSearch && matchesCustomer && matchesStage;
   });
 
+  const pager = usePager(filteredCards, `${search}|${customerFilter}|${stageFilter}`);
+  const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full min-h-[500px]">
-      <div className="p-4 border-b border-slate-200 flex flex-wrap gap-3 items-center bg-slate-50">
+    <div className="flex flex-col">
+      <div className="pb-2 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input 
@@ -54,12 +61,12 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
           />
         </div>
         
-        <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
+        <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1 focus:outline-none focus:border-brand-500">
           <option value="All">All Companies</option>
           {customers.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-brand-500">
+        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1 focus:outline-none focus:border-brand-500">
           <option value="All">All Stages</option>
           {stageOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -69,37 +76,47 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse min-w-[1200px]">
-          <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
-            <tr className="text-slate-500 text-[11px] uppercase tracking-wider border-b border-slate-200">
-              <th className="p-3 font-semibold">#</th>
-              <th className="p-3 font-semibold">Enquiry No</th>
-              <th className="p-3 font-semibold">Date</th>
-              <th className="p-3 font-semibold">Company</th>
-              <th className="p-3 font-semibold">Products</th>
-              <th className="p-3 font-semibold">Stage</th>
-              <th className="p-3 font-semibold text-right">Qty</th>
-              <th className="p-3 font-semibold">Remarks</th>
-              <th className="p-3 font-semibold text-center">Actions</th>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="text-white text-[13px] font-bold uppercase tracking-wider">
+              <th className="bg-slate-800 px-4 py-3.5 w-12">#</th>
+              <th className="bg-slate-800 px-4 py-3.5">Enquiry No</th>
+              <th className="bg-slate-800 px-4 py-3.5">Date</th>
+              <th className="bg-slate-800 px-4 py-3.5">Company</th>
+              <th className="bg-slate-800 px-4 py-3.5">Products</th>
+              <th className="bg-slate-800 px-4 py-3.5">Stage</th>
+              <th className="bg-slate-800 px-4 py-3.5 text-right">Qty</th>
+              <th className="bg-slate-800 px-4 py-3.5">Remarks</th>
+              <th className="bg-slate-800 px-4 py-3.5 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredCards.map((card, index) => (
-              <tr key={card.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors group">
-                <td className="p-3 text-sm text-slate-400">{index + 1}</td>
-                <td className="p-3 text-sm font-semibold text-brand-600 cursor-pointer" onClick={() => onView(card)}>{card.refNo}</td>
-                <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{card.date}</td>
-                <td className="p-3 text-sm font-medium text-slate-800">{card.customer}</td>
-                <td className="p-3 text-sm text-slate-700 max-w-[200px] truncate" title={card.part}>{card.part}</td>
-                <td className="p-3 text-sm text-slate-600">{stageOf(card)}</td>
-                <td className="p-3 text-sm text-slate-700 text-right font-medium">{card.qty}</td>
-                <td className="p-3 text-xs text-slate-500 max-w-[150px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
-                <td className="p-3 text-center">
-                  <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => onView(card)} className="p-1 text-slate-400 hover:text-brand-600 transition-colors" title="View Details">
-                      <Eye className="w-4 h-4" />
+            {pageCards.map((card, index) => (
+              <tr key={card.id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/60 hover:bg-brand-50/50 transition-colors">
+                <td className="px-4 py-1.5 text-sm text-slate-400">{start + index + 1}</td>
+                <td className="px-4 py-1.5 text-[15px] font-bold text-brand-600 cursor-pointer hover:underline" onClick={() => onView(card)}>{card.refNo}</td>
+                <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap">{card.date}</td>
+                <td className="px-4 py-1.5 text-[15px] font-semibold text-slate-800">{card.customer}</td>
+                <td className="px-4 py-1.5 text-sm text-slate-700 max-w-[220px] truncate" title={card.part}>{card.part}</td>
+                <td className="px-4 py-1.5 whitespace-nowrap"><span className="inline-block rounded-full bg-brand-50 text-brand-700 border border-brand-100 px-2.5 py-0.5 text-xs font-semibold">{stageOf(card)}</span></td>
+                <td className="px-4 py-1.5 text-[15px] text-slate-800 text-right font-bold">{card.qty}</td>
+                <td className="px-4 py-1.5 text-xs text-slate-500 max-w-[160px] truncate">{card.raw?.remarks || card.raw?.internal_remarks || '-'}</td>
+                <td className="px-4 py-1.5">
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => onView(card)} className="p-1.5 rounded-md text-slate-500 hover:text-brand-600 hover:bg-brand-50 transition-colors" title="View Details" aria-label={`View ${card.refNo}`}>
+                      <Eye className="w-[18px] h-[18px]" />
                     </button>
+                    {onEdit && (
+                      <button onClick={() => onEdit(card)} className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit" aria-label={`Edit ${card.refNo}`}>
+                        <Edit2 className="w-[18px] h-[18px]" />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button onClick={() => onDelete(card)} className="p-1.5 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete" aria-label={`Delete ${card.refNo}`}>
+                        <Trash2 className="w-[18px] h-[18px]" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -114,6 +131,7 @@ export function PipelineListView({ cards, onView }: PipelineListViewProps) {
           </tbody>
         </table>
       </div>
+      <PagerFooter pager={pager} sticky />
     </div>
   );
 }

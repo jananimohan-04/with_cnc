@@ -4,7 +4,7 @@ import { navSections } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function Sidebar({
-  collapsed,
+  collapsed: pinnedClosed,
   onToggle,
   currentPage,
   onNavigate,
@@ -19,6 +19,10 @@ export function Sidebar({
   onCloseMobile?: () => void;
 }) {
   const { profile } = useAuth();
+  // Closed by default: an icon rail that opens (over the page, without pushing it) while the mouse is on it.
+  const [hovered, setHovered] = useState(false);
+  const closed = pinnedClosed && !hovered && !mobileOpen;
+  const collapsed = false; // when visible the menu always shows full labels; 'closed' hides it entirely
   const visibleSections = navSections
     .map((s) => ({ ...s, items: s.items.filter((i) => !i.roles || (profile && i.roles.includes(profile.role))) }))
     .filter((s) => s.items.length > 0);
@@ -47,12 +51,22 @@ export function Sidebar({
           onClick={onCloseMobile}
         />
       )}
+      {/* Keeps the page's left edge fixed while the rail opens over it. */}
+      <div className={`flex-shrink-0 w-0 ${pinnedClosed ? 'lg:w-0' : 'lg:w-[220px]'}`}>
+      {/* Closed: only a small arrow tab on the left edge; the mouse on it opens the menu. */}
+      {closed && (
+        <div onMouseEnter={() => setHovered(true)} className="hidden lg:flex fixed left-0 top-1/2 -translate-y-1/2 z-50 h-14 w-4 items-center justify-center rounded-r-lg bg-navy-950 text-navy-300 shadow-lg cursor-pointer hover:w-5 hover:text-white" aria-label="Open menu">
+          <ChevronRight size={14} />
+        </div>
+      )}
       <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         className={`${
-          collapsed ? 'w-16' : 'w-[260px]'
+          'w-[220px]'
         } ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } fixed lg:static flex-shrink-0 bg-navy-950 text-white flex flex-col transition-all duration-300 ease-in-out h-screen top-0 left-0 z-50 shadow-[4px_0_24px_rgba(0,0,0,0.15)]`}
+          mobileOpen ? 'translate-x-0' : closed ? '-translate-x-full' : 'translate-x-0 lg:translate-x-0'
+        } fixed bg-navy-950 text-white flex flex-col overflow-x-hidden h-screen top-0 left-0 z-50 shadow-[4px_0_24px_rgba(0,0,0,0.15)]`}
       >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-24 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10">
@@ -89,7 +103,6 @@ export function Sidebar({
               {(isExpanded || collapsed) && (
                 <div className="mt-1 space-y-1">
                   {section.items.map((item) => {
-                    const Icon = item.icon;
                     const active = currentPage === item.page;
                     return (
                       <button
@@ -99,7 +112,7 @@ export function Sidebar({
                           if (onCloseMobile) onCloseMobile();
                         }}
                         title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 group relative ${
+                        className={`w-full flex items-center px-3 py-1.5 rounded-lg text-sm transition-all duration-200 group relative ${
                           active
                             ? 'bg-brand-600/10 text-brand-500 font-semibold'
                             : 'text-navy-300 hover:bg-navy-900 hover:text-white'
@@ -108,7 +121,6 @@ export function Sidebar({
                         {active && (
                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-500 rounded-r-full shadow-glow-red" />
                         )}
-                        <Icon size={16} className={`flex-shrink-0 transition-colors ${active ? 'text-brand-500' : `${item.iconClass ?? 'text-navy-400'} group-hover:brightness-125`}`} />
                         {!collapsed && <span className="truncate text-[13px]">{item.label}</span>}
                       </button>
                     );
@@ -126,11 +138,12 @@ export function Sidebar({
           onClick={onToggle}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs text-navy-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-800 hover:border-navy-700 rounded-lg transition-all"
         >
-          <ChevronRight size={14} className={`transition-transform duration-300 ${collapsed ? '' : 'rotate-180'}`} />
-          {!collapsed && <span className="font-medium tracking-wide">Collapse Menu</span>}
+          <ChevronRight size={14} className={`transition-transform duration-300 ${pinnedClosed ? '' : 'rotate-180'}`} />
+          {!collapsed && <span className="font-medium tracking-wide">{pinnedClosed ? 'Pin Menu Open' : 'Collapse Menu'}</span>}
         </button>
       </div>
     </aside>
+      </div>
     </>
   );
 }
