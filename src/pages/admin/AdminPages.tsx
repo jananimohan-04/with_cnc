@@ -89,7 +89,7 @@ export function UsersPage() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const visibleUsers = useMemo(
-    () => (isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter) : users),
+    () => (isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter || u.role === 'SUPER_ADMIN') : users),
     [users, companyFilter, isSuperAdmin],
   );
 
