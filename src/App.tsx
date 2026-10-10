@@ -8,6 +8,7 @@ import { AuthProvider, useAuth, type ErpRole } from './contexts/AuthContext';
 import { AdminAssistant } from './components/AdminAssistant';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
+import { HeaderKpiProvider } from './contexts/HeaderKpiContext';
 import { Dashboard } from './pages/Dashboard';
 
 import {
@@ -126,6 +127,7 @@ function MainLayout() {
   };
 
   return (
+    <HeaderKpiProvider>
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar 
         collapsed={sidebarCollapsed} 
@@ -262,6 +264,7 @@ function MainLayout() {
       </div>
       <AdminAssistant />
     </div>
+    </HeaderKpiProvider>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
@@ -10,6 +10,7 @@ import { uploadOrderFile } from '@/lib/orderFiles';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { EnquiryModule } from './EnquiryModule';
 import { QuotationModule } from './QuotationModule';
 import { HsnDatalist } from '../../components/HsnDatalist';
@@ -135,7 +136,7 @@ function formatSaleOrderDateTime(order: any): string | null {
 
 function enquiryProductOptions(enquiries: any[], leadNo?: string, orders?: any[]) {
   // Sales-stage numbers carry a date-time stamp (1009-26Sep26-1208AM) while the
-  // enquiry stores the plain number (1009) — compare base numbers so both match.
+  // enquiry stores the plain number (1009) â€” compare base numbers so both match.
   const baseOf = (s: any) => String(s || '').replace(/-\d{2}[A-Za-z]{3}\d{2}-\d{4}(AM|PM)$/, '');
   const wantBase = baseOf(leadNo || '');
   const ordersByBase = new Map<string, any[]>();
@@ -325,7 +326,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
         idempotencyKey: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `rej-${Date.now()}`,
       });
       if ((res as any)?.pendingMigration) {
-        setMsg('Batch storage is not provisioned — apply the production-batches migration first.');
+        setMsg('Batch storage is not provisioned â€” apply the production-batches migration first.');
         return;
       }
       if (!(res as any)?.saved) { setMsg('Unable to record rejection. Nothing was saved.'); return; }
@@ -346,7 +347,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
       <QtySummaryGrid q={q} />
       <div className="mt-2"><QtyProgress q={q} /></div>
       <details className="mt-2">
-        <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches · delivery · invoice)</summary>
+        <summary className="text-xs font-semibold text-violet-700 cursor-pointer">Full reconciliation (batches Â· delivery Â· invoice)</summary>
         <div className="mt-2"><QtyBreakdown q={q} /></div>
       </details>
       {allowReject && (
@@ -355,7 +356,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
           <FormField label="In which product? *">
             <select className={inputClass} value={rejProduct} onChange={(e) => setRejProduct(e.target.value)}>
-              <option value="">Select product…</option>
+              <option value="">Select productâ€¦</option>
               {((q.products ?? []).some((p) => p.ordered > 0) ? (q.products ?? []).filter((p) => p.ordered > 0) : (q.products ?? [])).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
             </select>
           </FormField>
@@ -364,7 +365,7 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
           </FormField>
           <FormField label="Rejection Type *">
             <select className={inputClass} value={rejType} onChange={(e) => setRejType(e.target.value)}>
-              <option value="">Select…</option>
+              <option value="">Selectâ€¦</option>
               {REJECTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
@@ -378,10 +379,10 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
           </FormField>
         </div>
         <div className="flex items-center gap-2 mt-2">
-          <Button size="sm" disabled={saving} onClick={() => void saveRejection()}>{saving ? 'Saving…' : 'Save Rejection'}</Button>
+          <Button size="sm" disabled={saving} onClick={() => void saveRejection()}>{saving ? 'Savingâ€¦' : 'Save Rejection'}</Button>
           {msg && <span className="text-xs text-slate-600">{msg}</span>}
         </div>
-        <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched — rejected stays traceable and never enters stock, DCs or invoices.</p>
+        <p className="text-[11px] text-slate-400 mt-1">Good quantity is untouched â€” rejected stays traceable and never enters stock, DCs or invoices.</p>
       </div>
       )}
     </div>
@@ -389,8 +390,8 @@ export function QtyTrackingSection({ q, userName, onSaved, allowReject = true }:
 }
 
 /** Enquiry edit form (view modal, edit mode): the same layout as the New
- *  Enquiry entry form — unique number, company, product rows with
- *  name/qty/upload/remarks — plus the summary banner strip. Saves with an
+ *  Enquiry entry form â€” unique number, company, product rows with
+ *  name/qty/upload/remarks â€” plus the summary banner strip. Saves with an
  *  UPDATE (no new record); uploads reuse the existing storage mechanism. */
 /** The entry form's input look; in view mode the same boxes are shown read-only so Add, Edit and View share one layout. */
 const fieldClass = (editable: boolean) => (editable ? inputClass : `${inputClass} !bg-slate-50 !text-slate-700 cursor-default focus:!ring-0 focus:!border-slate-300`);
@@ -585,7 +586,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       setItems(next);
                     }} />
                   ) : (
-                    <input readOnly aria-label="Remarks" className={fieldClass(false)} placeholder="—" value={item.remarks || ''} />
+                    <input readOnly aria-label="Remarks" className={fieldClass(false)} placeholder="â€”" value={item.remarks || ''} />
                   )}
                 </div>
                 {editMode ? (
@@ -625,7 +626,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
 }
 
 /** Quotation edit form (view modal, edit mode): the same layout as the Create
- *  Quotation entry form — context banner, quotation date, editable
+ *  Quotation entry form â€” context banner, quotation date, editable
  *  products/items table with computed totals, additional details. Saves with
  *  an UPDATE (totals recomputed with the entry formula); uploads reuse the
  *  existing storage mechanism. */
@@ -773,11 +774,11 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (â‚¹)</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
+                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (â‚¹)</th>
                 <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
-                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
+                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (â‚¹)</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">File</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Action</th>
               </tr>
@@ -804,7 +805,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                   <td className="px-3 py-2">
                     <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst ?? ''} onChange={(e) => upd(idx, { gst: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">â‚¹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-2 text-center">
                     <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
                       <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
@@ -836,7 +837,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
             <tfoot className="bg-slate-50 border-t border-slate-200">
               <tr>
                 <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
-                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">â‚¹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -856,7 +857,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
       {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
       {!readOnly && (
         <div className="flex justify-end mt-4">
-          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
+          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Savingâ€¦' : 'Save Changes'}</Button>
         </div>
       )}
     </fieldset>
@@ -1050,7 +1051,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
   const textCell = (label: string, v: any) => (
     <div key={label}>
       <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
-      <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
+      <span className="text-sm text-slate-800 font-medium break-words">{v === null || v === undefined || v === '' ? 'â€”' : String(v)}</span>
     </div>
   );
 
@@ -1061,14 +1062,14 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">DC No</span>
-          <span className="text-sm text-slate-800 font-mono font-bold break-words">{first.delivery_no || '—'}</span>
+          <span className="text-sm text-slate-800 font-mono font-bold break-words">{first.delivery_no || 'â€”'}</span>
         </div>
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Date</span>
           {editMode ? (
             <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{date || '—'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{date || 'â€”'}</span>
           )}
         </div>
         <div className="col-span-2 md:col-span-1">
@@ -1151,39 +1152,39 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
                 {editMode ? (
                   <input className={inputCls} placeholder="Part name" value={it.partName || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, partName: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.partName || '—'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.partName || 'â€”'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input className={inputCls} placeholder="Select HSN" list={HSN_LIST_ID} value={it.hsn || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, hsn: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || '—'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.hsn || 'â€”'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input type="number" min={0} className={`${inputCls} tabular-nums`} value={it.qty ?? ''} placeholder="0" onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, qty: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.qty === '' || it.qty == null ? '—' : it.qty}</span>
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.qty === '' || it.qty == null ? 'â€”' : it.qty}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input className={inputCls} placeholder="Nos" value={it.unit || ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, unit: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium break-words">{it.unit || '—'}</span>
+                  <span className="text-sm text-slate-800 font-medium break-words">{it.unit || 'â€”'}</span>
                 )}
               </div>
               <div>
                 {editMode ? (
                   <input type="number" min={0} className={inputCls} placeholder="0.00" value={it.price ?? ''} onChange={(e) => setLines((list) => list.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r)))} />
                 ) : (
-                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.price === '' || it.price == null ? '—' : `Rs. ${Number(it.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</span>
+                  <span className="text-sm text-slate-800 font-medium tabular-nums">{it.price === '' || it.price == null ? 'â€”' : `Rs. ${Number(it.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</span>
                 )}
               </div>
               <div>
-                <span className="text-sm text-slate-800 font-bold tabular-nums">{amt ? `Rs. ${amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</span>
+                <span className="text-sm text-slate-800 font-bold tabular-nums">{amt ? `Rs. ${amt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'â€”'}</span>
               </div>
             </div>
           );
@@ -1195,7 +1196,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           {editMode ? (
             <input className={inputCls} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{receiverName || '—'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{receiverName || 'â€”'}</span>
           )}
         </div>
         <div>
@@ -1205,7 +1206,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           ) : custSignature ? (
             <img src={custSignature} alt="Customer signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
-            <span className="text-sm text-slate-400">—</span>
+            <span className="text-sm text-slate-400">â€”</span>
           )}
         </div>
         <div>
@@ -1213,7 +1214,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           {editMode ? (
             <input className={inputCls} value={senderName} onChange={(e) => setSenderName(e.target.value)} />
           ) : (
-            <span className="text-sm text-slate-800 font-medium break-words">{senderName || '—'}</span>
+            <span className="text-sm text-slate-800 font-medium break-words">{senderName || 'â€”'}</span>
           )}
         </div>
         <div>
@@ -1223,7 +1224,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           ) : authSignature ? (
             <img src={authSignature} alt="Authorized signature" className="h-12 w-auto rounded border border-slate-200 bg-white" />
           ) : (
-            <span className="text-sm text-slate-400">—</span>
+            <span className="text-sm text-slate-400">â€”</span>
           )}
         </div>
       </div>
@@ -1268,12 +1269,63 @@ export function SalesPipelinePage() {
   };
   const [, setLoading] = useState(true);
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
+  // Per-column kanban search: term typed in each column's own search box.
+  const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [activeCommentTarget, setActiveCommentTarget] = useState<KanbanCard | null>(null);
   const [customerFilter, setCustomerFilter] = useState<string>('All Companies');
   // Quotation tools (calculator, libraries ...) open inside this page instead of going to the side menu.
   const [quoteTool, setQuoteTool] = useState<string | null>(null);
   useEffect(() => { if (activeView !== 'quotation_list') setQuoteTool(null); }, [activeView]);
+  // Pieces rejected so far (the Rejected tile); kept as production batches, so nothing is added to the board.
+  const [rejectedTotal, setRejectedTotal] = useState(0);
+
+  // KPI strip lives in the Topbar (single header line); the page supplies the data.
+  const { setKpis } = useHeaderKpis();
+  const stageColors: Record<string, { tile: string; icon: string }> = {
+    Enquiry: { tile: 'bg-gradient-to-br from-blue-700 to-blue-900 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Quotation: { tile: 'bg-gradient-to-br from-violet-700 to-violet-900 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    'Sales Order': { tile: 'bg-gradient-to-br from-emerald-700 to-emerald-900 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Inward: { tile: 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-900 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Rejected: { tile: 'bg-gradient-to-br from-fuchsia-700 to-fuchsia-900 border-fuchsia-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    'Finished Goods': { tile: 'bg-gradient-to-br from-cyan-700 to-cyan-900 border-cyan-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    DC: { tile: 'bg-gradient-to-br from-rose-700 to-rose-900 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+    Invoice: { tile: 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
+  };
+  const stageClick: Record<string, () => void> = {
+    Enquiry: () => setActiveView('enquiry_list'),
+    Quotation: () => setActiveView('quotation_list'),
+    'Sales Order': () => setActiveView('sales_order_list'),
+    Inward: () => setActiveView('inward_list'),
+    Rejected: () => setActiveView('rejected_list'),
+    'Finished Goods': () => setActiveView('fg_list'),
+    DC: () => setActiveView('dc_list'),
+    Invoice: () => setActiveView('invoice_list'),
+  };
+  const kpiStats = [
+    { key: 'enquiry', title: 'Total Enquiries', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Enquiry' },
+    { key: 'quotation', title: 'Quotations', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Quotation' },
+    { key: 'sales-order', title: 'Sales Orders', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Sales Order' },
+    { key: 'inward', title: 'Inward', iconPath: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', stage: 'Inward' },
+    { key: 'finished-goods', title: 'Finished Goods', iconPath: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', stage: 'Finished Goods' },
+    { key: 'rejected', title: 'Rejected', iconPath: 'M6 18L18 6M6 6l12 12', stage: 'Rejected' },
+    { key: 'dc', title: 'Delivery Challans', iconPath: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', stage: 'DC' },
+    { key: 'invoice', title: 'Invoices', iconPath: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', stage: 'Invoice' },
+  ];
+  useEffect(() => {
+    // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
+    setKpis(kpiStats.map(s => ({
+      key: s.key,
+      label: s.title,
+      count: s.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === s.stage).length,
+      tile: stageColors[s.stage]?.tile ?? stageColors.Enquiry.tile,
+      icon: stageColors[s.stage]?.icon ?? stageColors.Enquiry.icon,
+      iconPath: s.iconPath,
+      onClick: stageClick[s.stage],
+    })));
+    return () => setKpis([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, rejectedTotal, setKpis]);
 
   const [enquiryModalOpen, setEnquiryModalOpen] = useState(false);
   // Original enquiry number when the form was opened via Duplicate.
@@ -1291,8 +1343,6 @@ export function SalesPipelinePage() {
   // How many inwards were saved in this popup session with "Save & Add Another Inward".
   const [inwardSavedCount, setInwardSavedCount] = useState(0);
   useEffect(() => { if (!inwardModalTarget) setInwardSavedCount(0); }, [inwardModalTarget]);
-  // Pieces rejected so far (the Rejected tile); kept as production batches, so nothing is added to the board.
-  const [rejectedTotal, setRejectedTotal] = useState(0);
   useEffect(() => {
     void (async () => {
       try {
@@ -1311,7 +1361,7 @@ export function SalesPipelinePage() {
   // DC number (which the invoice flow already reads as a multi-item challan).
   const [dcItems, setDcItems] = useState<{ name: string; avail: number | null; qty: string; selected: boolean; hsn: string; unit: string; price: string }[]>([]);
   const dcItemNames = (dcItems || []).map((i: any) => i.name).join('|');
-  // Approved-price display for the DC form (same source as the DC→Invoice
+  // Approved-price display for the DC form (same source as the DCâ†’Invoice
   // gate: latest Approved costing sheet for the quotation). The DC line can
   // name several products ("p1, p2"), so prices resolve per product and show
   // as a breakdown. Saved challan flow is unchanged.
@@ -1342,7 +1392,7 @@ export function SalesPipelinePage() {
     })();
     return () => { cancelled = true; };
   }, [dcModalTarget]);
-  // Approved-price lookup for the DC form (same source as the DC→Invoice
+  // Approved-price lookup for the DC form (same source as the DCâ†’Invoice
   // gate: latest Approved costing sheet for the quotation).
   useEffect(() => {
     let cancelled = false;
@@ -1646,7 +1696,7 @@ export function SalesPipelinePage() {
     }
   };
 
-  // Inward history reads Product Name → Part Name → Category first.
+  // Inward history reads Product Name â†’ Part Name â†’ Category first.
   const orderDetailEntries = (title: string, entries: [string, any][]) => {
     if (title !== 'Inward') return entries;
     const first = ['product_name', 'part_name', 'category'];
@@ -1660,7 +1710,7 @@ export function SalesPipelinePage() {
   const inwardCellFor = (row: any, key: string, label: string) => {
     const v = row ? row[key] : undefined;
     const money = ['price', 'total_amount'].includes(key) && v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
-    const text = (v === null || v === undefined || v === '') ? '—' : (money ? Number(v).toFixed(2) : String(v));
+    const text = (v === null || v === undefined || v === '') ? 'â€”' : (money ? Number(v).toFixed(2) : String(v));
     return (
       <div>
         {label ? <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span> : null}
@@ -1676,7 +1726,7 @@ export function SalesPipelinePage() {
             }}
           />
         ) : (
-          <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
+          <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === 'â€”' ? '' : text} />
         )}
       </div>
     );
@@ -1688,7 +1738,7 @@ export function SalesPipelinePage() {
     const inwardCell = (key: string, label: string) => {
       const v = raw[key];
       const money = ['price', 'total_amount'].includes(key) && v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
-      const text = (v === null || v === undefined || v === '') ? '—' : (money ? Number(v).toFixed(2) : String(v));
+      const text = (v === null || v === undefined || v === '') ? 'â€”' : (money ? Number(v).toFixed(2) : String(v));
       return (
         <div>
           <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
@@ -1704,7 +1754,7 @@ export function SalesPipelinePage() {
               }}
             />
           ) : (
-            <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === '—' ? '' : text} />
+            <input readOnly aria-label={label || key} className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-slate-50 text-slate-700 cursor-default focus:outline-none" value={text === 'â€”' ? '' : text} />
           )}
         </div>
       );
@@ -1928,7 +1978,7 @@ export function SalesPipelinePage() {
       };
     }
     // ---- Delivery Challan: gather EVERY item from the same DC object/data shown
-    // in the Details screen — never just the first product or the header quantity.
+    // in the Details screen â€” never just the first product or the header quantity.
     const stripSummary = (v: any) => String(v ?? '').replace(/(\s*\(?\d+\s*products?\)?\s*)+$/i, '').trim();
     const isBareId = (v: string) => /^[\d\s,.\-()]+$/.test(v);
     const docNo = String(record.delivery_no || record.dc_no || record.challan_no || '').trim();
@@ -1948,7 +1998,7 @@ export function SalesPipelinePage() {
       }));
     }
     if (!items.length && orderItems.length) items = orderItems;
-    // Product ID → Product Master → Product Name (+ unit). Bare IDs are looked up
+    // Product ID â†’ Product Master â†’ Product Name (+ unit). Bare IDs are looked up
     // in finished-goods and raw-material masters, one batched query each.
     const ownNameOf = (item: any) => [item.partName, item.productName, item.part_name, item.description]
       .map(x => String(x ?? '').trim()).find(Boolean) || '';
@@ -1960,7 +2010,7 @@ export function SalesPipelinePage() {
       try {
         const { data } = await supabase.from('cnc_parts').select('part_no,part_name,unit').in('part_no', bareIds);
         (data || []).forEach((r: any) => { if (r.part_no) masterById.set(String(r.part_no), { name: r.part_name || '', unit: r.unit || '' }); });
-      } catch { /* master unavailable — fall back below */ }
+      } catch { /* master unavailable â€” fall back below */ }
       const missing = bareIds.filter(id => !masterById.has(id));
       if (missing.length) {
         try {
@@ -1993,7 +2043,7 @@ export function SalesPipelinePage() {
       }
       const header = String(record.part_name || record.description || '').trim();
       if (!own && header && !isBareId(header)) return stripSummary(header);
-      return stripSummary(own) || '—';
+      return stripSummary(own) || 'â€”';
     };
     const itemUnit = (item: any) => {
       const hit = masterHit(item);
@@ -2029,7 +2079,7 @@ export function SalesPipelinePage() {
     }
     if (!dcLines.length) {
       dcLines = [{
-        partName: stripSummary(record.part_name || record.description) || '—',
+        partName: stripSummary(record.part_name || record.description) || 'â€”',
         hsn: String(record.hsn || '').trim(),
         qty: Number(record.dispatch_qty ?? record.quantity) || 0,
         unit: String(record.unit || '').trim() || 'Nos',
@@ -2161,7 +2211,7 @@ export function SalesPipelinePage() {
     return Array.from(map.values()).sort((a, b) => a.company.localeCompare(b.company));
   }, [customerList, knownCompanies]);
 
-  // Already-entered product names across enquiries — for the Product Name dropdown
+  // Already-entered product names across enquiries â€” for the Product Name dropdown
   // (user can still type a brand-new product name).
   const existingProductNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -2271,7 +2321,7 @@ export function SalesPipelinePage() {
       });
       groups.forEach((list, key) => {
         const first = list[0];
-        const parts = Array.from(new Set(list.map(x => x.product_name ? `${x.product_name} · ${x.part_name}` : x.part_name).filter(Boolean)));
+        const parts = Array.from(new Set(list.map(x => x.product_name ? `${x.product_name} Â· ${x.part_name}` : x.part_name).filter(Boolean)));
         // Display the stamped unique number (like order/FG/DC cards); the
         // group key stays stamp-stripped so repeats still land on one card.
         const soMatch = (allOrders || []).find((o: any) => {
@@ -2316,7 +2366,7 @@ export function SalesPipelinePage() {
       fgGroups.forEach((list, key) => {
         const first = list[0];
         const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
-        // Per-product order quantities (for remaining = ordered − finished).
+        // Per-product order quantities (for remaining = ordered âˆ’ finished).
         const soRow = (allOrders || []).find((o: any) => String(o.order_no ?? '') !== '' && (String(o.order_no) === String(first.sales_order ?? '') || String(o.lead_no ?? '') === String(key)));
         let itemQty: Record<string, number> = {};
         try {
@@ -2463,7 +2513,7 @@ export function SalesPipelinePage() {
         }
         const byName = new Map<string, { name: string; recv: number }>();
         rows.forEach((x: any) => {
-          const n = String(x?.part_name || x?.product_name || '').trim() || '—';
+          const n = String(x?.part_name || x?.product_name || '').trim() || 'â€”';
           const e = byName.get(n.toLowerCase()) ?? { name: n, recv: 0 };
           e.recv += Number(x?.quantity) || 0;
           byName.set(n.toLowerCase(), e);
@@ -2922,7 +2972,7 @@ export function SalesPipelinePage() {
             };
           }
         } catch { /* header-only fallback */ }
-        // Source lineage: Quotation → Sales Order → Finished Goods → DC → Invoice.
+        // Source lineage: Quotation â†’ Sales Order â†’ Finished Goods â†’ DC â†’ Invoice.
         try {
           let dc: any = null;
           if (card.raw.delivery_id) {
@@ -3177,7 +3227,7 @@ export function SalesPipelinePage() {
       // Prefill with the deliverable quantity: never more than the good FG
       // available for the order (good completed minus already delivered).
       // Customer, product and quantity details come from the source
-      // transaction — nothing is re-typed. Re-validated on save.
+      // transaction â€” nothing is re-typed. Re-validated on save.
       const cardCust = card.customer || '';
       const cmatch: any = (customerList || []).find((c: any) => String(c.name || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
       const kcmatch: any = (allKnownCompanies || []).find((c: any) => String(c.company || '').trim().toLowerCase() === String(cardCust).trim().toLowerCase()) || {};
@@ -3510,7 +3560,7 @@ export function SalesPipelinePage() {
         }
       }
       if (dropped.includes('attachments') && rows.some(r => (r.attachments || []).length > 0)) {
-        alert('Inward entries saved, but file attachments were skipped (database update pending — apply the inward_attachments migration to enable files).');
+        alert('Inward entries saved, but file attachments were skipped (database update pending â€” apply the inward_attachments migration to enable files).');
       }
     } catch (error: any) {
       console.error('Create inward failed:', error);
@@ -3895,7 +3945,7 @@ export function SalesPipelinePage() {
   };
 
   // Company-master popup: Company ID is generated in the background at save
-  // time — it never appears in the UI. No enquiry/product is created here;
+  // time â€” it never appears in the UI. No enquiry/product is created here;
   // enquiries are added separately when needed.
   const openNewLeadModal = () => {
     setNewLeadForm({
@@ -3984,55 +4034,7 @@ export function SalesPipelinePage() {
   return (
     <div className="p-4 bg-[#F8FAFC] min-h-full flex flex-col font-sans">
 
-      {/* 2. Summary Cards */}
-      <div className="flex flex-col gap-2 mb-2">
-      <div className="grid flex-1 min-w-0 grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
-        {[
-          { title: 'Total Enquiries', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Enquiry' },
-          { title: 'Quotations', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'purple', stage: 'Quotation' },
-          { title: 'Sales Orders', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'emerald', stage: 'Sales Order' },
-          { title: 'Inward', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4', color: 'orange', stage: 'Inward' },
-          { title: 'Finished Goods', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', color: 'teal', stage: 'Finished Goods' },
-          { title: 'Rejected', icon: 'M6 18L18 6M6 6l12 12', color: 'red', stage: 'Rejected' },
-          { title: 'Delivery Challans', icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z', color: 'rose', stage: 'DC' },
-          { title: 'Invoices', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: 'blue', stage: 'Invoice' }
-        ].map(stat => {
-           // Rejected counts pieces rejected (it is not a stage of the board); the others count cards.
-           const count = stat.stage === 'Rejected' ? rejectedTotal : cards.filter(c => c.stage === stat.stage).length;
-           const stageColors: Record<string, { tile: string; icon: string }> = {
-             Enquiry: { tile: 'bg-gradient-to-br from-blue-700 to-blue-900 border-blue-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             Quotation: { tile: 'bg-gradient-to-br from-violet-700 to-violet-900 border-violet-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             'Sales Order': { tile: 'bg-gradient-to-br from-emerald-700 to-emerald-900 border-emerald-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             Inward: { tile: 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-900 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             Rejected: { tile: 'bg-gradient-to-br from-fuchsia-700 to-fuchsia-900 border-fuchsia-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             'Finished Goods': { tile: 'bg-gradient-to-br from-cyan-700 to-cyan-900 border-cyan-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             DC: { tile: 'bg-gradient-to-br from-rose-700 to-rose-900 border-rose-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-             Invoice: { tile: 'bg-gradient-to-br from-indigo-700 to-indigo-900 border-indigo-950 hover:brightness-110', icon: 'bg-white/20 text-white' },
-           };
-           const stageColor = stageColors[stat.stage] ?? stageColors.Enquiry;
-           return (
-             <div key={stat.title} onClick={() => { 
-               if (stat.stage === 'Enquiry') setActiveView('enquiry_list'); 
-               else if (stat.stage === 'Quotation') setActiveView('quotation_list'); 
-               else if (stat.stage === 'Sales Order') setActiveView('sales_order_list'); 
-               else if (stat.stage === 'Inward') setActiveView('inward_list'); 
-               else if (stat.stage === 'Rejected') setActiveView('rejected_list'); 
-               else if (stat.stage === 'Finished Goods') setActiveView('fg_list'); 
-               else if (stat.stage === 'DC') setActiveView('dc_list'); 
-               else if (stat.stage === 'Invoice') setActiveView('invoice_list'); 
-             }} className={`${stageColor.tile} rounded-lg px-2.5 py-1.5 shadow-sm border cursor-pointer flex items-center justify-between gap-1.5 hover:-translate-y-0.5 transition-transform`}>
-               <div className="flex items-baseline gap-2 min-w-0">
-                 <p className="text-[10px] font-bold text-white/80 uppercase tracking-wide whitespace-nowrap truncate">{stat.title}</p>
-                 <p className="text-lg font-bold leading-tight text-white">{count}</p>
-               </div>
-               <div className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center ${stageColor.icon}`}>
-                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={stat.icon}></path></svg>
-               </div>
-             </div>
-           );
-        })}
-      </div>
-      </div>
+
 
       {/* 3. Tabs & Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -4105,7 +4107,7 @@ export function SalesPipelinePage() {
         <div className="min-h-[500px] mb-4">
           {quoteTool ? (
             <div data-testid="quotation-tool">
-              <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">← Back to quotations</button>
+              <button type="button" onClick={() => setQuoteTool(null)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-brand-600">â† Back to quotations</button>
               {quoteTool === '/quotation/metal-calculator' && <MetalCalculatorPage />}
               {quoteTool === '/quotation/create' && <CreateQuotationPage />}
               {quoteTool === '/quotation/client-library' && <ClientLibraryPage />}
@@ -4159,16 +4161,21 @@ export function SalesPipelinePage() {
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
           {[
-            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-blue-100 border-blue-300 hover:bg-blue-100/80', code: 'bg-blue-200 text-blue-900', amount: 'text-blue-900' },
-            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-50/70', border: 'border-purple-200/60', text: 'text-purple-700', card: 'bg-violet-100 border-violet-300 hover:bg-violet-100/80', code: 'bg-violet-200 text-violet-900', amount: 'text-violet-900' },
-            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-50/70', border: 'border-emerald-200/60', text: 'text-emerald-700', card: 'bg-emerald-100 border-emerald-300 hover:bg-emerald-100/80', code: 'bg-emerald-200 text-emerald-900', amount: 'text-emerald-900' },
-            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-50/70', border: 'border-orange-200/60', text: 'text-orange-700', card: 'bg-amber-100 border-amber-300 hover:bg-amber-100/80', code: 'bg-amber-200 text-amber-900', amount: 'text-amber-900' },
-            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-50/70', border: 'border-teal-200/60', text: 'text-teal-700', card: 'bg-cyan-100 border-cyan-300 hover:bg-cyan-100/80', code: 'bg-cyan-200 text-cyan-900', amount: 'text-cyan-900' },
-            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to company', color: 'rose', bg: 'bg-rose-50/70', border: 'border-rose-200/60', text: 'text-rose-700', card: 'bg-rose-100 border-rose-300 hover:bg-rose-100/80', code: 'bg-rose-200 text-rose-900', amount: 'text-rose-900' },
-            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-50/70', border: 'border-blue-200/60', text: 'text-blue-700', card: 'bg-indigo-100 border-indigo-300 hover:bg-indigo-100/80', code: 'bg-indigo-200 text-indigo-900', amount: 'text-indigo-900' }
+            { id: 'Enquiry', title: 'ENQUIRY', desc: 'New opportunities', color: 'blue', bg: 'bg-blue-200/70', border: 'border-blue-400', text: 'text-blue-900', card: 'bg-blue-300 border-blue-500 hover:bg-blue-300/80', code: 'bg-blue-400 text-blue-950', amount: 'text-blue-950' },
+            { id: 'Quotation', title: 'QUOTATION', desc: 'Sent to customer', color: 'purple', bg: 'bg-purple-200/70', border: 'border-purple-400', text: 'text-purple-900', card: 'bg-violet-300 border-violet-500 hover:bg-violet-300/80', code: 'bg-violet-400 text-violet-950', amount: 'text-violet-950' },
+            { id: 'Sales Order', title: 'SALES ORDER', desc: 'Confirmed orders', color: 'emerald', bg: 'bg-emerald-200/70', border: 'border-emerald-400', text: 'text-emerald-900', card: 'bg-emerald-300 border-emerald-500 hover:bg-emerald-300/80', code: 'bg-emerald-400 text-emerald-950', amount: 'text-emerald-950' },
+            { id: 'Inward', title: 'INWARD', desc: 'Raw material / Purchase', color: 'orange', bg: 'bg-orange-200/70', border: 'border-orange-400', text: 'text-orange-900', card: 'bg-amber-300 border-amber-500 hover:bg-amber-300/80', code: 'bg-amber-400 text-amber-950', amount: 'text-amber-950' },
+            { id: 'Finished Goods', title: 'FINISHED GOODS', desc: 'Ready for delivery', color: 'teal', bg: 'bg-teal-200/70', border: 'border-teal-400', text: 'text-teal-900', card: 'bg-cyan-300 border-cyan-500 hover:bg-cyan-300/80', code: 'bg-cyan-400 text-cyan-950', amount: 'text-cyan-950' },
+            { id: 'DC', title: 'DELIVERY CHALLAN', desc: 'Dispatch to company', color: 'rose', bg: 'bg-rose-200/70', border: 'border-rose-400', text: 'text-rose-900', card: 'bg-rose-300 border-rose-500 hover:bg-rose-300/80', code: 'bg-rose-400 text-rose-950', amount: 'text-rose-950' },
+            { id: 'Invoice', title: 'INVOICE', desc: 'Billed & Completed', color: 'blue', bg: 'bg-blue-200/70', border: 'border-blue-400', text: 'text-blue-900', card: 'bg-indigo-300 border-indigo-500 hover:bg-indigo-300/80', code: 'bg-indigo-400 text-indigo-950', amount: 'text-indigo-950' }
           ].map(stage => {
+            const term = (columnSearch[stage.id] || '').trim().toLowerCase();
             const stageCards = cards
               .filter(c => c.stage === stage.id && (customerFilter === 'All Companies' || c.customer === customerFilter))
+              .filter(c => !term ||
+                (c.refNo || '').toLowerCase().includes(term) ||
+                (c.customer || '').toLowerCase().includes(term) ||
+                (c.part || '').toLowerCase().includes(term))
               .sort((a, b) => (a.refNo || '').localeCompare(b.refNo || '', undefined, { numeric: true }));
             return (
               <div key={stage.id} 
@@ -4179,11 +4186,34 @@ export function SalesPipelinePage() {
                 <div className="flex justify-between items-start mb-3 px-1">
                   <div>
                     <h3 className={`font-bold text-sm tracking-wide ${stage.text}`}>{stage.title}</h3>
-                    <p className="text-[10px] text-slate-500 font-medium">{stage.desc}</p>
+                    <p className="text-[10px] text-slate-700 font-semibold">{stage.desc}</p>
                   </div>
                   <span className={`bg-white ${stage.text} text-xs font-bold px-2 py-0.5 rounded-full shadow-sm border ${stage.border}`}>{stageCards.length}</span>
                 </div>
-                
+
+                {/* Per-column search */}
+                <div className="relative mb-3">
+                  <svg className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                  <input
+                    type="text"
+                    value={columnSearch[stage.id] || ''}
+                    onChange={(e) => setColumnSearch(prev => ({ ...prev, [stage.id]: e.target.value }))}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder={`Search ${stage.title.toLowerCase()}...`}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-white/80 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:bg-white"
+                  />
+                  {columnSearch[stage.id] && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setColumnSearch(prev => ({ ...prev, [stage.id]: '' })); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                      title="Clear search"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  )}
+                </div>
+
                 {stage.id !== 'Quotation' && (
                 <button className={`w-full bg-white/60 hover:bg-white border ${stage.border} border-dashed ${stage.text} text-xs font-semibold py-2 rounded-lg mb-3 shadow-sm transition-all flex items-center justify-center gap-1`}
                   onClick={() => addForStage(stage.id)}
@@ -4215,18 +4245,18 @@ export function SalesPipelinePage() {
                           />
                           <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-medium">{card.date || 'No Date'}</span>
+                        <span className="text-[10px] text-slate-700 font-semibold">{card.date || 'No Date'}</span>
                       </div>
                       
-                      <h4 className="font-bold text-[13px] text-slate-800 mb-0.5 line-clamp-1">{card.customer}</h4>
-                      <p className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</p>
+                      <h4 className="font-bold text-[13px] text-slate-900 mb-0.5 line-clamp-1">{card.customer}</h4>
+                      <p className="text-xs text-slate-800 mb-3 line-clamp-1">{card.part}</p>
                       
                       <div className="flex justify-between items-end">
                         <div>
                           {card.value > 0 ? (
-                             <p className={`text-sm font-bold ${stage.amount}`}>₹{Number(card.value).toLocaleString('en-IN')}</p>
+                             <p className={`text-sm font-bold ${stage.amount}`}>â‚¹{Number(card.value).toLocaleString('en-IN')}</p>
                           ) : (
-                             <p className="text-xs font-medium text-slate-600">{card.qty} pcs</p>
+                             <p className="text-xs font-semibold text-slate-800">{card.qty} pcs</p>
                           )}
                           {card.type === 'order' && (() => {
                             const raw = card.raw || {};
@@ -4238,7 +4268,7 @@ export function SalesPipelinePage() {
                             if (!up) up = Number(raw.unit_price) || 0;
                             if (!up && card.value && Number(card.qty)) up = Number(card.value) / Number(card.qty);
                             if (!up) return null;
-                            return <p className="text-[11px] font-semibold text-slate-500 tabular-nums">Unit Price ₹{up.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>;
+                            return <p className="text-[11px] font-semibold text-slate-700 tabular-nums">Unit Price â‚¹{up.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>;
                           })()}
                         </div>
                         <div className="flex items-center gap-2">
@@ -4258,7 +4288,7 @@ export function SalesPipelinePage() {
                         <div className="mt-1.5 space-y-1">
                           <QtyProgress q={card.qtyTrack} />
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Ord {card.qtyTrack.ordered} · Good {card.qtyTrack.good} · Rej {card.qtyTrack.rejected} · Rem {card.qtyTrack.remaining} · Del {card.qtyTrack.delivered} · Inv {card.qtyTrack.invoiced}
+                            Ord {card.qtyTrack.ordered} Â· Good {card.qtyTrack.good} Â· Rej {card.qtyTrack.rejected} Â· Rem {card.qtyTrack.remaining} Â· Del {card.qtyTrack.delivered} Â· Inv {card.qtyTrack.invoiced}
                           </p>
                         </div>
                       )}
@@ -4269,7 +4299,7 @@ export function SalesPipelinePage() {
                             <p className="text-sm font-extrabold tabular-nums text-white leading-tight">{card.qtyTrack.fgAvailable} pcs</p>
                           </div>
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Order {card.qtyTrack.ordered} · Finished {card.qtyTrack.good} · Remaining {card.qtyTrack.remaining} · Delivered {card.qtyTrack.delivered} · Avail {card.qtyTrack.fgAvailable}
+                            Order {card.qtyTrack.ordered} Â· Finished {card.qtyTrack.good} Â· Remaining {card.qtyTrack.remaining} Â· Delivered {card.qtyTrack.delivered} Â· Avail {card.qtyTrack.fgAvailable}
                           </p>
                           {card.qtyTrack.products.slice(0, 3).map((p) => (
                             <div key={p.name} className="rounded-md border border-slate-200 bg-white/70 px-1.5 py-1">
@@ -4278,7 +4308,7 @@ export function SalesPipelinePage() {
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
                               <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                                Finished {p.good} / {p.ordered} · Available {p.available}
+                                Finished {p.good} / {p.ordered} Â· Available {p.available}
                               </p>
                             </div>
                           ))}
@@ -4293,7 +4323,7 @@ export function SalesPipelinePage() {
                         const itemQty = (card.raw?._itemQty ?? {}) as Record<string, number>;
                         const byName = new Map<string, number>();
                         rows.forEach((x: any) => {
-                          const n = String(x?.part_name ?? '').trim() || '—';
+                          const n = String(x?.part_name ?? '').trim() || 'â€”';
                           byName.set(n, (byName.get(n) ?? 0) + (Number(x?.completed) || 0));
                         });
                         const lines = [...byName.entries()].map(([n, done]) => {
@@ -4307,13 +4337,13 @@ export function SalesPipelinePage() {
                                 <span key={l.n} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] tabular-nums">
                                   <span className="font-semibold text-slate-700">{l.n}</span>
                                   <b className="text-emerald-700">{l.done} done</b>
-                                  {l.left != null && <b className="text-amber-700">· {l.left} left</b>}
+                                  {l.left != null && <b className="text-amber-700">Â· {l.left} left</b>}
                                 </span>
                               ))}
                               {lines.length > 3 && <span className="text-[10px] text-slate-400">+{lines.length - 3} more</span>}
                             </div>
                             <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                              Good {g} · Rej {rj}{card.qtyTrack ? ` · Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} · Avail ${card.qtyTrack.fgAvailable}` : ''}
+                              Good {g} Â· Rej {rj}{card.qtyTrack ? ` Â· Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} Â· Avail ${card.qtyTrack.fgAvailable}` : ''}
                             </p>
                           </div>
                         );
@@ -4321,7 +4351,7 @@ export function SalesPipelinePage() {
                       {card.type === 'inward' && card.qtyTrack && (card.qtyTrack.products ?? []).length > 0 ? (
                         <div className="mt-1.5 space-y-1">
                           <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                            Ordered {card.qtyTrack.ordered} · Finished {card.qtyTrack.good}
+                            Ordered {card.qtyTrack.ordered} Â· Finished {card.qtyTrack.good}
                           </p>
                           {card.qtyTrack.remaining > 0 || card.qtyTrack.ordered <= 0 ? (
                             <div className="rounded-lg bg-amber-500 px-2 py-1 text-center">
@@ -4340,7 +4370,7 @@ export function SalesPipelinePage() {
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
                               <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
-                                {p.good} / {p.ordered} finished · <b className="text-amber-700">Remaining {p.remaining}</b>
+                                {p.good} / {p.ordered} finished Â· <b className="text-amber-700">Remaining {p.remaining}</b>
                               </p>
                             </div>
                           ))}
@@ -4354,7 +4384,7 @@ export function SalesPipelinePage() {
                             <span key={l.name} className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] tabular-nums">
                               <span className="font-semibold text-slate-700">{l.name}</span>
                               <span className="text-slate-500">{l.recv} in</span>
-                              <b className="text-amber-700">· {l.left} left</b>
+                              <b className="text-amber-700">Â· {l.left} left</b>
                             </span>
                           ))}
                           {card.raw._inwardProd.length > 3 && <span className="text-[10px] text-slate-400">+{card.raw._inwardProd.length - 3} more</span>}
@@ -4362,12 +4392,12 @@ export function SalesPipelinePage() {
                       ))}
                       {card.type === 'dc' && (
                         <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
-                          Dispatched {card.qty}{card.qtyTrack ? ` · Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
+                          Dispatched {card.qty}{card.qtyTrack ? ` Â· Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
                         </p>
                       )}
                       {card.type === 'invoice' && card.qtyTrack && (
                         <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
-                          Invoiced {card.qtyTrack.invoiced} · Invoiceable left {card.qtyTrack.invoiceable}
+                          Invoiced {card.qtyTrack.invoiced} Â· Invoiceable left {card.qtyTrack.invoiceable}
                         </p>
                       )}
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
@@ -4463,11 +4493,11 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Enquiry Modal */}
-      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry — Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" width={720} footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
+      <Modal open={enquiryModalOpen} onClose={() => { setEnquiryModalOpen(false); setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); }} title={duplicateSource ? `New Enquiry â€” Duplicated from ${duplicateSource}` : 'New Enquiry'} size="lg" width={720} footer={<><Button variant="secondary" onClick={() => { setEnquiryModalOpen(false); setDuplicateSource(null); }}>Cancel</Button><Button onClick={saveEnquiry}>Save Enquiry</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           {duplicateSource && (
             <div className="col-span-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800">
-              Duplicated from: {duplicateSource} · saving creates a brand-new enquiry with its own company ID.
+              Duplicated from: {duplicateSource} Â· saving creates a brand-new enquiry with its own company ID.
             </div>
           )}
           <div className="col-span-2 flex justify-end">
@@ -4549,7 +4579,7 @@ export function SalesPipelinePage() {
 
       {/* Quotation Modal */}
       <HsnDatalist />
-      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" width={1040} draggable={false}>
+      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry Â· ${quotationModalTarget.customer}` : undefined} size="full" width={1040} draggable={false}>
         {quotationModalTarget && (
           <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />
         )}
@@ -4565,8 +4595,8 @@ export function SalesPipelinePage() {
           </datalist>
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts — one line per part.</p></div>
-            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">✓ {inwardSavedCount} saved — add the next inward</span>}
+            <div><h4 className="font-semibold text-sm text-slate-800">Parts to Buy for {inwardForm.productName || 'Selected Product'}</h4><p className="text-xs text-slate-500">Each inward can hold multiple parts â€” one line per part.</p></div>
+            {inwardSavedCount > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" data-testid="inward-saved-note">âœ“ {inwardSavedCount} saved â€” add the next inward</span>}
 
           </div>
           <div className="space-y-4">
@@ -4630,7 +4660,7 @@ export function SalesPipelinePage() {
                         ) : (
                         <select className={inputClass} value={item.productKey || ''} onChange={e=>onSelectProduct(ii, e.target.value)}>
                           <option value="">Select product</option>
-                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} — {option.customer || option.leadNo}{option.saleLabel ? ` · ${option.saleLabel}` : ''}</option>)}
+                          {productOptions.map((option: any) => <option key={option.key} value={option.key}>{option.name} â€” {option.customer || option.leadNo}{option.saleLabel ? ` Â· ${option.saleLabel}` : ''}</option>)}
                         </select>)}</label>
                       <label className="col-span-6 sm:col-span-2 min-w-0"><span className={lbl}>Part Name *</span>
                         <input className={inputClass} placeholder="Part Name" value={item.partName || ''} onChange={e=>setItem(ii, { partName: e.target.value })} /></label>
@@ -4718,10 +4748,10 @@ export function SalesPipelinePage() {
           <select className={inputClass} value={fgPickId} onChange={e => setFgPickId(e.target.value)}>
             <option value="">Select sales order or inward</option>
             <optgroup label="Sales orders (direct, no inward)">
-              {cards.filter(c => c.type === 'order').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
+              {cards.filter(c => c.type === 'order').map(c => <option key={c.id} value={c.id}>{c.refNo} â€” {c.customer} â€” {c.part}</option>)}
             </optgroup>
             <optgroup label="Inwards">
-              {cards.filter(c => c.type === 'inward').map(c => <option key={c.id} value={c.id}>{c.refNo} — {c.customer} — {c.part}</option>)}
+              {cards.filter(c => c.type === 'inward').map(c => <option key={c.id} value={c.id}>{c.refNo} â€” {c.customer} â€” {c.part}</option>)}
             </optgroup>
           </select>
         </FormField>
@@ -4788,7 +4818,7 @@ export function SalesPipelinePage() {
             {(partsMaster.some((p: any) => p.category) ? Array.from(new Set(partsMaster.map((p: any) => p.category).filter(Boolean))) : ['GOODS PURCHASE', 'SERVICE PURCHASE', 'CUSTOMER DC', 'NEW PART', 'NO DC', 'EXPENSES']).map((c: string) => <option key={c} value={c} />)}
           </datalist>
           <datalist id="dc-process-list">
-            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} — ${p.process_name}`} />)}
+            {processList.map((p: any) => <option key={p.id || p.process_code} value={`${p.process_code} â€” ${p.process_name}`} />)}
           </datalist>
           <div>
             <div className="grid grid-cols-[auto_minmax(0,1.5fr)_5rem_4.5rem_4rem_5.5rem_6rem] gap-2 items-center mb-1 px-1">
@@ -4852,13 +4882,13 @@ export function SalesPipelinePage() {
               <span className="text-lg">+</span> Add Part
             </button>
             {dcPricing.loading ? (
-              <p className="text-[11px] text-slate-400 mt-2">Resolving approved price…</p>
+              <p className="text-[11px] text-slate-400 mt-2">Resolving approved priceâ€¦</p>
             ) : dcPricing.lines.length > 0 && (
               <div className="text-xs bg-brand-50/60 border border-brand-100 rounded-lg px-3 py-2 mt-3 space-y-0.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">Approved price (costing sheet)</p>
                 {dcPricing.lines.map((l) => (
                   <p key={l.name} className="font-semibold text-slate-700 tabular-nums">
-                    {l.name} — {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
+                    {l.name} â€” {formatINR(l.unit)}/pc <span className="font-normal text-slate-500">({l.sheetRef})</span>
                   </p>
                 ))}
               </div>
@@ -4880,7 +4910,7 @@ export function SalesPipelinePage() {
       </Modal>
 
 
-      {/* DC → Invoice gate (approved FG price, no manual re-entry) */}
+      {/* DC â†’ Invoice gate (approved FG price, no manual re-entry) */}
       {invoiceCostingTarget && (
         <ErrorBoundary title="Invoice entry failed to open" onClose={() => setInvoiceCostingTarget(null)}>
           <DcInvoiceModal
@@ -4977,7 +5007,7 @@ export function SalesPipelinePage() {
               <span></span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (₹)</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Price (â‚¹)</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">GST %</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase">Drawings</span>
@@ -4991,7 +5021,7 @@ export function SalesPipelinePage() {
                   <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                   <input className={inputClass} placeholder="Product name" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                   <input type="number" min={0} className={inputClass} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
-                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
+                  <input type="number" min={0} className={inputClass} placeholder="Unit Price (â‚¹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
                   <input type="number" min={0} className={inputClass} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
                   <select className={inputClass} value={item.itemStatus || 'Confirmed'} onChange={e=>upd({ itemStatus: e.target.value })}>
                     {['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -5006,7 +5036,7 @@ export function SalesPipelinePage() {
                     {(item.files as File[]).map((f, fi) => (
                       <span key={`${f.name}-${fi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
                         <span className="max-w-[200px] truncate">{f.name}</span>
-                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>×</button>
+                        <button type="button" className="text-rose-500 hover:text-rose-700" aria-label={`Remove ${f.name}`} onClick={() => upd({ files: (item.files as File[]).filter((_, j) => j !== fi) })}>Ã—</button>
                       </span>
                     ))}
                   </div>
@@ -5024,7 +5054,7 @@ export function SalesPipelinePage() {
           </div>
         </div>
       </Modal>
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} â€” Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={900} footer={<>{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -5110,7 +5140,7 @@ export function SalesPipelinePage() {
                                 return <button key={`${ri}-${ai}`} type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-blue-700 hover:border-brand-300" onClick={() => void openProductFile(p)}><FileText size={12} />{n}</button>;
                               }))}
                               {!g.some((r: any) => Array.isArray(r.attachments) && r.attachments.length > 0) && (
-                                <span className="text-sm text-slate-400">—</span>
+                                <span className="text-sm text-slate-400">â€”</span>
                               )}
                             </div>
                           </div>
@@ -5130,14 +5160,14 @@ export function SalesPipelinePage() {
                                 value={row.product_name || ''}
                                 onChange={(e) => { if (e.target.value !== (row.product_name || '')) void handleInlineEdit('Inward', row.id, 'product_name', e.target.value); }}
                               >
-                                <option value="">Select product…</option>
+                                <option value="">Select productâ€¦</option>
                                 {Array.from(new Set([...enquiryProductOptions(rawLeadsList, row.project_name).map((o: any) => o.name), row.product_name || ''].filter(Boolean))).map((n: string) => <option key={n} value={n}>{n}</option>)}
                               </select>
                             </div>
                             {lineKeys.map(k => <div key={k} className="contents">{inwardCellFor(row, k, '')}</div>)}
                             <div>{inwardCellFor(row, 'remarks', '')}</div>
                             {viewEditMode && g.length > 1 ? (
-                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line “${row.part_name || row.product_name || ri + 1}”`)}
+                              <button type="button" data-testid="delete-inward-line" title="Delete this part line" onClick={() => void deleteInwardRows([String(row.id)], `the part line â€œ${row.part_name || row.product_name || ri + 1}â€`)}
                                 className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                             ) : <span />}
                           </div>
@@ -5187,7 +5217,7 @@ export function SalesPipelinePage() {
               const cur = viewModalTarget?.stage || '';
               // Enquiry Details section only shows when opened from an Enquiry card.
               // From a Sales Order card the quotation block would repeat the same
-              // products, so it is hidden — the sales-order block carries them.
+              // products, so it is hidden â€” the sales-order block carries them.
               const visible = sections.filter(s => s.key !== 'Enquiry' || cur === 'Enquiry')
                 .filter(s => !(cur === 'Sales Order' && s.key === 'Quotation'));
               const ordered = [...visible.filter(s => s.key === cur), ...visible.filter(s => s.key !== cur)];

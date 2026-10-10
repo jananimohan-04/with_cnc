@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { fetchRecentActivity, timeAgo, type ActivityItem } from '@/lib/recentActivity';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -56,6 +57,7 @@ export function Topbar({
   }, []);
 
   const breadcrumbs = getBreadcrumbs(currentPage);
+  const { kpis } = useHeaderKpis();
   // Live clock: date + time, ticking every second.
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -68,7 +70,7 @@ export function Topbar({
   return (
     <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm h-12 flex items-center px-4 lg:px-5 gap-4">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-1.5 text-[13px] flex-1 min-w-0">
+      <div className={`flex items-center gap-1.5 text-[13px] min-w-0 ${kpis.length ? 'flex-none max-w-[260px]' : 'flex-1'}`}>
         <Menu size={18} className="text-slate-400 lg:hidden flex-shrink-0 cursor-pointer hover:text-slate-600 transition-colors" onClick={onMenuClick} />
         {breadcrumbs.map((bc, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
@@ -84,50 +86,60 @@ export function Topbar({
         ))}
       </div>
 
-      {/* Company: fixed for normal users, switchable for the Super Admin */}
-      {isSuperAdmin ? (
-        <label className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md">
-          <Building2 size={14} className="text-slate-400" />
-          <select
-            value={company?.id ?? ''}
-            onChange={(e) => setActiveCompany(e.target.value || null)}
-            className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none max-w-[180px]"
-            title="Company whose data is shown"
-          >
-            <option value="">All companies</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>{c.company_name}{c.status === 'Inactive' ? ' (inactive)' : ''}</option>
-            ))}
-          </select>
-        </label>
-      ) : company && (
+      {/* Sales Pipeline KPIs — inline strip sharing the header row (page supplies the data) */}
+      {kpis.length > 0 && (
+        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none py-1">
+          {kpis.map(kpi => (
+            <button
+              key={kpi.key}
+              type="button"
+              onClick={kpi.onClick}
+              title={kpi.label}
+              className={`${kpi.tile} shrink-0 rounded-md px-2 py-1 shadow-sm border cursor-pointer flex items-center justify-between gap-1 w-[118px] hover:-translate-y-0.5 transition-transform`}
+            >
+              <span className="flex items-baseline gap-1.5 min-w-0">
+                <span className="text-[9px] font-bold text-white/80 uppercase tracking-wide whitespace-nowrap truncate">{kpi.label}</span>
+                <span className="text-sm font-bold leading-tight text-white tabular-nums">{kpi.count}</span>
+              </span>
+              <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${kpi.icon}`}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={kpi.iconPath} /></svg>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Company: shown read-only for normal users, switchable for the Super Admin (in the profile menu) */}
+      {company && !isSuperAdmin && (
         <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
           <Building2 size={14} className="text-slate-400" />
           {company.company_name}
         </div>
       )}
 
-      <div className="hidden xl:flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-lg bg-gradient-to-r from-brand-50 via-white to-brand-50 border border-brand-100 shadow-sm">
-        <div className="w-6 h-6 rounded-md bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shadow-sm shrink-0">
+      {/* Date + time — compact square box */}
+      <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-slate-200 shadow-sm">
+        <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-brand-800 flex items-center justify-center text-white shrink-0">
           <CalendarDays size={12} />
         </div>
-        <div className="leading-tight">
-          <p className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap tracking-wide">{datePart}</p>
-          <p className="text-[10px] font-bold text-brand-600 tabular-nums whitespace-nowrap tracking-widest">{timePart}</p>
+        <div className="leading-none">
+          <p className="text-[9px] font-extrabold text-slate-700 whitespace-nowrap tabular-nums">{datePart}</p>
+          <p className="text-[9px] font-bold text-brand-600 whitespace-nowrap tabular-nums mt-0.5">{timePart}</p>
         </div>
       </div>
 
-      {/* System Status */}
-      <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-100 rounded-full">
-        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse-ring" />
-        <span className="text-[9px] font-bold text-green-700 tracking-wide uppercase">System Online</span>
+      {/* System Status — compact square box */}
+      <div className="hidden xl:flex flex-col items-center justify-center gap-0.5 px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm">
+        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse-ring" />
+        <span className="text-[9px] font-bold text-green-700 tracking-wide uppercase whitespace-nowrap leading-none">System</span>
+        <span className="text-[9px] font-bold text-green-700 tracking-wide uppercase whitespace-nowrap leading-none">Online</span>
       </div>
 
-      {/* Notifications */}
+      {/* Notifications — compact bordered box */}
       <div className="relative" ref={notifRef}>
         <button
           onClick={() => setShowNotif(!showNotif)}
-          className="relative p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-lg transition-colors"
+          className="relative px-2 py-1.5 border border-slate-200 bg-white rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 shadow-sm transition-colors"
         >
           <Bell size={16} />
           <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-brand-500 rounded-full ring-2 ring-white" />
@@ -152,20 +164,20 @@ export function Topbar({
         )}
       </div>
 
-      {/* Profile */}
+      {/* Profile — compact bordered box */}
       <div className="relative" ref={profileRef}>
         <button
           onClick={() => setShowProfile(!showProfile)}
-          className="flex items-center gap-2 p-0.5 pr-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+          className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-slate-100 rounded-md transition-colors border border-slate-200 bg-white shadow-sm"
         >
-          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
+          <div className="w-6 h-6 rounded bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
             {initials}
           </div>
-          <div className="hidden lg:block text-left">
-            <p className="text-[11px] font-bold text-slate-700 max-w-[160px] truncate leading-tight">{displayName}</p>
-            <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wider leading-tight">{ROLE_LABELS[profile?.role ?? ''] ?? ''}</p>
+          <div className="hidden lg:block text-left leading-none">
+            <p className="text-[9px] font-bold text-slate-700 max-w-[120px] truncate">{displayName}</p>
+            <p className="text-[8px] text-slate-500 font-medium uppercase tracking-wider truncate">{ROLE_LABELS[profile?.role ?? ''] ?? ''}</p>
           </div>
-          <ChevronDown size={14} className="hidden lg:block text-slate-400" />
+          <ChevronDown size={12} className="hidden lg:block text-slate-400" />
         </button>
         {showProfile && (
           <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 animate-scale-in overflow-hidden z-50">
@@ -173,8 +185,30 @@ export function Topbar({
               <p className="text-sm font-bold text-slate-800 truncate">{displayName}</p>
               <p className="text-xs text-slate-500 mt-0.5 truncate">{profile?.email}</p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2">
-                {ROLE_LABELS[profile?.role ?? '']}{company ? ` · ${company.company_name}` : isSuperAdmin ? ' · All companies' : ''}
+                {ROLE_LABELS[profile?.role ?? '']}
               </p>
+            </div>
+            {/* Company: switchable by the Super Admin, read-only for everyone else */}
+            <div className="px-5 py-3 border-b border-slate-100">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Company</p>
+              {isSuperAdmin ? (
+                <div className="flex items-center gap-1.5">
+                  <Building2 size={14} className="text-slate-400 shrink-0" />
+                  <select
+                    value={company?.id ?? ''}
+                    onChange={(e) => setActiveCompany(e.target.value || null)}
+                    className="min-w-0 flex-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-brand-500"
+                    title="Company whose data is shown"
+                  >
+                    <option value="">All companies</option>
+                    {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.company_name}{c.status === 'Inactive' ? ' (inactive)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-xs font-bold text-slate-700 truncate">{company?.company_name || '—'}</p>
+              )}
             </div>
             <div className="py-2">
               <button className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-colors font-medium">

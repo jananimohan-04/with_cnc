@@ -122,10 +122,18 @@
   text-transform: uppercase;
 }
 
-/* Row colours on every page table: a soft repeating tint per row (opt out with class `no-stripe`). */
-main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: #fff7ed; }
-main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: #eff6ff; }
-main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3) { background-color: #f0fdf4; }
-main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4) { background-color: #faf5ff; }
-main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5) { background-color: #fdf2f8; }
-main table:not(.no-stripe) > tbody > tr:hover { background-color: #e2e8f0; }
+/* Row colours on every page table: a repeating tint per row, deepened for contrast (opt out with class `no-stripe`). */
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: #fed7aa; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: #bfdbfe; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3) { background-color: #bbf7d0; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4) { background-color: #e9d5ff; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5) { background-color: #fbcfe8; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1):hover { background-color: #fdba74; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2):hover { background-color: #93c5fd; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3):hover { background-color: #86efac; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4):hover { background-color: #d8b4fe; }
+main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5):hover { background-color: #f9a8d4; }
+/* Table body text: dark and readable on the tinted rows above. */
+main table:not(.no-stripe) > tbody > tr > td { color: #0f172a; }
+main table:not(.no-stripe) > tbody > tr > td .text-slate-500,
+main table:not(.no-stripe) > tbody > tr > td .text-slate-400 { color: #334155; }

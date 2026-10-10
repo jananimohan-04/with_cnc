@@ -113,7 +113,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
         ) : (
           <table className="erp-table w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+              <tr className="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider border-b border-slate-300">
                 <th className="p-3 font-semibold">Enquiry No</th>
                 <th className="p-3 font-semibold">Date</th>
                 <th className="p-3 font-semibold">Company</th>
@@ -128,13 +128,13 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onAdd, 
               {pager.pageItems.map(enq => (
                 <tr key={enq.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 font-mono text-sm text-slate-800 font-medium">{enq.enquiry_no || 'Pending'}</td>
-                  <td className="p-3 text-sm text-slate-600">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
+                  <td className="p-3 text-sm text-slate-800">{enq.received_date ? enq.received_date.split('T')[0] : (enq.created_at ? enq.created_at.split('T')[0] : '')}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm max-w-[220px] truncate" title={enq.customer}>{enq.customer}</td>
                   <td className="p-3 text-sm text-slate-700 max-w-[260px]">{productNames(enq)}</td>
-                  <td className="p-3 text-sm text-slate-500 max-w-[200px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
+                  <td className="p-3 text-sm text-slate-800 max-w-[200px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">{enq.quantity || '-'}</td>
                   <td className="p-3">
-                    <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
+                    <span className="bg-orange-200 text-orange-900 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View Details</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(enq)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(enq)}>Delete</Button>}</div>
