@@ -33,14 +33,34 @@ const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 const today = () => new Date().toISOString().split('T')[0];
 const ilikeSafe = (s: string) => s.replace(/[%_,()]/g, ' ').trim();
 
+export function cleanProductName(s: string): string {
+  let name = str(s).replace(/\s+/g, ' ');
+  name = name.replace(/^(?:(?:the\s+)?(?:product|part|item)\s*(?:name)?|(?:product|part|item)?\s*name)\s*(?:is|as|are|to|[:;\-=])?\s*/i, '');
+  name = name.replace(/^(?:பொரு(?:ள்|ளின்)?\s*(?:பெயர்)?|பெயர்)\s*[:\-]?\s*/i, '');
+  name = name.replace(/^["'`]+|["'`]+$/g, '').trim();
+  return name.trim();
+}
+
 type Product = { name: string; qty?: number; price?: number; gst?: number };
 const productsOf = (p: Params): Product[] => (Array.isArray(p.products) ? p.products : [])
-  .map((x: any) => ({
-    name: str(x?.name),
-    qty: x?.qty == null || x.qty === '' ? undefined : num(x.qty),
-    price: x?.price == null || x.price === '' ? undefined : num(x.price),
-    gst: x?.gst == null ? undefined : num(x.gst),
-  }))
+  .map((x: any) => {
+    let name = cleanProductName(str(x?.name));
+    let qty = x?.qty == null || x.qty === '' ? undefined : num(x.qty);
+    // If qty was missing or 0, check if the name still has embedded quantity like "flicker quantities 2"
+    if (!qty) {
+      const qm = /(?:x|×|\*|\b(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|count)\b)\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)/i.exec(name);
+      if (qm) {
+        qty = num(qm[1]);
+        name = cleanProductName(name.slice(0, qm.index));
+      }
+    }
+    return {
+      name,
+      qty,
+      price: x?.price == null || x.price === '' ? undefined : num(x.price),
+      gst: x?.gst == null ? undefined : num(x.gst),
+    };
+  })
   .filter((x: Product) => x.name);
 
 async function findCustomer(name: string, companyId: string | null) {
@@ -464,8 +484,16 @@ async function editEnquiry(p: Params, ctx: ActionCtx): Promise<RunResult> {
   const updates: any = {};
   const up = p.updates || {};
   if (up.customer) updates.customer = str(up.customer);
-  if (up.part_name) updates.part_name = str(up.part_name);
+  if (up.part_name) updates.part_name = cleanProductName(str(up.part_name));
   if (up.quantity != null && up.quantity !== '') updates.quantity = num(up.quantity);
+  // Auto-extract quantity if part_name has it embedded
+  if (updates.part_name && updates.quantity == null) {
+    const qm = /(?:x|×|\*|\b(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|count)\b)\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)/i.exec(updates.part_name);
+    if (qm) {
+      updates.quantity = num(qm[1]);
+      updates.part_name = cleanProductName(updates.part_name.slice(0, qm.index));
+    }
+  }
   if (up.estimated_value != null && up.estimated_value !== '') updates.estimated_value = num(up.estimated_value);
   if (up.status) updates.status = str(up.status);
   if (up.pipeline_stage) updates.pipeline_stage = str(up.pipeline_stage);
@@ -773,6 +801,21 @@ export async function explainRecordStage(identifier: string, companyId: string |
     const customer = enq.customer || 'Customer';
     const stage = enq.pipeline_stage || 'Enquiry';
     const status = enq.status || 'New';
+
+    // Auto-fix if part_name absorbed quantity phrase (e.g. "name is flicker quantities 2" with qty 0)
+    const rawPart = enq.part_name || '';
+    const embeddedQtyMatch = /(?:x|×|\*|\b(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|count)\b)\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)/i.exec(rawPart);
+    if (embeddedQtyMatch && (!enq.quantity || Number(enq.quantity) === 0)) {
+      const fixedQty = Number(embeddedQtyMatch[1]);
+      const fixedPart = cleanProductName(rawPart.slice(0, embeddedQtyMatch.index)) || 'Product';
+      const toSave = [{ productName: fixedPart, partName: fixedPart, quantity: String(fixedQty), remarks: '', filePaths: [] }];
+      await supabase.from('cnc_enquiries').update({
+        part_name: fixedPart,
+        quantity: fixedQty,
+        enquiring_for: JSON.stringify(toSave),
+      }).eq('id', enq.id);
+      return `✓ Auto-corrected Enquiry #${leadNo} (${customer})! Product name updated to "${fixedPart}" and Quantity updated to ${fixedQty}.`;
+    }
 
     if (stage === 'Quotation' || status === 'Quoted') {
       const { data: q } = await supabase

@@ -148,6 +148,10 @@ Matching Guidelines:
 - When user says "என்குயரி ல இருக்க க் போகஸ் டேட்டா வந்து கொட்டேஷன் ல மாத்தணும்", match customer "Q-Focus" from the active cards list, and output:
   { "intent": "move_stage", "params": { "identifier": "<lead_no of Q-Focus>", "target_stage": "Quotation", "customer": "Q-Focus" }, "reply": "Q-Focus என்குயரியை Quotation நிலைக்கு மாற்றவா?" }
 - When user says "கொட்டேஷன் ஆட் பண்ணனும்" without mentioning a company, if there are enquiries in the active list, propose moving the first enquiry (or ask which one).
+- In spoken or voice recognition input, phrases like "name is flicker quantities 2" or "product name flicker quantity 2":
+  * Product name must be cleaned to "flicker" (strip "name is", "product name", "item is", "part name", etc.).
+  * "quantities 2" or "quantity 2" or "quantity is 2" means qty: 2.
+  * NEVER leave conversational words like "name is" or "quantities 2" inside the product name string!
 - If the user refers to an enquiry by customer name or product (e.g., "change AABEE enquiry quantity to 20") and AABEE has lead_no 1025 in the active list, resolve identifier to "1025".
 - If the user says "delete enquiry 1025" or "1025 enquiry delete pannu", use intent "delete_enquiry" with identifier "1025".
 - If user wants to see/list the pipeline cards, use "list_pipeline".
@@ -190,6 +194,23 @@ Matching Guidelines:
     const intent = String(parsed.intent || 'unknown') as Intent;
     const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Params;
     const reply = String(parsed.reply || '');
+
+    // Sanitize products if returned
+    if (params.products && Array.isArray(params.products)) {
+      params.products = params.products.map((p: any) => {
+        let name = String(p.name || '').trim();
+        name = name.replace(/^(?:(?:the\s+)?(?:product|part|item)\s*(?:name)?|(?:product|part|item)?\s*name)\s*(?:is|as|are|to|[:;\-=])?\s*/i, '');
+        let qty = p.qty;
+        if (qty == null || qty === 0) {
+          const qm = /(?:x|×|\*|\b(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|count)\b)\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)/i.exec(name);
+          if (qm) {
+            qty = Number(qm[1]);
+            name = name.slice(0, qm.index).trim();
+          }
+        }
+        return { ...p, name: name.trim(), qty };
+      });
+    }
 
     return { intent, params, reply };
   } catch (err) {

@@ -143,28 +143,65 @@ export function parseDate(text: string, today = new Date()): string {
   return '';
 }
 
-/** "Flicker tool x 10 and Gear, 5 pcs of Shaft" -> [{name, qty}] */
+export function cleanProductName(s: string): string {
+  let name = clean(s);
+  // Strip conversational filler phrases like "name is", "product name is", "part name", "item is"
+  name = name.replace(/^(?:(?:the\s+)?(?:product|part|item)\s*(?:name)?|(?:product|part|item)?\s*name)\s*(?:is|as|are|to|[:;\-=])?\s*/i, '');
+  // Strip Tamil equivalents: பொருள் பெயர், பொருளின் பெயர், பொருள், பெயர்
+  name = name.replace(/^(?:பொரு(?:ள்|ளின்)?\s*(?:பெயர்)?|பெயர்)\s*[:\-]?\s*/i, '');
+  // Strip leading or trailing quotes
+  name = name.replace(/^["'`]+|["'`]+$/g, '').trim();
+  return clean(name);
+}
+
+/** "Flicker tool x 10 and Gear, 5 pcs of Shaft", "name is flicker quantities 2" -> [{name, qty}] */
 export function parseProducts(text: string): { name: string; qty?: number; price?: number }[] {
   const out: { name: string; qty?: number; price?: number }[] = [];
   for (const raw of text.split(/\s*(?:,|;|\band\b|\bmattrum\b|மற்றும்)\s*/i)) {
     const piece = clean(raw);
     if (!piece) continue;
-    let m = /^(.*?)\s*(?:x|×|\*|qty|quantity)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:pcs|nos|pieces|numbers)?$/i.exec(piece);
-    if (m && clean(m[1])) { out.push({ name: clean(m[1]), qty: Number(m[2]) }); continue; }
-    m = /^(\d+(?:\.\d+)?)\s*(?:pcs|nos|pieces|numbers)?\s*(?:of\s+)?(.+)$/i.exec(piece);
-    if (m && clean(m[2]) && !/^\d/.test(clean(m[2]))) { out.push({ name: clean(m[2]), qty: Number(m[1]) }); continue; }
-    out.push({ name: piece });
+
+    // 1. Trailing explicit quantity keyword: 'name is flicker quantities 2', 'flicker qty: 5', 'flicker x 2', 'flicker அளவு 2'
+    let m = /^(.*?)(?:\s+(?:x|×|\*|qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|count))\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)\s*(?:pcs|nos|pieces|numbers|units|பீஸ்|நம்பர்)?$/i.exec(piece);
+    if (m && clean(m[1])) {
+      out.push({ name: cleanProductName(m[1]), qty: Number(m[2]) });
+      continue;
+    }
+
+    // 2. Trailing unit without keyword: 'flicker 2 pcs', 'flicker 2 nos', 'flicker 5 pieces', 'flicker 2 பீஸ்'
+    m = /^(.*?)\s+(\d+(?:\.\d+)?)\s*(?:pcs|nos|pieces|numbers|units|பீஸ்|நம்பர்)$/i.exec(piece);
+    if (m && clean(m[1])) {
+      out.push({ name: cleanProductName(m[1]), qty: Number(m[2]) });
+      continue;
+    }
+
+    // 3. Leading quantity: '2 pcs of flicker', '5 nos gear', 'quantity 2 flicker', 'அளவு 2 flicker'
+    m = /^(?:(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை)\s*(?:is|are|as|to|[:\-=])?\s*)?(\d+(?:\.\d+)?)\s*(?:pcs|nos|pieces|numbers|units|பீஸ்|நம்பர்)?\s*(?:of|is|:|-)?\s+(.+)$/i.exec(piece);
+    if (m && clean(m[2]) && !/^\d/.test(clean(m[2]))) {
+      out.push({ name: cleanProductName(m[2]), qty: Number(m[1]) });
+      continue;
+    }
+
+    out.push({ name: cleanProductName(piece) });
   }
   return out;
 }
 
-const STOP = '(?=\\s*(?:,|;|\\bproducts?\\b|\\bitems?\\b|\\bqty\\b|\\bquantity\\b|\\bwith\\b|\\bpo\\b|\\bdelivery\\b|\\bdeliver\\b|\\bremarks?\\b|\\bgst\\b|\\baddress\\b|\\bphone\\b|\\bemail\\b|\\bprice\\b|\\brate\\b)|$)';
+const STOP = '(?=\\s*(?:,|;|\\bproducts?\\b|\\bitems?\\b|\\bparts?\\b|\\bnames?\\b|\\bqty\\b|\\bquantit(?:y|ies)\\b|\\bwith\\b|\\bpo\\b|\\bdelivery\\b|\\bdeliver\\b|\\bremarks?\\b|\\bgst\\b|\\baddress\\b|\\bphone\\b|\\bemail\\b|\\bprice\\b|\\brate\\b|குவாண்டிட்டி|அளவு|எண்ணிக்கை)|$)';
 
-function findCompanyAt(text: string): { name: string; end: number } {
+function findCompanyAt(text: string, cards: PipelineCardRef[] = []): { name: string; end: number } {
+  // 1. Direct match on active board card customers
+  for (const c of cards) {
+    if (!c.customer) continue;
+    const idx = text.toLowerCase().indexOf(c.customer.toLowerCase());
+    if (idx !== -1) {
+      return { name: c.customer, end: idx + c.customer.length };
+    }
+  }
   const m = new RegExp(`\\b(?:for|from|of|to)\\s+(?:the\\s+)?(?:company\\s+)?(.+?)${STOP}`, 'i').exec(text);
   return m ? { name: clean(m[1]), end: m.index + m[0].length } : { name: '', end: 0 };
 }
-const findCompany = (text: string) => findCompanyAt(text).name;
+const findCompany = (text: string, cards: PipelineCardRef[] = []) => findCompanyAt(text, cards).name;
 
 export function normalizePhonetic(s: string): string {
   return (s || '')
@@ -248,11 +285,19 @@ export function understandLocal(
     return done(pending.intent, params);
   }
 
-  // ------------------------------------------------------------------------- Stage Status / Inquiry queries
-  // E.g. "but 2015 is still in enquiry stage why", "where is 2015", "why is 2015 in enquiry", "2015 status"
-  if (/\b(?:why|where|status|still|is|stage)\b/i.test(low) && /\b(\d{3,6})\b/.test(msg)) {
-    const num = /\b(\d{3,6})\b/.exec(msg)![1];
-    return done('help', { question: msg, identifier: num });
+  // ------------------------------------------------------------------------- Stage Status / Quantity / Inquiry queries
+  // E.g. "see i have said quantity 2 it has typed quantity 2?", "why is 2015 still in enquiry stage", "where is 2015", "why is quantity 0"
+  if (/\b(?:why|where|status|still|is|stage|typed|said|wrong|quantity|quantities|குவாண்டிட்டி|அளவு|எண்ணிக்கை|0)\b/i.test(low)) {
+    const num = /\b(\d{3,6})\b/.exec(msg)?.[1];
+    if (num) {
+      return done('help', { question: msg, identifier: num });
+    }
+    // If user asks about quantity/typing error without explicit record ID,
+    // match the board card whose product name absorbed the quantity word or has 0 qty
+    const cardWithBug = cards.find(c => /(?:quantit|qty|அளவு|எண்ணிக்கை)\b/i.test(c.part) || c.qty === 0);
+    if (cardWithBug) {
+      return done('help', { question: msg, identifier: cardWithBug.refNo });
+    }
   }
 
   if (/\b(guide me|walk me through|walkthrough|show me how|step by step)\b|வழிகாட்டு/i.test(msg)) return done('guide', {});
@@ -341,7 +386,7 @@ export function understandLocal(
 
   // ------------------------------------------------------------------------- Edit commands
   const hasEdit = new RegExp(`\\b${EDIT_WORD}\\b`, 'i').test(msg);
-  const qtyMatch = /(?:qty|quantity|அளவு|குவாண்டிட்டி)\s*(?:to|[:\-])?\s*(\d+(?:\.\d+)?)/i.exec(msg);
+  const qtyMatch = /(?:qty|quantit(?:y|ies)|குவாண்டிட்டி|அளவு|எண்ணிக்கை|pieces?|pcs|nos?|count)\s*(?:is|are|as|to|[:\-=])?\s*(\d+(?:\.\d+)?)/i.exec(msg);
   const priceMatch = /(?:price|rate|விலை|@)\s*(?:to|[:\-])?\s*(?:rs\.?|₹)?\s*(\d+(?:\.\d+)?)/i.exec(msg);
 
   if (hasEdit) {
@@ -362,8 +407,8 @@ export function understandLocal(
       const updates: any = {};
       if (qtyMatch) updates.quantity = Number(qtyMatch[1]);
       else if (enqEdit[2] && enqEdit[3]) updates.quantity = Number(enqEdit[3]);
-      const partMatch = /\b(?:part|product)\s*(?:to|name|[:\-])?\s*([A-Za-z0-9\s_-]+?)(?=\s*(?:qty|quantity|price|$))/i.exec(msg);
-      if (partMatch) updates.part_name = clean(partMatch[1]);
+      const partMatch = /\b(?:part|product)\s*(?:to|name|[:\-])?\s*([A-Za-z0-9\s_-]+?)(?=\s*(?:qty|quantit|price|$))/i.exec(msg);
+      if (partMatch) updates.part_name = cleanProductName(partMatch[1]);
       return done('edit_enquiry', { identifier, updates });
     }
 
@@ -394,13 +439,13 @@ export function understandLocal(
   const productText = (() => {
     const m = /\b(?:products?|items?)\b\s*[:\-]?\s*(.+?)(?=\s*(?:\bremarks?\b|\bpo\b|\bdelivery\b|\bdeliver\b|$))/i.exec(msg);
     if (m) return m[1];
-    const co = findCompanyAt(msg);
+    const co = findCompanyAt(msg, cards);
     const rest = msg.slice(co.end).replace(/^\s*[,;]?\s*(?:with\s+)?/i, '').split(/\b(?:remarks?|po|delivery|deliver)\b/i)[0].trim();
-    return co.name && rest && !/^(?:qty|quantity|price|rate)\b/i.test(rest) ? rest : '';
+    return co.name && rest && !/^(?:qty|quantity|quantities|price|rate)\b/i.test(rest) ? rest : '';
   })().replace(/\s*(?:\bprice\b|\brate\b|@)\s*[:\-]?\s*(?:rs\.?|₹)?\s*\d+(?:\.\d+)?/gi, '');
 
   const productsOf = () => {
-    const list = productText ? parseProducts(productText.replace(/\s*(?:qty|quantity)\s*[:\-]?\s*\d+(?:\.\d+)?\s*$/i, '')) : [];
+    const list = productText ? parseProducts(productText.replace(/\s*(?:qty|quantit(?:y|ies))\s*[:\-]?\s*\d+(?:\.\d+)?\s*$/i, '')) : [];
     if (list.length === 1 && list[0].qty == null && qtyMatch) list[0].qty = Number(qtyMatch[1]);
     if (list.length === 1 && priceMatch) list[0].price = Number(priceMatch[1]);
     return list;
@@ -417,7 +462,7 @@ export function understandLocal(
   }
 
   if (hasAdd && /\benquir|விசாரணை/i.test(msg)) {
-    return done('add_enquiry', { company: findCompany(msg), products: productsOf(), remarks: clean(/\bremarks?\b\s*[:\-]?\s*(.+)$/i.exec(msg)?.[1] ?? '') });
+    return done('add_enquiry', { company: findCompany(msg, cards), products: productsOf(), remarks: clean(/\bremarks?\b\s*[:\-]?\s*(.+)$/i.exec(msg)?.[1] ?? '') });
   }
 
   if (hasAdd && /\bsales\s*order|\border\b|ஆர்டர்/i.test(msg)) {
