@@ -4186,6 +4186,27 @@ export function SalesPipelinePage() {
       qty: q.quantity, value: q.total_value, date: q.valid_till || q.valid_until || q.date || q.quote_date, status: q.status, raw: q
     }));
 
+    // If any lead is marked Quoted/Quotation but does not have a quotation row in cnc_quotations yet,
+    // display it in Quotation as a Draft Quotation card so it is never lost from the board!
+    const quotedLeadsWithoutQuoteRow = allLeads?.filter(l =>
+      (l.status === 'Quoted' || l.pipeline_stage === 'Quotation') &&
+      !resolvedQuotes.some(q => q.lead_id === l.id || q.enquiry_no === (l.lead_no || l.enquiry_no) || (q.quote_no && (l.lead_no || l.enquiry_no) && q.quote_no === (l.lead_no || l.enquiry_no)))
+    ) || [];
+
+    quotedLeadsWithoutQuoteRow.forEach(l => newCards.push({
+      id: `lead_quote_${l.id}`,
+      stage: 'Quotation',
+      type: 'quotation',
+      refNo: leadMap.get(l.id) || l.lead_no || l.enquiry_no,
+      customer: l.customer,
+      part: formatLeadProductDisplay(l),
+      qty: l.quantity,
+      value: l.estimated_value,
+      date: l.expected_date || l.received_date || (l.created_at ? String(l.created_at).split('T')[0] : ''),
+      status: 'Draft',
+      raw: { ...l, quote_no: `QT-${l.lead_no || l.enquiry_no}` }
+    }));
+
     if (orders) orders.forEach(o => newCards.push({
       id: `order_${o.id}`, stage: 'Sales Order', type: 'order',
       refNo: orderMap.get(o.order_no), customer: o.customer || o.customer_name, part: formatLeadProductDisplay(o),

@@ -696,7 +696,119 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
   const refNo = enq ? (enq.lead_no || enq.enquiry_no || idStr) : (so ? so.order_no : idStr);
   const customer = enq ? enq.customer : (so ? so.customer : '');
 
-  // Dispatch event so SalesPipelinePage opens the stage form modal on screen immediately!
+  // 1. If an enquiry is moving to Quotation
+  if (enq && stageNorm === 'Quotation') {
+    // Update enquiry stage in database
+    await supabase.from('cnc_enquiries').update({
+      pipeline_stage: 'Quotation',
+      status: 'Quoted',
+    }).eq('id', enq.id);
+
+    // Create quotation row in cnc_quotations with valid database schema
+    try {
+      const { data: existingQ } = await supabase
+        .from('cnc_quotations')
+        .select('id, quote_no')
+        .or(`lead_id.eq.${enq.id},enquiry_no.eq.${enq.lead_no || enq.enquiry_no}`)
+        .limit(1);
+
+      if (!existingQ || existingQ.length === 0) {
+        const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        let parsedParts: any[] = [];
+        try {
+          if (enq.enquiring_for) {
+            const parsed = typeof enq.enquiring_for === 'string' ? JSON.parse(enq.enquiring_for) : enq.enquiring_for;
+            if (Array.isArray(parsed)) parsedParts = parsed;
+          }
+        } catch { /* ignore */ }
+
+        const lineItems = parsedParts.length > 0
+          ? parsedParts.map((partItem: any) => ({
+              id: crypto.randomUUID(),
+              partName: partItem.partName || partItem.productName || enq.part_name || '',
+              partNumber: partItem.partNumber || '',
+              quantity: String(partItem.quantity || enq.quantity || 1),
+              unitPrice: String(p.price || 0),
+              discount: '0',
+              unitDiscount: '0',
+              gst: '18',
+            }))
+          : [{
+              id: crypto.randomUUID(),
+              partName: enq.part_name || '',
+              partNumber: '',
+              quantity: String(enq.quantity || 1),
+              unitPrice: String(p.price || 0),
+              discount: '0',
+              unitDiscount: '0',
+              gst: '18',
+            }];
+
+        const qPayload: any = {
+          id: crypto.randomUUID(),
+          quote_no: qNo,
+          lead_id: enq.id,
+          enquiry_no: enq.lead_no || enq.enquiry_no || '',
+          customer: enq.customer,
+          contact_person: enq.contact_person || '',
+          phone: enq.phone || '',
+          email: enq.email || '',
+          part_name: enq.part_name || '',
+          part_number: '',
+          description: JSON.stringify(lineItems),
+          unit_price: Number(p.price) || 0,
+          quantity: Number(enq.quantity) || 1,
+          total_value: (Number(p.price) || 0) * (Number(enq.quantity) || 1),
+          date: today(),
+          valid_till: today(),
+          status: 'Draft',
+          salesperson: '',
+          discount_percent: 0,
+          gst_percent: 18,
+          payment_terms: '',
+          delivery_terms: '',
+          remarks: '',
+        };
+        if (ctx.companyId) qPayload.company_id = ctx.companyId;
+        const { error: insErr } = await supabase.from('cnc_quotations').insert([qPayload]);
+        if (insErr) console.warn('Could not insert quotation:', insErr);
+      }
+    } catch (qErr) {
+      console.warn('Could not create quotation row:', qErr);
+    }
+
+    // Dispatch event so SalesPipelinePage opens the stage form modal on screen immediately!
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: {
+          identifier: refNo,
+          targetStage: 'Quotation',
+          price: p.price,
+        }
+      }));
+    }
+
+    return {
+      ok: true,
+      message: `Enquiry #${refNo} (${customer}) moved to Quotation. Opening the Create Quotation form to enter unit price and terms.`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  // 2. If it is a Sales Order
+  if (so) {
+    const { error } = await supabase.from('cnc_sales_orders').update({
+      status: targetStage,
+    }).eq('id', so.id);
+    if (error) return { ok: false, message: `Could not update order status: ${error.message}` };
+    return {
+      ok: true,
+      message: `Sales Order ${so.order_no} status changed to ${targetStage}.`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  // Generic stage dispatch
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
       detail: {
@@ -707,18 +819,10 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
     }));
   }
 
-  if (stageNorm === 'Quotation') {
-    return {
-      ok: true,
-      message: `Create Quotation form opened for #${refNo} (${customer}). Please enter the unit price and terms to complete the move to Quotation.`,
-      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
-    };
-  }
-
   if (stageNorm === 'Inward') {
     return {
       ok: true,
-      message: `Inward Entry form opened for #${refNo} (${customer}). Please record received items to complete the move.`,
+      message: `Opening Inward Entry form for #${refNo} (${customer}). Please record received items to complete the move.`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
@@ -726,7 +830,7 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
   if (stageNorm === 'DC') {
     return {
       ok: true,
-      message: `Delivery Challan form opened for #${refNo} (${customer}). Please confirm items and delivery details.`,
+      message: `Opening Delivery Challan form for #${refNo} (${customer}). Please confirm items and delivery details.`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
