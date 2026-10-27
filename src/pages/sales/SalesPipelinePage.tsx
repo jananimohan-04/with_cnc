@@ -4156,7 +4156,7 @@ export function SalesPipelinePage() {
     if (quotesRes.error) console.error("Error fetching quotations:", quotesRes.error);
     let resolvedQuotes: any[] = allQuotes && allQuotes.length > 0 ? allQuotes : [];
     const quoteMap = new Map();
-    resolvedQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.enquiry_no || q.quote_no));
+    resolvedQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.lead_no || q.enquiry_no || q.quote_no));
     const quotes = resolvedQuotes.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
 
     const allOrders = ordersRes.data;
@@ -4172,7 +4172,7 @@ export function SalesPipelinePage() {
     const newCards: KanbanCard[] = [];
 
     // Filter leads for the Enquiry column
-    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && l.pipeline_stage !== null) || [];
+    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && (l.pipeline_stage === 'Enquiry' || !l.pipeline_stage) && l.status !== 'Quoted' && l.status !== 'Converted') || [];
 
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
@@ -4478,7 +4478,7 @@ export function SalesPipelinePage() {
       const hist: KanbanCard[] = [];
       const add = (c: KanbanCard) => { if (!onBoard.has(c.id)) hist.push({ ...c, history: true }); };
       (allLeads || []).forEach((l: any) => add({
-        id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead', refNo: leadMap.get(l.id), customer: l.customer, part: formatLeadProductDisplay(l),
+        id: `lead_${l.id}`, stage: l.pipeline_stage || (l.status === 'Quoted' ? 'Quotation' : 'Enquiry'), type: 'lead', refNo: leadMap.get(l.id), customer: l.customer, part: formatLeadProductDisplay(l),
         qty: l.quantity, value: l.estimated_value, date: l.expected_date || l.received_date || (l.created_at ? String(l.created_at).split('T')[0] : ''), status: l.status, raw: l,
       }));
       resolvedQuotes.forEach((q: any) => add({

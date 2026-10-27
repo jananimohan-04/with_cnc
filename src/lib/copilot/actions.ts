@@ -57,16 +57,19 @@ export async function findEnquiry(identifier: string, companyId: string | null) 
   const idStr = str(identifier);
   if (!idStr) return null;
 
-  // 1. Exact match on lead_no or enquiry_no
-  let q1 = supabase.from('cnc_enquiries').select('*').or(`lead_no.eq.${idStr},enquiry_no.eq.${idStr}`);
-  if (companyId) q1 = q1.eq('company_id', companyId);
-  const { data: d1 } = await q1.limit(1);
-  if (d1 && d1.length > 0) return d1[0];
+  // 1. Exact match on lead_no or enquiry_no (with company filter if provided)
+  if (companyId) {
+    let q1 = supabase.from('cnc_enquiries').select('*').or(`lead_no.eq.${idStr},enquiry_no.eq.${idStr}`).eq('company_id', companyId);
+    const { data: d1 } = await q1.limit(1);
+    if (d1 && d1.length > 0) return d1[0];
+  }
+  let q1All = supabase.from('cnc_enquiries').select('*').or(`lead_no.eq.${idStr},enquiry_no.eq.${idStr}`);
+  const { data: d1All } = await q1All.limit(1);
+  if (d1All && d1All.length > 0) return d1All[0];
 
   // 2. Exact match on id
   if (idStr.length > 20) {
     let qId = supabase.from('cnc_enquiries').select('*').eq('id', idStr);
-    if (companyId) qId = qId.eq('company_id', companyId);
     const { data: dId } = await qId.limit(1);
     if (dId && dId.length > 0) return dId[0];
   }
@@ -74,7 +77,6 @@ export async function findEnquiry(identifier: string, companyId: string | null) 
   // 3. Match on customer name or part name
   const safe = ilikeSafe(idStr);
   let q2 = supabase.from('cnc_enquiries').select('*').or(`customer.ilike.%${safe}%,part_name.ilike.%${safe}%`).order('created_at', { ascending: false });
-  if (companyId) q2 = q2.eq('company_id', companyId);
   const { data: d2 } = await q2.limit(5);
   if (d2 && d2.length > 0) return d2[0];
 
@@ -694,8 +696,10 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
           const qPayload: any = {
             id: crypto.randomUUID(),
             quote_no: qNo,
-            customer: enq.customer,
+            lead_id: enq.id,
+            enquiry_no: enq.lead_no || enq.enquiry_no || '',
             lead_no: enq.lead_no || enq.enquiry_no || '',
+            customer: enq.customer,
             quote_date: today(),
             quotation_date: today(),
             valid_till: today(),
@@ -760,4 +764,37 @@ export async function findRecords(kind: string, query: string, ctx: ActionCtx): 
   if (error) return { title: `Could not search: ${error.message}`, rows: [] };
   const rows = ((data ?? []) as any[]).map(def.line);
   return { title: rows.length ? `${def.label}${s ? ` for “${s}”` : ''} (latest ${rows.length})` : `No ${def.label.toLowerCase()} found${s ? ` for “${s}”` : ''}.`, rows };
+}
+
+export async function explainRecordStage(identifier: string, companyId: string | null): Promise<string> {
+  const enq = await findEnquiry(identifier, companyId);
+  if (enq) {
+    const leadNo = enq.lead_no || enq.enquiry_no || identifier;
+    const customer = enq.customer || 'Customer';
+    const stage = enq.pipeline_stage || 'Enquiry';
+    const status = enq.status || 'New';
+
+    if (stage === 'Quotation' || status === 'Quoted') {
+      const { data: q } = await supabase
+        .from('cnc_quotations')
+        .select('quote_no')
+        .or(`lead_id.eq.${enq.id},lead_no.eq.${leadNo},enquiry_no.eq.${leadNo}`)
+        .limit(1);
+      const qRef = q && q.length > 0 && q[0].quote_no ? ` (${q[0].quote_no})` : '';
+      return `Enquiry #${leadNo} for ${customer} has been converted to the Quotation stage${qRef}. On the Kanban board, look under the Quotation column for #${leadNo}.`;
+    }
+
+    if (stage === 'Sales Order' || status === 'Ordered') {
+      return `Record #${leadNo} for ${customer} has moved to the Sales Order stage.`;
+    }
+
+    return `Record #${leadNo} for ${customer} is currently in the ${stage} stage (Status: ${status}).`;
+  }
+
+  const so = await findSalesOrder(identifier, companyId);
+  if (so) {
+    return `Sales Order ${so.order_no} for ${so.customer} is in the Sales Order stage (Status: ${so.status}).`;
+  }
+
+  return `I could not locate record #${identifier} in the pipeline. Please check the reference number.`;
 }

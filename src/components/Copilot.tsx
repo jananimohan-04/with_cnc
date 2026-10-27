@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getBreadcrumbs } from '@/config/navigation';
 import { say, stopSpeaking, offlineAnswer } from '@/components/HelpAssistant';
 import {
-  findRecords, previewAction, runAction, fetchPipelineSummary,
+  findRecords, previewAction, runAction, fetchPipelineSummary, explainRecordStage,
   type ActionCtx, type Preview, type PipelineItem
 } from '@/lib/copilot/actions';
 import {
@@ -341,6 +341,13 @@ export function Copilot() {
 
       if (u.intent === 'help') {
         setPending(null);
+        if (u.params.identifier) {
+          const ans = await explainRecordStage(String(u.params.identifier), ctx.companyId);
+          window.dispatchEvent(new CustomEvent('argus:data-changed'));
+          void loadPipeline();
+          add({ role: 'ai', text: ans });
+          return;
+        }
         add({ role: 'ai', text: await askHelp(String(u.params.question ?? text), page, pageTitle, lang) });
         return;
       }

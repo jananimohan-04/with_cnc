@@ -248,6 +248,13 @@ export function understandLocal(
     return done(pending.intent, params);
   }
 
+  // ------------------------------------------------------------------------- Stage Status / Inquiry queries
+  // E.g. "but 2015 is still in enquiry stage why", "where is 2015", "why is 2015 in enquiry", "2015 status"
+  if (/\b(?:why|where|status|still|is|stage)\b/i.test(low) && /\b(\d{3,6})\b/.test(msg)) {
+    const num = /\b(\d{3,6})\b/.exec(msg)![1];
+    return done('help', { question: msg, identifier: num });
+  }
+
   if (/\b(guide me|walk me through|walkthrough|show me how|step by step)\b|வழிகாட்டு/i.test(msg)) return done('guide', {});
   if (/^(how|what|where|why|when|eppadi|enna|yeppadi|yenna|epdi)\b/i.test(low) || /\?\s*$/.test(msg)) return done('help', { question: msg });
 
