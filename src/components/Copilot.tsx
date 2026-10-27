@@ -28,6 +28,43 @@ const ls = {
 };
 const readLang = (): Lang => { const v = ls.get('help.vlang', 'ta'); return v === 'en' || v === 'tanglish' ? v : 'ta'; };
 
+// Wake Word regex: English + Tamil variations of "hello/hey/hi cnc"
+const WAKE_WORD_REGEX = /(?:^|\b)(?:hello|hey|hi|வணக்கம்|ஹலோ)\s+(?:cnc|c\s*n\s*c|c\s*and\s*c|c&c|erp|சி\s*என்\s*சி|சிஎன்சி)[!.,? ]*(.*)$/i;
+
+/** Plays a pleasant two-tone synth chime when the wake word is detected */
+function playWakeChime() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5 note
+    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.15);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.12); // A5 note
+    gain2.gain.setValueAtTime(0.25, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.35);
+  } catch {
+    // AudioContext autoplay restrictions are handled gracefully
+  }
+}
+
 interface Msg {
   id: number;
   role: 'user' | 'ai';
@@ -130,6 +167,21 @@ export function Copilot() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [awaiting, setAwaiting] = useState<Awaiting | null>(null);
 
+  // Microphone Always-ON state (defaults to true; can be muted if needed)
+  const [micMuted, setMicMuted] = useState(() => ls.get('argus.coworker.micMuted', '0') === '1');
+  const micMutedRef = useRef(micMuted);
+  micMutedRef.current = micMuted;
+
+  // Track assistant speaking state to prevent acoustic loopback
+  const isSpeakingRef = useRef(false);
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  const autoSubmitTimerRef = useRef<any>(null);
+  const restartTimerRef = useRef<any>(null);
+  const otherModeActiveRef = useRef(false);
+  const lastTranscriptRef = useRef('');
+
   // OpenAI settings state
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => getOpenAIApiKey());
@@ -146,7 +198,7 @@ export function Copilot() {
   const endRef = useRef<HTMLDivElement>(null);
   const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
   const ta = lang === 'ta';
-  const L = (en: string, tm: string) => (ta ? tm : en);
+  const L = useCallback((en: string, tm: string) => (ta ? tm : en), [ta]);
 
   const page = location.pathname;
   const pageTitle = useMemo(() => {
@@ -200,34 +252,213 @@ export function Copilot() {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [msgs, awaiting, busy]);
 
+  // Handle other assistant modes (teaching, adviser) so mics don't clash
   useEffect(() => {
-    if (!open) {
-      stopSpeaking();
-      try { recRef.current?.abort?.(); } catch { /* ignore */ }
-      setListening(false);
-    }
-  }, [open]);
-
-  useEffect(() => () => {
-    stopSpeaking();
-    try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    const handleMode = (e: Event) => {
+      const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail;
+      if (d) {
+        if (d.mode !== 'coworker' && d.on) {
+          otherModeActiveRef.current = true;
+          try { recRef.current?.abort?.(); } catch { /* ignore */ }
+          setListening(false);
+        } else if (d.mode !== 'coworker' && !d.on) {
+          otherModeActiveRef.current = false;
+          if (!micMutedRef.current) {
+            startRecognitionRef.current();
+          }
+        }
+      }
+    };
+    window.addEventListener('argus:mode', handleMode);
+    return () => window.removeEventListener('argus:mode', handleMode);
   }, []);
 
-  const add = useCallback((m: Omit<Msg, 'id'>, speakIt = true) => {
-    setMsgs((x) => [...x, { ...m, id: ++seq }]);
-    if (speakIt && speak && m.role === 'ai' && m.text) say(m.text, () => {}, undefined);
+  // Forward refs for closures
+  const submitRef = useRef<(raw: string) => Promise<void>>(async () => {});
+  const startRecognitionRef = useRef<() => void>(() => {});
+  const handleWakeActivationRef = useRef<(trailing?: string) => void>(() => {});
+
+  // Safe voice output with echo cancellation (mic pauses during TTS)
+  const speakText = useCallback((text: string, onDone?: () => void) => {
+    if (!speak || !text) {
+      onDone?.();
+      return;
+    }
+    isSpeakingRef.current = true;
+    try {
+      recRef.current?.abort?.();
+    } catch { /* ignore */ }
+    setListening(false);
+
+    say(
+      text,
+      () => {
+        // Debounce before resuming mic to let speaker sound dissipate completely
+        setTimeout(() => {
+          isSpeakingRef.current = false;
+          if (!micMutedRef.current && !otherModeActiveRef.current) {
+            startRecognitionRef.current();
+          }
+          onDone?.();
+        }, 350);
+      },
+      undefined
+    );
   }, [speak]);
 
-  // Proactive greeting on open
-  useEffect(() => {
-    if (open && msgs.length === 0) {
-      const welcome = L(
-        'Hi! I am your Sales Pipeline Co-worker. What data would you like to add, edit, or delete?',
-        'வணக்கம்! நான் உங்கள் Sales Pipeline Co-worker. என்ன தரவைச் சேர்க்க, மாற்ற அல்லது நீக்க வேண்டும்?'
-      );
-      add({ role: 'ai', text: welcome }, true);
+  const add = useCallback((m: Omit<Msg, 'id'>, speakIt = true, onDoneSpeaking?: () => void) => {
+    setMsgs((x) => [...x, { ...m, id: ++seq }]);
+    if (speakIt && speak && m.role === 'ai' && m.text) {
+      speakText(m.text, onDoneSpeaking);
+    } else {
+      onDoneSpeaking?.();
     }
-  }, [open, msgs.length, add, L]);
+  }, [speak, speakText]);
+
+  // Continuous speech recognition loop
+  const startRecognition = useCallback(() => {
+    if (!SR || micMutedRef.current || isSpeakingRef.current || otherModeActiveRef.current) {
+      return;
+    }
+
+    try {
+      recRef.current?.abort?.();
+    } catch { /* ignore */ }
+
+    const r = new SR();
+    r.lang = lang === 'ta' ? 'ta-IN' : 'en-IN';
+    r.interimResults = true;
+    r.continuous = true;
+    r.maxAlternatives = 1;
+
+    r.onstart = () => {
+      setListening(true);
+    };
+
+    r.onresult = (e: any) => {
+      if (isSpeakingRef.current || otherModeActiveRef.current) return;
+
+      let interim = '';
+      let finalChunk = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const item = e.results[i];
+        const t = item[0]?.transcript || '';
+        if (item.isFinal) finalChunk += t;
+        else interim += t;
+      }
+
+      const combined = (finalChunk || interim).trim();
+      if (!combined) return;
+
+      // 1. Check for Wake Word ("Hello CNC!" etc.)
+      const wakeMatch = WAKE_WORD_REGEX.exec(combined);
+      if (wakeMatch) {
+        lastTranscriptRef.current = '';
+        setInput('');
+        handleWakeActivationRef.current(wakeMatch[1] || '');
+        return;
+      }
+
+      // 2. If Co-worker is NOT open, only the Wake Word triggers activation
+      if (!openRef.current) {
+        return;
+      }
+
+      // 3. When Co-worker IS open, show speech in real time in the input bar
+      setInput(combined);
+      lastTranscriptRef.current = combined;
+
+      // Auto-submit after natural pause of 850ms without new speech
+      clearTimeout(autoSubmitTimerRef.current);
+      autoSubmitTimerRef.current = setTimeout(() => {
+        const toSubmit = lastTranscriptRef.current.trim();
+        if (toSubmit && toSubmit.length >= 2 && !isSpeakingRef.current) {
+          lastTranscriptRef.current = '';
+          void submitRef.current(toSubmit);
+        }
+      }, 850);
+    };
+
+    r.onerror = (e: any) => {
+      if (e.error === 'not-allowed') {
+        // User explicitly denied mic access in browser settings
+        setMicMuted(true);
+        micMutedRef.current = true;
+        ls.set('argus.coworker.micMuted', '1');
+      }
+      setListening(false);
+    };
+
+    r.onend = () => {
+      setListening(false);
+      // Restart loop automatically whenever speech ends or pauses
+      if (!micMutedRef.current && !isSpeakingRef.current && !otherModeActiveRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = setTimeout(() => {
+          startRecognitionRef.current();
+        }, 180);
+      }
+    };
+
+    recRef.current = r;
+    try {
+      r.start();
+    } catch {
+      setListening(false);
+    }
+  }, [SR, lang]);
+
+  startRecognitionRef.current = startRecognition;
+
+  // Toggle mic mute/unmute
+  const toggleMicMute = useCallback(() => {
+    if (micMuted) {
+      setMicMuted(false);
+      micMutedRef.current = false;
+      ls.set('argus.coworker.micMuted', '0');
+      playWakeChime();
+      startRecognition();
+    } else {
+      setMicMuted(true);
+      micMutedRef.current = true;
+      ls.set('argus.coworker.micMuted', '1');
+      clearTimeout(restartTimerRef.current);
+      clearTimeout(autoSubmitTimerRef.current);
+      try {
+        recRef.current?.abort?.();
+      } catch { /* ignore */ }
+      setListening(false);
+    }
+  }, [micMuted, startRecognition]);
+
+  // Initial always-on microphone startup
+  useEffect(() => {
+    if (!SR) return;
+    if (!micMutedRef.current) {
+      startRecognition();
+    }
+
+    // In case browser requires a gesture to initialize audio capture
+    const onUserGesture = () => {
+      if (!listening && !micMutedRef.current && !isSpeakingRef.current && !otherModeActiveRef.current) {
+        startRecognition();
+      }
+    };
+    window.addEventListener('pointerdown', onUserGesture, { once: true });
+    window.addEventListener('keydown', onUserGesture, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', onUserGesture);
+      window.removeEventListener('keydown', onUserGesture);
+    };
+  }, [SR, listening, startRecognition]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    stopSpeaking();
+    clearTimeout(restartTimerRef.current);
+    clearTimeout(autoSubmitTimerRef.current);
+    try { recRef.current?.abort?.(); } catch { /* ignore */ }
+  }, []);
 
   const askFor = (u: Understood) => {
     const field = u.missing[0];
@@ -260,9 +491,31 @@ export function Copilot() {
   }, [add, L]);
 
   const submit = useCallback(async (raw: string) => {
+    clearTimeout(autoSubmitTimerRef.current);
     const text = raw.trim();
     if (!text || busy) return;
     setInput('');
+
+    // Check for Wake word triggers typed or spoken
+    const wakeM = WAKE_WORD_REGEX.exec(text);
+    if (wakeM) {
+      playWakeChime();
+      const trailing = (wakeM[1] || '').trim();
+      const welcomeMsg = L(
+        'Welcome to ERP! What data would you like to add, edit, or delete?',
+        'Welcome to ERP! என்ன தரவைச் சேர்க்க, மாற்ற அல்லது நீக்க வேண்டும்?'
+      );
+      if (!trailing) {
+        add({ role: 'ai', text: welcomeMsg }, true);
+        return;
+      } else {
+        add({ role: 'ai', text: L('Welcome to ERP!', 'Welcome to ERP!') }, true, () => {
+          void submitRef.current(trailing);
+        });
+        return;
+      }
+    }
+
     add({ role: 'user', text }, false);
 
     if (awaiting && YES.test(text)) {
@@ -428,49 +681,38 @@ export function Copilot() {
     }
   }, [busy, awaiting, pending, msgs, lang, page, pageTitle, ctx, hasApiKey, pipelineCards, add, confirm, cancel, navigate, L, loadPipeline]);
 
-  const toggleMic = () => {
-    if (listening) {
-      try { recRef.current?.stop?.(); } catch { /* ignore */ }
-      return;
-    }
-    if (!SR) {
-      add({
-        role: 'ai',
-        text: L('This browser does not support speech recognition. Please type or use Chrome / Edge.', 'இந்த browser-ல் பேச்சு அறிதல் இல்லை. தட்டச்சு செய்யுங்கள் அல்லது Chrome / Edge பயன்படுத்துங்கள்.'),
-        error: true,
-      }, false);
-      return;
-    }
-    stopSpeaking();
-    const r = new SR();
-    r.lang = ta ? 'ta-IN' : 'en-IN';
-    r.interimResults = true;
-    r.maxAlternatives = 1;
-    let finalText = '';
+  submitRef.current = submit;
 
-    r.onresult = (e: any) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interim += t;
-      }
-      setInput((finalText + interim).trim());
-    };
-    r.onerror = () => setListening(false);
-    r.onend = () => {
-      setListening(false);
-      const t = finalText.trim();
-      if (t) void submit(t);
-    };
-    recRef.current = r;
-    setListening(true);
-    try {
-      r.start();
-    } catch {
-      setListening(false);
+  // Wake Word Handler: Activates, chimes, welcomes user and processes trailing command
+  const handleWakeActivation = useCallback((trailingCmd = '') => {
+    playWakeChime();
+    setOpen(true);
+    const welcome = L(
+      'Welcome to ERP! What data would you like to add, edit, or delete?',
+      'Welcome to ERP! என்ன தரவைச் சேர்க்க, மாற்ற அல்லது நீக்க வேண்டும்?'
+    );
+    const clean = trailingCmd.trim();
+    if (!clean) {
+      add({ role: 'ai', text: welcome }, true);
+    } else {
+      add({ role: 'ai', text: L('Welcome to ERP!', 'Welcome to ERP!') }, true, () => {
+        void submitRef.current(clean);
+      });
     }
-  };
+  }, [add, L]);
+
+  handleWakeActivationRef.current = handleWakeActivation;
+
+  // Proactive greeting on open
+  useEffect(() => {
+    if (open && msgs.length === 0) {
+      const welcome = L(
+        'Welcome to ERP! What data would you like to add, edit, or delete?',
+        'Welcome to ERP! என்ன தரவைச் சேர்க்க, மாற்ற அல்லது நீக்க வேண்டும்?'
+      );
+      add({ role: 'ai', text: welcome }, true);
+    }
+  }, [open, msgs.length, add, L]);
 
   const toggleLang = () => {
     const n: Lang = lang === 'ta' ? 'en' : 'ta';
@@ -520,7 +762,43 @@ export function Copilot() {
     });
   }, [pipelineCards, cardFilter, cardSearch]);
 
-  if (!open) return null;
+  // Standby pill when Co-worker is closed: Shows active always-on listening status
+  if (!open) {
+    return (
+      <div
+        className="fixed bottom-4 left-[5.5rem] z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs transition-all hover:shadow-xl hover:scale-105 cursor-pointer select-none max-lg:bottom-20 max-lg:left-2"
+        onClick={() => {
+          setOpen(true);
+          playWakeChime();
+        }}
+        title={
+          micMuted
+            ? 'Co-worker mic is muted. Click to open.'
+            : 'Co-worker is listening! Say "Hello CNC!" or click to open.'
+        }
+      >
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white shadow-xs">
+          <Sparkles size={13} />
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="font-bold text-slate-800">Co-worker</span>
+          {!micMuted ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
+              Say "Hello CNC !"
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+              Mic Muted
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -535,7 +813,7 @@ export function Copilot() {
           <Sparkles size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-bold leading-tight">Co-worker</p>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[9px] font-semibold ${
@@ -546,9 +824,29 @@ export function Copilot() {
               <span className={`h-1.5 w-1.5 rounded-full ${hasApiKey ? 'bg-emerald-300 animate-pulse' : 'bg-blue-200'}`} />
               {hasApiKey ? 'ChatGPT' : 'Local'}
             </span>
+
+            {/* Continuous Microphone status badge */}
+            <button
+              type="button"
+              onClick={toggleMicMute}
+              title={micMuted ? 'Mic is Muted. Click to enable continuous listening.' : 'Mic is Always ON. Click to mute.'}
+              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[9px] font-bold transition-all ${
+                micMuted
+                  ? 'bg-rose-500/30 text-rose-200 border border-rose-400/40 hover:bg-rose-500/50'
+                  : 'bg-emerald-400/30 text-emerald-100 border border-emerald-300/40 hover:bg-emerald-400/40'
+              }`}
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                {!micMuted && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${micMuted ? 'bg-rose-400' : 'bg-emerald-300'}`}></span>
+              </span>
+              <span>{micMuted ? 'Mic Muted' : 'Mic: Always ON'}</span>
+            </button>
           </div>
           <p className="truncate text-[10px] text-white/70">
-            {L('Ask what to add, edit or delete', 'தரவைச் சேர்க்க, மாற்ற அல்லது நீக்க சொல்லுங்கள்')}
+            {L('🎙️ Say "Hello CNC!" anytime · Ask what to add, edit or delete', '🎙️ "Hello CNC!" என்று எப்போது வேண்டுமானாலும் சொல்லலாம்')}
           </p>
         </div>
 
@@ -915,7 +1213,7 @@ export function Copilot() {
         <div ref={endRef} />
       </div>
 
-      {/* Input & Microphone form */}
+      {/* Input & Continuous Microphone form */}
       <form
         className="flex items-center gap-1.5 border-t border-slate-200 bg-slate-50/50 p-2.5 shrink-0"
         onSubmit={(e) => {
@@ -925,16 +1223,18 @@ export function Copilot() {
       >
         <button
           type="button"
-          onClick={toggleMic}
-          aria-label={listening ? 'Stop listening' : 'Speak'}
-          title={listening ? 'Stop listening' : 'Speak in microphone'}
+          onClick={toggleMicMute}
+          aria-label={micMuted ? 'Enable continuous microphone' : 'Mute microphone'}
+          title={micMuted ? 'Microphone Muted. Click to listen.' : 'Microphone Always Listening. Click to mute.'}
           className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-all ${
-            listening
-              ? 'animate-pulse bg-red-600 ring-4 ring-red-300'
-              : 'bg-violet-600 hover:bg-violet-700 hover:scale-105 active:scale-95'
+            micMuted
+              ? 'bg-slate-400 hover:bg-slate-500 text-slate-100'
+              : listening
+              ? 'bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse'
+              : 'bg-violet-600 hover:bg-violet-700'
           }`}
         >
-          {listening ? <MicOff size={18} /> : <Mic size={18} />}
+          {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
         </button>
 
         <input
@@ -942,9 +1242,11 @@ export function Copilot() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            listening
-              ? L('Listening… speak now', 'கேட்கிறேன்… பேசுங்கள்')
-              : L('Speak in mic or type command…', 'மைக் அல்லது தட்டச்சு மூலம் சொல்லுங்கள்…')
+            micMuted
+              ? L('Mic is muted. Type command or click mic...', 'மைக் அணைக்கப்பட்டுள்ளது. தட்டச்சு செய்யுங்கள்...')
+              : listening
+              ? L('🎙️ Listening continuously… Say command or "Hello CNC!"', '🎙️ தொடர்ந்து கேட்கிறேன்… கட்டளை சொல்லுங்கள்')
+              : L('Speak or type command…', 'கட்டளை சொல்லுங்கள்…')
           }
           className="h-10 min-w-0 flex-1 rounded-full border border-slate-200 bg-white px-4 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
         />
