@@ -4586,6 +4586,15 @@ export function SalesPipelinePage() {
   useEffect(() => {
     fetchPipeline();
     fetchRecentActivities();
+
+    const handleDataChanged = () => {
+      fetchPipeline();
+      setListRefresh((n) => n + 1);
+    };
+    window.addEventListener('argus:data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('argus:data-changed', handleDataChanged);
+    };
   }, [company?.id]);
 
   const parseContacts = (raw: any) => {
