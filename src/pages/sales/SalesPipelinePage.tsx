@@ -5376,6 +5376,82 @@ export function SalesPipelinePage() {
     await moveCardToStage(card, toStage);
   };
 
+  // Co-worker & assistant voice/command handler: open stage transition forms on board
+  useEffect(() => {
+    const handleMoveCardStage = async (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const { identifier, targetStage, price } = detail;
+      if (!identifier || !targetStage) return;
+
+      const idClean = String(identifier).trim().toLowerCase();
+      // Search in current board cards
+      let card = cards.find(c => {
+        const ref = String(c.refNo || '').trim().toLowerCase();
+        const idStr = String(c.id || '').trim().toLowerCase();
+        return (
+          ref === idClean ||
+          ref.endsWith(idClean) ||
+          idStr === idClean ||
+          idStr === `lead_${idClean}` ||
+          idStr === `quote_${idClean}` ||
+          idStr === `order_${idClean}` ||
+          (c.customer && c.customer.toLowerCase().includes(idClean))
+        );
+      });
+
+      // Fallback search in raw leads list
+      if (!card && rawLeadsList.length) {
+        const lead = rawLeadsList.find((l: any) =>
+          String(l.lead_no || l.enquiry_no || '').toLowerCase() === idClean ||
+          String(l.id || '').toLowerCase() === idClean ||
+          (l.customer && l.customer.toLowerCase().includes(idClean))
+        );
+        if (lead) {
+          card = {
+            id: `lead_${lead.id}`,
+            stage: 'Enquiry',
+            type: 'lead',
+            refNo: lead.lead_no || lead.enquiry_no,
+            customer: lead.customer,
+            part: formatLeadProductDisplay(lead),
+            qty: lead.quantity,
+            value: lead.estimated_value,
+            date: lead.expected_date || lead.received_date,
+            status: lead.status,
+            raw: lead,
+          };
+        }
+      }
+
+      if (!card) {
+        console.warn(`[Co-worker] Could not find card matching "${identifier}" on the pipeline board.`);
+        return;
+      }
+
+      // Check module permission
+      if (!canDo(STAGE_MODULE[targetStage as Stage] ?? 'sales-pipeline', 'edit')) {
+        alert('Not authorized: your account cannot move records into this stage.');
+        return;
+      }
+
+      await moveCardToStage(card, targetStage as Stage);
+
+      // If price was provided and target is Quotation, prefill it in quoteForm
+      if (price && targetStage.toLowerCase().includes('quot')) {
+        setQuoteForm((prev: any) => ({
+          ...prev,
+          items: (prev.items || []).map((it: any) => ({ ...it, unitPrice: String(price) }))
+        }));
+      }
+    };
+
+    window.addEventListener('argus:move-card-stage', handleMoveCardStage);
+    return () => {
+      window.removeEventListener('argus:move-card-stage', handleMoveCardStage);
+    };
+  }, [cards, rawLeadsList, canDo]);
+
   // Duplicate = directly creates a new enquiry cloned from the existing card as a template
   // (new unique number, new DB record, New status, received_date today).
   // Remains on the current board view and refreshes pipeline immediately.

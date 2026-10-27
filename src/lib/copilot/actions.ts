@@ -382,13 +382,33 @@ export async function previewAction(intent: Intent, p: Params, ctx: ActionCtx): 
     const target = await findEnquiry(str(p.identifier), ctx.companyId) || await findSalesOrder(str(p.identifier), ctx.companyId);
     const targetName = target ? (target.lead_no || target.order_no || target.customer) : str(p.identifier);
     const cust = target?.customer ? ` (${target.customer})` : '';
+    const toStage = str(p.target_stage);
+    const stageNorm = toStage.toLowerCase().includes('quot') ? 'Quotation'
+      : toStage.toLowerCase().includes('order') || toStage.toLowerCase().includes('sales') ? 'Sales Order'
+      : toStage.toLowerCase().includes('inward') ? 'Inward'
+      : toStage.toLowerCase().includes('finish') ? 'Finished Goods'
+      : toStage.toLowerCase().includes('dc') || toStage.toLowerCase().includes('deliver') ? 'DC'
+      : toStage.toLowerCase().includes('invoice') ? 'Invoice'
+      : toStage;
+
+    const lines = [
+      `Record: #${targetName}${cust}`,
+      `Current Stage: ${target?.pipeline_stage || (target?.order_no ? 'Sales Order' : 'Enquiry')}`,
+      `👉 Move To: ${stageNorm}`,
+    ];
+
+    if (stageNorm === 'Quotation') {
+      if (p.price) lines.push(`👉 Unit Price: ₹${p.price}`);
+      lines.push(`📋 Next: The Create Quotation form will open on your screen to enter Unit Price, Discount & Terms.`);
+    } else if (stageNorm === 'Inward') {
+      lines.push(`📋 Next: The Inward Entry form will open on your screen to record received materials.`);
+    } else if (stageNorm === 'DC') {
+      lines.push(`📋 Next: The Delivery Challan form will open on your screen to confirm delivery details.`);
+    }
+
     return {
-      title: 'Move Pipeline Stage',
-      lines: [
-        `Record: ${targetName}${cust}`,
-        `Current Stage: ${target?.pipeline_stage || (target?.order_no ? 'Sales Order' : 'Enquiry')}`,
-        `👉 Target Stage: ${str(p.target_stage)}`,
-      ],
+      title: `Move #${targetName} to ${stageNorm}`,
+      lines,
       warnings: [],
       blocked,
     };
@@ -663,110 +683,59 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
   const targetStage = str(p.target_stage);
   if (!idStr) return { ok: false, message: 'Please specify which record to move.' };
 
-  // Check if enquiry first
+  const stageNorm = targetStage.toLowerCase().includes('quot') ? 'Quotation'
+    : targetStage.toLowerCase().includes('order') || targetStage.toLowerCase().includes('sales') ? 'Sales Order'
+    : targetStage.toLowerCase().includes('inward') ? 'Inward'
+    : targetStage.toLowerCase().includes('finish') ? 'Finished Goods'
+    : targetStage.toLowerCase().includes('dc') || targetStage.toLowerCase().includes('deliver') ? 'DC'
+    : targetStage.toLowerCase().includes('invoice') ? 'Invoice'
+    : targetStage;
+
   const enq = await findEnquiry(idStr, ctx.companyId);
-  if (enq) {
-    const stageMap: Record<string, { stage: string; status: string }> = {
-      enquiry: { stage: 'Enquiry', status: 'New' },
-      quotation: { stage: 'Quotation', status: 'Quoted' },
-      quote: { stage: 'Quotation', status: 'Quoted' },
-      'sales order': { stage: 'Sales Order', status: 'Ordered' },
-      order: { stage: 'Sales Order', status: 'Ordered' },
-    };
-    const mapped = stageMap[targetStage.toLowerCase()] || { stage: targetStage, status: 'In Progress' };
-    const { error } = await supabase.from('cnc_enquiries').update({
-      pipeline_stage: mapped.stage,
-      status: mapped.status,
-    }).eq('id', enq.id);
-    if (error) return { ok: false, message: `Could not move enquiry: ${error.message}` };
+  const so = !enq ? await findSalesOrder(idStr, ctx.companyId) : null;
+  const refNo = enq ? (enq.lead_no || enq.enquiry_no || idStr) : (so ? so.order_no : idStr);
+  const customer = enq ? enq.customer : (so ? so.customer : '');
 
-    // If moving to Quotation, create draft quotation row in cnc_quotations if not already present
-    if (mapped.stage === 'Quotation') {
-      try {
-        const { data: existingQ } = await supabase
-          .from('cnc_quotations')
-          .select('id, quote_no')
-          .eq('lead_no', enq.lead_no || enq.enquiry_no)
-          .limit(1);
-
-        if (!existingQ || existingQ.length === 0) {
-          const qNo = `QT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-          let parsedParts: any[] = [];
-          try {
-            if (enq.enquiring_for) {
-              const p = typeof enq.enquiring_for === 'string' ? JSON.parse(enq.enquiring_for) : enq.enquiring_for;
-              if (Array.isArray(p)) parsedParts = p;
-            }
-          } catch { /* ignore */ }
-
-          const quoteItems = parsedParts.length > 0
-            ? parsedParts.map((p: any) => ({
-                id: crypto.randomUUID(),
-                partName: p.partName || p.productName || '',
-                partNumber: p.partNumber || '',
-                quantity: String(p.quantity || 1),
-                unitPrice: '0',
-                discount: '0',
-                unitDiscount: '0',
-                gst: '18',
-              }))
-            : [{
-                id: crypto.randomUUID(),
-                partName: enq.part_name || '',
-                partNumber: '',
-                quantity: String(enq.quantity || 1),
-                unitPrice: '0',
-                discount: '0',
-                unitDiscount: '0',
-                gst: '18',
-              }];
-
-          const qPayload: any = {
-            id: crypto.randomUUID(),
-            quote_no: qNo,
-            lead_id: enq.id,
-            enquiry_no: enq.lead_no || enq.enquiry_no || '',
-            lead_no: enq.lead_no || enq.enquiry_no || '',
-            customer: enq.customer,
-            quote_date: today(),
-            quotation_date: today(),
-            valid_till: today(),
-            salesperson: '',
-            items: quoteItems,
-            part_name: enq.part_name || '',
-            total_value: num(enq.estimated_value) || 0,
-            status: 'Draft',
-          };
-          if (ctx.companyId) qPayload.company_id = ctx.companyId;
-          await supabase.from('cnc_quotations').insert([qPayload]);
-        }
-      } catch (qErr) {
-        console.warn('Could not auto-create quotation row:', qErr);
+  // Dispatch event so SalesPipelinePage opens the stage form modal on screen immediately!
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+      detail: {
+        identifier: refNo,
+        targetStage: stageNorm,
+        price: p.price,
       }
-    }
+    }));
+  }
 
+  if (stageNorm === 'Quotation') {
     return {
       ok: true,
-      message: `Enquiry ${enq.lead_no || enq.enquiry_no} (${enq.customer}) moved to ${mapped.stage}.`,
+      message: `Create Quotation form opened for #${refNo} (${customer}). Please enter the unit price and terms to complete the move to Quotation.`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
 
-  // Check if sales order
-  const so = await findSalesOrder(idStr, ctx.companyId);
-  if (so) {
-    const { error } = await supabase.from('cnc_sales_orders').update({
-      status: targetStage,
-    }).eq('id', so.id);
-    if (error) return { ok: false, message: `Could not update order status: ${error.message}` };
+  if (stageNorm === 'Inward') {
     return {
       ok: true,
-      message: `Sales Order ${so.order_no} status changed to ${targetStage}.`,
+      message: `Inward Entry form opened for #${refNo} (${customer}). Please record received items to complete the move.`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
 
-  return { ok: false, message: `Could not find record matching “${idStr}”.` };
+  if (stageNorm === 'DC') {
+    return {
+      ok: true,
+      message: `Delivery Challan form opened for #${refNo} (${customer}). Please confirm items and delivery details.`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  return {
+    ok: true,
+    message: `Opening ${stageNorm} transition form for #${refNo} (${customer}).`,
+    where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+  };
 }
 
 // ------------------------------------------------------------------------------------------------ find (read only)

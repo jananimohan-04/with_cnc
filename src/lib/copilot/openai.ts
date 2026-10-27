@@ -105,7 +105,8 @@ Supported intents and expected params:
 7. "move_stage":
    params: {
      "identifier": "<lead_no or order_no>",
-     "target_stage": "Enquiry" | "Quotation" | "Sales Order" | "Inward" | "Finished Goods" | "DC" | "Invoice"
+     "target_stage": "Enquiry" | "Quotation" | "Sales Order" | "Inward" | "Finished Goods" | "DC" | "Invoice",
+     "price": <optional unit price number if mentioned>
    }
 
 8. "list_pipeline":

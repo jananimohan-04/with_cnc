@@ -313,22 +313,26 @@ export function understandLocal(
   // E.g. "இப்போ கியுக் ஃபோகஸ் வந்துட்டு கொட்டேஷன் இருக்குல்ல அந்த டேட்டாவை... கொட்டேஷன் போடணும்"
   const isMoveOrConvert = /(?:மாத்தணும்|மாத்து|மாத்துங்க|மாற்று|கன்வெர்ட்|மூவ்|போடணும்|போடு|போடுங்க|நகர்த்து|move|convert|push|advance)/i.test(msg);
   const targetStage = extractTargetStage(msg);
+  const priceInMsg = /(?:price|rate|விலை|@)\s*(?:to|is|as|[:\-=])?\s*(?:rs\.?|₹)?\s*(\d+(?:\.\d+)?)/i.exec(msg);
+  const parsedMovePrice = priceInMsg ? Number(priceInMsg[1]) : undefined;
 
   if (isMoveOrConvert && targetStage) {
     const card = findCardFromText(msg, cards);
     if (card) {
       return done(
         'move_stage',
-        { identifier: card.refNo, target_stage: targetStage, customer: card.customer },
-        `${card.customer} (${card.refNo}) பதிவை ${targetStage} நிலைக்கு மாற்றவா?`
+        { identifier: card.refNo, target_stage: targetStage, customer: card.customer, price: parsedMovePrice },
+        parsedMovePrice
+          ? `${card.customer} (${card.refNo}) பதிவை ${targetStage} நிலைக்கு (விலை: ₹${parsedMovePrice}) மாற்றவா? படிவம் திறக்கப்படும்.`
+          : `${card.customer} (${card.refNo}) பதிவை ${targetStage} நிலைக்கு மாற்றவா? படிவம் திறக்கப்படும்.`
       );
     }
     const enqs = cards.filter((c) => c.stage === 'Enquiry');
     if (enqs.length === 1 && targetStage === 'Quotation') {
       return done(
         'move_stage',
-        { identifier: enqs[0].refNo, target_stage: targetStage, customer: enqs[0].customer },
-        `${enqs[0].customer} (${enqs[0].refNo}) என்குயரிக்கு Quotation தயார் செய்யவா?`
+        { identifier: enqs[0].refNo, target_stage: targetStage, customer: enqs[0].customer, price: parsedMovePrice },
+        `${enqs[0].customer} (${enqs[0].refNo}) என்குயரிக்கு Quotation படிவத்தைத் திறக்கவா?`
       );
     }
   }
@@ -342,23 +346,23 @@ export function understandLocal(
     if (card) {
       return done(
         'move_stage',
-        { identifier: card.refNo, target_stage: 'Quotation', customer: card.customer },
-        `${card.customer} (${card.refNo}) என்குயரிக்கு Quotation தயார் செய்யவா?`
+        { identifier: card.refNo, target_stage: 'Quotation', customer: card.customer, price: parsedMovePrice },
+        `${card.customer} (${card.refNo}) என்குயரிக்கு Quotation படிவத்தைத் திறக்கவா?`
       );
     }
     const enqs = cards.filter((c) => c.stage === 'Enquiry');
     if (enqs.length === 1) {
       return done(
         'move_stage',
-        { identifier: enqs[0].refNo, target_stage: 'Quotation', customer: enqs[0].customer },
-        `${enqs[0].customer} (${enqs[0].refNo}) என்குயரிக்கு Quotation தயார் செய்யவா?`
+        { identifier: enqs[0].refNo, target_stage: 'Quotation', customer: enqs[0].customer, price: parsedMovePrice },
+        `${enqs[0].customer} (${enqs[0].refNo}) என்குயரிக்கு Quotation படிவத்தைத் திறக்கவா?`
       );
     }
     if (enqs.length > 1) {
       const names = enqs.slice(0, 3).map((e) => `${e.customer} (#${e.refNo})`).join(', ');
       return done(
         'move_stage',
-        { target_stage: 'Quotation', identifier: '' },
+        { target_stage: 'Quotation', identifier: '', price: parsedMovePrice },
         `எந்த என்குயரிக்கு Quotation போட வேண்டும்? (${names})`
       );
     }
@@ -425,12 +429,23 @@ export function understandLocal(
   }
 
   // ------------------------------------------------------------------------- Move Stage (Standard English regex)
-  const moveMatch = /\b(?:move|advance|push)\s+(?:enquiry|order|record|#)?\s*([A-Za-z0-9\-]+)\s+to\s+([a-zA-Z\s]+)/i.exec(msg);
+  // E.g. "move 2015 to quotation", "move the 2015 into quotation", "move 2015 to quotation with price 500"
+  const moveMatch = /\b(?:move|advance|push|convert)\s+(?:the\s+)?(?:enquiry|order|record|#)?\s*([A-Za-z0-9\-]+)\s+(?:in)?to\s+(?:the\s+)?([a-zA-Z\s]+?)(?=\s*(?:with\s+price|price|rate|@|$))/i.exec(msg);
   if (moveMatch) {
-    return done('move_stage', {
-      identifier: clean(moveMatch[1]),
-      target_stage: clean(moveMatch[2]),
-    });
+    const rawTarget = clean(moveMatch[2]);
+    const targetStage = extractTargetStage(rawTarget) || rawTarget;
+    const card = findCardFromText(moveMatch[1], cards);
+    const cust = card?.customer ? ` (${card.customer})` : '';
+    const movePrice = priceInMsg ? Number(priceInMsg[1]) : undefined;
+    return done(
+      'move_stage',
+      {
+        identifier: clean(moveMatch[1]),
+        target_stage: targetStage,
+        price: movePrice,
+      },
+      `Move Enquiry #${clean(moveMatch[1])}${cust} to ${targetStage}? I will open the ${targetStage} form so you can fill in the required details.`
+    );
   }
 
   // ------------------------------------------------------------------------- Add commands
