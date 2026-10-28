@@ -4161,22 +4161,78 @@ export function SalesPipelinePage() {
     let resolvedQuotes: any[] = allQuotes && allQuotes.length > 0 ? allQuotes : [];
     const quoteMap = new Map();
     resolvedQuotes.forEach(q => quoteMap.set(q.id, leadMap.get(q.lead_id) || q.lead_no || q.enquiry_no || q.quote_no));
-    const quotes = resolvedQuotes.filter(q => ['Sent', 'Under Review', 'Draft'].includes(q.status));
 
     const allOrders = ordersRes.data;
     if (ordersRes.error) console.error("Error fetching sales orders:", ordersRes.error);
     if (allOrders) setSalesOrdersList(allOrders);
     const orderMap = new Map();
     if (allOrders) allOrders.forEach(o => orderMap.set(o.order_no, o.lead_no || quoteMap.get(o.quotation_id) || o.order_no));
-    const orders = allOrders?.filter(o => ['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status));
+
+    // Active order keys: if an order was deleted, a converted quotation should reappear in Quotation column
+    const activeOrderQuoteKeys = new Set((allOrders || []).flatMap((o: any) => [
+      String(o.quotation_id || '').trim().toLowerCase(),
+      String(o.quote_no || '').trim().toLowerCase(),
+      String(o.lead_no || '').trim().toLowerCase(),
+      baseUniqueNo(o.lead_no || '').toLowerCase(),
+    ]).filter(Boolean));
+
+    const quotes = resolvedQuotes.filter(q => {
+      if (['Sent', 'Under Review', 'Draft'].includes(q.status)) return true;
+      if (q.status === 'Converted') {
+        const qId = String(q.id || '').trim().toLowerCase();
+        const qNo = String(q.quote_no || '').trim().toLowerCase();
+        const qLead = String(q.lead_no || q.enquiry_no || '').trim().toLowerCase();
+        const qBase = baseUniqueNo(q.lead_no || q.enquiry_no || '').toLowerCase();
+        const hasOrder = activeOrderQuoteKeys.has(qId) || activeOrderQuoteKeys.has(qNo) || activeOrderQuoteKeys.has(qLead) || (qBase && activeOrderQuoteKeys.has(qBase));
+        return !hasOrder;
+      }
+      return false;
+    });
 
     const inwards = inwardsRes.data;
     const inwardErr = inwardsRes.error;
 
-    const newCards: KanbanCard[] = [];
+    // Active inward keys: if inward was deleted, an inwarded sales order should reappear in Sales Order column
+    const liveInwardList = (inwards || []).filter((i: any) => isKanbanInwardCategory(i.category));
+    const liveInwardSoRefs = new Set(liveInwardList.map((i: any) => String(i.sales_order_ref || '').trim().toLowerCase()).filter(Boolean));
+    const liveInwardBases = new Set(liveInwardList.map((i: any) => baseUniqueNo(i.project_name || '')).filter(Boolean));
 
-    // Filter leads for the Enquiry column
-    const activeLeads = allLeads?.filter(l => ['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && (l.pipeline_stage === 'Enquiry' || !l.pipeline_stage) && l.status !== 'Quoted' && l.status !== 'Converted') || [];
+    const orders = allOrders?.filter(o => {
+      if (['Draft', 'Confirmed', 'Waiting for Parts', 'In Production'].includes(o.status)) return true;
+      if (o.status === 'Inwarded') {
+        const oNo = String(o.order_no || '').trim().toLowerCase();
+        const oLead = baseUniqueNo(o.lead_no || '');
+        const hasInward = liveInwardSoRefs.has(oNo) || (oLead && liveInwardBases.has(oLead));
+        return !hasInward;
+      }
+      return false;
+    });
+
+    // Active quotation keys: if quotation was deleted, a quoted enquiry should reappear in Enquiry column
+    const activeQuoteLeadKeys = new Set((resolvedQuotes || []).flatMap((q: any) => [
+      String(q.lead_id || '').trim().toLowerCase(),
+      String(q.lead_no || '').trim().toLowerCase(),
+      String(q.enquiry_no || '').trim().toLowerCase(),
+      String(q.quote_no || '').trim().toLowerCase(),
+      baseUniqueNo(q.lead_no || '').toLowerCase(),
+      baseUniqueNo(q.enquiry_no || '').toLowerCase(),
+    ]).filter(Boolean));
+
+    // Filter leads for the Enquiry column (returns from Quotation if quote was deleted)
+    const activeLeads = allLeads?.filter(l => {
+      if (['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && (l.pipeline_stage === 'Enquiry' || !l.pipeline_stage)) return true;
+      if (l.status === 'Quoted' || l.pipeline_stage === 'Quotation' || l.status === 'Converted') {
+        const lId = String(l.id || '').trim().toLowerCase();
+        const lNo = String(l.lead_no || l.enquiry_no || '').trim().toLowerCase();
+        const lBase = baseUniqueNo(l.lead_no || l.enquiry_no || '').toLowerCase();
+        const hasQuote = activeQuoteLeadKeys.has(lId) || activeQuoteLeadKeys.has(lNo) || (lBase && activeQuoteLeadKeys.has(lBase));
+        const hasOrder = activeOrderQuoteKeys.has(lId) || activeOrderQuoteKeys.has(lNo) || (lBase && activeOrderQuoteKeys.has(lBase));
+        return !hasQuote && !hasOrder;
+      }
+      return false;
+    }) || [];
+
+    const newCards: KanbanCard[] = [];
 
     activeLeads.forEach(l => newCards.push({
       id: `lead_${l.id}`, stage: 'Enquiry', type: 'lead',
@@ -4250,10 +4306,9 @@ export function SalesPipelinePage() {
       });
     }
 
-    // Quantities count every work order (dispatched ones too); only open ones become Finished Goods cards.
+    // Quantities count every work order (dispatched ones too); open ones become Finished Goods cards.
     const allWosRaw = allWosRes.data;
     const allWos = allWosRaw ? allWosRaw.filter((w: any) => w.is_part_order !== true) : allWosRaw; // part orders are not finished product
-    const fgs = allWos ? allWos.filter((w: any) => ['Completed', 'In Progress'].includes(String(w.status))) : allWos;
     const dcs = dcsRes.data;
     const dcErr = dcsRes.error;
     if (dcErr) console.warn("Error fetching deliveries:", dcErr);
@@ -4268,11 +4323,35 @@ export function SalesPipelinePage() {
       invoicesData = invs;
       setInvoicesList(invs);
     }
+
+    // Active deliveries set: used to reconcile Dispatched work orders whose DC was deleted
+    const activeDcKeys = new Set((effectiveDcs || []).flatMap((d: any) => [
+      String(d.sales_order_no || '').trim().toLowerCase(),
+      String(d.sales_order_ref || '').trim().toLowerCase(),
+      String(d.delivery_no || '').trim().toLowerCase(),
+      baseUniqueNo(d.sales_order_no || '').toLowerCase(),
+      baseUniqueNo(d.project_name || '').toLowerCase(),
+    ]).filter(Boolean));
+
+    const fgs = allWos ? allWos.filter((w: any) => {
+      const s = String(w.status ?? '');
+      if (['Completed', 'In Progress'].includes(s)) return true;
+      if (s === 'Dispatched') {
+        const wSo = String(w.sales_order || '').trim().toLowerCase();
+        const wBase = baseUniqueNo(wSo).toLowerCase();
+        const wMapped = String(orderMap.get(w.sales_order) || '').trim().toLowerCase();
+        const hasActiveDelivery = activeDcKeys.has(wSo) || (wBase && activeDcKeys.has(wBase)) || (wMapped && activeDcKeys.has(wMapped));
+        // If there is no active delivery for this work order, it returned from DC to Finished Goods!
+        return !hasActiveDelivery;
+      }
+      return false;
+    }) : allWos;
+
     if (fgs) {
       // Same sales order = one card (like inward): group sibling FG rows so a
       // multi-product approval shows once with a per-product breakdown.
       const fgGroups = new Map<string, any[]>();
-      fgs.filter(w => w.completed > 0 || w.status === 'Completed').forEach(w => {
+      fgs.filter(w => w.completed > 0 || w.status === 'Completed' || w.status === 'Dispatched').forEach(w => {
         // Unique number only (raw sales_order/order numbers stay in backend).
         const key = orderMap.get(w.sales_order) || w.wo_no || `WO-${w.id.substring(0, 4)}`;
         if (!fgGroups.has(key)) fgGroups.set(key, []);
@@ -4326,11 +4405,11 @@ export function SalesPipelinePage() {
       const first = list[0];
       const ref = uniqueForDelivery(first);
       if (first.delivery_no) dcMap.set(first.delivery_no, ref);
-      // A challan that has been invoiced has nothing left to do here: it moved on to Invoice.
-      const billed = list.every(x => String(x.status ?? '') === 'Billed')
-        || (invoicesData || []).some((inv: any) => String(inv.invoice_type ?? '') !== 'Proforma Invoice'
-          && ((inv.delivery_id != null && list.some(x => String(x.id) === String(inv.delivery_id))) || (inv.dc_no && String(inv.dc_no) === String(first.delivery_no))));
-      if (billed) return;
+      // A challan that has an active invoice in invoicesData moved on to Invoice.
+      // If the invoice was deleted, the challan immediately returns to the DC column!
+      const hasActiveInvoice = (invoicesData || []).some((inv: any) => String(inv.invoice_type ?? '') !== 'Proforma Invoice'
+        && ((inv.delivery_id != null && list.some(x => String(x.id) === String(inv.delivery_id))) || (inv.dc_no && (String(inv.dc_no) === String(first.delivery_no) || String(inv.dc_no) === String(ref)))));
+      if (hasActiveInvoice) return;
       const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
       newCards.push({
         id: `dc_${first.id}`, stage: 'DC', type: 'dc', refNo: ref,
@@ -4728,6 +4807,22 @@ export function SalesPipelinePage() {
     const handleDeleteCard = async (e: React.MouseEvent, card: KanbanCard) => {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete this ${card.type}?`)) return;
+
+    // Handle virtual quotation card from enquiry without a quotation record
+    const isVirtualQuote = card.type === 'quotation' && (String(card.id).startsWith('lead_quote_') || (card.raw as any)?._isDraftQuote);
+    if (isVirtualQuote) {
+      setLoading(true);
+      try {
+        const enqId = card.raw.id;
+        await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', enqId);
+        fetchPipeline();
+      } catch (err: any) {
+        alert("Error reverting enquiry: " + err.message);
+      }
+      setLoading(false);
+      return;
+    }
+
     let table = '';
     if (card.type === 'lead') table = 'cnc_enquiries';
     if (card.type === 'quotation') table = 'cnc_quotations';
@@ -4742,38 +4837,348 @@ export function SalesPipelinePage() {
       const ids = Array.isArray((card.raw as any)?._groupIds) && (card.raw as any)._groupIds.length
         ? (card.raw as any)._groupIds.filter(Boolean)
         : [card.raw.id];
+
+      // Clean up invoice items first if deleting an invoice
+      if (card.type === 'invoice') {
+        try {
+          await supabase.from('cnc_invoice_items').delete().in('invoice_id', ids);
+        } catch (e) {
+          console.warn('Invoice items delete clean-up failed:', e);
+        }
+      }
+
       // .select() returns the rows that were actually removed, so a silent no-op (permissions) is caught.
       const del = await supabase.from(table).delete().in('id', ids).select('id');
       const error = del.error ?? ((del.data ?? []).length === 0 ? { message: 'Nothing was deleted (the record may be protected or already gone).' } : null);
       if (error) alert("Error deleting: " + error.message);
       else {
-        // A deleted finished-goods record takes its production batches with it. Left behind, they kept
-        // counting the old rejected / gross quantities on the order and inward cards.
-        if (card.type === 'finished_goods') {
+        // Collect all linked keys for this card (including resolving SO order_no from lead_no)
+        const allKeys = new Set<string>();
+        const addKey = (v: any) => {
+          const s = String(v ?? '').trim();
+          if (s) {
+            allKeys.add(s);
+            const b = baseUniqueNo(s);
+            if (b) allKeys.add(b);
+          }
+        };
+
+        const raw = card.raw as any;
+        addKey(card.refNo);
+        addKey(card.customer);
+        addKey(raw?.customer);
+        addKey(raw?.customer_name);
+        addKey(raw?.party_name);
+        addKey(raw?.sales_order);
+        addKey(raw?.sales_order_no);
+        addKey(raw?.sales_order_ref);
+        addKey(raw?.order_no);
+        addKey(raw?.lead_no);
+        addKey(raw?.enquiry_no);
+        addKey(raw?.project_name);
+        addKey(raw?.quote_no);
+        addKey(raw?.dc_no);
+        addKey(raw?.delivery_no);
+        addKey(raw?.wo_no);
+        addKey(raw?.id);
+
+        const candidateList = Array.from(allKeys);
+        let soList = salesOrdersList || [];
+        if (!soList.length) {
           try {
-            const uuids = ids.map(String).filter((v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
-            if (uuids.length) await supabase.from('cnc_production_batches').delete().in('work_order_id', uuids);
-          } catch (e) { console.error('Batch clean-up after finished goods delete failed:', e); }
+            const { data: dbSos } = await supabase.from('cnc_sales_orders').select('id, order_no, lead_no, quotation_id, quote_no');
+            if (dbSos) soList = dbSos;
+          } catch {}
         }
-        // A deleted challan returns its goods to Finished Goods and un-counts them on the order.
+        for (const so of soList) {
+          const oNo = String(so.order_no || '').trim();
+          const lNo = String(so.lead_no || '').trim();
+          const bLead = baseUniqueNo(lNo);
+          const sId = String(so.id || '').trim();
+          const qId = String(so.quotation_id || '').trim();
+          const qNo = String(so.quote_no || '').trim();
+          const hit = candidateList.some(k => k === oNo || k === lNo || k === bLead || k === sId || k === qId || k === qNo)
+            || (raw?.sales_order_id && String(raw.sales_order_id) === sId);
+          if (hit) {
+            addKey(oNo);
+            addKey(lNo);
+            addKey(sId);
+            addKey(qId);
+            addKey(qNo);
+          }
+        }
+        const keyList = Array.from(allKeys);
+        const cardCust = String(card.customer || raw?.customer_name || raw?.party_name || '').trim().toLowerCase();
+
+        // --- 1. INVOICE DELETED: Return delivery challan back to DC column ---
+        if (card.type === 'invoice') {
+          try {
+            const deliveryId = raw?.delivery_id;
+            const dcNo = String(raw?.dc_no || '').trim();
+
+            if (deliveryId) {
+              await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('id', deliveryId);
+            }
+            if (dcNo) {
+              await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('delivery_no', dcNo);
+            }
+
+            // Find all deliveries in cnc_deliveries that are Billed and match keys or customer
+            const { data: allDcs } = await supabase.from('cnc_deliveries').select('id, delivery_no, sales_order_no, sales_order_ref, project_name, customer_name, status');
+            if (allDcs && allDcs.length > 0) {
+              const toRevertDcIds = allDcs.filter((d: any) => {
+                if (String(d.status ?? '') !== 'Billed') return false;
+                const dNo = String(d.delivery_no || '').trim();
+                const dBase = baseUniqueNo(dNo);
+                const dSo = String(d.sales_order_no || d.sales_order_ref || '').trim();
+                const dProj = String(d.project_name || '').trim();
+                const dCust = String(d.customer_name || '').trim().toLowerCase();
+
+                if (deliveryId && String(d.id) === String(deliveryId)) return true;
+                if (dcNo && dNo === dcNo) return true;
+
+                const matchesKey = keyList.some(k => k === dNo || k === dBase || k === dSo || k === dProj || baseUniqueNo(k) === dBase || baseUniqueNo(k) === baseUniqueNo(dProj));
+                const matchesCust = cardCust && dCust && (cardCust === dCust || cardCust.includes(dCust) || dCust.includes(cardCust));
+                return matchesKey || matchesCust;
+              }).map((d: any) => d.id);
+
+              if (toRevertDcIds.length > 0) {
+                await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).in('id', toRevertDcIds);
+              }
+            }
+          } catch (e) {
+            console.error('DC reversal after invoice delete failed:', e);
+          }
+        }
+
+        // --- 2. DC DELETED: Return work orders back to Finished Goods ---
         if (card.type === 'dc') {
           try {
-            const soNo = String((card.raw as any)?.sales_order_no || '');
-            if (soNo) {
-              await supabase.from('cnc_work_orders').update({ status: 'Completed' }).eq('sales_order', soNo).eq('status', 'Dispatched');
-              const soR = await supabase.from('cnc_sales_orders').select('id,quantity').eq('order_no', soNo).maybeSingle();
+            // Find all work orders in cnc_work_orders matching keys or customer
+            const { data: allWos } = await supabase.from('cnc_work_orders').select('*');
+            let revertedCount = 0;
+            if (allWos && allWos.length > 0) {
+              const toRevertIds = allWos.filter((w: any) => {
+                const wSo = String(w.sales_order || '').trim();
+                const wBase = baseUniqueNo(wSo);
+                const wWoNo = String(w.wo_no || '').trim();
+                const wCust = String(w.customer || '').trim().toLowerCase();
+
+                const matchesKey = keyList.some(k => k === wSo || k === wBase || baseUniqueNo(k) === wBase || k === wWoNo);
+                const matchesCust = cardCust && wCust && (cardCust === wCust || cardCust.includes(wCust) || wCust.includes(cardCust));
+
+                return matchesKey || (matchesCust && String(w.status) === 'Dispatched');
+              }).map((w: any) => w.id);
+
+              if (toRevertIds.length > 0) {
+                await supabase.from('cnc_work_orders').update({ status: 'Completed' }).in('id', toRevertIds);
+                revertedCount = toRevertIds.length;
+              }
+            }
+
+            for (const key of keyList) {
+              await supabase.from('cnc_work_orders').update({ status: 'Completed' }).eq('sales_order', key).eq('status', 'Dispatched');
+            }
+
+            // If no existing work order row was reverted, create one so Finished Goods card appears
+            if (revertedCount === 0 && card.customer) {
+              const targetSo = keyList.find(k => k.startsWith('SO-')) || card.refNo || '';
+              const partName = card.part ? String(card.part).split(',')[0].trim() : 'Finished Product';
+              const q = Number(card.qty) || 1;
+              const d = new Date();
+              const woNo = `WO-${d.getFullYear().toString().slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
+              await supabase.from('cnc_work_orders').insert([{
+                id: crypto.randomUUID(),
+                wo_no: woNo,
+                sales_order: targetSo,
+                customer: card.customer,
+                part_name: partName,
+                quantity: q,
+                completed: q,
+                status: 'Completed',
+                created_at: new Date().toISOString(),
+              }]);
+            }
+
+            // Reconcile delivered quantity on sales order
+            for (const key of keyList) {
+              const soR = await supabase.from('cnc_sales_orders').select('id,quantity').or(`order_no.eq.${key},lead_no.eq.${key}`).maybeSingle();
               if (!soR.error && soR.data) {
-                const dR = await supabase.from('cnc_deliveries').select('dispatch_qty,quantity,status').eq('sales_order_no', soNo);
+                const dR = await supabase.from('cnc_deliveries').select('dispatch_qty,quantity,status').or(`sales_order_no.eq.${key},sales_order_ref.eq.${key}`);
                 const act = ((dR.error ? [] : dR.data) ?? []).filter((d: any) => !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')));
                 const delivered = act.reduce((s: number, d: any) => s + (Number(d?.dispatch_qty ?? d?.quantity) || 0), 0);
                 const qty0 = Number((soR.data as any).quantity) || 0;
                 await supabase.from('cnc_sales_orders').update({
                   delivered, status: delivered >= qty0 && qty0 > 0 ? 'Delivered' : delivered > 0 ? 'Partially Delivered' : 'Confirmed',
                 }).eq('id', (soR.data as any).id);
+                break;
               }
             }
-          } catch (e) { console.error('DC delete follow-up failed:', e); }
+          } catch (e) {
+            console.error('FG reversal after DC delete failed:', e);
+          }
         }
+
+        // --- 3. FINISHED GOODS DELETED: Return Inward back to Inward column ---
+        if (card.type === 'finished_goods') {
+          try {
+            const uuids = ids.map(String).filter((v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
+            if (uuids.length) await supabase.from('cnc_production_batches').delete().in('work_order_id', uuids);
+
+            const raw = card.raw as any;
+            const inwardKeys = Array.from(new Set([
+              String(raw?.sales_order || ''),
+              String(raw?.wo_no || ''),
+              String(card.refNo || ''),
+              baseUniqueNo(card.refNo || ''),
+              String(raw?.project_name || ''),
+            ].map(s => s.trim()).filter(Boolean)));
+
+            for (const key of inwardKeys) {
+              await supabase.from('cnc_inwards').update({ status: 'Received' }).eq('sales_order_ref', key).eq('status', 'Processed');
+              await supabase.from('cnc_inwards').update({ status: 'Received' }).eq('project_name', key).eq('status', 'Processed');
+            }
+
+            const { data: procInw } = await supabase.from('cnc_inwards').select('id, sales_order_ref, project_name').eq('status', 'Processed');
+            if (procInw && procInw.length > 0) {
+              const matchedInwIds = procInw.filter((i: any) => {
+                const iSo = String(i.sales_order_ref || '').trim();
+                const iProj = String(i.project_name || '').trim();
+                return inwardKeys.some(k => k === iSo || k === iProj || baseUniqueNo(k) === baseUniqueNo(iProj) || baseUniqueNo(k) === baseUniqueNo(iSo));
+              }).map((i: any) => i.id);
+              if (matchedInwIds.length > 0) {
+                await supabase.from('cnc_inwards').update({ status: 'Received' }).in('id', matchedInwIds);
+              }
+            }
+          } catch (e) {
+            console.error('Inward reversal after finished goods delete failed:', e);
+          }
+        }
+
+        // --- 4. INWARD DELETED: Return sales order back to Sales Order column ---
+        if (card.type === 'inward') {
+          try {
+            const raw = card.raw as any;
+            const soKeys = Array.from(new Set([
+              String(raw?.sales_order_ref || ''),
+              String(raw?.project_name || ''),
+              String(card.refNo || ''),
+              baseUniqueNo(card.refNo || ''),
+            ].map(s => s.trim()).filter(Boolean)));
+
+            for (const key of soKeys) {
+              await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('order_no', key).eq('status', 'Inwarded');
+              await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('lead_no', key).eq('status', 'Inwarded');
+            }
+
+            const { data: inwOrders } = await supabase.from('cnc_sales_orders').select('id, order_no, lead_no').eq('status', 'Inwarded');
+            if (inwOrders && inwOrders.length > 0) {
+              const matchedSoIds = inwOrders.filter((o: any) => {
+                const oNo = String(o.order_no || '').trim();
+                const oLead = String(o.lead_no || '').trim();
+                return soKeys.some(k => k === oNo || k === oLead || baseUniqueNo(k) === baseUniqueNo(oLead) || baseUniqueNo(k) === baseUniqueNo(oNo));
+              }).map((o: any) => o.id);
+              if (matchedSoIds.length > 0) {
+                await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).in('id', matchedSoIds);
+              }
+            }
+
+            // Also clean up any auto-created draft work orders in 'Draft' status for this inward
+            for (const key of soKeys) {
+              await supabase.from('cnc_work_orders').delete().eq('sales_order', key).eq('status', 'Draft');
+            }
+          } catch (e) {
+            console.error('Sales order reversal after inward delete failed:', e);
+          }
+        }
+
+        // --- 5. SALES ORDER DELETED: Return quotation back to Quotation column ---
+        if (card.type === 'order') {
+          try {
+            const raw = card.raw as any;
+            const quoteId = raw?.quotation_id;
+            const quoteNo = String(raw?.quote_no || '').trim();
+            const leadNo = String(raw?.lead_no || '').trim();
+            const ref = String(card.refNo || '').trim();
+
+            if (quoteId) {
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('id', quoteId);
+            }
+            if (quoteNo) {
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('quote_no', quoteNo);
+            }
+            if (leadNo) {
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('lead_no', leadNo).eq('status', 'Converted');
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('enquiry_no', leadNo).eq('status', 'Converted');
+              // If lead was directly converted without a quotation row, revert lead
+              await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('lead_no', leadNo).eq('status', 'Converted');
+              await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('enquiry_no', leadNo).eq('status', 'Converted');
+            }
+            if (ref) {
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('lead_no', ref).eq('status', 'Converted');
+              await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('quote_no', ref).eq('status', 'Converted');
+            }
+
+            const base = baseUniqueNo(leadNo || ref);
+            if (base) {
+              const { data: convQuotes } = await supabase.from('cnc_quotations').select('id, lead_no, enquiry_no, quote_no, status').eq('status', 'Converted');
+              if (convQuotes && convQuotes.length > 0) {
+                const matchQuotes = convQuotes.filter((q: any) => {
+                  return baseUniqueNo(q.lead_no || '') === base || baseUniqueNo(q.enquiry_no || '') === base || baseUniqueNo(q.quote_no || '') === base;
+                }).map((q: any) => q.id);
+                if (matchQuotes.length > 0) {
+                  await supabase.from('cnc_quotations').update({ status: 'Sent' }).in('id', matchQuotes);
+                }
+              }
+              const { data: convLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status').eq('status', 'Converted');
+              if (convLeads && convLeads.length > 0) {
+                const matchLeads = convLeads.filter((l: any) => {
+                  return baseUniqueNo(l.lead_no || '') === base || baseUniqueNo(l.enquiry_no || '') === base;
+                }).map((l: any) => l.id);
+                if (matchLeads.length > 0) {
+                  await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).in('id', matchLeads);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Quotation/Enquiry reversal after sales order delete failed:', e);
+          }
+        }
+
+        // --- 6. QUOTATION DELETED: Return enquiry back to Enquiry column ---
+        if (card.type === 'quotation') {
+          try {
+            const raw = card.raw as any;
+            const leadId = raw?.lead_id;
+            const leadNo = String(raw?.lead_no || raw?.enquiry_no || card.refNo || '').trim();
+
+            if (leadId) {
+              await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', leadId);
+            }
+            if (leadNo) {
+              await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('lead_no', leadNo).eq('status', 'Quoted');
+              await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('enquiry_no', leadNo).eq('status', 'Quoted');
+            }
+
+            const base = baseUniqueNo(leadNo);
+            if (base) {
+              const { data: quotedLeads } = await supabase.from('cnc_enquiries').select('id, lead_no, enquiry_no, status, pipeline_stage');
+              if (quotedLeads && quotedLeads.length > 0) {
+                const matchLeads = quotedLeads.filter((l: any) => {
+                  const matchesBase = baseUniqueNo(l.lead_no || '') === base || baseUniqueNo(l.enquiry_no || '') === base;
+                  const isQuoted = l.status === 'Quoted' || l.pipeline_stage === 'Quotation';
+                  return matchesBase && isQuoted;
+                }).map((l: any) => l.id);
+                if (matchLeads.length > 0) {
+                  await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).in('id', matchLeads);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Enquiry reversal after quotation delete failed:', e);
+          }
+        }
+
         fetchPipeline();
       }
       setLoading(false);
@@ -5133,6 +5538,20 @@ export function SalesPipelinePage() {
     if ((del.data ?? []).length !== real.length) {
       alert(`Only ${(del.data ?? []).length} of ${real.length} row(s) were deleted. The rest may be protected; nothing else was changed.`);
     }
+
+    try {
+      const soRef = String(viewModalTarget?.raw?.sales_order_ref || viewModalTarget?.refNo || '').trim();
+      if (soRef) {
+        const { data: remInw } = await supabase.from('cnc_inwards').select('id').eq('sales_order_ref', soRef).neq('status', 'Deleted');
+        if (!remInw || remInw.length === 0) {
+          await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('order_no', soRef).eq('status', 'Inwarded');
+          await supabase.from('cnc_sales_orders').update({ status: 'Confirmed' }).eq('lead_no', soRef).eq('status', 'Inwarded');
+        }
+      }
+    } catch (e) {
+      console.error('SO status revert after inward delete failed:', e);
+    }
+
     setViewModalTarget(null); setViewEditMode(false);
     fetchPipeline();
   };

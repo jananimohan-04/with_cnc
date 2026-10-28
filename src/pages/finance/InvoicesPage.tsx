@@ -373,9 +373,14 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
         const dcs = String(r.dc_no).split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
         if (dcs.length) {
           try {
-            await supabase.from('cnc_deliveries').update({ status: 'Dispatched' }).in('delivery_no', dcs);
+            await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).in('delivery_no', dcs);
           } catch { /* ignore */ }
         }
+      }
+      if ((r as any)?.delivery_id) {
+        try {
+          await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('id', (r as any).delivery_id);
+        } catch { /* ignore */ }
       }
       await supabase.from('cnc_invoice_items').delete().eq('invoice_id', r.id);
       const { error } = await supabase.from('cnc_invoices').delete().eq('id', r.id);

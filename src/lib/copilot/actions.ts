@@ -696,6 +696,21 @@ async function deleteSalesOrder(p: Params, ctx: ActionCtx): Promise<RunResult> {
 
   const { error } = await supabase.from('cnc_sales_orders').delete().eq('id', target.id);
   if (error) return { ok: false, message: `Could not delete sales order: ${error.message}` };
+
+  try {
+    if (target.quotation_id) {
+      await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('id', target.quotation_id);
+    } else if (target.quote_no) {
+      await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('quote_no', target.quote_no);
+    }
+    if (target.lead_no) {
+      await supabase.from('cnc_quotations').update({ status: 'Sent' }).eq('lead_no', target.lead_no).eq('status', 'Converted');
+      await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('lead_no', target.lead_no).eq('status', 'Converted');
+    }
+  } catch (e) {
+    console.error('Reverting quotation after sales order delete failed:', e);
+  }
+
   return {
     ok: true,
     message: `Sales Order ${target.order_no} for ${target.customer} deleted successfully.`,
