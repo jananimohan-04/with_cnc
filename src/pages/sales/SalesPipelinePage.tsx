@@ -3488,7 +3488,11 @@ export function SalesPipelinePage() {
         sgstRate: invRate(invSgst), sgstAmt: invSgst,
         igstRate: invRate(invIgst), igstAmt: invIgst,
         roundOff: Number((record as any).round_off ?? 0) || 0,
-        grandTotal: Number(record.total || record.total_value || record.value || 0) || 0,
+        grandTotal: (() => {
+          const raw = Number(record.grand_total ?? record.total_amount ?? record.total ?? record.amount ?? record.total_value ?? record.value ?? 0);
+          if (raw > 0) return raw;
+          return Math.round((invBasic + invCgst + invSgst + invIgst + (Number((record as any).round_off ?? 0) || 0)) * 100) / 100;
+        })(),
         bankLines: comp.bankLines,
         terms: defaultTermsText((company as any)?.id),
       };

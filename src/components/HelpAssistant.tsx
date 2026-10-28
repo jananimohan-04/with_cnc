@@ -101,6 +101,13 @@ const NOT_HEARD: Record<Lang, string> = { ta: 'எனக்கு கேட்�
 // ---------------------------------------------------------------- speaking
 let voices: SpeechSynthesisVoice[] = [];
 const loadVoices = () => { try { voices = window.speechSynthesis.getVoices(); } catch { voices = []; } };
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  loadVoices();
+  try {
+    window.speechSynthesis.onvoiceschanged = () => { loadVoices(); };
+  } catch {}
+}
+
 // The clearest voices are the "Natural" / "Neural" / online ones (Microsoft Edge has them; Chrome has Google's), so those are
 // preferred; the person can also pick a voice (it is remembered).
 const voiceScore = (v: SpeechSynthesisVoice) =>
@@ -109,10 +116,16 @@ function voiceList(kind: 'ta' | 'en'): SpeechSynthesisVoice[] {
   return voices.filter((v) => v.lang.toLowerCase().startsWith(kind)).sort((x, y) => voiceScore(y) - voiceScore(x) || x.name.localeCompare(y.name));
 }
 function voiceFor(text: string): SpeechSynthesisVoice | undefined {
+  loadVoices();
   const kind = TAMIL.test(text) ? 'ta' : 'en';
   const list = voiceList(kind);
   const saved = store.get(`help.voice.${kind}`, '');
-  return list.find((v) => v.name === saved) ?? list[0];
+  const match = list.find((v) => v.name === saved) ?? list[0];
+  if (match) return match;
+  if (voices.length > 0) {
+    return voices.find((v) => v.default) ?? voices[0];
+  }
+  return undefined;
 }
 
 // Windows and Chrome usually have NO Tamil voice installed, so Tamil text would be silent. When no Tamil voice exists, the
@@ -174,10 +187,18 @@ function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: st
   void next(0);
 }
 let announcedOnline = false;
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+let resumeTimer: any = null;
+let safetyTtsTimer: any = null;
+
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
 export function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
   const t = text.replace(/[*#_`]/g, '').trim();
   if (!t) { onEnd(); return; }
+
+  // Cancel any prior speech
+  stopSpeaking();
+
   loadVoices();
   const tamil = TAMIL.test(t);
   const v = voiceFor(t);
@@ -187,14 +208,60 @@ export function say(text: string, onEnd: () => void, notify?: (m: string) => voi
     return;
   }
   if (!('speechSynthesis' in window)) { onEnd(); return; }
-  const u = new SpeechSynthesisUtterance(t);
-  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = tamil ? 'ta-IN' : 'en-IN';
-  u.rate = 0.95;     // a little slower is clearer
-  u.pitch = 1;
-  u.volume = 1;
-  u.onend = onEnd;
-  u.onerror = onEnd;
-  window.speechSynthesis.speak(u);
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (safetyTtsTimer) { clearTimeout(safetyTtsTimer); safetyTtsTimer = null; }
+    if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
+    activeUtterance = null;
+    try { (window as any).__activeUtterance = null; } catch {}
+    onEnd();
+  };
+
+  try {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
+    const u = new SpeechSynthesisUtterance(t);
+    activeUtterance = u;
+    try { (window as any).__activeUtterance = u; } catch {} // Retain reference to prevent Chrome GC bug
+
+    if (v) {
+      u.voice = v;
+      u.lang = v.lang;
+    } else {
+      u.lang = tamil ? 'ta-IN' : 'en-IN';
+    }
+    u.rate = 1.0;
+    u.pitch = 1;
+    u.volume = 1;
+
+    u.onend = finish;
+    u.onerror = (e) => {
+      console.warn('SpeechSynthesis utterance error:', e);
+      finish();
+    };
+
+    // Heartbeat to keep Chrome SpeechSynthesis awake
+    resumeTimer = setInterval(() => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 3500);
+
+    // Guaranteed safety timeout in case browser never fires onend
+    const safetyMs = Math.min(20000, Math.max(3000, t.length * 80));
+    safetyTtsTimer = setTimeout(finish, safetyMs);
+
+    window.speechSynthesis.speak(u);
+  } catch (err) {
+    console.warn('SpeechSynthesis error:', err);
+    finish();
+  }
 }
 const REFUSAL: Record<Lang, string> = {
   ta: 'இந்த ERP-ஐ எப்படி பயன்படுத்துவது என்பது பற்றிய கேள்விகளுக்கு மட்டுமே என்னால் உதவ முடியும். ERP பற்றி கேளுங்கள்.',
@@ -224,6 +291,10 @@ export function offlineAnswer(question: string, page: string, lang: Lang): strin
 }
 const OFFLINE_STOP = new Set(['how', 'what', 'where', 'when', 'why', 'the', 'and', 'for', 'this', 'that', 'with', 'eppadi', 'enna', 'podanum', 'pannanum', 'indha', 'page', 'screen', 'tell', 'about', 'explain', 'can', 'you', 'are', 'does', 'make', 'use']);
 export const stopSpeaking = () => {
+  if (safetyTtsTimer) { clearTimeout(safetyTtsTimer); safetyTtsTimer = null; }
+  if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
+  activeUtterance = null;
+  try { (window as any).__activeUtterance = null; } catch {}
   try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   onlineToken += 1;
   try { onlineAudio?.pause(); } catch { /* ignore */ }

@@ -1012,6 +1012,9 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const leftW = contentW - rightW - 3;
   const discAmt = Number(input.discountAmount) || 0;
   const subtotalVal = input.subtotal != null && input.subtotal > 0 ? Number(input.subtotal) : (input.basicValue + discAmt);
+  const computedGrandTotal = (input.grandTotal != null && Number(input.grandTotal) > 0)
+    ? Number(input.grandTotal)
+    : Math.round((Number(input.basicValue || 0) + Number(input.cgstAmt || 0) + Number(input.sgstAmt || 0) + Number(input.igstAmt || 0) + Number(input.roundOff || 0)) * 100) / 100;
 
   const totalRows: string[][] = [
     ['Subtotal', fmt(subtotalVal)],
@@ -1021,12 +1024,12 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     [`Add: ${taxLabel('SGST', input.sgstRate)}`, fmt(input.sgstAmt)],
     [`Add: ${taxLabel('IGST', input.igstRate)}`, fmt(input.igstAmt)],
     ['Round Off', fmt(input.roundOff)],
-    ['Total', fmt(input.grandTotal)],
+    ['Total', fmt(computedGrandTotal)],
   ];
   ensureSpace(62);
   autoTable(doc, {
     startY: y,
-    body: [[`Rupees (in words):\n${amountInWords(input.grandTotal)}`]],
+    body: [[`Rupees (in words):\n${amountInWords(computedGrandTotal)}`]],
     tableWidth: leftW,
     margin: { left: ML },
     theme: 'grid',

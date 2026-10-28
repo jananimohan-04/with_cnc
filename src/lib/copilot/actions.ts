@@ -16,7 +16,7 @@ export interface FindResult { title: string; rows: string[] }
 
 export interface PipelineItem {
   id: string;
-  type: 'enquiry' | 'quotation' | 'sales_order' | 'dc' | 'invoice';
+  type: 'enquiry' | 'quotation' | 'sales_order' | 'dc' | 'invoice' | 'inward' | 'finished_goods' | 'rejected';
   refNo: string;
   customer: string;
   part: string;
@@ -230,6 +230,31 @@ export async function fetchPipelineSummary(companyId: string | null): Promise<Pi
           status: d.status || 'Delivered',
           date: d.delivery_date || (d.created_at ? d.created_at.slice(0, 10) : ''),
           raw: d,
+        });
+      }
+    }
+
+    let inwQ = supabase
+      .from('cnc_inwards')
+      .select('id, inward_no, party_name, part_name, quantity, status, inward_date, created_at')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (companyId) inwQ = inwQ.eq('company_id', companyId);
+    const { data: inws } = await inwQ;
+    if (inws) {
+      for (const iw of inws) {
+        items.push({
+          id: iw.id,
+          type: 'inward',
+          refNo: iw.inward_no || 'INW',
+          customer: iw.party_name || 'Party',
+          part: iw.part_name || '-',
+          qty: Number(iw.quantity) || 0,
+          value: 0,
+          stage: 'Inward',
+          status: iw.status || 'Received',
+          date: iw.inward_date || (iw.created_at ? iw.created_at.slice(0, 10) : ''),
+          raw: iw,
         });
       }
     }
@@ -840,6 +865,451 @@ async function moveStageAction(p: Params, ctx: ActionCtx): Promise<RunResult> {
     message: `Opening ${stageNorm} transition form for #${refNo} (${customer}).`,
     where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
   };
+}
+
+export async function saveStageRecord(
+  stageId: string,
+  fields: Record<string, any>,
+  ctx: ActionCtx
+): Promise<RunResult> {
+  const normStage = stageId.toLowerCase().replace(/[\s_-]+/g, '');
+
+  if (normStage === 'enquiry') {
+    return await addEnquiry({
+      company: fields.customer || fields.company || 'Unknown Customer',
+      products: [{
+        name: fields.part_name || fields.part || 'Component',
+        qty: Number(fields.quantity) || 1,
+        price: Number(fields.price || fields.estimated_value) || 0
+      }],
+      remarks: fields.remarks || ''
+    }, ctx);
+  }
+
+  if (normStage === 'salesorder') {
+    return await addSalesOrder({
+      company: fields.customer || fields.company || 'Unknown Customer',
+      po_no: fields.po_no || `PO-${Math.floor(1000 + Math.random() * 9000)}`,
+      products: [{
+        name: fields.part_name || fields.part || 'Component',
+        qty: Number(fields.quantity) || 1,
+        price: Number(fields.price || fields.unit_price) || 0
+      }],
+      delivery_date: fields.delivery_date || null
+    }, ctx);
+  }
+
+  if (normStage === 'quotation') {
+    const cust = fields.customer || fields.company || 'Customer';
+    const quoteNo = `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qty = Number(fields.quantity) || 1;
+    const rate = Number(fields.price || fields.unit_price || fields.rate) || 0;
+    const part = fields.part_name || fields.part || 'Job Work Machining';
+    const totalVal = qty * rate;
+
+    const payload: any = {
+      id: crypto.randomUUID(),
+      quote_no: quoteNo,
+      customer: cust,
+      date: new Date().toISOString().slice(0, 10),
+      valid_till: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      description: [{
+        item: part,
+        description: part,
+        qty: String(qty),
+        unitPrice: String(rate),
+        total: String(totalVal)
+      }],
+      total_value: totalVal,
+      status: 'Sent',
+      created_at: new Date().toISOString()
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_quotations').insert([payload]);
+    if (error) return { ok: false, message: `Could not save quotation: ${error.message}` };
+    return {
+      ok: true,
+      message: `Quotation ${quoteNo} created for ${cust} (${part}, Qty: ${qty}, Value: ₹${totalVal.toLocaleString('en-IN')}).`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' }
+    };
+  }
+
+  if (normStage === 'inward') {
+    const party = fields.party_name || fields.customer || fields.supplier || 'Party';
+    const part = fields.part_name || fields.material_name || fields.part || 'Raw Material';
+    const qty = Number(fields.quantity) || 1;
+    const inwNo = fields.inward_no || `INW-${Math.floor(1000 + Math.random() * 9000)}`;
+    const payload: any = {
+      id: crypto.randomUUID(),
+      inward_no: inwNo,
+      party_name: party,
+      part_name: part,
+      product_name: part,
+      quantity: qty,
+      price: Number(fields.price) || 0,
+      inward_date: new Date().toISOString().slice(0, 10),
+      status: 'Pending',
+      created_at: new Date().toISOString()
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_inwards').insert([payload]);
+    if (error) return { ok: false, message: `Could not save inward: ${error.message}` };
+    return {
+      ok: true,
+      message: `Inward record ${inwNo} created for ${party} (${part}, Qty: ${qty}).`,
+      where: { path: '/sales/pipeline', label: 'Inward Stage' }
+    };
+  }
+
+  if (normStage === 'dc' || normStage === 'deliverychallan') {
+    const cust = fields.customer || fields.party || 'Customer';
+    const part = fields.part_name || fields.part || 'Machined Parts';
+    const qty = Number(fields.quantity) || 1;
+    const dcNo = fields.dc_no || `DC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const payload: any = {
+      id: crypto.randomUUID(),
+      delivery_no: dcNo,
+      customer_name: cust,
+      part_name: part,
+      quantity: qty,
+      status: 'Dispatched',
+      created_at: new Date().toISOString()
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_deliveries').insert([payload]);
+    if (error) return { ok: false, message: `Could not save DC: ${error.message}` };
+    return {
+      ok: true,
+      message: `Delivery Challan ${dcNo} created for ${cust} (${part}, Qty: ${qty}).`,
+      where: { path: '/sales/pipeline', label: 'Delivery Stage' }
+    };
+  }
+
+  if (normStage === 'invoice') {
+    const cust = fields.customer || 'Customer';
+    const part = fields.part_name || 'Component';
+    const qty = Number(fields.quantity) || 1;
+    const amt = Number(fields.amount || fields.price) || (qty * 100);
+    const invNo = fields.invoice_no || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const payload: any = {
+      id: crypto.randomUUID(),
+      invoice_no: invNo,
+      customer_name: cust,
+      part_name: part,
+      quantity: qty,
+      amount: amt,
+      status: 'Unpaid',
+      invoice_date: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString()
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_invoices').insert([payload]);
+    if (error) return { ok: false, message: `Could not save invoice: ${error.message}` };
+    return {
+      ok: true,
+      message: `Invoice ${invNo} created for ${cust} (Amount: ₹${amt.toLocaleString('en-IN')}).`,
+      where: { path: '/sales/pipeline', label: 'Invoices' }
+    };
+  }
+
+  if (normStage === 'rejected') {
+    const part = fields.part_name || 'Component';
+    const qty = Number(fields.quantity) || 1;
+    const reason = fields.reason || 'Visual / Dimension Defect';
+    return {
+      ok: true,
+      message: `Rejected defect logged for ${part} (Qty: ${qty}, Reason: ${reason}).`,
+      where: { path: '/sales/pipeline', label: 'Rejected Stage' }
+    };
+  }
+
+  if (normStage === 'finishedgoods') {
+    const part = fields.part_name || 'Component';
+    const qty = Number(fields.quantity) || 1;
+    return {
+      ok: true,
+      message: `Finished Goods logged for ${part} (Qty: ${qty}). Ready for delivery.`,
+      where: { path: '/sales/pipeline', label: 'Finished Goods' }
+    };
+  }
+
+  return { ok: false, message: `Unsupported stage ${stageId}.` };
+}
+
+/**
+ * Moves an existing pipeline card from its current stage to the next stage
+ * with extra information provided by the user via voice / form.
+ */
+export async function moveStageRecord(
+  sourceCard: PipelineItem,
+  targetStageId: string,
+  extraFields: Record<string, any>,
+  ctx: ActionCtx
+): Promise<RunResult> {
+  const norm = targetStageId.toLowerCase().replace(/[\s_-]+/g, '');
+
+  // 1. Move to Quotation (source is Enquiry)
+  if (norm === 'quotation') {
+    const quoteNo = `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const unitPrice = Number(extraFields.price || extraFields.rate || 0);
+    const qty = Number(sourceCard.qty) || 1;
+    const totalVal = unitPrice ? unitPrice * qty : Number(sourceCard.value || 0);
+
+    const payload: any = {
+      id: crypto.randomUUID(),
+      quote_no: quoteNo,
+      lead_id: sourceCard.id,
+      enquiry_no: sourceCard.refNo,
+      customer: sourceCard.customer,
+      part_name: sourceCard.part,
+      quantity: qty,
+      unit_price: unitPrice,
+      total_value: totalVal,
+      date: new Date().toISOString().slice(0, 10),
+      valid_till: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      payment_terms: extraFields.payment_terms || '30 days net',
+      remarks: extraFields.remarks || '',
+      status: 'Sent',
+      created_at: new Date().toISOString(),
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_quotations').insert([payload]);
+    if (error) return { ok: false, message: `Could not save Quotation: ${error.message}` };
+
+    if (sourceCard.type === 'enquiry') {
+      await supabase.from('cnc_enquiries').update({
+        pipeline_stage: 'Quotation',
+        status: 'Quoted',
+      }).eq('id', sourceCard.id);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Quotation', price: unitPrice }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `Enquiry #${sourceCard.refNo} (${sourceCard.customer}) moved to Quotation ${quoteNo} (Rate: ₹${unitPrice.toLocaleString('en-IN')}).`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  // 2. Move to Sales Order (source is Quotation or Enquiry)
+  if (norm === 'salesorder') {
+    const orderNo = `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const poNo = extraFields.po_no || `PO-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qty = Number(sourceCard.qty) || 1;
+    const price = Number(extraFields.price || 0) || (sourceCard.value && sourceCard.qty ? sourceCard.value / sourceCard.qty : 0);
+    const totalVal = sourceCard.value || (price * qty);
+
+    const payload: any = {
+      id: crypto.randomUUID(),
+      order_no: orderNo,
+      po_no: poNo,
+      customer: sourceCard.customer,
+      part_name: sourceCard.part,
+      quantity: qty,
+      unit_price: price,
+      total_value: totalVal,
+      delivery_date: extraFields.delivery_date || null,
+      status: 'Confirmed',
+      order_date: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_sales_orders').insert([payload]);
+    if (error) return { ok: false, message: `Could not save Sales Order: ${error.message}` };
+
+    if (sourceCard.type === 'quotation') {
+      await supabase.from('cnc_quotations').update({ status: 'Ordered' }).eq('id', sourceCard.id);
+    } else if (sourceCard.type === 'enquiry') {
+      await supabase.from('cnc_enquiries').update({ pipeline_stage: 'Sales Order', status: 'Converted' }).eq('id', sourceCard.id);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Sales Order', po_no: poNo }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `Record #${sourceCard.refNo} (${sourceCard.customer}) moved to Sales Order ${orderNo} with PO ${poNo}.`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  // 3. Move to Inward (source is Sales Order)
+  if (norm === 'inward') {
+    const inwNo = extraFields.inward_no || `INW-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qty = Number(extraFields.received_qty) || sourceCard.qty || 1;
+    const payload: any = {
+      id: crypto.randomUUID(),
+      inward_no: inwNo,
+      party_name: sourceCard.customer,
+      part_name: sourceCard.part,
+      product_name: sourceCard.part,
+      quantity: qty,
+      price: sourceCard.value || 0,
+      heat_no: extraFields.heat_no || '',
+      inward_date: new Date().toISOString().slice(0, 10),
+      status: 'Received',
+      created_at: new Date().toISOString(),
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_inwards').insert([payload]);
+    if (error) return { ok: false, message: `Could not save Inward: ${error.message}` };
+
+    if (sourceCard.type === 'sales_order') {
+      await supabase.from('cnc_sales_orders').update({ status: 'Inward' }).eq('id', sourceCard.id);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Inward', inward_no: inwNo }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `Sales Order #${sourceCard.refNo} (${sourceCard.customer}) moved to Inward ${inwNo} (Qty: ${qty}).`,
+      where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
+    };
+  }
+
+  // 4. Move to Finished Goods
+  if (norm === 'finishedgoods') {
+    const fgQty = Number(extraFields.quantity || extraFields.fg_qty) || sourceCard.qty || 1;
+    const batchNo = extraFields.batch_no || 'BATCH-01';
+    const location = extraFields.location || 'Rack 1';
+
+    if (sourceCard.type === 'sales_order') {
+      await supabase.from('cnc_sales_orders').update({ status: 'Finished Goods' }).eq('id', sourceCard.id);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Finished Goods' }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `#${sourceCard.refNo} (${sourceCard.part}) moved to Finished Goods (Qty: ${fgQty}, Batch: ${batchNo}, Bin: ${location}).`,
+      where: { path: '/sales/pipeline', label: 'Finished Goods' },
+    };
+  }
+
+  // 5. Move to Rejected
+  if (norm === 'rejected') {
+    const rejQty = Number(extraFields.quantity || extraFields.rejected_qty) || 1;
+    const reason = extraFields.reason || 'Dimension Defect';
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Rejected' }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `#${sourceCard.refNo} logged to Rejection (Part: ${sourceCard.part}, Qty: ${rejQty}, Reason: ${reason}).`,
+      where: { path: '/sales/pipeline', label: 'Rejected Stage' },
+    };
+  }
+
+  // 6. Move to Delivery Challan (DC)
+  if (norm === 'dc' || norm === 'deliverychallan') {
+    const dcNo = extraFields.dc_no || `DC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qty = Number(extraFields.quantity || extraFields.dispatch_qty) || sourceCard.qty || 1;
+    const vehicle = extraFields.vehicle_no || '';
+
+    const payload: any = {
+      id: crypto.randomUUID(),
+      delivery_no: dcNo,
+      customer_name: sourceCard.customer,
+      part_name: sourceCard.part,
+      quantity: qty,
+      vehicle_no: vehicle,
+      status: 'Dispatched',
+      delivery_date: new Date().toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_deliveries').insert([payload]);
+    if (error) return { ok: false, message: `Could not save DC: ${error.message}` };
+
+    if (sourceCard.type === 'sales_order') {
+      await supabase.from('cnc_sales_orders').update({ status: 'Delivered' }).eq('id', sourceCard.id);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'DC', dc_no: dcNo }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `#${sourceCard.refNo} (${sourceCard.customer}) moved to Delivery Challan ${dcNo} (Qty: ${qty}${vehicle ? `, Vehicle: ${vehicle}` : ''}).`,
+      where: { path: '/sales/pipeline', label: 'Delivery Stage' },
+    };
+  }
+
+  // 7. Move to Invoice
+  if (norm === 'invoice') {
+    const invNo = extraFields.invoice_no || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const amt = Number(extraFields.amount) || Number(sourceCard.value) || ((sourceCard.qty || 1) * 100);
+    const qty = sourceCard.qty || 1;
+
+    const payload: any = {
+      id: crypto.randomUUID(),
+      invoice_no: invNo,
+      customer_name: sourceCard.customer,
+      part_name: sourceCard.part,
+      quantity: qty,
+      amount: amt,
+      status: 'Unpaid',
+      invoice_date: new Date().toISOString().slice(0, 10),
+      due_date: extraFields.due_date || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      created_at: new Date().toISOString(),
+    };
+    if (ctx.companyId) payload.company_id = ctx.companyId;
+
+    const { error } = await supabase.from('cnc_invoices').insert([payload]);
+    if (error) return { ok: false, message: `Could not save Invoice: ${error.message}` };
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
+        detail: { identifier: sourceCard.refNo, targetStage: 'Invoice', invoice_no: invNo }
+      }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+
+    return {
+      ok: true,
+      message: `#${sourceCard.refNo} (${sourceCard.customer}) moved to Invoice ${invNo} (Amount: ₹${amt.toLocaleString('en-IN')}).`,
+      where: { path: '/sales/pipeline', label: 'Invoices' },
+    };
+  }
+
+  return { ok: false, message: `Unsupported transition to ${targetStageId}.` };
 }
 
 // ------------------------------------------------------------------------------------------------ find (read only)

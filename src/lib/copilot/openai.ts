@@ -219,3 +219,58 @@ Matching Guidelines:
     return null;
   }
 }
+
+/**
+ * Extracts form field values for a specific pipeline stage from user voice speech using ChatGPT.
+ */
+export async function extractStageFieldsWithChatGPT(
+  stageId: string,
+  stageName: string,
+  userSpeech: string,
+  fieldsInfo: Array<{ key: string; label: string }>
+): Promise<Record<string, any> | null> {
+  const apiKey = getOpenAIApiKey();
+  if (!apiKey) return null;
+
+  const fieldsDesc = fieldsInfo.map((f) => `"${f.key}": (${f.label})`).join(', ');
+
+  const systemPrompt = `You are an AI data extractor for an ERP manufacturing company.
+The user is adding a record into the "${stageName}" (stage: ${stageId}) stage of the Sales Pipeline.
+The user spoke or typed the following details: "${userSpeech}".
+
+Extract the required fields and return ONLY a valid JSON object matching this schema:
+{
+  ${fieldsDesc}
+}
+
+Guidelines:
+- Clean product/part names: remove conversational filler words like "name is", "part name is", "product name", "item is".
+- Extract numbers for quantity, price, estimated_value, amount accurately.
+- If customer or supplier name is mentioned, format it properly (e.g. "Apple Tech", "AABEE Poly").
+- If any optional field is not mentioned, omit it or set it to null.
+- Output JSON only, no markdown, no explanation.`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userSpeech }],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return null;
+    return JSON.parse(content);
+  } catch (err) {
+    console.warn('ChatGPT field extraction error:', err);
+    return null;
+  }
+}

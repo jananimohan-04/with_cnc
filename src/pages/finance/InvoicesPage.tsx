@@ -824,7 +824,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
       sgstRate: rateOf(sg), sgstAmt: sg,
       igstRate: rateOf(ig), igstAmt: ig,
       roundOff: Number(inv.round_off) || 0,
-      grandTotal: Number(inv.total) || 0,
+      grandTotal: Number(inv.total ?? inv.grand_total ?? inv.total_amount ?? inv.amount ?? 0) || Math.round((basic + cg + sg + ig + (Number(inv.round_off) || 0)) * 100) / 100,
       bankLines: comp.bankLines,
       terms: defaultTermsText((company as any)?.id),
     };
