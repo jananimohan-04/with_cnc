@@ -925,7 +925,6 @@ export function InventoryPage() {
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
                   <th className="px-3 py-3 text-left w-10">#</th>
-                  <th className="px-3 py-3 text-left">Product Code</th>
                   <th className="px-3 py-3 text-left">Product / Material Name</th>
                   <th className="px-3 py-3 text-left">Category</th>
                   <th className="px-3 py-3 text-left">Warehouse / Location</th>
@@ -941,13 +940,13 @@ export function InventoryPage() {
               <tbody>
                 {(itemsLoading || (!items && !itemsError)) && Array.from({ length: pageSize > 10 ? 10 : pageSize }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
-                    {Array.from({ length: 12 }).map((__, j) => (
+                    {Array.from({ length: 11 }).map((__, j) => (
                       <td key={j} className="px-3 py-3.5"><div className={`h-4 rounded bg-slate-100 animate-pulse ${j === 1 ? 'w-28' : 'w-full'}`} /></td>
                     ))}
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && fgVisible.length === 0 && (
-                  <tr><td colSpan={12} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory products found.'}</td></tr>
+                  <tr><td colSpan={11} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory products found.'}</td></tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -957,12 +956,13 @@ export function InventoryPage() {
                         {r.image_url && imageUrls[r.image_url]
                           ? <img src={imageUrls[r.image_url]} alt="" className="w-8 h-8 rounded-md object-cover border border-slate-200 flex-shrink-0" />
                           : <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><Package size={16} /></div>}
-                        <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 whitespace-nowrap">{r.code}</button>
+                        <div className="max-w-[220px]">
+                          <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 text-left truncate block" title={r.name}>
+                            {r.name}
+                          </button>
+                          {r.item_status === 'Inactive' && <span className="text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-800 max-w-[150px] truncate" title={r.name}>
-                      {r.name}
-                      {r.item_status === 'Inactive' && <span className="ml-2 text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
                     </td>
                     {/* Category (inline editable) */}
                     <td className="px-3 py-2 text-slate-600">
@@ -1106,12 +1106,11 @@ export function InventoryPage() {
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0"><Archive size={16} /></div>
-                          <span className="font-semibold text-slate-800 whitespace-nowrap">{r.salesOrder || 'FG'}</span>
+                          <div className="max-w-[220px]" title={`${r.product} · ${r.customer}`}>
+                            <div className="font-semibold text-slate-800 truncate">{r.product || '—'}</div>
+                            <div className="text-[11px] text-slate-400 truncate">{[r.salesOrder, r.customer].filter(Boolean).join(' · ')}</div>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-800 max-w-[220px]" title={`${r.product} · ${r.customer}`}>
-                        <div className="truncate">{r.product || '—'}</div>
-                        <div className="text-[11px] text-slate-400 truncate">{r.customer}</div>
                       </td>
                       <td className="px-3 py-2.5 text-slate-600">Finished Goods</td>
                       <td className="px-3 py-2">
