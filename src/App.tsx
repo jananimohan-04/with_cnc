@@ -46,6 +46,8 @@ import {
   QuotationsPage,
   SalesOrdersPage,
 } from './pages/sales/SalesPages';
+import { SiteVisitSalesPage } from './pages/sales/SiteVisitSalesPage';
+import { PartnerOrdersPage } from './pages/sales/PartnerOrdersPage';
 
 import { DeliveriesPage } from './pages/operations/OperationsPages';
 import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
@@ -102,6 +104,8 @@ import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
 import { UpdateCenter } from './components/desktop/UpdateCenter';
 import { DesktopToasts } from './lib/desktop/toast';
+// @ts-ignore
+import { RetailApp } from './retail/app';
 
 // Placeholder Component for unbuilt pages
 function PlaceholderPage({ title }: { title: string }) {
@@ -143,6 +147,7 @@ function MainLayout() {
 
   // Remove leading slash for matching with Lovable's navigation config
   const currentPage = location.pathname.substring(1) || 'sales/pipeline';
+
 
   const handleNavigate = (page: string) => {
     navigate(`/${page}`);
@@ -199,6 +204,9 @@ function MainLayout() {
             
             {/* Sales */}
             <Route path="/sales/pipeline" element={<SalesPipelinePage />} />
+            <Route path="/sales/in-house" element={<SalesPipelinePage />} />
+            <Route path="/sales/site-visits" element={<SiteVisitSalesPage />} />
+            <Route path="/sales/partner-orders" element={<PartnerOrdersPage />} />
             <Route path="/sales/leads" element={<LeadsPage />} />
             <Route path="/sales/customers" element={<CustomersPage />} />
             <Route path="/sales/quotations" element={<QuotationsPage />} />
@@ -307,6 +315,8 @@ function MainLayout() {
             <Route path="/admin/settings" element={<SettingsPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
             <Route path="/support/center" element={<SupportCenterPage />} />
+            <Route path="/support/technical" element={<SupportCenterPage defaultType="technical" />} />
+            <Route path="/support/onsite" element={<SupportCenterPage defaultType="onsite" />} />
 
             {/* Fallback */}
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
@@ -379,6 +389,27 @@ function ErpApp() {
   );
 }
 
+const isRetailRoute = (path: string) =>
+  path.startsWith('/store') ||
+  path.startsWith('/retail') ||
+  path.startsWith('/super') ||
+  path.startsWith('/content') ||
+  path.startsWith('/admin/products') ||
+  path.startsWith('/admin/media') ||
+  path.startsWith('/admin/categories') ||
+  path.startsWith('/admin/orders') ||
+  path.startsWith('/admin/quotes') ||
+  path.startsWith('/admin/invoice-profile') ||
+  path.startsWith('/admin/settings-retail');
+
+function RootRoutes() {
+  const location = useLocation();
+  if (isRetailRoute(location.pathname)) {
+    return <RetailApp />;
+  }
+  return <ErpApp />;
+}
+
 function App() {
   // Desktop-only overlays (update card + shell toasts). Rendered as null in the
   // web build path at runtime — isTauri() is false in a browser — so the deployed
@@ -390,7 +421,7 @@ function App() {
       {desktop && <DesktopToasts />}
       <Routes>
         <Route path="/portal/*" element={<PortalApp />} />
-        <Route path="/*" element={<ErpApp />} />
+        <Route path="/*" element={<RootRoutes />} />
       </Routes>
     </BrowserRouter>
   );

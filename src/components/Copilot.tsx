@@ -280,8 +280,17 @@ function extractStageFieldsLocal(text: string): Record<string, any> {
   return res;
 }
 
-/** Wake Word detector strictly for "Hello CNC!", "Hey CNC", "Hi CNC", "வணக்கம் சிஎன்சி", etc. */
-function checkWakeWord(raw: string): { matched: boolean; trailing: string } {
+/**
+ * Wake word: "Hello CNC", "Hey CNC", "Hi C N C", "வணக்கம் சிஎன்சி" ... The speech engine often writes CNC as "see and see",
+ * "science", "C N C" or "cmc", so those are accepted too. Returns what was said after the wake word.
+ * (No \b here: it does not work next to Tamil letters, so spaces / end of text are used instead.)
+ */
+const WAKE_GREET = '(?:hello|hallo|helo|hullo|hey|hi|hai|ok|okay|ஹலோ|ஹாய்|ஹெலோ|வணக்கம்)';
+const WAKE_NAME = '(?:c\\s*n\\s*c|cnc|c\\s*and\\s*c|see\\s*and\\s*see|see\\s*n\\s*see|seen\\s*see|sin\\s*see|sien\\s*see|sience|science|sienci|cmc|cfc|snc|cnn|csc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி|சீ\\s*என்\\s*சீ)';
+const WAKE_ONLY = '(?:c\\s*n\\s*c|cnc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி)';
+const WAKE_AFTER_GREET = new RegExp(`(?:^|\\s)${WAKE_GREET}\\s+${WAKE_NAME}(?=\\s|$)\\s*(.*)$`, 'iu');
+const WAKE_ALONE = new RegExp(`^${WAKE_ONLY}(?=\\s|$)\\s*(.*)$`, 'iu');
+export function checkWakeWord(raw: string): { matched: boolean; trailing: string } {
   if (!raw) return { matched: false, trailing: '' };
   const clean = raw
     .toLowerCase()
@@ -289,23 +298,16 @@ function checkWakeWord(raw: string): { matched: boolean; trailing: string } {
     .replace(/[.,/#!$%^*;:{}=\-_'"()?]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-
-  // English wake word: Requires (hello/hey/hi/ok) + (cnc / c n c / c and c / cmc)
-  const enRegex = /(?:^|\b)(?:hello|hey|hi|ok|okay)\s+(?:cnc|c\s*n\s*c|c\s+and\s+c|see\s+and\s+see|seen\s*see|c\s*nc|cn\s*c|cmc|cfc)\b\s*(.*)$/i;
-  const enMatch = enRegex.exec(clean);
-  if (enMatch) return { matched: true, trailing: (enMatch[1] || '').trim() };
-
-  // Standalone 'cnc' command
-  const standaloneCnc = /^(?:cnc|c\s*n\s*c)\b\s*(.*)$/i.exec(clean);
-  if (standaloneCnc) return { matched: true, trailing: (standaloneCnc[1] || '').trim() };
-
-  // Tamil: 'வணக்கம் சிஎன்சி', 'ஹலோ சிஎன்சி', 'சிஎன்சி'
-  const taClean = raw.toLowerCase().trim();
-  const taRegex = /(?:வணக்கம்|ஹலோ|hello|hey|hi)?\s*(?:சி\s*என்\s*சி|சிஎன்சி|c\s*n\s*c)[!.,? ]*(.*)$/i;
-  const taMatch = taRegex.exec(taClean);
-  if (taMatch) return { matched: true, trailing: (taMatch[1] || '').trim() };
-
-  return { matched: false, trailing: '' };
+  const m = WAKE_AFTER_GREET.exec(clean) || WAKE_ALONE.exec(clean);
+  if (!m) return { matched: false, trailing: '' };
+  // The command after the wake word is taken from what was really said, so capitals and punctuation
+  // ("A-1 Tools Pvt. Ltd") survive: find the shortest run of words that already contains the wake phrase.
+  const words = raw.trim().split(/\s+/);
+  for (let k = 1; k <= Math.min(words.length, 8); k++) {
+    const head = words.slice(0, k).join(' ').toLowerCase().replace(/&/g, ' and ').replace(/[.,/#!$%^*;:{}=\-_'"()?]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (WAKE_AFTER_GREET.test(head) || WAKE_ALONE.test(head)) return { matched: true, trailing: words.slice(k).join(' ').replace(/^[\s,.!?;:-]+/, '').trim() };
+  }
+  return { matched: true, trailing: (m[1] || '').trim() };
 }
 
 /** Requests microphone permission via getUserMedia */
@@ -534,14 +536,11 @@ export function Copilot() {
     setSpeechLang(next);
     speechLangRef.current = next;
     try { localStorage.setItem('argus.copilot.speechLang', next); } catch {}
-    if (recRef.current) {
-      try { recRef.current.abort(); } catch {}
-      recRef.current = null;
-    }
+    { const old = recRef.current; recRef.current = null; if (old) { try { old.onend = null; old.abort(); } catch {} } }
     setListening(false);
     setTimeout(() => {
       startRecognitionRef.current();
-    }, 100);
+    }, 200);
   }, [speechLang]);
 
   // Request browser microphone permission without holding conflicting hardware audio stream
@@ -725,29 +724,46 @@ export function Copilot() {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [msgs, awaiting, busy, extractedPreview, activeAddStage]);
 
-  // Handle other assistant modes (teaching, adviser) so mics don't clash
+  // ---- Microphone state shared by the listener below. ONE recogniser may run at a time.
+  const startRecognitionRef = useRef<() => void>(() => {});
+  const restartTimerRef = useRef<any>(null);
+  const pausedByRef = useRef<Set<string>>(new Set());   // other assistant modes that need the microphone
+  const startedOnceRef = useRef(false);                 // the first click has happened, listening may start
+  const haltedRef = useRef(false);                      // stopped on purpose after repeated errors (a click restarts it)
+  const netFailRef = useRef(0);
+  const lastSpokenRef = useRef('');
+  const busyRef = useRef(false);
+
+  const abortRec = useCallback(() => {
+    clearTimeout(restartTimerRef.current);
+    const r = recRef.current;
+    recRef.current = null;
+    if (r) { try { r.onend = null; r.onresult = null; r.onerror = null; r.abort(); } catch { /* ignore */ } }
+  }, []);
+  const scheduleRestart = useCallback((ms: number) => {
+    clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = setTimeout(() => startRecognitionRef.current(), ms);
+  }, []);
+
+  // Adviser and Teaching use the microphone / speakers too: Co-worker steps aside while they run, then resumes.
   useEffect(() => {
     const handleMode = (e: Event) => {
       const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail;
-      if (d) {
-        if (d.mode !== 'coworker' && d.on) {
-          otherModeActiveRef.current = true;
-          setListening(false);
-        } else if (d.mode !== 'coworker' && !d.on) {
-          otherModeActiveRef.current = false;
-          if (!micMutedRef.current) {
-            startRecognitionRef.current();
-          }
-        }
+      if (!d || d.mode === 'coworker') return;
+      if (d.on) {
+        pausedByRef.current.add(d.mode);
+        abortRec();
+        setListening(false);
+      } else if (pausedByRef.current.delete(d.mode) && pausedByRef.current.size === 0 && startedOnceRef.current) {
+        scheduleRestart(500);
       }
     };
     window.addEventListener('argus:mode', handleMode);
     return () => window.removeEventListener('argus:mode', handleMode);
-  }, []);
+  }, [abortRec, scheduleRestart]);
 
   // Forward refs for closures
   const submitRef = useRef<(raw: string) => Promise<void>>(async () => {});
-  const startRecognitionRef = useRef<() => void>(() => {});
   const handleWakeActivationRef = useRef<(trailing?: string) => void>(() => {});
 
   const currentSpeakingTextRef = useRef<string>('');
@@ -760,6 +776,7 @@ export function Copilot() {
     }
     speakingRef.current = true;
     currentSpeakingTextRef.current = text.toLowerCase();
+    lastSpokenRef.current = text.toLowerCase();
 
     let finished = false;
     const cleanup = () => {
@@ -911,70 +928,89 @@ export function Copilot() {
     }
   }, [transitionPreview, ctx, add, loadPipeline]);
 
-  // Single-instance continuous speech recognition loop
-  const startRecognition = useCallback(() => {
-    if (!SR || otherModeActiveRef.current || micMutedRef.current) {
-      return;
-    }
+  // Opens the panel for the wake word (without speaking yet: the person may still be saying the command).
+  const wakeOpen = useCallback(() => {
+    playWakeChime();
+    setMicMuted(false);
+    micMutedRef.current = false;
+    haltedRef.current = false;
+    setMicError(null);
+    greetedRef.current = true;
+    setOpen(true);
+  }, []);
 
-    // Clean up existing instance before starting new one
-    if (recRef.current) {
-      try { recRef.current.abort(); } catch {}
-      recRef.current = null;
-    }
+  // One recognition run = one utterance. Every handler checks `mine()`, so a late event from an old, aborted run can never
+  // clear or restart the current one (that cross-talk is what used to stop the microphone hearing anything).
+  const startRecognition = useCallback(() => {
+    if (!SR || micMutedRef.current || haltedRef.current || pausedByRef.current.size > 0) return;
+    if (recRef.current) return;   // already listening: never start a second recogniser
 
     const r = new SR();
-    // Recognition language (defaults to en-IN so 'Finished Goods', 'Sales Order', numbers are recognized reliably)
     r.lang = speechLangRef.current;
-    // single-utterance mode so Chrome fires onresult live for every spoken word without hanging
     r.continuous = false;
     r.interimResults = true;
-    r.maxAlternatives = 1;
+    r.maxAlternatives = 3;
 
+    const startedAt = Date.now();
     let finalText = '';
+    let interimText = '';
+    let errored = '';
+    let woke = false;
+    let wakeAlt: { matched: boolean; trailing: string } | null = null;
+    const mine = () => recRef.current === r;
+    const langName = () => (speechLangRef.current === 'ta-IN' ? 'Tamil' : 'English');
 
     r.onstart = () => {
+      if (!mine()) return;
+      startedOnceRef.current = true;
       setListening(true);
       setMicError(null);
-      setSpeechStatusText(`Listening (${speechLangRef.current === 'ta-IN' ? 'Tamil' : 'English'})...`);
+      setSpeechStatusText(`Listening (${langName()})... say "Hello CNC"`);
     };
 
     r.onresult = (e: any) => {
-      if (otherModeActiveRef.current) return;
-
-      // If AI is currently speaking, user voice immediately interrupts the AI!
-      if (speakingRef.current) {
-        stopSpeaking();
-        speakingRef.current = false;
-      }
-
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (!mine() || pausedByRef.current.size > 0) return;
+      netFailRef.current = 0;
+      let fin = '';
+      let inter = '';
+      for (let i = 0; i < e.results.length; i++) {
         const item = e.results[i];
         const t = String(item[0]?.transcript || '');
-        if (item.isFinal) {
-          finalText += t;
-        } else {
-          interim += t;
-        }
+        if (item.isFinal) fin += t; else inter += t;
       }
-
-      const spoken = (finalText || interim).trim();
+      finalText = fin;
+      interimText = inter;
+      const spoken = `${fin} ${inter}`.trim();
       if (!spoken) return;
 
-      // 1. Check for Wake Word ("Hello CNC!", "Hey CNC", etc.)
-      const wake = checkWakeWord(spoken);
+      // 1. Wake word: works from any screen, even when the panel is closed, and interrupts the assistant's own voice.
+      let wake = checkWakeWord(spoken);
+      let wakeSpoken = spoken;
+      if (!wake.matched) {
+        // The engine often writes CNC wrongly in its first guess; its other guesses for the same words are tried too.
+        const last = e.results[e.results.length - 1];
+        for (let j = 1; last && j < last.length; j++) {
+          const alt = String(last[j]?.transcript || '');
+          const w = alt ? checkWakeWord(alt) : null;
+          if (w?.matched) { wake = w; wakeSpoken = alt; break; }
+        }
+      }
       if (wake.matched) {
-        clearTimeout(autoSubmitTimerRef.current);
-        stopSpeaking();
-        speakingRef.current = false;
-        setInput('');
-        finalText = '';
-        handleWakeActivationRef.current(wake.trailing);
+        wakeAlt = wake;
+        if (!woke) {
+          woke = true;
+          stopSpeaking();
+          speakingRef.current = false;
+          wakeOpen();
+        }
+        if (openRef.current || woke) { setInput(wake.trailing); setSpeechStatusText(`Heard: "${wakeSpoken}"`); }
         return;
       }
 
-      // 2. LIVE VOICE TYPING: Update input bar in real time so user sees text immediately!
+      // 2. The assistant's own voice coming back through the speakers is not a command.
+      if (speakingRef.current) return;
+
+      // 3. Live typing into the box while the panel is open.
       if (openRef.current) {
         setInput(spoken);
         setSpeechStatusText(`Heard: "${spoken}"`);
@@ -982,40 +1018,72 @@ export function Copilot() {
     };
 
     r.onerror = (e: any) => {
-      console.warn('Speech recognition error:', e.error);
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      if (!mine()) return;
+      errored = String(e?.error || 'error');
+      if (errored === 'not-allowed' || errored === 'service-not-allowed') {
         setListening(false);
         setMicMuted(true);
         micMutedRef.current = true;
-        setMicError('Microphone blocked. Click the lock icon in the browser address bar to allow.');
+        setMicError('Microphone blocked. Click the lock icon in the address bar, allow the microphone, then press Retry.');
         setSpeechStatusText('Microphone permission blocked');
-      } else if (e.error === 'network') {
-        setSpeechStatusText('Speech network error (Google server)');
-      } else {
-        setSpeechStatusText(`Speech error: ${e.error}`);
+      } else if (errored === 'audio-capture') {
+        haltedRef.current = true;
+        setMicError('No microphone was found. Plug one in or choose it in Windows Sound settings, then press Retry.');
+        setSpeechStatusText('No microphone found');
+      } else if (errored === 'network') {
+        setSpeechStatusText('Speech service not reachable (needs internet)…');
+      } else if (errored !== 'no-speech' && errored !== 'aborted') {
+        setSpeechStatusText(`Speech error: ${errored}`);
       }
     };
 
     r.onend = () => {
-      setListening(false);
+      if (!mine()) return;
       recRef.current = null;
+      setListening(false);
 
-      const clean = finalText.trim();
-      if (clean && openRef.current && clean.length >= 2) {
-        setSpeechStatusText(`Submitted: "${clean}"`);
-        void submitRef.current(clean);
+      // What was said: the final text (or, if the engine stopped early, the last interim text).
+      const said = (finalText || interimText).trim();
+      const own = checkWakeWord(said);
+      const wake = own.matched ? own : (wakeAlt ?? own);
+      const norm = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+      const echo = norm(said).length > 6 && norm(lastSpokenRef.current).includes(norm(said));
+      if (!echo && (said.length >= 2 || wake.matched)) {
+        const send = (text: string) => {
+          const go = () => void submitRef.current(text);
+          if (busyRef.current) window.setTimeout(go, 1200); else go();
+        };
+        if (wake.matched) {
+          if (wake.trailing.length >= 2) { setSpeechStatusText(`Submitted: "${wake.trailing}"`); send(wake.trailing); }
+          else handleWakeActivationRef.current('');
+        } else if (openRef.current) {
+          setSpeechStatusText(`Submitted: "${said}"`);
+          send(said);
+        } else {
+          setSpeechStatusText(`Ready (${langName()}) · say "Hello CNC"`);
+        }
       } else {
-        setSpeechStatusText(`Ready (${speechLangRef.current === 'ta-IN' ? 'Tamil' : 'English'})`);
+        setSpeechStatusText(`Ready (${langName()})`);
       }
 
-      // Continuous loop: seamlessly restart recognition for next utterance if unmuted
-      if (!micMutedRef.current && !otherModeActiveRef.current) {
-        setTimeout(() => {
-          if (!micMutedRef.current && !recRef.current && !otherModeActiveRef.current) {
-            startRecognitionRef.current();
-          }
-        }, 100);
+      if (micMutedRef.current || haltedRef.current || pausedByRef.current.size > 0) return;
+
+      // Restart for the next utterance. Silence is normal and restarts quickly; errors back off so a broken
+      // connection is not hammered; a run that died instantly waits a second.
+      let delay = 250;
+      if (errored === 'network') {
+        netFailRef.current += 1;
+        if (netFailRef.current >= 6) {
+          haltedRef.current = true;
+          setMicError('The speech service cannot be reached. Check the internet connection, then press Retry.');
+          setSpeechStatusText('Speech service unreachable');
+          return;
+        }
+        delay = Math.min(8000, 800 * 2 ** (netFailRef.current - 1));
+      } else if (Date.now() - startedAt < 400 && !errored) {
+        delay = 1000;
       }
+      scheduleRestart(delay);
     };
 
     recRef.current = r;
@@ -1025,68 +1093,73 @@ export function Copilot() {
       console.warn('r.start() error:', err);
       recRef.current = null;
       setListening(false);
+      scheduleRestart(800);
     }
-  }, [SR, speechLang]);
+  }, [SR, wakeOpen, scheduleRestart]);
 
   startRecognitionRef.current = startRecognition;
 
-  // Toggle mic mute/unmute
+  // Mic button: mute / unmute. A click is also what lets the browser start listening and what clears a "stopped" state.
   const toggleMicMute = useCallback(async () => {
-    if (micMutedRef.current) {
-      // UNMUTE: request mic permission if needed and start listening
+    if (micMutedRef.current || haltedRef.current) {
       setMicMuted(false);
       micMutedRef.current = false;
+      haltedRef.current = false;
+      netFailRef.current = 0;
       setMicError(null);
       playWakeChime();
       await requestMicPermission();
       startRecognition();
     } else {
-      // MUTE: completely silence listener
       setMicMuted(true);
       micMutedRef.current = true;
-      if (recRef.current) {
-        try { recRef.current.abort(); } catch {}
-        recRef.current = null;
-      }
+      abortRec();
       setListening(false);
     }
-  }, [requestMicPermission, startRecognition]);
+  }, [requestMicPermission, startRecognition, abortRec]);
 
-  // Initial setup: Wait for user gesture before starting recognition to avoid Chrome autoplay denial
+  // The browser only allows the microphone after the person has used the page: start on the first click or key press.
   useEffect(() => {
     if (!SR) return;
-
-    const onUserGesture = async () => {
-      if (micMutedRef.current || otherModeActiveRef.current) return;
-      try {
-        if (!micMutedRef.current && !recRef.current && !otherModeActiveRef.current) {
-          startRecognitionRef.current();
-        }
-      } catch (err) {
-        console.warn('Initial mic gesture error:', err);
-      }
+    const onUserGesture = () => {
+      if (startedOnceRef.current) { cleanup(); return; }
+      if (micMutedRef.current || haltedRef.current) return;
+      startRecognitionRef.current();
     };
-
-    window.addEventListener('pointerdown', onUserGesture, { once: true });
-    window.addEventListener('click', onUserGesture, { once: true });
-    window.addEventListener('keydown', onUserGesture, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', onUserGesture);
-      window.removeEventListener('click', onUserGesture);
-      window.removeEventListener('keydown', onUserGesture);
+    const cleanup = () => {
+      window.removeEventListener('pointerdown', onUserGesture, true);
+      window.removeEventListener('keydown', onUserGesture, true);
     };
+    window.addEventListener('pointerdown', onUserGesture, true);
+    window.addEventListener('keydown', onUserGesture, true);
+    return cleanup;
   }, [SR]);
+
+  // Watchdog: if the listener has died (the browser ended it silently, the tab slept, a restart failed) bring it back;
+  // a run that has been "listening" far too long without ending is stuck, so it is restarted too.
+  useEffect(() => {
+    if (!SR) return;
+    const id = window.setInterval(() => {
+      if (!startedOnceRef.current || micMutedRef.current || haltedRef.current || pausedByRef.current.size > 0) return;
+      if (!recRef.current) startRecognitionRef.current();
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [SR]);
+
+  // Opening the panel (button, shortcut or wake word) also makes sure the microphone is on.
+  useEffect(() => {
+    if (open && SR) { startedOnceRef.current = true; startRecognitionRef.current(); }
+  }, [open, SR]);
+
+  useEffect(() => { busyRef.current = busy; }, [busy]);
 
   // Cleanup on unmount
   useEffect(() => () => {
     micMutedRef.current = true;
     stopSpeaking();
     clearTimeout(autoSubmitTimerRef.current);
-    if (recRef.current) {
-      try { recRef.current.abort(); } catch {}
-      recRef.current = null;
-    }
-  }, []);
+    abortRec();
+  }, [abortRec]);
 
   const confirm = useCallback(async () => {
     if (!awaiting) return;
@@ -1559,6 +1632,9 @@ export function Copilot() {
         onClick={async () => {
           setMicMuted(false);
           micMutedRef.current = false;
+          haltedRef.current = false;
+          netFailRef.current = 0;
+          startedOnceRef.current = true;
           setMicError(null);
           await requestMicPermission();
           startRecognition();
@@ -1572,7 +1648,7 @@ export function Copilot() {
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           <span className="font-bold text-slate-800">Co-worker</span>
-          {!micMuted ? (
+          {!micMuted && listening ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1580,10 +1656,17 @@ export function Copilot() {
               </span>
               <span>Say "Hello CNC !"</span>
             </span>
+          ) : !micMuted ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" title={micError ?? 'Click once anywhere on the page so the browser lets the microphone start.'}>
+              {micError ? 'Mic problem · click' : 'Click to start mic'}
+            </span>
           ) : (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
               Mic Muted
             </span>
+          )}
+          {!micMuted && /^Heard|^Submitted|error|unreach|not reach/i.test(speechStatusText) && (
+            <span className="max-w-[11rem] truncate text-[10px] text-slate-500" title={speechStatusText}>{speechStatusText}</span>
           )}
         </div>
       </div>

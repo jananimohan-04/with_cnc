@@ -191,6 +191,12 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const n = i + 1;
+    if (!r.code?.trim() && r.name?.trim()) {
+      r.code = r.name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 36) || `ITEM-${n}`;
+    }
+    if (!r.unit?.trim()) {
+      r.unit = 'Nos';
+    }
     if (!r.code?.trim() || !r.name?.trim()) {
       errors.push({ row: n, code: r.code || null, message: 'Item code and name are required' });
       continue;
@@ -274,12 +280,39 @@ export const inventoryApi = {
       p_kind: args.kind, p_id: args.id, p_from_warehouse: args.fromWarehouse, p_to_warehouse: args.toWarehouse,
       p_qty: args.qty, p_reason: args.reason, p_reference: args.reference, p_date: args.date,
     }),
+  deleteItem: async (kind: ItemKind, id: string): Promise<void> => {
+    const table = kind === 'RAW' ? 'cnc_raw_materials' : 'cnc_parts';
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+  deleteManyItems: async (items: { kind: ItemKind; id: string }[]): Promise<number> => {
+    const rawIds = items.filter(it => it.kind === 'RAW').map(it => it.id);
+    const partIds = items.filter(it => it.kind === 'PART').map(it => it.id);
+    let deleted = 0;
+    if (rawIds.length > 0) {
+      const { error } = await supabase.from('cnc_raw_materials').delete().in('id', rawIds);
+      if (error) throw new Error(error.message);
+      deleted += rawIds.length;
+    }
+    if (partIds.length > 0) {
+      const { error } = await supabase.from('cnc_parts').delete().in('id', partIds);
+      if (error) throw new Error(error.message);
+      deleted += partIds.length;
+    }
+    return deleted;
+  },
   importItems: async (rows: ImportRow[]): Promise<ImportResult> => {
     let filters: InventoryFilters | null = null;
     try { filters = await inventoryApi.filters(); } catch { filters = null; }
 
-    const normalizedRows: ImportRow[] = rows.map(r => {
+    const normalizedRows: ImportRow[] = rows.map((r, idx) => {
       const copy = { ...r };
+      if (!copy.code?.trim() && copy.name?.trim()) {
+        copy.code = copy.name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 36) || `ITEM-${idx + 1}`;
+      }
+      if (!copy.unit?.trim()) {
+        copy.unit = 'Nos';
+      }
       const catTrim = (copy.category || '').trim();
       if (filters?.categories && filters.categories.length > 0) {
         const exact = filters.categories.find(c =>
@@ -426,13 +459,31 @@ export function formatCompactINR(value: string | number | null | undefined): str
   return neg ? `-${out}` : out;
 }
 
-/** Minimal RFC-4180 CSV parser (quoted fields, escaped quotes, CRLF/LF, BOM). */
+/** Checks if a string contains corrupted binary characters (replacement characters, non-printable controls, garbled binary zip signatures). */
+export function isCorruptedItemText(val: string | null | undefined): boolean {
+  if (!val) return false;
+  if (val.includes('\uFFFD') || val.includes('\ufffd')) return true;
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(val)) return true;
+  if (/\?{3,}/.test(val)) return true;
+  if (/^\(\?m-/.test(val)) return true;
+  return false;
+}
+
+/** Minimal RFC-4180 CSV parser (quoted fields, escaped quotes, CRLF/LF, BOM). Supports comma, tab, and semicolon delimiters. */
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
   let quoted = false;
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+
+  // Auto-detect delimiter from first line (comma, tab, or semicolon)
+  const firstLine = src.split(/[\r\n]+/)[0] || '';
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  const semiCount = (firstLine.match(/;/g) || []).length;
+  const delimiter = tabCount > commaCount && tabCount > semiCount ? '\t' : (semiCount > commaCount ? ';' : ',');
+
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
     if (quoted) {
@@ -442,7 +493,7 @@ export function parseCsv(text: string): string[][] {
       continue;
     }
     if (c === '"') quoted = true;
-    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === delimiter) { row.push(field); field = ''; }
     else if (c === '\n' || c === '\r') {
       if (c === '\r' && src[i + 1] === '\n') i++;
       row.push(field); field = '';

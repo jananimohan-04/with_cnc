@@ -62,7 +62,7 @@ const numText = (raw: string): string => {
   return String(Number(n.toFixed(6)));
 };
 
-export async function xlsxToTsv(buf: ArrayBuffer): Promise<string> {
+export async function xlsxToGrid(buf: ArrayBuffer): Promise<string[][]> {
   const bytes = new Uint8Array(buf);
   if (bytes[0] === 0xd0 && bytes[1] === 0xcf) throw new Error('This is an old Excel (.xls) file. Open it in Excel and Save As .xlsx or CSV.');
   const entries = listZip(bytes);
@@ -98,9 +98,10 @@ export async function xlsxToTsv(buf: ArrayBuffer): Promise<string> {
     Array.from(xfs?.getElementsByTagName('xf') ?? []).forEach((xf, i) => { if (isDateFmt(Number(xf.getAttribute('numFmtId')))) dateStyle.add(i); });
   }
 
-  const lines: string[] = [];
+  const rows: string[][] = [];
   for (const row of Array.from(xml(sheetXml).getElementsByTagName('row'))) {
     const cells: string[] = [];
+    let currentCol = 0;
     for (const c of Array.from(row.getElementsByTagName('c'))) {
       const t = c.getAttribute('t');
       const vEl = c.getElementsByTagName('v')[0];
@@ -113,10 +114,18 @@ export async function xlsxToTsv(buf: ArrayBuffer): Promise<string> {
         else if (t === 'b') text = raw === '1' ? 'TRUE' : 'FALSE';
         else text = dateStyle.has(Number(c.getAttribute('s'))) && Number.isFinite(Number(raw)) ? excelSerialToText(Number(raw)) : numText(raw);
       }
-      cells[colIndex(c.getAttribute('r') ?? '')] = text.replace(/[\t\r\n]+/g, ' ').trim();
+      const rAttr = c.getAttribute('r');
+      const targetCol = rAttr ? colIndex(rAttr) : currentCol;
+      cells[targetCol] = text.replace(/[\t\r\n]+/g, ' ').trim();
+      currentCol = targetCol + 1;
     }
     const filled = Array.from(cells, x => x ?? '');
-    if (filled.some(x => x !== '')) lines.push(filled.join('\t'));
+    if (filled.some(x => x !== '')) rows.push(filled);
   }
-  return lines.join('\n');
+  return rows;
+}
+
+export async function xlsxToTsv(buf: ArrayBuffer): Promise<string> {
+  const grid = await xlsxToGrid(buf);
+  return grid.map(cells => cells.join('\t')).join('\n');
 }

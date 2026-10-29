@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, Package,
   Pencil, MoreVertical, Eye, History, SlidersHorizontal, ChevronLeft, ChevronRight, Building2, Loader2,
-  ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search, Store,
+  ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search, Store, Trash2, Check,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -11,12 +11,13 @@ import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import {
   inventoryApi, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
-  parseCsv, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
+  parseCsv, isCorruptedItemText, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
   type InventoryFilters, type InventoryItemsPage, type InventoryItemRow, type InventorySummary, type RecentTransaction,
   type StockStatus, type StatusFilter, type Direction, type InventoryItemDetail, type ItemKind, type ImportRow, type ImportResult,
 } from '@/lib/inventory';
 import { formatDate, formatINR, formatPercent, toPaise, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
+import { xlsxToGrid } from '@/lib/xlsxRead';
 import { useFinishedGoods, WarehouseMasterModal } from './FinishedGoodsStock';
 import { retailSyncApi } from '@/lib/retailSync';
 import { RetailSyncModal } from './RetailSyncModal';
@@ -131,6 +132,10 @@ export function InventoryPage() {
   const fgStockCount = fg.rows?.length ?? 0;
   const [txn, setTxn] = useState<RecentTransaction | null>(null);
   const [retailSyncOpen, setRetailSyncOpen] = useState(false);
+  const [deleting, setDeleting] = useState<InventoryItemRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [purgingCorrupted, setPurgingCorrupted] = useState(false);
 
   // Extra dashboard data: per-item last movement, open work orders (WIP), live status.
   const [recentAll, setRecentAll] = useState<RecentTransaction[] | null>(null);
@@ -155,6 +160,46 @@ export function InventoryPage() {
   }, [fg.rows, fg.whs, fgTab, allTab, applied]);
 
   const refreshAll = useCallback(() => { silentRef.current = true; setRefreshKey(k => k + 1); }, []);
+
+  const corruptedRows = useMemo(() => {
+    if (!items?.rows) return [];
+    return items.rows.filter(r =>
+      isCorruptedItemText(r.code) ||
+      isCorruptedItemText(r.name) ||
+      isCorruptedItemText(r.category_name) ||
+      isCorruptedItemText(r.unit) ||
+      isCorruptedItemText(r.location_name)
+    );
+  }, [items?.rows]);
+
+  const handlePurgeCorrupted = async () => {
+    if (corruptedRows.length === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete ${corruptedRows.length} corrupted record(s) created by the failed binary import?`)) return;
+    setPurgingCorrupted(true);
+    try {
+      await inventoryApi.deleteManyItems(corruptedRows.map(r => ({ kind: r.kind, id: r.id })));
+      refreshAll();
+    } catch (err: any) {
+      alert(`Failed to delete corrupted items: ${err?.message || err}`);
+    } finally {
+      setPurgingCorrupted(false);
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await inventoryApi.deleteItem(deleting.kind, deleting.id);
+      setDeleting(null);
+      refreshAll();
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete product');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   // ---- Filters master (tabs, selects, permissions) ----------------------------------------
   useEffect(() => {
@@ -334,6 +379,245 @@ export function InventoryPage() {
   };
 
   const locationsFor = (warehouseId: string) => (filters?.locations ?? []).filter(l => !warehouseId || l.warehouse_id === warehouseId);
+
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
+
+  const ensureWarehouseLocation = async (whId: string, whName: string, compId: string): Promise<string> => {
+    try {
+      const zCheck = await supabase.from('cnc_warehouse_zones').select('id').eq('warehouse_id', whId).limit(1);
+      let zoneId = zCheck.data?.[0]?.id;
+      if (!zoneId) {
+        zoneId = `zone-${whId.substring(0, 20)}`;
+        await supabase.from('cnc_warehouse_zones').insert([{
+          id: zoneId,
+          warehouse_id: whId,
+          code: 'GEN',
+          name: 'General Zone',
+          company_id: compId,
+        }]);
+      }
+      const lCheck = await supabase.from('cnc_warehouse_locations').select('id').eq('zone_id', zoneId).limit(1);
+      let locId = lCheck.data?.[0]?.id;
+      if (!locId) {
+        locId = `loc-${whId.substring(0, 20)}`;
+        await supabase.from('cnc_warehouse_locations').insert([{
+          id: locId,
+          zone_id: zoneId,
+          code: 'MAIN',
+          name: whName || 'Main Store',
+          company_id: compId,
+        }]);
+      }
+      return locId;
+    } catch {
+      return `loc-${whId.substring(0, 20)}`;
+    }
+  };
+
+  const handleInlineWarehouseChange = async (r: InventoryItemRow, value: string) => {
+    setRowBusyId(r.id);
+    try {
+      let newLocationId: string | null = null;
+      let newWarehouseId: string | null = null;
+      let newWarehouseName: string | null = null;
+      let newLocationName: string | null = null;
+
+      if (!value) {
+        newLocationId = null;
+      } else if (value.startsWith('wh:')) {
+        const wid = value.replace('wh:', '');
+        newWarehouseId = wid;
+        const targetWh = filters?.warehouses.find(w => w.id === wid);
+        newWarehouseName = targetWh?.name ?? null;
+
+        const existingLoc = (filters?.locations ?? []).find(l => l.warehouse_id === wid);
+        if (existingLoc) {
+          newLocationId = existingLoc.id;
+          newLocationName = existingLoc.name;
+        } else if (companyId) {
+          newLocationId = await ensureWarehouseLocation(wid, targetWh?.name || 'Main Store', companyId);
+          newLocationName = targetWh?.name || 'Main Store';
+        }
+      } else {
+        newLocationId = value;
+        const loc = filters?.locations.find(l => l.id === value);
+        if (loc) {
+          newLocationName = loc.name;
+          newWarehouseId = loc.warehouse_id;
+          newWarehouseName = loc.warehouse_name;
+        }
+      }
+
+      await inventoryApi.saveItem({
+        id: r.id,
+        kind: r.kind,
+        code: r.code,
+        name: r.name,
+        category_id: r.category_id,
+        specification: r.specification ?? '',
+        unit: r.unit ?? 'Nos',
+        min_stock: r.min_stock ?? '0',
+        reorder_qty: r.reorder_qty ?? '0',
+        rate: r.rate ?? '0',
+        supplier_id: r.supplier_id || null,
+        location_id: newLocationId,
+        image_url: r.image_url,
+        status: r.item_status ?? 'Active',
+      });
+
+      setItems(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map(row => {
+            if (row.id === r.id) {
+              return {
+                ...row,
+                warehouse_id: newWarehouseId,
+                warehouse_name: newWarehouseName,
+                location_id: newLocationId,
+                location_name: newLocationName,
+              };
+            }
+            return row;
+          }),
+        };
+      });
+
+      try {
+        const d = await retailSyncApi.resolveDesignation();
+        if (d && (newWarehouseId === d.id || r.warehouse_id === d.id)) {
+          const isRetail = newWarehouseId === d.id;
+          await retailSyncApi.syncItem({
+            id: r.id ?? r.code,
+            code: r.code,
+            name: r.name,
+            category_name: r.category_name ?? 'General',
+            unit: r.unit ?? 'Nos',
+            stock: isRetail ? Number(r.current_stock || 0) : 0,
+            warehouse_id: newWarehouseId,
+            warehouse_name: isRetail ? d.warehouse_name : undefined,
+            status: isRetail ? 'Active' : 'Inactive',
+          }, isRetail);
+        }
+      } catch { /* best effort */ }
+
+    } catch (e: any) {
+      alert(`Failed to update warehouse: ${errText(e)}`);
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const handleInlineCategoryChange = async (r: InventoryItemRow, newCatId: string) => {
+    if (!newCatId || newCatId === r.category_id) return;
+    setRowBusyId(r.id);
+    try {
+      const catObj = categories.find(c => c.id === newCatId);
+      await inventoryApi.saveItem({
+        id: r.id,
+        kind: r.kind,
+        code: r.code,
+        name: r.name,
+        category_id: newCatId,
+        specification: r.specification ?? '',
+        unit: r.unit ?? 'Nos',
+        min_stock: r.min_stock ?? '0',
+        reorder_qty: r.reorder_qty ?? '0',
+        rate: r.rate ?? '0',
+        supplier_id: r.supplier_id || null,
+        location_id: r.location_id || null,
+        image_url: r.image_url,
+        status: r.item_status ?? 'Active',
+      });
+
+      setItems(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map(row => row.id === r.id ? { ...row, category_id: newCatId, category_name: catObj?.name ?? row.category_name } : row),
+        };
+      });
+    } catch (e: any) {
+      alert(`Failed to update category: ${errText(e)}`);
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const handleInlineUnitChange = async (r: InventoryItemRow, newUnit: string) => {
+    if (!newUnit || newUnit === r.unit) return;
+    setRowBusyId(r.id);
+    try {
+      await inventoryApi.saveItem({
+        id: r.id,
+        kind: r.kind,
+        code: r.code,
+        name: r.name,
+        category_id: r.category_id,
+        specification: r.specification ?? '',
+        unit: newUnit,
+        min_stock: r.min_stock ?? '0',
+        reorder_qty: r.reorder_qty ?? '0',
+        rate: r.rate ?? '0',
+        supplier_id: r.supplier_id || null,
+        location_id: r.location_id || null,
+        image_url: r.image_url,
+        status: r.item_status ?? 'Active',
+      });
+
+      setItems(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map(row => row.id === r.id ? { ...row, unit: newUnit } : row),
+        };
+      });
+    } catch (e: any) {
+      alert(`Failed to update unit: ${errText(e)}`);
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const handleInlineMinStockChange = async (r: InventoryItemRow, val: string) => {
+    if (!isNonNegativeDecimal(val)) {
+      alert('Reorder level must be a non-negative number.');
+      return;
+    }
+    if (val === String(r.min_stock ?? '0')) return;
+    setRowBusyId(r.id);
+    try {
+      await inventoryApi.saveItem({
+        id: r.id,
+        kind: r.kind,
+        code: r.code,
+        name: r.name,
+        category_id: r.category_id,
+        specification: r.specification ?? '',
+        unit: r.unit ?? 'Nos',
+        min_stock: val,
+        reorder_qty: r.reorder_qty ?? '0',
+        rate: r.rate ?? '0',
+        supplier_id: r.supplier_id || null,
+        location_id: r.location_id || null,
+        image_url: r.image_url,
+        status: r.item_status ?? 'Active',
+      });
+
+      setItems(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map(row => row.id === r.id ? { ...row, min_stock: val } : row),
+        };
+      });
+    } catch (e: any) {
+      alert(`Failed to update reorder level: ${errText(e)}`);
+    } finally {
+      setRowBusyId(null);
+    }
+  };
 
   // ---- Export (all rows for the current filters) -----------------------------------------------
   const handleExport = async () => {
@@ -614,6 +898,27 @@ export function InventoryPage() {
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
           </div>
 
+          {/* Corrupted Import Cleanup Banner */}
+          {corruptedRows.length > 0 && (
+            <div className="m-3 p-3 bg-red-50 border border-red-200 rounded-lg flex flex-wrap items-center justify-between gap-2 text-sm text-red-800">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="text-red-600 shrink-0" size={18} />
+                <span>
+                  <strong>{corruptedRows.length} corrupted import record(s) detected</strong> containing garbled binary characters.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeCorrupted}
+                disabled={purgingCorrupted}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white hover:bg-red-700 rounded-md transition shadow-sm disabled:opacity-50"
+              >
+                {purgingCorrupted ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                Clean Up {corruptedRows.length} Corrupted {corruptedRows.length === 1 ? 'Record' : 'Records'}
+              </button>
+            </div>
+          )}
+
           {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1320px] text-[13px]">
@@ -659,14 +964,122 @@ export function InventoryPage() {
                       {r.name}
                       {r.item_status === 'Inactive' && <span className="ml-2 text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[110px] truncate" title={r.category_name ?? ''}>{r.category_name ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[240px] truncate" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
-                      {[r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—'}
+                    {/* Category (inline editable) */}
+                    <td className="px-3 py-2 text-slate-600">
+                      {canManage ? (
+                        <select
+                          aria-label={`Category for ${r.name}`}
+                          className="h-8 w-full max-w-[130px] px-2 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 truncate"
+                          value={r.category_id || ''}
+                          disabled={rowBusyId === r.id}
+                          onChange={e => void handleInlineCategoryChange(r, e.target.value)}
+                        >
+                          {categories.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="max-w-[110px] truncate block" title={r.category_name ?? ''}>{r.category_name ?? '—'}</span>
+                      )}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600">{r.unit ?? ''}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-red-600">{formatQty(r.min_stock)}</td>
+
+                    {/* Warehouse / Location (inline editable) */}
+                    <td className="px-3 py-2 text-slate-600">
+                      {canManage ? (
+                        <select
+                          aria-label={`Warehouse / Location for ${r.name}`}
+                          className="h-8 w-full max-w-[210px] px-2 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 truncate"
+                          value={r.location_id ? r.location_id : (r.warehouse_id ? `wh:${r.warehouse_id}` : '')}
+                          disabled={rowBusyId === r.id}
+                          onChange={e => void handleInlineWarehouseChange(r, e.target.value)}
+                        >
+                          <option value="">— Not set —</option>
+                          {(filters?.warehouses ?? []).map(w => {
+                            const locs = locationsFor(w.id);
+                            if (locs.length === 0) {
+                              return <option key={`wh:${w.id}`} value={`wh:${w.id}`}>{w.name}</option>;
+                            }
+                            return (
+                              <optgroup key={w.id} label={w.name}>
+                                <option value={`wh:${w.id}`}>{w.name} (General)</option>
+                                {locs.map(l => (
+                                  <option key={l.id} value={l.id}>
+                                    {w.name} · {l.name || l.code}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            );
+                          })}
+                        </select>
+                      ) : (
+                        <span className="max-w-[240px] truncate block" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
+                          {[r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—'}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Unit (inline editable) */}
+                    <td className="px-3 py-2 text-slate-600">
+                      {canManage ? (
+                        <select
+                          aria-label={`Unit for ${r.name}`}
+                          className="h-8 w-[72px] px-1 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                          value={r.unit || 'Nos'}
+                          disabled={rowBusyId === r.id}
+                          onChange={e => void handleInlineUnitChange(r, e.target.value)}
+                        >
+                          {['Nos', 'Pcs', 'Kg', 'Mtr', 'Set', 'Ltr', 'Box', 'Roll', 'Pair'].map(u => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{r.unit ?? ''}</span>
+                      )}
+                    </td>
+
+                    {/* Available Qty */}
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setAdjusting(r)}
+                        title="Click to adjust stock count"
+                        className="hover:bg-blue-50 hover:text-blue-700 px-1.5 py-1 rounded text-right tabular-nums font-medium text-slate-800 inline-flex items-center justify-end gap-1 group transition-colors ml-auto"
+                      >
+                        <span>{formatQty(r.current_stock)}</span>
+                        <Pencil size={11} className="opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
+                      </button>
+                    </td>
+
+                    {/* Value */}
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
+
+                    {/* Reorder Level (inline editable) */}
+                    <td className="px-3 py-2 text-right">
+                      {canManage ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          aria-label={`Reorder level for ${r.name}`}
+                          className="h-8 w-20 px-2 text-[12px] text-right bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-red-600 font-medium disabled:opacity-50"
+                          defaultValue={r.min_stock || '0'}
+                          disabled={rowBusyId === r.id}
+                          onBlur={e => {
+                            const val = e.target.value.trim();
+                            if (val !== String(r.min_stock ?? '0')) {
+                              void handleInlineMinStockChange(r, val);
+                            }
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="tabular-nums text-red-600">{formatQty(r.min_stock)}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5"><StatusPill status={r.status} /></td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                       {lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : <span className="text-slate-300">—</span>}
@@ -803,14 +1216,35 @@ export function InventoryPage() {
 
       {/* Row "More" menu (fixed so the table's scroll container doesn't clip it) */}
       {menu && (
-        <div data-floating-menu className="fixed z-40 w-44 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden"
-          style={{ top: Math.min(menu.y + 4, window.innerHeight - 140), left: Math.max(8, menu.x - 176) }}>
+        <div data-floating-menu className="fixed z-40 w-48 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden"
+          style={{ top: Math.min(menu.y + 4, window.innerHeight - 170), left: Math.max(8, menu.x - 192) }}>
           <button onClick={() => { setViewing({ row: menu.row, tab: 'details' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Eye size={14} /> View Product</button>
           <button onClick={() => { setViewing({ row: menu.row, tab: 'history' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><History size={14} /> Stock Movement</button>
           {canManage && (
             <button onClick={() => { setAdjusting(menu.row); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><SlidersHorizontal size={14} /> Adjust Stock</button>
           )}
+          {canManage && (
+            <button onClick={() => { setDeleting(menu.row); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100"><Trash2 size={14} /> Delete Product</button>
+          )}
         </div>
+      )}
+
+      {deleting && (
+        <Modal open onClose={() => setDeleting(null)} size="sm" title="Delete Product"
+          footer={<>
+            <button onClick={() => setDeleting(null)} className={cancelBtn} disabled={deleteBusy}>Cancel</button>
+            <button onClick={handleDeleteItem} disabled={deleteBusy} className="h-9 px-4 rounded-md text-sm font-semibold bg-red-600 hover:bg-red-700 text-white inline-flex items-center gap-1.5 disabled:opacity-50">
+              {deleteBusy && <Loader2 size={14} className="animate-spin" />} Delete Permanently
+            </button>
+          </>}>
+          <ModalError message={deleteError} />
+          <p className="text-sm text-slate-700">
+            Are you sure you want to delete <strong className="break-all">{deleting.code}</strong> ({deleting.name})?
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            This product will be permanently removed from your inventory master.
+          </p>
+        </Modal>
       )}
 
       {editing && filters && (
@@ -1711,21 +2145,179 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
     setRows(null); setResult(null); setParseError(null); setError(null);
     if (!file) return;
     setFileName(file.name);
+
     try {
-      const grid = parseCsv(await file.text());
-      if (grid.length === 0) { setParseError('The file is empty.'); return; }
-      const head = grid[0].map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
-      const hasHeader = head.includes('code') && head.includes('name');
-      const index = IMPORT_COLUMNS.map((c, i) => (hasHeader ? head.indexOf(c) : i));
-      const body = hasHeader ? grid.slice(1) : grid;
-      const parsed = body.map(r => {
-        const out = {} as ImportRow;
-        IMPORT_COLUMNS.forEach((c, i) => { out[c] = index[i] >= 0 ? (r[index[i]] ?? '').trim() : ''; });
-        return out;
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      if (bytes.length === 0) {
+        setParseError('The uploaded file is empty.');
+        return;
+      }
+
+      // Check for legacy .xls binary format (OLE2: 0xD0, 0xCF, 0x11, 0xE0)
+      if (bytes[0] === 0xd0 && bytes[1] === 0xcf) {
+        setParseError('Legacy Excel 97-2003 (.xls) format is not supported directly. Please open the file in Excel and Save As Excel Workbook (.xlsx) or CSV (.csv), then upload.');
+        return;
+      }
+
+      let grid: string[][] = [];
+
+      // Check for .xlsx format: extension check or ZIP signature (PK\x03\x04: 0x50, 0x4B, 0x03, 0x04)
+      const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B;
+      const isXlsxExt = /\.xlsx$/i.test(file.name);
+
+      if (isZip || isXlsxExt) {
+        try {
+          grid = await xlsxToGrid(buffer);
+        } catch (xlsxErr: any) {
+          setParseError(`Failed to read Excel workbook: ${xlsxErr?.message || 'Invalid or corrupted .xlsx file'}. Try saving as CSV.`);
+          return;
+        }
+      } else {
+        // Plain text / CSV parsing
+        // Guard against binary files uploaded with .csv or arbitrary extensions
+        const checkLen = Math.min(bytes.length, 2048);
+        let nullCount = 0;
+        for (let i = 0; i < checkLen; i++) {
+          if (bytes[i] === 0) nullCount++;
+        }
+        if (nullCount > 0) {
+          setParseError('The selected file contains binary data and cannot be read as CSV. If this is an Excel spreadsheet, please save it as .xlsx.');
+          return;
+        }
+
+        const decoder = new TextDecoder('utf-8', { fatal: false });
+        const text = decoder.decode(buffer);
+
+        // Check if text is full of replacement characters (means binary stream was forced to UTF-8)
+        const sample = text.slice(0, 1000);
+        const replacementChars = (sample.match(/\uFFFD/g) || []).length;
+        if (replacementChars > 5) {
+          setParseError('The file contains unreadable binary characters. Please ensure you upload a valid UTF-8 CSV or an Excel .xlsx spreadsheet.');
+          return;
+        }
+
+        grid = parseCsv(text);
+      }
+
+      // Filter empty rows
+      const nonEmptyGrid = grid
+        .map(row => row.map(cell => (cell ?? '').trim()))
+        .filter(row => row.some(cell => cell.length > 0));
+
+      if (nonEmptyGrid.length === 0) {
+        setParseError('No data rows found in the spreadsheet.');
+        return;
+      }
+
+      // Column mapping with intelligent synonyms
+      const COLUMN_SYNONYMS: Record<keyof ImportRow, string[]> = {
+        code: ['code', 'product_code', 'item_code', 'part_no', 'part_number', 'material_code', 'sku', 'item_no', 'item#', 'prod_code'],
+        name: ['name', 'product_name', 'item_name', 'part_name', 'material_name', 'title', 'product_title', 'description_name'],
+        category: ['category', 'category_name', 'cat', 'item_group', 'group', 'product_category', 'classification', 'type'],
+        specification: ['specification', 'spec', 'specs', 'description', 'desc', 'details', 'item_description', 'notes'],
+        unit: ['unit', 'uom', 'unit_of_measure', 'measurement_unit', 'units'],
+        min_stock: ['min_stock', 'reorder_level', 'min_order_qty', 'minimum_stock', 'safety_stock', 'min_qty', 'min_quantity'],
+        reorder_qty: ['reorder_qty', 'reorder_quantity', 'order_qty', 'reorder_amount', 'batch_size'],
+        rate: ['rate', 'price', 'unit_price', 'standard_cost', 'cost', 'unit_rate', 'mrp', 'sales_price'],
+        supplier: ['supplier', 'supplier_name', 'vendor', 'vendor_name', 'preferred_supplier'],
+        location: ['location', 'location_code', 'location_name', 'warehouse_location', 'rack', 'bin', 'shelf'],
+        opening_qty: ['opening_qty', 'opening_stock', 'stock', 'qty', 'quantity', 'initial_stock', 'on_hand', 'current_stock'],
+      };
+
+      const firstRow = nonEmptyGrid[0].map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
+
+      // Check how many recognized columns are in the first row
+      let recognizedCols = 0;
+      const colIndices: Partial<Record<keyof ImportRow, number>> = {};
+
+      (Object.keys(COLUMN_SYNONYMS) as (keyof ImportRow)[]).forEach(col => {
+        const synonyms = COLUMN_SYNONYMS[col];
+        const foundIdx = firstRow.findIndex(header => synonyms.includes(header));
+        if (foundIdx >= 0) {
+          colIndices[col] = foundIdx;
+          recognizedCols++;
+        }
       });
-      if (parsed.length === 0) { setParseError('No data rows found under the header.'); return; }
+
+      // Does the first row look like a header row?
+      const hasHeader = recognizedCols >= 2 || (colIndices.code !== undefined && colIndices.name !== undefined);
+
+      let dataRows = hasHeader ? nonEmptyGrid.slice(1) : nonEmptyGrid;
+
+      if (!hasHeader) {
+        // Fallback to standard positional index if no recognized header
+        IMPORT_COLUMNS.forEach((col, idx) => {
+          colIndices[col] = idx;
+        });
+      }
+
+      // Map rows
+      const parsed: ImportRow[] = [];
+      const invalidRows: string[] = [];
+      const usedCodes = new Set<string>();
+
+      dataRows.forEach((r, rowIdx) => {
+        const rowObj = {} as ImportRow;
+        IMPORT_COLUMNS.forEach(col => {
+          const idx = colIndices[col];
+          rowObj[col] = (idx !== undefined && r[idx] !== undefined) ? r[idx].trim() : '';
+        });
+
+        // Basic sanity check: code or name must be present
+        if (!rowObj.code && !rowObj.name) return; // skip blank rows
+
+        // Auto-generate code from product name if code was left blank in the spreadsheet
+        if (!rowObj.code && rowObj.name) {
+          const base = rowObj.name
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .substring(0, 36) || `ITEM-${rowIdx + 1}`;
+          let uniqueCode = base;
+          let counter = 1;
+          while (usedCodes.has(uniqueCode.toLowerCase())) {
+            counter++;
+            uniqueCode = `${base}-${counter}`;
+          }
+          rowObj.code = uniqueCode;
+        }
+        if (rowObj.code) {
+          usedCodes.add(rowObj.code.toLowerCase());
+        }
+
+        // Default unit to Nos if omitted
+        if (!rowObj.unit) {
+          rowObj.unit = 'Nos';
+        }
+
+        // Default category to the first category if omitted
+        if (!rowObj.category && categories && categories.length > 0) {
+          rowObj.category = categories[0].name;
+        }
+
+        // Binary/corruption guard: check if code or name contains replacement char \uFFFD or binary control chars
+        if (isCorruptedItemText(rowObj.code) || isCorruptedItemText(rowObj.name) || isCorruptedItemText(rowObj.category)) {
+          invalidRows.push(`Row ${rowIdx + (hasHeader ? 2 : 1)}`);
+        } else {
+          parsed.push(rowObj);
+        }
+      });
+
+      if (invalidRows.length > 0) {
+        setParseError(`Found corrupted or binary data in ${invalidRows.length} row(s) (e.g. ${invalidRows.slice(0, 3).join(', ')}). Import stopped to protect database integrity.`);
+        return;
+      }
+
+      if (parsed.length === 0) {
+        setParseError('No valid product rows found. Ensure the spreadsheet contains at least "Product Code" or "Product Name" columns.');
+        return;
+      }
+
       setRows(parsed);
-    } catch (e) {
+    } catch (e: any) {
       setParseError(errText(e));
     }
   };
@@ -1749,14 +2341,15 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
     <Modal open onClose={onClose} size="lg" title="Import Products"
       footer={<>
         <button onClick={onClose} className={cancelBtn}>{result ? 'Close' : 'Cancel'}</button>
-        {!result && <button onClick={runImport} disabled={!rows || busy} className={saveBtn}>{busy && <Loader2 size={14} className="animate-spin" />} Import</button>}
+        {!result && <button onClick={runImport} disabled={!rows || busy} className={saveBtn}>{busy && <Loader2 size={14} className="animate-spin" />} Import Products</button>}
       </>}>
       <ModalError message={error} />
       <div className="space-y-4">
         <div className="text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">
-          <p className="mb-2 font-medium text-slate-800">Upload a CSV file with these columns:</p>
+          <p className="mb-2 font-medium text-slate-800">Upload an Excel spreadsheet (.xlsx) or CSV file with these columns:</p>
           <code className="block text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-slate-800 break-all">{IMPORT_COLUMNS.join(',')}</code>
           <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">
+            <li><b>Supported formats</b>: Excel Workbook (<b>.xlsx</b>), CSV (<b>.csv</b>), or TSV (<b>.tsv</b>).</li>
             <li><b>category</b>: category name or code; <b>supplier</b>: supplier name; <b>location</b>: location code or name.</li>
             <li>Quantities and rate are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry.</li>
             <li>Invalid or duplicate rows are skipped and listed; valid rows are saved.</li>
@@ -1768,15 +2361,67 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
             <span className="font-semibold">Available Categories: </span>
             {categories && categories.length > 0 ? categories.map(c => c.name).join(', ') : 'Raw Materials, Bought-Out Components, Consumables, Tools'}
           </div>
-          <p className="mt-1 text-[11px] text-slate-500 italic">
-            * Sample products are included in the template as examples. You can edit or replace them with your actual products.
-          </p>
         </div>
-        <FormField label="CSV file">
-          <input type="file" accept=".csv,text/csv" onChange={e => readFile(e.target.files?.[0] ?? null)} className="text-sm text-slate-600" />
+
+        <FormField label="Spreadsheet or CSV File (.xlsx, .csv)">
+          <input
+            type="file"
+            accept=".xlsx,.csv,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/tab-separated-values"
+            onChange={e => readFile(e.target.files?.[0] ?? null)}
+            className="text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+          />
         </FormField>
-        {parseError && <p className="text-sm text-red-600">{parseError}</p>}
-        {rows && !result && <p className="text-sm text-slate-700"><b>{formatQty(rows.length)}</b> rows ready to import from {fileName}.</p>}
+
+        {parseError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+            <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
+            <span>{parseError}</span>
+          </div>
+        )}
+
+        {rows && !result && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+              <Check size={16} className="text-emerald-600" />
+              <span><b>{formatQty(rows.length)}</b> products ready to import from <u>{fileName}</u>.</span>
+            </div>
+
+            {/* Preview of first 5 rows */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 flex justify-between">
+                <span>Preview (First {Math.min(rows.length, 5)} of {rows.length} rows)</span>
+                <span className="text-slate-500 font-normal">Verify column mappings below</span>
+              </div>
+              <div className="overflow-x-auto max-h-48">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-[11px] text-slate-500 uppercase border-b border-slate-100">
+                    <tr>
+                      <th className="px-2.5 py-1.5">Code</th>
+                      <th className="px-2.5 py-1.5">Name</th>
+                      <th className="px-2.5 py-1.5">Category</th>
+                      <th className="px-2.5 py-1.5">Unit</th>
+                      <th className="px-2.5 py-1.5">Rate</th>
+                      <th className="px-2.5 py-1.5">Opening Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rows.slice(0, 5).map((r, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-2.5 py-1.5 font-medium text-slate-800">{r.code || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-800 max-w-[140px] truncate">{r.name || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600">{r.category || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600">{r.unit || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600">{r.rate || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600">{r.opening_qty || '0'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {result && (
           <div className="space-y-3">
             <p className="text-sm font-semibold text-emerald-700">Created {formatQty(result.created)}</p>

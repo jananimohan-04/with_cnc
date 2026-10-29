@@ -98,6 +98,10 @@
 
 
 .scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 /* Table column headings: sticky at top: 0 with solid background and high z-index so rows scroll underneath */
 :where(main thead th) {

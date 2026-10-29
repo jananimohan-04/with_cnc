@@ -21,7 +21,8 @@ import { Modal, inputClass } from '@/components/ui/Modal';
 import { downloadSalesInvoice, fetchCompanyPrintDetails, viewSalesInvoice, type SalesInvoiceInput } from '@/lib/brandedDocument';
 import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckCheck, Download, Eye, Pencil, Printer, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCheck, Download, Eye, Pencil, Printer, X, ExternalLink, RefreshCw } from 'lucide-react';
 
 interface InvLine {
   key: string;
@@ -58,6 +59,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   // modal shows a notice and never loads pricing (see the load effect below).
 
   const canSeeInvoices: boolean = typeof canView === 'function' ? !!canView('invoices') : true;
+  const navigate = useNavigate();
   const raw = card?.raw ?? {};
   const dcId: string | null = raw.id && raw.id !== 'dummy' ? String(raw.id) : null;
   const dcNo: string = raw.delivery_no || raw.dc_no || card?.refNo || '';
@@ -66,6 +68,33 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
   const [existingInv, setExistingInv] = useState<string | null>(null);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+
+  const handleUnblock = async () => {
+    if (existingInv && !window.confirm(`An existing invoice (${existingInv}) is linked to this Delivery Challan. Are you sure you want to unblock this DC to create a new invoice?`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      if (existingInv) {
+        await supabase.from('cnc_invoices').update({ delivery_id: null, dc_no: null }).eq('invoice_no', existingInv);
+      }
+      if (dcId) {
+        await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('id', dcId);
+      }
+      if (dcNo) {
+        await supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('delivery_no', dcNo);
+      }
+      raw.status = 'Delivered';
+      setBlocked(null);
+      setExistingInv(null);
+      setReloadTrigger(k => k + 1);
+    } catch (e: any) {
+      alert('Failed to unblock: ' + (e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [customer, setCustomer] = useState(card?.customer ?? '');
   const [invDate, setInvDate] = useState(todayISO());
@@ -111,27 +140,45 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
         return;
       }
       try {
-        // 0) Duplicate / already-billed guards first.
-        if (raw.status === 'Billed') {
-          if (!cancelled) { setBlocked('This Delivery Challan is already billed. Refresh the board.'); setLoading(false); }
-          return;
-        }
+        // 0) Duplicate / already-billed verification against actual active invoices:
+        let foundInv: any = null;
         if (dcId) {
-          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('delivery_id', dcId).neq('invoice_type', 'Proforma Invoice').limit(1);
-          if (!cancelled && !r.error && (r.data ?? []).length > 0) {
-            setExistingInv(r.data![0].invoice_no ?? r.data![0].id);
-            setBlocked(`An invoice (${r.data![0].invoice_no ?? 'saved'}) already exists for this Delivery Challan. Duplicate invoicing is blocked.`);
-            setLoading(false);
-            return;
-          }
+          const r = await supabase.from('cnc_invoices').select('id,invoice_no,invoice_date,amount')
+            .eq('delivery_id', dcId).neq('invoice_type', 'Proforma Invoice').limit(1);
+          if (!r.error && (r.data ?? []).length > 0) foundInv = r.data![0];
         }
-        if (!cancelled && dcNo) {
-          const r = await supabase.from('cnc_invoices').select('id,invoice_no').eq('dc_no', dcNo).neq('invoice_type', 'Proforma Invoice').limit(1);
-          if (!r.error && (r.data ?? []).length > 0) {
-            setExistingInv(r.data![0].invoice_no ?? r.data![0].id);
-            setBlocked(`An invoice (${r.data![0].invoice_no ?? 'saved'}) already exists for DC ${dcNo}. Duplicate invoicing is blocked.`);
-            setLoading(false);
-            return;
+        if (!foundInv && dcNo) {
+          const r = await supabase.from('cnc_invoices').select('id,invoice_no,invoice_date,amount')
+            .eq('dc_no', dcNo).neq('invoice_type', 'Proforma Invoice').limit(1);
+          if (!r.error && (r.data ?? []).length > 0) foundInv = r.data![0];
+        }
+        if (!foundInv && dcNo) {
+          const r = await supabase.from('cnc_invoices').select('id,invoice_no,invoice_date,amount')
+            .ilike('dc_no', `%${dcNo}%`).neq('invoice_type', 'Proforma Invoice').limit(1);
+          if (!r.error && (r.data ?? []).length > 0) foundInv = r.data![0];
+        }
+
+        if (foundInv) {
+          const invNum = foundInv.invoice_no ?? `INV-${String(foundInv.id).substring(0, 4)}`;
+          if (!cancelled) {
+            setExistingInv(invNum);
+            setBlocked(`An invoice (${invNum}) already exists for Delivery Challan ${dcNo || ''}. Duplicate invoicing is blocked.`);
+          }
+        } else if (raw.status === 'Billed') {
+          // Stale / orphaned Billed status on DC without an active invoice — auto-heal
+          try {
+            if (dcId) void supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('id', dcId);
+            if (dcNo) void supabase.from('cnc_deliveries').update({ status: 'Delivered' }).eq('delivery_no', dcNo);
+            raw.status = 'Delivered';
+          } catch { /* best effort */ }
+          if (!cancelled) {
+            setBlocked(null);
+            setExistingInv(null);
+          }
+        } else {
+          if (!cancelled) {
+            setBlocked(null);
+            setExistingInv(null);
           }
         }
         // 1) All DC rows under this challan number (multi-item support).
@@ -449,7 +496,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadTrigger]);
 
   const effUnit = (l: InvLine) => (l.unitInput.trim() === '' ? (l.approvedUnit ?? 0) : num(l.unitInput));
   const basic = lines.reduce((s, l) => s + num(l.qty) * effUnit(l), 0);
@@ -643,9 +690,35 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       ) : (
         <div className="space-y-4">
           {blocked && (
-            <div data-testid="inv-blocked" role="alert" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">Cannot create this invoice</p>
-              <p>{blocked}</p>
+            <div data-testid="inv-blocked" role="alert" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800 space-y-2">
+              <div>
+                <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">Cannot create this invoice</p>
+                <p>{blocked}</p>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                {existingInv && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<ExternalLink size={12} />}
+                    onClick={() => {
+                      onClose();
+                      navigate(`/finance/invoices?search=${encodeURIComponent(existingInv)}`);
+                    }}
+                  >
+                    View Invoice {existingInv}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<RefreshCw size={12} />}
+                  onClick={handleUnblock}
+                  title="Reset DC status to Delivered so you can create a fresh invoice"
+                >
+                  Unblock & Re-Invoice
+                </Button>
+              </div>
             </div>
           )}
           {!blocked && missingPriceLines.length > 0 && (

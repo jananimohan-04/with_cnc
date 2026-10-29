@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
+import { xlsxToTsv } from '@/lib/xlsxRead';
 import {
   num, openingApi, parseStockCsv, stockValue, toIsoDate,
   type OpeningDraft, type OpeningEntry, type OpeningLookups, type OpeningPreview, type OpeningSummary, type OpeningType,
@@ -144,7 +145,19 @@ export function OpeningBalancesPage() {
 
   const importCsv = async (file: File | undefined) => {
     if (!file || !lookups) return;
-    const { rows: parsed, problems } = parseStockCsv(await file.text());
+    let text = '';
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      if ((bytes[0] === 0x50 && bytes[1] === 0x4B) || /\.xlsx$/i.test(file.name)) {
+        text = await xlsxToTsv(buf);
+      } else {
+        text = new TextDecoder('utf-8').decode(buf);
+      }
+    } catch {
+      text = await file.text();
+    }
+    const { rows: parsed, problems } = parseStockCsv(text);
     if (problems.length) say('err', problems.slice(0, 3).join(' | ') + (problems.length > 3 ? ` (+${problems.length - 3} more)` : ''));
     if (!parsed.length) return;
     const key = (s: string) => s.trim().toLowerCase();
@@ -210,7 +223,7 @@ export function OpeningBalancesPage() {
               <>
                 <Button variant="secondary" size="sm" icon={<Rows3 size={14} />} onClick={() => setBulk([newBulkRow()])}>Bulk Entry</Button>
                 <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={() => fileRef.current?.click()}>Import CSV</Button>
-                <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Import opening stock CSV"
+                <input ref={fileRef} type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" aria-label="Import opening stock CSV/Excel"
                   onChange={e => { void importCsv(e.target.files?.[0]); e.target.value = ''; }} />
               </>
             )}

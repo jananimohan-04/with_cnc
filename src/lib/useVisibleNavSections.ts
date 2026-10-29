@@ -29,8 +29,15 @@ export function useVisibleNavSections(): NavSection[] {
 /** True when a nav entry reads as "current" for the given route. */
 export function isNavItemActive(currentPage: string, itemPage: string): boolean {
   if (currentPage === itemPage) return true;
+  if (itemPage.includes('?')) {
+    const [base] = itemPage.split('?');
+    if (currentPage === base) return true;
+  }
   if (currentPage.startsWith(itemPage + '/')) return true;
+  if (itemPage === 'sales/in-house' && (currentPage === 'sales/pipeline' || currentPage === 'sales/in-house' || currentPage === 'sales/leads' || currentPage === 'sales/customers' || currentPage === 'sales/quotations' || currentPage === 'sales/orders')) return true;
   if (itemPage === 'sales/pipeline' && (currentPage.startsWith('sales/') || currentPage === 'sales')) return true;
+  if (itemPage === 'support/technical' && currentPage === 'support/technical') return true;
+  if (itemPage === 'support/onsite' && currentPage === 'support/onsite') return true;
   return false;
 }
 

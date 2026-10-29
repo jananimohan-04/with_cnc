@@ -34,7 +34,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'dashboard', label: 'Dashboard', category: 'Overview', actions: [...V], pages: ['dashboard'] },
   { key: 'reports', label: 'Reports', category: 'Overview', actions: ['view', 'export'], pages: ['reports/production', 'reports/order-tracking', 'reports/sales', 'reports/inventory', 'reports/quality', 'reports/machine-utilization', 'reports/cost-analysis'] },
 
-  { key: 'sales-pipeline', label: 'Sales Pipeline', category: 'Sales', actions: [...VCED], pages: ['sales/pipeline'] },
+  { key: 'sales-pipeline', label: 'Sales Pipeline', category: 'Sales', actions: [...VCED], pages: ['sales/pipeline', 'sales/in-house', 'sales/site-visits', 'sales/partner-orders'] },
   { key: 'enquiries', label: 'Enquiries', category: 'Sales', actions: [...VCEDX], pages: [] },
   { key: 'quotations', label: 'Quotations', category: 'Sales', actions: [...VCEDX], pages: ['sales/quotations', 'quotation/metal-calculator', 'quotation/create', 'quotation/client-library', 'quotation/product-library', 'quotation/terms-library', 'quotation/library', 'quotation/company-profile'] },
   { key: 'sales-orders', label: 'Sales Orders', category: 'Sales', actions: [...VCEDX], pages: ['sales/orders'] },
@@ -73,7 +73,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'settings', label: 'Settings', category: 'Administration', actions: [...V], pages: ['admin/settings'] },
   { key: 'audit-logs', label: 'Audit Logs', category: 'Administration', actions: [...V], pages: ['admin/audit-logs'] },
 
-  { key: 'support', label: 'Support Center', category: 'Administration', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['support/center'] },
+  { key: 'support', label: 'Support Center', category: 'Administration', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['support/center', 'support/technical', 'support/onsite'] },
 ];
 
 export const MODULE_KEYS = MODULE_CATALOG.map((m) => m.key);

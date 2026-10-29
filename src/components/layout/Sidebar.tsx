@@ -37,7 +37,11 @@ export function Sidebar({
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     const initial = new Set<string>();
-    navSections.forEach((s) => initial.add(s.label));
+    navSections.forEach((s) => {
+      if (!s.label.startsWith('Retail') && !s.label.startsWith('Store')) {
+        initial.add(s.label);
+      }
+    });
     return initial;
   });
 
@@ -54,23 +58,6 @@ export function Sidebar({
       });
     }
   }, [currentPage, visibleSections]);
-
-  // Fit the whole menu in one view: shrink the content just enough that it never needs a scrollbar.
-  const navRef = useRef<HTMLElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState(1);
-  useLayoutEffect(() => {
-    const measure = () => {
-      const nav = navRef.current, inner = innerRef.current;
-      if (!nav || !inner) return;
-      const natural = inner.getBoundingClientRect().height / fit;
-      const next = window.innerWidth < 1024 ? 1 : Math.max(0.6, Math.min(1, (nav.clientHeight - 20) / natural));   // phones scroll instead of shrinking
-      setFit((prev) => (Math.abs(prev - next) > 0.005 ? next : prev));
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  });
 
   const toggleSection = (label: string) => {
     setExpandedSections((prev) => {
@@ -122,77 +109,83 @@ export function Sidebar({
         }`}
       >
       {/* Logo */}
-      <div className={`flex items-center gap-3 px-4 h-16 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10 ${isRight ? 'justify-end' : ''}`}>
+      <div className={`flex items-center gap-3 px-3 h-11 border-b border-navy-800 flex-shrink-0 bg-navy-950 shadow-sm relative z-10 ${isRight ? 'justify-end' : ''}`}>
         {!collapsed ? (
-          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-full h-11 object-contain rounded-xl" />
+          <img src="/arguscnc-logo.jpg" alt="ARGUSCNC Logo" className="w-full h-7 object-contain rounded-lg" />
         ) : (
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-orange overflow-hidden border border-brand-500/20">
-            <img src="/arguscnc-mark.jpg" alt="ARGUSCNC Mark" className="w-full h-full object-contain p-1" />
+          <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-glow-orange overflow-hidden border border-brand-500/20">
+            <img src="/arguscnc-mark.jpg" alt="ARGUSCNC Mark" className="w-full h-full object-contain p-0.5" />
           </div>
         )}
       </div>
 
-        {/* Navigation */}
-      <nav ref={navRef} className="flex-1 overflow-y-auto lg:overflow-hidden py-2 px-2 relative z-0"><div ref={innerRef} style={{ zoom: fit }} className="grid grid-cols-1 lg:grid-cols-2 gap-x-2 gap-y-1 items-start">
-        {visibleSections.map((section) => {
-          const isExpanded = expandedSections.has(section.label);
-          const hasActive = isSectionActive(section, currentPage);
-          return (
-            <div key={section.label} className="min-w-0">
-              {!collapsed && (
-                <button
-                  onClick={() => toggleSection(section.label)}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 lg:py-1 mb-0.5 rounded-md bg-navy-900/70 text-[11px] lg:text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
-                  }`}
-                >
-                  <span>{section.label}</span>
-                  <ChevronDown size={12} className={`transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
-                </button>
-              )}
-              {collapsed && (
-                <div className="h-px bg-navy-800/60 my-2 mx-1" />
-              )}
-              {(isExpanded || collapsed) && (
-                <div className="flex flex-col gap-0.5">
-                  {section.items.map((item) => {
-                    const active = isItemActive(item.page);
-                    return (
-                      <button
-                        key={item.page}
-                        onClick={() => {
-                          onNavigate(item.page);
-                          if (onCloseMobile) onCloseMobile();
-                        }}
-                        title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center px-2.5 py-2.5 lg:py-1 rounded-md text-sm transition-all duration-200 group relative ${
-                          active
-                            ? 'bg-brand-600 text-white font-bold shadow-md shadow-brand-500/25 ring-1 ring-white/20'
-                            : 'text-navy-300 hover:bg-navy-900 hover:text-white'
-                        }`}
-                      >
-                        {active && (
-                           <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1.5 h-6 bg-white shadow-sm`} />
-                        )}
-                        {!collapsed && <span className="text-[14px] lg:text-[12.5px] leading-tight text-left py-0.5">{item.label}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div></nav>
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto scrollbar-none py-1 px-2 relative z-0">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-2 gap-y-1 items-start">
+          {visibleSections.map((section) => {
+            const isExpanded = expandedSections.has(section.label);
+            const hasActive = isSectionActive(section, currentPage);
+            return (
+              <div key={section.label} className="min-w-0">
+                {!collapsed && (
+                  <button
+                    onClick={() => toggleSection(section.label)}
+                    className={`w-full flex items-center justify-between px-2 py-0.5 mb-0.5 rounded bg-navy-900/70 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                      hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
+                    }`}
+                  >
+                    <span className="truncate">{section.label}</span>
+                    <ChevronDown size={11} className={`transition-transform duration-200 flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
+                  </button>
+                )}
+                {collapsed && (
+                  <div className="h-px bg-navy-800/60 my-1 mx-1" />
+                )}
+                {(isExpanded || collapsed) && (
+                  <div className="flex flex-col gap-px">
+                    {section.items.map((item) => {
+                      const active = isItemActive(item.page);
+                      return (
+                        <button
+                          key={item.page}
+                          onClick={() => {
+                            onNavigate(item.page);
+                            if (onCloseMobile) onCloseMobile();
+                          }}
+                          title={collapsed ? item.label : undefined}
+                          className={`w-full flex items-center px-2 py-0.5 rounded text-xs transition-all duration-150 group relative ${
+                            active
+                              ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/25 ring-1 ring-white/20'
+                              : 'text-navy-300 hover:bg-navy-900 hover:text-white'
+                          }`}
+                        >
+                          {active && (
+                            <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1 h-3.5 bg-white shadow-sm`} />
+                          )}
+                          {!collapsed && (
+                            <span className="text-[11.5px] leading-tight text-left py-0.5 font-medium truncate">
+                              {item.label}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </nav>
 
       {/* Collapse / pin toggle (desktop sidebars only) */}
       {!mobileOnly && (
-        <div className="px-3 py-2 border-t border-navy-800 bg-navy-950 flex-shrink-0 relative z-10">
+        <div className="px-3 py-1.5 border-t border-navy-800 bg-navy-950 flex-shrink-0 relative z-10">
           <button
             onClick={onToggle}
-            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs text-navy-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-800 hover:border-navy-700 rounded-lg transition-all"
+            className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] text-navy-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-800 hover:border-navy-700 rounded-md transition-all"
           >
-            <ChevronRight size={14} className={`transition-transform duration-300 ${pinnedClosed ? (isRight ? '-rotate-180' : '') : (isRight ? '' : 'rotate-180')}`} />
+            <ChevronRight size={13} className={`transition-transform duration-300 ${pinnedClosed ? (isRight ? '-rotate-180' : '') : (isRight ? '' : 'rotate-180')}`} />
             {!collapsed && <span className="font-medium tracking-wide">{pinnedClosed ? 'Pin Menu Open' : 'Collapse Menu'}</span>}
           </button>
         </div>

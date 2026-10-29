@@ -1,0 +1,43 @@
+
+/* CNCFORGE ERP — design tokens. Single source of truth for colour, type, space, motion. */
+:root{
+  --navy:#0E0704; --blue:#FF6500; --brand-dark:#EA580C; --orange:#FF6500; --orange-dark:#EA580C;
+  --violet:#7C3AED; --emerald:#10B981; --emerald-dark:#065F46; --amber:#F59E0B; --red:#DC2626;
+  --bg:#DAC8B8; --surface:#EDE1D3; --text:#1A0A03; --text-2:#2E1508; --muted:#6B503E;
+  --border:#BAA794; --line:#D8C6B5;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  --r-sm:8px; --r:12px; --r-lg:14px;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 4px 14px rgba(15,23,42,.06);
+  --shadow-lg:0 8px 30px rgba(11,19,43,.14);
+  --t-fast:180ms; --t-med:220ms; --t-slow:260ms;
+  --font:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+/* base reset */
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  .retail-app, .retail-shell {font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  img{display:block;max-width:100%}
+  button{font-family:inherit}
+  h1,h2,h3{letter-spacing:-.01em;margin:0}
+  ::selection{background:rgba(255,101,0,.22)}
+
+/* page enter */
+@keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.page{animation:pageIn var(--t-med) ease}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .page{animation:none}
+}
+
+/* visible focus */
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px;border-radius:6px}
+
+/* scrollbars */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#BAA794;border-radius:8px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* numeric alignment for ERP figures */
+.num{font-variant-numeric:tabular-nums;text-align:right}
+th.num,td.num{text-align:right}

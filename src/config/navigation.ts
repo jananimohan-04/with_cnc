@@ -18,6 +18,14 @@ import {
   Wallet,
   LifeBuoy,
   Archive,
+  Store,
+  Package,
+  FolderTree,
+  Receipt,
+  ShieldCheck,
+  Tag,
+  MapPin,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -42,14 +50,24 @@ export interface NavSection {
 export const navSections: NavSection[] = [
   {
     label: 'Overview',
-    items: [{ label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400', module: 'dashboard' }],
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400', module: 'dashboard' }
+    ],
   },
   {
-    label: 'Sales',
+    label: 'Sales & Finance',
     items: [
-      { label: 'Sales Pipeline', icon: TrendingUp, page: 'sales/pipeline', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
-      // "All Companies" now lives in the Sales Pipeline toolbar (as a view tab) rather
-      // than as a separate sidebar entry. The /sales/leads route and LeadsPage are unchanged.
+      { label: 'Sales Pipelines', icon: TrendingUp, page: 'sales/in-house', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
+      { label: 'Site Visit Sales', icon: MapPin, page: 'sales/site-visits', iconClass: 'text-sky-400', module: 'sales-pipeline' },
+      { label: 'Partner & Online Sales', icon: ShoppingCart, page: 'sales/partner-orders', iconClass: 'text-indigo-400', module: 'sales-pipeline' },
+      { label: 'Commercial Invoices', icon: Receipt, page: 'finance/invoices', iconClass: 'text-teal-400', module: 'invoices' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { label: 'Technical Support', icon: LifeBuoy, page: 'support/technical', iconClass: 'text-cyan-400', module: 'support' },
+      { label: 'On-site Support', icon: Wrench, page: 'support/onsite', iconClass: 'text-emerald-400', module: 'support' },
     ],
   },
   {
@@ -68,16 +86,11 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    label: 'Finance',
+    label: 'Accounts',
     items: [
       { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400', module: 'bank-entry' },
       { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400', module: 'petty-cash' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },
-    ],
-  },
-  {
-    label: 'Accounts',
-    items: [
       { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger', iconClass: 'text-amber-300', module: 'ledger' },
       { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300', module: 'ledger' },
       { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400', module: 'ledger' },
@@ -89,6 +102,7 @@ export const navSections: NavSection[] = [
     label: 'Supply Chain',
     items: [
       { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300', module: 'inventory' },
+      { label: 'Store Categories', icon: FolderTree, page: 'admin/categories', iconClass: 'text-cyan-400', module: 'inventory' },
       { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
     ],
   },
@@ -100,19 +114,17 @@ export const navSections: NavSection[] = [
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
       { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
-    ],
-  },
-  {
-    label: 'Support',
-    items: [
-      { label: 'Support Center', icon: LifeBuoy, page: 'support/center', iconClass: 'text-cyan-300', module: 'support' },
+      { label: 'Digital Storefront', icon: Store, page: 'store/home', iconClass: 'text-orange-400' },
     ],
   },
 ];
 
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Executive Dashboard',
-  'sales/pipeline': 'Sales Pipeline',
+  'sales/pipeline': 'In-house Sales Pipeline',
+  'sales/in-house': 'In-house Sales Pipeline',
+  'sales/site-visits': 'Site Visit Sales',
+  'sales/partner-orders': 'Partner & Online Sales',
   'sales/leads': 'All Company Library',
   'sales/customers': 'Companies',
   'sales/quotations': 'Quotations',
@@ -178,7 +190,7 @@ export const pageTitles: Record<string, string> = {
   'accounts/trial-balance': 'Trial Balance',
   'accounts/profit-loss': 'Profit & Loss',
   'accounts/balance-sheet': 'Balance Sheet',
-  'finance/invoices': 'Invoices',
+  'finance/invoices': 'Commercial Invoices',
   'finance/bank-entries': 'Bank & Cash',
   'finance/bank-entry': 'Bank Entry',
   'finance/petty-cash': 'Petty Cash Entry',
@@ -190,6 +202,24 @@ export const pageTitles: Record<string, string> = {
   'admin/permissions': 'Permissions',
   'admin/settings': 'Company Settings',
   'admin/audit-logs': 'Audit Logs',
+  'support/center': 'Support Center',
+  'support/technical': 'Technical Support',
+  'support/onsite': 'On-site Support',
+  'store/home': 'Digital Storefront',
+  'store/listing': 'Product Catalog',
+  'store/cart': 'Shopping Cart',
+  'store/orders': 'My Orders',
+  'store/quotes': 'My Quotations',
+  'store/invoices': 'Store Invoices',
+  'admin/products': 'Stock Library',
+  'admin/media': 'Product Media',
+  'admin/categories': 'Store Categories',
+  'admin/orders': 'Customer Orders',
+  'admin/quotes': 'RFQ Inquiries',
+  'admin/settings-retail': 'Store Settings',
+  'super/catalog': 'Master Catalog',
+  'super/companies': 'Retail Company Hub',
+  'super/access': 'Menu Access Control',
 };
 
 export function getBreadcrumbs(page: string): { label: string; page?: string }[] {

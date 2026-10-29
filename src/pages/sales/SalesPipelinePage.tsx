@@ -830,7 +830,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
  *  products/items table with computed totals, additional details. Saves with
  *  an UPDATE (totals recomputed with the entry formula); uploads reuse the
  *  existing storage mechanism. */
-function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, readOnly = false }: {
+function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, readOnly = false, saveRef }: {
   /** View mode: the same form, locked, without the save button. */
   readOnly?: boolean;
   raw: any;
@@ -838,6 +838,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
   companyId?: string;
   openFile: (path: string) => void;
   onSaved: () => void;
+  saveRef?: { current: (() => Promise<boolean>) | null };
 }) {
   const initItems = () => {
     try {
@@ -951,12 +952,20 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
         } else throw updErr;
       }
       onSaved();
+      return true;
     } catch (e: any) {
       setError('Unable to save changes: ' + (e?.message ?? e));
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  // The footer "Done Editing" button triggers this save; no separate button here.
+  useEffect(() => {
+    if (saveRef) saveRef.current = save;
+    return () => { if (saveRef && saveRef.current === save) saveRef.current = null; };
+  });
 
   return (
     <fieldset disabled={readOnly} className="mb-6 min-w-0 border-0 p-0 m-0 [&_input:disabled]:bg-slate-50 [&_input:disabled]:text-slate-700 [&_input:disabled]:cursor-default [&_select:disabled]:bg-slate-50 [&_select:disabled]:text-slate-700 [&_textarea:disabled]:bg-slate-50 [&_textarea:disabled]:text-slate-700">
@@ -1075,11 +1084,6 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
         <div className="col-span-2"><FormField label="Notes / Remarks"><textarea className={inputClass} rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></FormField></div>
       </div>
       {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-      {!readOnly && (
-        <div className="flex justify-end mt-4">
-          <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Changes'}</Button>
-        </div>
-      )}
     </fieldset>
   );
 }
@@ -2730,6 +2734,8 @@ export function SalesPipelinePage() {
   const enquirySaveRef = useRef<(() => Promise<boolean>) | null>(null);
   // Pending delivery-challan save, flushed the same way.
   const dcSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  // Pending quotation save, flushed the same way.
+  const quoSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
   const handleInlineEdit = async (title: string, id: string, field: string | Record<string, any>, value?: string) => {
@@ -4401,6 +4407,21 @@ export function SalesPipelinePage() {
       if (!dcGroups.has(key)) dcGroups.set(key, []);
       dcGroups.get(key)!.push(d);
     });
+    const matchDcNumber = (invDc: any, dNo: any, dRef: any) => {
+      if (!invDc) return false;
+      const invStr = String(invDc).trim().toLowerCase();
+      const targets = [String(dNo || '').trim().toLowerCase(), String(dRef || '').trim().toLowerCase()].filter(Boolean);
+      for (const t of targets) {
+        if (invStr === t) return true;
+        const cleanInv = invStr.replace(/^dc[-\s]*/i, '');
+        const cleanT = t.replace(/^dc[-\s]*/i, '');
+        if (cleanInv === cleanT) return true;
+        const parts = invStr.split(/[\s,;/]+/).map(p => p.replace(/^dc[-\s]*/i, '').trim());
+        if (parts.includes(cleanT)) return true;
+      }
+      return false;
+    };
+
     dcGroups.forEach((list, key) => {
       const first = list[0];
       const ref = uniqueForDelivery(first);
@@ -4408,8 +4429,15 @@ export function SalesPipelinePage() {
       // A challan that has an active invoice in invoicesData moved on to Invoice.
       // If the invoice was deleted, the challan immediately returns to the DC column!
       const hasActiveInvoice = (invoicesData || []).some((inv: any) => String(inv.invoice_type ?? '') !== 'Proforma Invoice'
-        && ((inv.delivery_id != null && list.some(x => String(x.id) === String(inv.delivery_id))) || (inv.dc_no && (String(inv.dc_no) === String(first.delivery_no) || String(inv.dc_no) === String(ref)))));
+        && ((inv.delivery_id != null && list.some(x => String(x.id) === String(inv.delivery_id))) || matchDcNumber(inv.dc_no, first.delivery_no, ref)));
       if (hasActiveInvoice) return;
+      if (first.status === 'Billed') {
+        first.status = 'Delivered';
+        const idsToHeal = list.map(x => x.id).filter(Boolean);
+        if (idsToHeal.length > 0) {
+          void supabase.from('cnc_deliveries').update({ status: 'Delivered' }).in('id', idsToHeal);
+        }
+      }
       const names = Array.from(new Set(list.map(x => x.part_name).filter(Boolean)));
       newCards.push({
         id: `dc_${first.id}`, stage: 'DC', type: 'dc', refNo: ref,
@@ -9256,6 +9284,10 @@ export function SalesPipelinePage() {
                         const ok = await dcSaveRef.current();
                         if (!ok) return;
                       }
+                      if (viewEditMode && viewModalTarget?.stage === 'Quotation' && quoSaveRef.current) {
+                        const ok = await quoSaveRef.current();
+                        if (!ok) return;
+                      }
                       setViewEditMode(!viewEditMode);
                     })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         <div className={docKind ? 'doc-compact grid grid-cols-1 gap-3 xl:grid-cols-2' : ''}>
@@ -9338,6 +9370,7 @@ export function SalesPipelinePage() {
                       productNames={existingProductNames}
                       companyId={company?.id}
                       openFile={(p) => void openProductFile(p)}
+                      saveRef={quoSaveRef}
                       onSaved={() => { fetchPipeline(); if (viewModalTarget) void openViewModal(viewModalTarget); }}
                     />
                   </>

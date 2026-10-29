@@ -472,7 +472,7 @@ export function HelpAssistant() {
 
   // ------------------------------------------------ the three modes and their keyboard shortcuts
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<{ mode: 'teaching' | 'coworker'; on: boolean }>).detail; if (d) setModes((m) => ({ ...m, [d.mode]: d.on })); };
+    const on = (e: Event) => { const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail; if (d && (d.mode === 'teaching' || d.mode === 'coworker')) setModes((m) => ({ ...m, [d.mode]: d.on })); };
     window.addEventListener('argus:mode', on);
     return () => window.removeEventListener('argus:mode', on);
   }, []);
@@ -549,6 +549,8 @@ export function HelpAssistant() {
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
 
   const active = phase !== 'idle';
+  // Tell Co-worker when Adviser holds the microphone, so the two never listen at once.
+  useEffect(() => { window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'adviser', on: active } })); }, [active]);
   const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? 'Listening… பேசுங்கள் / speak now' : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking…' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;

@@ -544,7 +544,11 @@ export function WarehousesPage() {
 
   const handleSaveWH = async () => {
     if (!whForm.code || !whForm.name) return alert("Code and Name are required");
-    const { error } = await supabase.from('cnc_warehouses').insert([whForm]);
+    const uid = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : ('wh-' + Date.now());
+    const { error } = await supabase.from('cnc_warehouses').insert([{ ...whForm, id: uid }]);
+    if (error && /cnc_warehouses_code_key|duplicate key/i.test(error.message)) {
+      return alert('Warehouse code "' + whForm.code + '" is already in use in the database. Please try a unique prefix like "WH-' + whForm.code + '" or apply migration 20261029010000_fix_cnc_warehouses_unique_code.sql in Supabase.');
+    }
     if (error) return alert("Error saving warehouse: " + error.message + "\nMake sure you ran the SQL migration script!");
     setShowAdd(false);
     fetchWarehouses();
