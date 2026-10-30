@@ -62,6 +62,9 @@ export const navSections: NavSection[] = [
       { label: 'Sales Pipelines', icon: TrendingUp, page: 'sales/in-house', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
       { label: 'Site Visit Sales', icon: MapPin, page: 'sales/site-visits', iconClass: 'text-sky-400', module: 'sales-pipeline' },
       { label: 'Partner & Online Sales', icon: ShoppingCart, page: 'sales/partner-orders', iconClass: 'text-indigo-400', module: 'sales-pipeline' },
+      { label: 'Quotations', icon: FileText, page: 'sales/quotations', iconClass: 'text-amber-300', module: 'quotations' },
+      { label: 'Sales Orders', icon: ClipboardList, page: 'sales/orders', iconClass: 'text-rose-300', module: 'sales-orders' },
+      { label: 'All Company Library', icon: Building2, page: 'sales/leads', iconClass: 'text-teal-300', module: 'companies' },
     ],
   },
   {
@@ -71,6 +74,13 @@ export const navSections: NavSection[] = [
       { label: 'Scheduling', icon: ClipboardList, page: 'production/scheduling', iconClass: 'text-violet-400', module: 'scheduling' },
       { label: 'Machine Log', icon: Cog, page: 'production/tracking', iconClass: 'text-teal-300', module: 'machine-log' },
       { label: 'Process Master', icon: Factory, page: 'production/process-master', iconClass: 'text-rose-400', module: 'process-master' },
+      { label: 'Finished Goods', icon: Package, page: 'production/finished-goods', iconClass: 'text-emerald-300', module: 'finished-goods' },
+    ],
+  },
+  {
+    label: 'Logistics',
+    items: [
+      { label: 'Delivery Challan', icon: Package, page: 'operations/delivery', iconClass: 'text-sky-300', module: 'delivery' },
     ],
   },
   {
@@ -85,6 +95,7 @@ export const navSections: NavSection[] = [
       { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300', module: 'ledger' },
       { label: 'Opening Balances', icon: Archive, page: 'accounts/opening-balances', iconClass: 'text-rose-300', module: 'opening-balances' },
       { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },
+      { label: 'Product Costing', icon: Calculator, page: 'costing/material', iconClass: 'text-pink-300', module: 'product-costing' },
     ],
   },
   {
@@ -92,8 +103,13 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300', module: 'inventory' },
       { label: 'Store Categories', icon: FolderTree, page: 'admin/categories', iconClass: 'text-cyan-400', module: 'inventory' },
-      { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
+      { label: 'Suppliers', icon: Users, page: 'purchasing/suppliers', iconClass: 'text-lime-300', module: 'suppliers' },
+      { label: 'Purchase Requisitions', icon: ClipboardList, page: 'purchasing/requisitions', iconClass: 'text-violet-300', module: 'purchase-requisitions' },
+      { label: 'Purchase Orders', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
+      { label: 'Goods Receipt / GRN', icon: Archive, page: 'purchasing/goods-receipt', iconClass: 'text-teal-300', module: 'grn' },
       { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400', module: 'engineering' },
+      { label: 'Quality', icon: ShieldCheck, page: 'quality/inspection-plans', iconClass: 'text-emerald-300', module: 'quality' },
+      { label: 'Maintenance', icon: Wrench, page: 'maintenance/machines', iconClass: 'text-orange-300', module: 'maintenance' },
     ],
   },
   {
@@ -103,6 +119,7 @@ export const navSections: NavSection[] = [
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
       { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
+      { label: 'Audit Logs', icon: ShieldCheck, page: 'admin/audit-logs', iconClass: 'text-slate-300', module: 'audit-logs' },
       { label: 'Technical Support', icon: LifeBuoy, page: 'support/technical', iconClass: 'text-cyan-400', module: 'support' },
       { label: 'On-site Support', icon: Wrench, page: 'support/onsite', iconClass: 'text-emerald-400', module: 'support' },
       { label: 'Digital Storefront', icon: Store, page: 'store/home', iconClass: 'text-orange-400' },
