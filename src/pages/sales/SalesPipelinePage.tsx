@@ -4611,6 +4611,10 @@ export function SalesPipelinePage() {
     };
     const boardNow = newCards.filter(c => {
       if (c.type === 'order' && orderInwarded(c.raw)) return false;
+      // "Finished Goods - ready for delivery": once every finished piece has gone out on a challan nothing is left to deliver,
+      // so the card leaves the board (it stays in List View). It comes back by itself if a challan is deleted.
+      if (c.type === 'finished_goods' && c.qtyTrack && c.qtyTrack.good > 0 && c.qtyTrack.fgAvailable <= 0
+        && (c.qtyTrack.products ?? []).every((p) => (p.available ?? 0) <= 0)) return false;
       if (c.type !== 'inward') return true;
       if (c.qtyTrack && c.qtyTrack.ordered > 0) return c.qtyTrack.remaining > 0;
       // No linked sales order: everything received has been produced when no product has any left.
@@ -4849,8 +4853,65 @@ export function SalesPipelinePage() {
       setLoading(false);
     };
 
+    // A stage may only be deleted when nothing later was built from it. Deleting finished goods that were already
+    // delivered, a challan that was already invoiced, or an order that already has inward / goods / challans leaves orphan
+    // rows behind: the order then shows "Fin 0, DC 1, Inv 1" and the rest of it can never be delivered.
+    const deletionBlocker = async (card: KanbanCard): Promise<string | null> => {
+      const raw: any = card.raw ?? {};
+      const ids: string[] = (Array.isArray(raw._groupIds) && raw._groupIds.length ? raw._groupIds : [raw.id]).filter(Boolean).map(String);
+      try {
+        if (card.type === 'finished_goods') {
+          const soNo = String(raw.sales_order || '').trim();
+          if (!soNo) return null;
+          const { summary } = await fetchOrderQty(null, soNo);
+          if (!summary) return null;
+          const { data: leaving } = await supabase.from('cnc_work_orders').select('completed').in('id', ids);
+          const goodAfter = summary.good - (leaving ?? []).reduce((n: number, w: any) => n + (Number(w.completed) || 0), 0);
+          if (summary.delivered > goodAfter + 1e-9) {
+            return `Cannot delete: ${summary.delivered} pcs of order ${soNo} were already delivered, so finished goods cannot drop below that (it would become ${Math.max(0, goodAfter)}).\n\nDelete the Delivery Challan first, then these finished goods.`;
+          }
+        }
+        if (card.type === 'dc') {
+          const dcNo = String(raw.delivery_no || raw.dc_no || '').trim();
+          const [byId, byNo] = await Promise.all([
+            supabase.from('cnc_invoices').select('invoice_no,cancelled').in('delivery_id', ids),
+            dcNo ? supabase.from('cnc_invoices').select('invoice_no,cancelled').eq('dc_no', dcNo) : Promise.resolve({ data: [] as any[] }),
+          ]);
+          const live = [...(byId.data ?? []), ...((byNo as any).data ?? [])].filter((i: any) => !i.cancelled);
+          if (live.length) {
+            return `Cannot delete: invoice ${[...new Set(live.map((i: any) => i.invoice_no))].join(', ')} was raised from this challan.\n\nDelete or cancel the invoice first.`;
+          }
+        }
+        if (card.type === 'inward' && String(raw.status || '') === 'Processed') {
+          return 'Cannot delete: finished goods were already made from this inward.\n\nDelete those finished goods first, then this inward.';
+        }
+        if (card.type === 'order') {
+          const soNo = String(raw.order_no || '').trim();
+          const soId = String(raw.id || '').trim();
+          if (!soNo) return null;
+          const [inw, wo, dc, inv] = await Promise.all([
+            supabase.from('cnc_inwards').select('id', { count: 'exact', head: true }).eq('sales_order_ref', soNo).neq('status', 'Deleted'),
+            supabase.from('cnc_work_orders').select('id', { count: 'exact', head: true }).eq('sales_order', soNo),
+            supabase.from('cnc_deliveries').select('id', { count: 'exact', head: true }).eq('sales_order_no', soNo),
+            soId ? supabase.from('cnc_invoices').select('id', { count: 'exact', head: true }).eq('sales_order_id', soId) : Promise.resolve({ count: 0 } as any),
+          ]);
+          const parts = [
+            [inw.count, 'inward'], [wo.count, 'finished goods'], [dc.count, 'delivery challan'], [(inv as any).count, 'invoice'],
+          ].filter(([n]) => Number(n) > 0).map(([n, label]) => `${n} ${label}${Number(n) === 1 ? '' : (label === 'inward' ? '' : 's')}`);
+          if (parts.length) {
+            return `Cannot delete: order ${soNo} already has ${parts.join(', ')}.\n\nDelete those later stages first (invoice, then challan, then finished goods, then inward), then the order.`;
+          }
+        }
+      } catch (err) {
+        console.warn('Delete safety check could not run:', err);   // never blocks on a failed check
+      }
+      return null;
+    };
+
     const handleDeleteCard = async (e: React.MouseEvent, card: KanbanCard) => {
     e.stopPropagation();
+    const blocked = await deletionBlocker(card);
+    if (blocked) { alert(blocked); return; }
     if (!window.confirm(`Are you sure you want to delete this ${card.type}?`)) return;
 
     // Handle virtual quotation card from enquiry without a quotation record
@@ -5012,7 +5073,9 @@ export function SalesPipelinePage() {
                 const matchesKey = keyList.some(k => k === wSo || k === wBase || baseUniqueNo(k) === wBase || k === wWoNo);
                 const matchesCust = cardCust && wCust && (cardCust === wCust || cardCust.includes(wCust) || wCust.includes(cardCust));
 
-                return matchesKey || (matchesCust && String(w.status) === 'Dispatched');
+                // Customer name alone is not enough when the challan names its order: another order of the same customer must stay as it is.
+                const challanNamesOrder = keyList.some(k => /^SO-/i.test(k));
+                return matchesKey || (!challanNamesOrder && matchesCust && String(w.status) === 'Dispatched');
               }).map((w: any) => w.id);
 
               if (toRevertIds.length > 0) {

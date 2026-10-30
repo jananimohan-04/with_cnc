@@ -436,3 +436,49 @@ export async function updateWorkOrderTolerant(id: string, patch: Record<string, 
   }
   throw new Error('Work order update failed after retries.');
 }
+
+/** Per product: pieces that were delivered although no finished-goods record backs them any more (the FG entry was deleted). */
+export function missingFinishedGoods(summary: OrderQtySummary | null | undefined): { name: string; qty: number }[] {
+  if (!summary) return [];
+  const rows = (summary.products ?? [])
+    .map((p) => ({ name: p.name, qty: Math.max(0, num(p.delivered) - num(p.good)) }))
+    .filter((p) => p.qty > 0);
+  // Deliveries whose product name matched no line still count against the order as a whole.
+  if (!rows.length && summary.delivered > summary.good) {
+    return [{ name: summary.product || summary.soNo, qty: summary.delivered - summary.good }];
+  }
+  return rows;
+}
+
+/**
+ * Repairs an order whose finished goods were deleted after it was delivered: records the missing pieces as completed
+ * (already dispatched) so "finished" matches "delivered" again. Without it, any new finished goods are absorbed by the
+ * old delivery and the rest of the order can never be delivered.
+ */
+export async function restoreMissingFinishedGoods(
+  so: { order_no?: string | null; customer?: string | null },
+  summary: OrderQtySummary | null | undefined,
+): Promise<{ ok: boolean; restored: number; message: string }> {
+  const missing = missingFinishedGoods(summary);
+  const soNo = String(so?.order_no ?? '').trim();
+  if (!soNo || !missing.length) return { ok: true, restored: 0, message: 'Nothing is missing: finished goods already cover what was delivered.' };
+  const d = new Date();
+  let restored = 0;
+  for (const m of missing) {
+    const row = {
+      id: crypto.randomUUID(),
+      wo_no: `WO-${d.getFullYear().toString().slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`,
+      sales_order: soNo,
+      customer: String(so?.customer ?? summary?.customer ?? ''),
+      part_name: m.name,
+      quantity: m.qty,
+      completed: m.qty,
+      status: 'Dispatched',
+      created_at: d.toISOString(),
+    };
+    const { error } = await supabase.from('cnc_work_orders').insert([row]);
+    if (error) return { ok: false, restored, message: `Could not restore finished goods for ${m.name}: ${error.message}` };
+    restored += m.qty;
+  }
+  return { ok: true, restored, message: `Restored ${restored} finished piece${restored === 1 ? '' : 's'} for ${soNo}.` };
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { fetchOrderQty, summarizeSalesOrder } from '@/lib/orderQuantities';
+import { fetchOrderQty, summarizeSalesOrder, missingFinishedGoods, restoreMissingFinishedGoods } from '@/lib/orderQuantities';
 import { Search, ArrowLeft, Eye } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
@@ -241,6 +241,24 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                           <span title="Remaining" className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-amber-700">Rem {q.remaining}</span>
                           <span title="Delivered via DC" className="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-violet-700">DC {q.delivered}</span>
                           <span title="Invoiced" className="rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-sky-700">Inv {q.invoiced}</span>
+                          {onEdit && missingFinishedGoods(q).length > 0 && (
+                            <button
+                              type="button"
+                              title="More was delivered than finished goods shows (a finished-goods entry was deleted). Click to restore it so the rest of the order can be delivered."
+                              className="rounded-md border border-red-300 bg-red-50 px-1.5 py-0.5 text-[12px] font-bold text-red-700 hover:bg-red-100"
+                              onClick={() => void (async () => {
+                                const miss = missingFinishedGoods(q).reduce((n, m) => n + m.qty, 0);
+                                if (!window.confirm(`Order ${record.order_no}: ${q.delivered} pcs were delivered but finished goods shows only ${q.good}.
+
+Restore the missing ${miss} finished pcs (marked as already dispatched) so the remaining pieces can go through Inward, Finished Goods and DC?`)) return;
+                                const res = await restoreMissingFinishedGoods(record, q);
+                                alert(res.message);
+                                if (res.ok) await fetchRecords();
+                              })()}
+                            >
+                              FG missing {missingFinishedGoods(q).reduce((n, m) => n + m.qty, 0)} · Restore
+                            </button>
+                          )}
                         </div>
                       );
                     })()}
