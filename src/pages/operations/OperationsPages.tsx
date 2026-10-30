@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
 import { downloadBrandedDocument } from '@/lib/brandedDocument';
+import { DocumentProfileButton } from '@/components/DocumentProfileButton';
 
 type Delivery = Record<string, any> & { id: string; delivery_no: string; delivery_date: string | null; customer_name: string | null; part_name: string | null; quantity: number | null; dispatch_qty: number | null; status: string | null; sales_order_id: string | null; sales_order_no: string | null };
 type SalesOrder = { id: string; order_no: string; lead_no?: string | null; customer: string; customer_id: string | null; part_name: string; part_no: string | null; quantity: number; delivered: number | null; delivery_date: string | null };
@@ -212,7 +213,7 @@ export function DeliveriesPage() {
   };
 
   return <div className="p-4 lg:p-6 bg-grid min-h-full space-y-4">
-    <PageHeader title="Delivery" description="Create and manage delivery challans, track partial deliveries and pending quantities." actions={<><Button variant="secondary" size="sm" icon={<Upload size={14}/>} onClick={exportRows}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={() => selected ? printSelected(selected) : window.print()}>Print</Button><Button size="sm" icon={<Plus size={14}/>} onClick={startNew}>New Delivery Challan</Button></>}/>
+    <PageHeader title="Delivery" description="Create and manage delivery challans, track partial deliveries and pending quantities." actions={<><DocumentProfileButton kind="dc" /><Button variant="secondary" size="sm" icon={<Upload size={14}/>} onClick={exportRows}>Export</Button><Button variant="secondary" size="sm" icon={<Printer size={14}/>} onClick={() => selected ? printSelected(selected) : window.print()}>Print</Button><Button size="sm" icon={<Plus size={14}/>} onClick={startNew}>New Delivery Challan</Button></>}/>
     {error && <div className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">{error}</div>}
     <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">{[
       ['Total DCs', summary.total], ['Total Qty Dispatched', summary.dispatched], ['Pending Delivery', summary.pending], ['Partially Delivered', summary.partial], ['Fully Delivered', summary.delivered],

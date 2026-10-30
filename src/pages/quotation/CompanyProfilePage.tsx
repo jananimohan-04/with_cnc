@@ -4,8 +4,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import {
   cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, syncProfileStore, validateProfile, validateSub,
-  type OrgProfile, type ProfileStore, type SubCompany,
+  type OrgProfile, type ProfileKind, type ProfileStore, type SubCompany,
 } from '@/lib/companyProfile';
+import { clearDocumentSellerCache } from '@/lib/documentProfile';
+
+// One screen for the three profiles. What changes with the document: its name in the texts, and (quotations only) the
+// sub-companies, because only a quotation can be issued in the name of a sub-company; the challan has no bank section.
+const DOC: Record<ProfileKind, { title: string; name: string; plural: string }> = {
+  quotation: { title: 'Company Profile & Business Details', name: 'quotation', plural: 'quotations' },
+  invoice: { title: 'Invoice Profile & Business Details', name: 'invoice', plural: 'invoices' },
+  dc: { title: 'Delivery Challan Profile & Business Details', name: 'delivery challan', plural: 'delivery challans' },
+};
 
 const inputCls = 'w-full h-12 px-4 text-sm bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20';
 const lbl = 'block text-[11px] font-bold uppercase tracking-wide text-slate-600 mb-1.5';
@@ -16,10 +25,17 @@ const emptySub = { name: '', gstin: '', address: '', phone: '', email: '' };
 
 function Err({ text }: { text?: string }) { return text ? <p className="text-[11px] text-red-600 mt-1">{text}</p> : null; }
 
-export function CompanyProfilePage() {
+/** The quotation profile (the original page). */
+export function CompanyProfilePage() { return <DocumentProfilePage kind="quotation" />; }
+export function InvoiceProfilePage({ embedded }: { embedded?: boolean }) { return <DocumentProfilePage kind="invoice" embedded={embedded} />; }
+export function DcProfilePage({ embedded }: { embedded?: boolean }) { return <DocumentProfilePage kind="dc" embedded={embedded} />; }
+
+export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { kind?: ProfileKind; embedded?: boolean }) {
   const { company, email: authEmail } = useAuth();
   const cid = company?.id ?? null;
-  const [store, setStore] = useState<ProfileStore>(() => loadProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }));
+  const doc = DOC[kind];
+  const defaults = { orgName: company?.company_name ?? '', email: authEmail ?? '' };
+  const [store, setStore] = useState<ProfileStore>(() => loadProfileStore(cid, defaults, kind));
   const [p, setP] = useState<OrgProfile>(store.profile);
   const [touched, setTouched] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
@@ -40,18 +56,21 @@ export function CompanyProfilePage() {
   // Shared by everyone in the company: load the company's saved profile (or upload this browser's the first time).
   useEffect(() => {
     let off = false;
-    void syncProfileStore(cid, { orgName: company?.company_name ?? '', email: authEmail ?? '' }).then(s => { if (!off) { setStore(s); setP(s.profile); } });
+    void syncProfileStore(cid, defaults, kind).then(s => { if (!off) { setStore(s); setP(s.profile); } });
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid]);
+  }, [cid, kind]);
 
   const persist = (next: ProfileStore, okText: string): boolean => {
-    if (!saveProfileStore(cid, next)) { setNotice({ kind: 'err', text: 'Could not save: browser storage is unavailable or full. Try a smaller logo / signature.' }); return false; }
+    if (!saveProfileStore(cid, next, kind)) { setNotice({ kind: 'err', text: 'Could not save: browser storage is unavailable or full. Try a smaller logo / signature.' }); return false; }
     setStore(next); setNotice({ kind: 'ok', text: okText });
     // ...and for the whole company, so every login under it sees the same profile.
-    void saveProfileRemote(next).then(err => setNotice(err
-      ? { kind: 'err', text: `Saved in this browser only; it is not shared with your company yet: ${err}` }
-      : { kind: 'ok', text: `${okText}. Shared with everyone in your company.` }));
+    void saveProfileRemote(next, kind).then(err => {
+      clearDocumentSellerCache();   // the next PDF uses these details at once
+      setNotice(err
+        ? { kind: 'err', text: `Saved in this browser only; it is not shared with your company yet: ${err}` }
+        : { kind: 'ok', text: `${okText}. Shared with everyone in your company.` });
+    });
     return true;
   };
 
@@ -60,6 +79,13 @@ export function CompanyProfilePage() {
     if (hasErrors(errors)) { setNotice({ kind: 'err', text: 'Fix the highlighted fields before saving.' }); return; }
     const clean = cleanProfile(p);
     if (persist({ ...store, profile: clean }, 'Organisation settings saved')) setP(clean);
+  };
+
+  // Invoice / challan profile: start from the quotation profile instead of typing everything again (still needs Save).
+  const copyFromQuotation = async () => {
+    const q = await syncProfileStore(cid, defaults, 'quotation');
+    setP(q.profile);
+    setNotice({ kind: 'ok', text: 'Copied from the Quotation profile. Check it, then click Save Organisation Settings.' });
   };
 
   const pickImage = async (file: File | undefined, kind: 'logo' | 'signature') => {
@@ -89,18 +115,21 @@ export function CompanyProfilePage() {
   );
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
+    <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 max-w-4xl">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><Building2 className="text-orange-500" size={26} /> Company Profile &amp; Business Details</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage company details, branding, contact information, and banking details.</p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><Building2 className="text-orange-500" size={26} /> {doc.title}</h1>
+            {kind !== 'quotation' && <button onClick={() => void copyFromQuotation()} className="h-9 px-3 text-xs font-bold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50">Copy from Quotation profile</button>}
+          </div>
+          <p className="text-sm text-slate-500 mt-1">{kind === 'quotation' ? 'Manage company details, branding, contact information, and banking details.' : `These details are printed on every ${doc.name} (logo, address, GSTIN, contacts${kind === 'invoice' ? ', bank details' : ''} and signature).`}</p>
         </div>
 
         {notice && <div role="status" className={`flex justify-between text-sm rounded-lg px-3 py-2 border ${notice.kind === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}><span>{notice.text}</span><button aria-label="Dismiss" onClick={() => setNotice(null)}><X size={14} /></button></div>}
 
         <section className={card}>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><ImageIcon size={16} className="text-orange-500" /> Organisation Logo</h2>
-          <p className="text-xs text-slate-500 mb-4">Upload your company logo to display on exported quotation PDFs and reports.</p>
+          <p className="text-xs text-slate-500 mb-4">Upload your company logo to display on exported {doc.name} PDFs and reports.</p>
           <div className="flex flex-wrap items-center gap-5 border-t border-slate-100 pt-4">
             {imageBox(p.logo, 'NO LOGO', UploadCloud, 'w-32')}
             <div>
@@ -116,7 +145,7 @@ export function CompanyProfilePage() {
 
         <section className={card}>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><PenLine size={16} className="text-orange-500" /> Authorized Signature / Digital Stamp</h2>
-          <p className="text-xs text-slate-500 mb-4">Upload authorized signature or stamp to automatically embed in quotation PDFs.</p>
+          <p className="text-xs text-slate-500 mb-4">Upload authorized signature or stamp to automatically embed in {doc.name} PDFs.</p>
           <div className="flex flex-wrap items-center gap-5 border-t border-slate-100 pt-4">
             {imageBox(p.signature, 'NO SIGNATURE', PenLine, 'w-40')}
             <div>
@@ -167,9 +196,9 @@ export function CompanyProfilePage() {
           ))}
         </section>
 
-        <section className={card}>
+        {kind !== 'dc' && <section className={card}>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><Landmark size={16} className="text-orange-500" /> Bank &amp; Payment Details</h2>
-          <p className="text-xs text-slate-500 mb-4">These banking particulars will appear in the payment instructions of your generated invoices/quotes.</p>
+          <p className="text-xs text-slate-500 mb-4">These banking particulars will appear in the payment instructions of your generated {doc.plural}.</p>
           <div className="grid sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
             <div><label className={lbl} htmlFor="bank-name">Bank Name</label><input id="bank-name" className={`${inputCls} border-slate-200`} placeholder="e.g. State Bank of India / HDFC Bank" value={p.bankName} onChange={e => set('bankName', e.target.value)} /></div>
             <div><label className={lbl} htmlFor="bank-acc">Account Number</label><input id="bank-acc" inputMode="numeric" className={`${inputCls} font-mono ${border(touched ? errors.accountNo : undefined)}`} placeholder="e.g. 50200012345678" value={p.accountNo} onChange={e => set('accountNo', e.target.value.replace(/\s/g, ''))} /><Err text={touched ? errors.accountNo : undefined} /></div>
@@ -177,15 +206,15 @@ export function CompanyProfilePage() {
             <div><label className={lbl} htmlFor="bank-ifsc">IFSC Code</label><input id="bank-ifsc" maxLength={11} className={`${inputCls} font-mono uppercase ${border(touched ? errors.ifsc : undefined)}`} placeholder="E.G. SBIN0001234" value={p.ifsc} onChange={e => set('ifsc', e.target.value.toUpperCase())} /><Err text={touched ? errors.ifsc : undefined} /></div>
             <div className="sm:col-span-2"><label className={lbl} htmlFor="bank-upi">UPI ID / UPI Number (Optional)</label><input id="bank-upi" className={`${inputCls} ${border(touched ? errors.upi : undefined)}`} placeholder="e.g. companyname@okhdfcbank or 9876543210@upi" value={p.upi} onChange={e => set('upi', e.target.value)} /><Err text={touched ? errors.upi : undefined} /></div>
           </div>
-        </section>
+        </section>}
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={save} className="flex items-center gap-2 h-12 px-6 text-sm font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 shadow-sm"><Check size={16} /> Save Organisation Settings</button>
-          <button onClick={() => openSub()} className="flex items-center gap-2 h-12 px-5 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100"><Plus size={16} /> Add Sub-Company</button>
+          {kind === 'quotation' && <button onClick={() => openSub()} className="flex items-center gap-2 h-12 px-5 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100"><Plus size={16} /> Add Sub-Company</button>}
           {dirty && <span className="text-xs font-semibold text-amber-600">Unsaved changes</span>}
         </div>
 
-        <section className="border-t border-slate-200 pt-5">
+        {kind === 'quotation' && <section className="border-t border-slate-200 pt-5">
           <h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><Building2 size={18} className="text-blue-600" /> Organisation Sub-Companies</h2>
           <p className="text-sm text-slate-500 mb-4">Manage additional company branches, subsidiaries, or departmental profiles for quotation generation.</p>
           {store.subs.length === 0 ? (
@@ -208,7 +237,7 @@ export function CompanyProfilePage() {
               ))}
             </div>
           )}
-        </section>
+        </section>}
       </div>
 
       <Modal open={!!subModal} onClose={() => setSubModal(null)} size="md" title={subModal?.editingId ? 'Edit Sub-Company' : 'Add Sub-Company'} subtitle="Branch, subsidiary or department that can issue quotations">

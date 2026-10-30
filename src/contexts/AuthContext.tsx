@@ -1,7 +1,8 @@
 import { androidGoogleSignIn, isAndroidApp } from '@/lib/android/auth';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
+import { applyDisabledModules, effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
+import { fetchDisabledModules } from '@/lib/moduleSwitches';
 import { isTauri } from '@/lib/desktop/isTauri';
 import { desktopGoogleSignIn } from '@/lib/desktop/auth';
 
@@ -108,7 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const payload = data as { role?: ErpRole | null; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
-      setPermissions(effectiveMatrix(payload.role ?? role ?? null, payload.permissions));
+      // modules switched fully off for the company (Access Management > Full off) are removed for everyone
+      const off = await fetchDisabledModules();
+      setPermissions(applyDisabledModules(effectiveMatrix(payload.role ?? role ?? null, payload.permissions), off));
     } catch (e) {
       console.error('erp_get_permissions failed:', e);
       setPermissions(null);

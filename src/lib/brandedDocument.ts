@@ -1,5 +1,6 @@
 import { formatDate } from '@/lib/format';
 import { productOnly } from '@/lib/productLabel';
+import type { QuoteSeller } from './companyProfile';
 
 export interface BrandedDocumentInput {
   companyName: string;
@@ -454,6 +455,40 @@ export async function viewCostingDocument(input: CostingDocumentInput) {
 // Amounts arrive pre-formatted as strings (core PDF fonts lack the ₹ glyph).
 // -------------------------------------------------------------------------------------
 
+/** An image data URL as jsPDF wants it: its format, and its size scaled down to fit a box (aspect ratio kept). */
+function fitImage(doc: any, dataUrl: string, maxW: number, maxH: number): { fmt: 'PNG' | 'JPEG'; w: number; h: number } | null {
+  try {
+    const props = doc.getImageProperties(dataUrl);
+    const k = Math.min(maxW / props.width, maxH / props.height);
+    if (!(k > 0) || !Number.isFinite(k)) return null;
+    return { fmt: /^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG', w: props.width * k, h: props.height * k };
+  } catch { return null; }
+}
+
+/** The issuing company for an invoice / challan: the one passed in, else the profile saved in Settings (null = plain letterhead). */
+async function sellerFor(input: { seller?: QuoteSeller | null }, kind: 'invoice' | 'dc'): Promise<QuoteSeller | null> {
+  if (input.seller !== undefined) return input.seller;
+  try {
+    const m = await import('@/lib/documentProfile');
+    return await m.fetchDocumentSeller(kind);
+  } catch { return null; }
+}
+
+/** The lines printed under the company name: address, GSTIN, phones, e-mails, website. */
+function sellerLetterhead(seller: QuoteSeller | null, gstin: string): string[] {
+  const out: string[] = [];
+  const addr = String(seller?.address || '').replace(/\s*\n\s*/g, ', ').trim();
+  if (addr) out.push(addr);
+  const contact = [
+    gstin && `GSTIN: ${gstin}`,
+    seller?.phones?.length ? `Ph: ${seller.phones.join(', ')}` : '',
+    seller?.emails?.length ? `Email: ${seller.emails.join(', ')}` : '',
+    seller?.website ? `Web: ${seller.website.replace(/^https?:\/\//i, '')}` : '',
+  ].filter(Boolean).join('  |  ');
+  if (contact) out.push(contact);
+  return out;
+}
+
 export interface DeliveryChallanItem {
   partName: string;
   hsn: string;
@@ -488,6 +523,8 @@ export interface DeliveryChallanInput {
   items: DeliveryChallanItem[];
   customerSignature?: string | null;
   authorizedSignature?: string | null;
+  /** The issuing company (logo, address, GSTIN, contacts, signature). Left out = the profile saved in Settings > Delivery Challan Profile. */
+  seller?: QuoteSeller | null;
 }
 
 function challanDate(iso: string | null | undefined): string {
@@ -497,7 +534,7 @@ function challanDate(iso: string | null | undefined): string {
   return s || '—';
 }
 
-async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInstance?: any) {
+export async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInstance?: any) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
@@ -518,27 +555,45 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInst
   const MR = 14;
   const contentW = pageWidth - ML - MR;
   const cx = pageWidth / 2;
-  const compName = String(input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase();
+  const seller = await sellerFor(input, 'dc');
+  const compName = String(seller?.name || input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase();
   const val = (v: string | number | null | undefined) => String(v ?? '').trim() || '—';
 
   // ---- Premium header: logo left, company centre, document meta right ----
-  try {
-    const response = await fetch('/arguscnc-logo.jpg');
-    if (response.ok) {
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      doc.addImage(dataUrl, 'JPEG', ML, 9, 34, 14);
-    }
-  } catch { /* printable without the logo */ }
+  let logoDrawn = false;
+  if (seller?.logo) {
+    const f = fitImage(doc, seller.logo, 34, 14);
+    if (f) { try { doc.addImage(seller.logo, f.fmt, ML, 9 + (14 - f.h) / 2, f.w, f.h); logoDrawn = true; } catch { /* default logo below */ } }
+  }
+  if (!logoDrawn) {
+    try {
+      const response = await fetch('/arguscnc-logo.jpg');
+      if (response.ok) {
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        doc.addImage(dataUrl, 'JPEG', ML, 9, 34, 14);
+      }
+    } catch { /* printable without the logo */ }
+  }
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.text(compName, cx, 16, { align: 'center' });
+  // address / GSTIN / phones / e-mails of the company, between the logo and the document number
+  const dcLetter = sellerLetterhead(seller, String(seller?.gstin || ''));
+  if (dcLetter.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(...GREY);
+    const lines = (doc.splitTextToSize(dcLetter.join('  |  '), contentW - 34 - 46) as string[]).slice(0, 3);
+    lines.forEach((l, i) => doc.text(l, cx - 6, 20.4 + i * 3.1, { align: 'center' }));
+    doc.setTextColor(...NAVY);
+  }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(...GREY);
@@ -722,8 +777,10 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInst
     let drawn = false;
     if (sig) {
       try {
-        const w = Math.min(sigBoxW - 24, 58);
-        doc.addImage(sig, 'PNG', x + (sigBoxW - w) / 2, y + 9.5, w, w / 4);
+        const maxW = Math.min(sigBoxW - 24, 58);
+        const f = fitImage(doc, sig, maxW, 14);
+        if (f) doc.addImage(sig, f.fmt, x + (sigBoxW - f.w) / 2, y + 9.5 + (14 - f.h) / 2, f.w, f.h);
+        else doc.addImage(sig, 'PNG', x + (sigBoxW - maxW) / 2, y + 9.5, maxW, maxW / 4);
         drawn = true;
       } catch { /* blank area below */ }
     }
@@ -741,7 +798,7 @@ async function buildDeliveryChallanDocument(input: DeliveryChallanInput, docInst
     doc.text(`${nameLabel}: ${nameValue || '__________________'}`, x + sigBoxW / 2, y + 36, { align: 'center' });
   };
   drawSigBox(ML, 'RECEIVED BY CUSTOMER', 'Customer Signature', 'Receiver Name', String(input.receiverName || ''), input.customerSignature);
-  drawSigBox(ML + sigBoxW + 5, `FOR ${compName}`, 'Authorized Signatory', 'Authorized Name', String(input.senderName || ''), input.authorizedSignature);
+  drawSigBox(ML + sigBoxW + 5, `FOR ${compName}`, 'Authorized Signatory', 'Authorized Name', String(input.senderName || ''), input.authorizedSignature || seller?.signature);
   y += sigBoxH + 6;
 
   // ---- Subtle footer on every page ----
@@ -836,6 +893,8 @@ export interface SalesInvoiceInput {
   terms?: string;
   /** @deprecated old name for the box text; `terms` wins. */
   declaration?: string;
+  /** The issuing company (logo, address, GSTIN, contacts, bank, signature). Left out = the profile saved in Settings > Invoice Profile. */
+  seller?: QuoteSeller | null;
 }
 
 /** Company printables already stored on the companies row (read-only). */
@@ -896,12 +955,13 @@ export function amountInWords(total: number): string {
   return `${inWordsIndian(rupees)} Rupees${paise ? ' and ' + wordsTwo(paise) + ' Paise' : ''} Only`;
 }
 
-async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
+export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
   ]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const seller = await sellerFor(input, 'invoice');
   const pageWidth = doc.internal.pageSize.getWidth();
   const INK: [number, number, number] = [0, 0, 0];
   const GREY: [number, number, number] = [110, 110, 110];
@@ -928,32 +988,53 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   y += 13;
 
   // Letterhead
-  try {
-    const response = await fetch('/arguscnc-logo.jpg');
-    if (response.ok) {
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      doc.addImage(dataUrl, 'JPEG', ML + 2, y, 32, 14);
-    }
-  } catch { /* printable without the logo */ }
+  let logoDrawn = false;
+  if (seller?.logo) {
+    const f = fitImage(doc, seller.logo, 32, 14);
+    if (f) { try { doc.addImage(seller.logo, f.fmt, ML + 2, y + (14 - f.h) / 2, f.w, f.h); logoDrawn = true; } catch { /* default logo below */ } }
+  }
+  if (!logoDrawn) {
+    try {
+      const response = await fetch('/arguscnc-logo.jpg');
+      if (response.ok) {
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        doc.addImage(dataUrl, 'JPEG', ML + 2, y, 32, 14);
+      }
+    } catch { /* printable without the logo */ }
+  }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(17);
-  doc.text(String(input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase(), cx, y + 6, { align: 'center' });
+  doc.text(String(seller?.name || input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase(), cx, y + 6, { align: 'center' });
   y += 11;
-  if (String(input.companyGstin || '').trim()) {
+  // address, GSTIN, phones, e-mails, website (the profile's GSTIN wins over the one stored on the company row)
+  const headGstin = String(seller?.gstin || input.companyGstin || '').trim();
+  const headLines = sellerLetterhead(seller, headGstin);
+  if (headLines.length) {
+    // the company's own letterhead: compact, so an ordinary invoice still fits on one page with its signatures
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.8);
     doc.setTextColor(...GREY);
-    doc.text(`GSTIN: ${String(input.companyGstin).trim()}`, cx, y, { align: 'center' });
+    const wrapped = headLines.flatMap((l) => doc.splitTextToSize(l, contentW - 70) as string[]).slice(0, 4);
+    for (const line of wrapped) { doc.text(line, cx, y, { align: 'center' }); y += 3.3; }
     doc.setTextColor(...INK);
-    y += 4;
+    y += 2;
+  } else {
+    if (headGstin) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...GREY);
+      doc.text(`GSTIN: ${headGstin}`, cx, y, { align: 'center' });
+      doc.setTextColor(...INK);
+      y += 4;
+    }
+    y += 7;
   }
-  y += 7;
 
   const gridOpts: any = {
     theme: 'grid',
@@ -1054,7 +1135,8 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const declTitle = 'Terms';
   const declBody = String(input.terms || input.declaration ||
     'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.');
-  const bankBody = (input.bankLines && input.bankLines.length ? input.bankLines : ['—']).join('\n');
+  const bankSource = seller?.bankLines?.length ? seller.bankLines : input.bankLines;   // the profile's bank details win
+  const bankBody = (bankSource && bankSource.length ? bankSource : ['—']).join('\n');
   const declLines: string[] = doc.splitTextToSize(declBody, (contentW - 3) / 2 - 10);
   const bankLines: string[] = doc.splitTextToSize(bankBody, (contentW - 3) / 2 - 10);
   const boxesH = Math.max(30, 12 + Math.max(declLines.length, bankLines.length) * 4.4);
@@ -1074,19 +1156,23 @@ async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   };
   drawInfoBox(ML, declTitle, declLines);
   drawInfoBox(ML + boxW + 3, 'Bank Details', bankLines);
-  y += boxesH + 12;
+  y += boxesH + 8;
 
   // Signatures
   ensureSpace(26);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...INK);
+  if (seller?.signature) {
+    const f = fitImage(doc, seller.signature, 44, 11);
+    if (f) { try { doc.addImage(seller.signature, f.fmt, pageWidth - MR - f.w, y + 11 - f.h, f.w, f.h); } catch { /* unsigned */ } }
+  }
   doc.text('Signature of the Company', ML, y + 12);
   doc.text('Authorised Signature', pageWidth - MR, y + 12, { align: 'right' });
-  y += 18;
+  y += 16;
 
-  // Computer-generated note
-  ensureSpace(14);
+  // Computer-generated note (it only needs its own 8 mm: it must not be sent to a page of its own for the last millimetre)
+  ensureSpace(9);
   doc.setFontSize(8);
   const note = '*** This is a computer-generated Original Document and does not require a physical signature. ***';
   const noteW = doc.getTextWidth(note) + 10;

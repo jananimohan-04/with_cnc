@@ -14,6 +14,7 @@ import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { DocumentProfileButton } from '@/components/DocumentProfileButton';
 import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { downloadSalesInvoice, fetchCompanyPrintDetails, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
 import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
@@ -1400,6 +1401,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+        <DocumentProfileButton kind="invoice" />
         <Button variant="secondary" size="sm" icon={<Upload size={13}/>} onClick={() => void exportRows()} disabled={busy || !canExportInv} title={!canExportInv ? 'Invoice export permission is required' : undefined} className="h-7 py-1 text-xs px-2.5 shadow-xs">
           Export
         </Button>

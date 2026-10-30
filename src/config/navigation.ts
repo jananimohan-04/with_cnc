@@ -47,33 +47,21 @@ export interface NavSection {
   items: NavItem[];
 }
 
+// The menu follows the same groups and module names as Access Management (src/config/permissions.ts).
 export const navSections: NavSection[] = [
   {
     label: 'Overview',
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400', module: 'dashboard' }
+      { label: 'Dashboard', icon: LayoutDashboard, page: 'dashboard', iconClass: 'text-sky-400', module: 'dashboard' },
+      { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400', module: 'reports' },
     ],
   },
   {
-    label: 'Sales & Finance',
+    label: 'Sales',
     items: [
       { label: 'Sales Pipelines', icon: TrendingUp, page: 'sales/in-house', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
       { label: 'Site Visit Sales', icon: MapPin, page: 'sales/site-visits', iconClass: 'text-sky-400', module: 'sales-pipeline' },
       { label: 'Partner & Online Sales', icon: ShoppingCart, page: 'sales/partner-orders', iconClass: 'text-indigo-400', module: 'sales-pipeline' },
-      { label: 'Commercial Invoices', icon: Receipt, page: 'finance/invoices', iconClass: 'text-teal-400', module: 'invoices' },
-    ],
-  },
-  {
-    label: 'Support',
-    items: [
-      { label: 'Technical Support', icon: LifeBuoy, page: 'support/technical', iconClass: 'text-cyan-400', module: 'support' },
-      { label: 'On-site Support', icon: Wrench, page: 'support/onsite', iconClass: 'text-emerald-400', module: 'support' },
-    ],
-  },
-  {
-    label: 'Engineering',
-    items: [
-      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400', module: 'engineering' },
     ],
   },
   {
@@ -86,34 +74,37 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    label: 'Accounts',
+    label: 'Finance',
     items: [
+      { label: 'Commercial Invoices', icon: Receipt, page: 'finance/invoices', iconClass: 'text-teal-400', module: 'invoices' },
       { label: 'Bank Entry', icon: Landmark, page: 'finance/bank-entry', iconClass: 'text-lime-400', module: 'bank-entry' },
       { label: 'Petty Cash', icon: Wallet, page: 'finance/petty-cash', iconClass: 'text-amber-400', module: 'petty-cash' },
-      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },
       { label: 'Ledger', icon: BookOpen, page: 'accounts/ledger', iconClass: 'text-amber-300', module: 'ledger' },
       { label: 'Trial Balance', icon: Scale, page: 'accounts/trial-balance', iconClass: 'text-purple-300', module: 'ledger' },
       { label: 'Profit & Loss', icon: BarChart3, page: 'accounts/profit-loss', iconClass: 'text-blue-400', module: 'ledger' },
       { label: 'Balance Sheet', icon: Landmark, page: 'accounts/balance-sheet', iconClass: 'text-slate-300', module: 'ledger' },
       { label: 'Opening Balances', icon: Archive, page: 'accounts/opening-balances', iconClass: 'text-rose-300', module: 'opening-balances' },
+      { label: 'Project Costing', icon: Calculator, page: 'costing/job-costing', iconClass: 'text-fuchsia-400', module: 'project-costing' },
     ],
   },
   {
-    label: 'Supply Chain',
+    label: 'Inventory & Purchasing',
     items: [
       { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300', module: 'inventory' },
       { label: 'Store Categories', icon: FolderTree, page: 'admin/categories', iconClass: 'text-cyan-400', module: 'inventory' },
       { label: 'Purchase', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
+      { label: 'Products and Drawings', icon: FileText, page: 'engineering/cnc-vault', iconClass: 'text-amber-400', module: 'engineering' },
     ],
   },
   {
-    label: 'System',
+    label: 'Administration',
     items: [
-      { label: 'Reports', icon: BarChart3, page: 'reports/production', iconClass: 'text-red-400', module: 'reports' },
       { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
       { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
+      { label: 'Technical Support', icon: LifeBuoy, page: 'support/technical', iconClass: 'text-cyan-400', module: 'support' },
+      { label: 'On-site Support', icon: Wrench, page: 'support/onsite', iconClass: 'text-emerald-400', module: 'support' },
       { label: 'Digital Storefront', icon: Store, page: 'store/home', iconClass: 'text-orange-400' },
     ],
   },

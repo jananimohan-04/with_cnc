@@ -53,6 +53,7 @@ import { DeliveriesPage } from './pages/operations/OperationsPages';
 import { BalanceSheetPage } from './pages/accounts/BalanceSheetPage';
 import { OpeningBalancesPage } from './pages/accounts/OpeningBalancesPage';
 import { GuideCoach } from './components/GuideCoach';
+import { TeachingTour } from './components/TeachingTour';
 import { Copilot } from './components/Copilot';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
@@ -354,6 +355,7 @@ function MainLayout() {
       )}
       <HelpAssistant />
       <GuideCoach />
+      <TeachingTour />
       <Copilot />
       <SavedProductsDatalist />
       <Time24Normalizer />

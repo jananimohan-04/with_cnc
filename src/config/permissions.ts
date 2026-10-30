@@ -131,6 +131,22 @@ export function effectiveMatrix(role: ErpRole | null | undefined, rows: Paramete
   return rowsToMatrix(rows);
 }
 
+/**
+ * "Full off": the modules switched off for the whole company lose every right, for every role (administrators included),
+ * so the menu, pages, pipeline columns and KPI tiles of that module all disappear from one place.
+ * Dashboard, Access Management and Settings can never be switched off (they are how the rest is switched back on).
+ */
+export function applyDisabledModules(matrix: PermMatrix, off: readonly string[] | null | undefined): PermMatrix {
+  if (!off || !off.length) return matrix;
+  const never = ['dashboard', 'admin-access', 'settings'];
+  const next: PermMatrix = { ...matrix };
+  for (const k of off) {
+    if (never.includes(k) || !next[k]) continue;
+    next[k] = emptyFlags();
+  }
+  return next;
+}
+
 /** Matrix -> RPC payload shape {module: {view,create,...}} (only modules with any grant). */
 export function matrixToPayload(matrix: PermMatrix): Record<string, Record<string, boolean>> {
   const out: Record<string, Record<string, boolean>> = {};

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload } from 'lucide-react';
+import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload, Power } from 'lucide-react';
+import { NEVER_OFF, fetchDisabledModules, setModuleOff } from '@/lib/moduleSwitches';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, StatCard } from '@/components/ui/Card';
@@ -12,6 +13,7 @@ import { useAuth, type ErpRole } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { isTauri } from '@/lib/desktop/isTauri';
 import { UpdatesSettingsPage } from '@/components/desktop/UpdatesSettingsPage';
+import { DocumentProfilePage } from '@/pages/quotation/CompanyProfilePage';
 import {
   ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
@@ -653,9 +655,32 @@ export function RolesPage() { return <AdminStub title="Roles" description="Defin
 export function PermissionsPage() { return <AdminStub title="Permissions" description="Granular access control matrix" icon={ShieldCheck} />; }
 // Web: keeps the original placeholder. Desktop: real About + Updates settings
 // (version, startup/periodic check toggles, manual check) — no other settings moved.
+// Company Settings: the company profile printed on each document, one tab per document (same setup for all three), plus
+// the app updates on the desktop app. A link like /admin/settings?tab=invoice opens straight on a tab.
 export function SettingsPage() {
-  if (isTauri()) return <UpdatesSettingsPage />;
-  return <AdminStub title="Company Settings" description="Global ERP configuration and preferences" icon={SettingsIcon} />;
+  const [params, setParams] = useSearchParams();
+  const tabs: { id: string; label: string; hint: string; node: JSX.Element }[] = [
+    { id: 'quotation', label: 'Quotation Profile', hint: 'Printed on quotations', node: <DocumentProfilePage kind="quotation" embedded /> },
+    { id: 'invoice', label: 'Invoice Profile', hint: 'Printed on invoices', node: <DocumentProfilePage kind="invoice" embedded /> },
+    { id: 'dc', label: 'Delivery Challan Profile', hint: 'Printed on delivery challans', node: <DocumentProfilePage kind="dc" embedded /> },
+    ...(isTauri() ? [{ id: 'updates', label: 'App Updates', hint: 'Desktop app version', node: <UpdatesSettingsPage /> }] : []),
+  ];
+  const active = tabs.find((t) => t.id === params.get('tab')) ?? tabs[0];
+  return (
+    <div className="p-4 lg:p-6 bg-grid min-h-full">
+      <PageHeader title="Company Settings" description="Set up the company details that are printed on each document: logo, address, GSTIN, contacts, bank and signature." />
+      <div role="tablist" aria-label="Settings" className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={active.id === t.id} title={t.hint}
+            onClick={() => setParams({ tab: t.id }, { replace: true })}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${active.id === t.id ? 'bg-orange-500 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div key={active.id}>{active.node}</div>
+    </div>
+  );
 }
 export function AuditLogsPage() { return <AdminStub title="Audit Logs" description="System-wide activity monitoring" icon={FileText} />; }
 
@@ -786,8 +811,8 @@ function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title,
   );
 }
 
-function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
-  userId: string; userEmail: string; userRole: ErpRole; onSaved?: () => void;
+export function PermissionEditor({ userId, userEmail, userRole, companyId, companyName, onSaved }: {
+  userId: string; userEmail: string; userRole: ErpRole; companyId?: string | null; companyName?: string; onSaved?: () => void;
 }) {
   // These stages live on the Sales Pipeline strip (no sidebar entry): their
   // matrix rows still control the pipeline column, KPI tile and list access.
@@ -801,6 +826,27 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // "Full off": modules switched off for EVERYONE in this user's company (loaded and saved on their own, not with Save Permissions)
+  const [fullOff, setFullOff] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let off = false;
+    void fetchDisabledModules(companyId).then((keys) => { if (!off) setFullOff(new Set(keys)); });
+    return () => { off = true; };
+  }, [companyId]);
+  const toggleFullOff = async (key: string, label: string) => {
+    const turnOff = !fullOff.has(key);
+    const where = companyName || 'this company';
+    const msg = turnOff
+      ? `Switch "${label}" fully OFF for everyone in ${where}?\n\nIts menu, pages, pipeline column and KPI tile will disappear for every user, administrators included, until you switch it on again.`
+      : `Switch "${label}" back on for ${where}?\n\nEach user will see it again if they have access to it.`;
+    if (!window.confirm(msg)) return;
+    setError(null); setNotice(null);
+    const res = await setModuleOff(key, turnOff, companyId);
+    if ('error' in res) { setError(res.error); return; }
+    setFullOff(new Set(res.modules));
+    setNotice(turnOff ? `${label} is now fully off for everyone in ${where}.` : `${label} is on again for ${where}.`);
+    void refreshPermissions();   // this administrator's own menu follows at once
+  };
 
   // Category bulk controls. Select All toggles View only (never grants
   // actions); the Actions menu enables one action at a time (implying View,
@@ -992,7 +1038,7 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
                     return (
                       <div key={m.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-1.5 ${theme.rowHover} transition-colors`}>
                         <label className="flex items-center gap-2 min-w-[9.5rem] cursor-pointer">
-                          <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget}
+                          <button type="button" role="switch" aria-checked={f.view} disabled={locked || isSuperTarget || fullOff.has(m.key)}
                             onClick={() => setModule(m.key, { view: !f.view })}
                             className={`relative w-8 h-4.5 rounded-full transition-colors shrink-0 ${f.view ? theme.toggleOn : 'bg-slate-300'} ${(locked || isSuperTarget) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                             style={{ height: '18px', width: '32px' }}>
@@ -1000,9 +1046,18 @@ function PermissionEditor({ userId, userEmail, userRole, onSaved }: {
                           </button>
                           <span className="text-xs font-semibold text-slate-800 truncate">{m.label}</span>
                           {locked && <Lock size={12} className="text-slate-400 shrink-0" />}
+                          {fullOff.has(m.key) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-700 whitespace-nowrap" data-testid="off-badge">Off for everyone</span>}
                           {PIPELINE_ONLY[m.key] && <span className="text-[10px] text-slate-400 whitespace-nowrap" title="No sidebar entry — this permission controls the Sales Pipeline column, KPI tile and list access">via Sales Pipeline</span>}
                         </label>
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                          {!NEVER_OFF.includes(m.key) && !locked && (
+                            <button type="button" role="switch" aria-checked={fullOff.has(m.key)} aria-label={`Full off ${m.label}`}
+                              title={fullOff.has(m.key) ? `Click to switch ${m.label} back on for the whole company` : `Switch ${m.label} fully off: its menu disappears for everyone in the company`}
+                              onClick={() => void toggleFullOff(m.key, m.label)}
+                              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${fullOff.has(m.key) ? 'border-red-600 bg-red-600 text-white hover:bg-red-700' : 'border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:text-red-600'}`}>
+                              <Power size={10} />{fullOff.has(m.key) ? 'Full off · click to turn on' : 'Full off'}
+                            </button>
+                          )}
                           {m.actions.filter((a) => a !== 'view').map((a) => (
                             <label key={a} className={`flex items-center gap-1 text-[11px] ${(locked || isSuperTarget || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer hover:text-slate-900'}`}>
                               <input type="checkbox" disabled={locked || isSuperTarget || !f.view} checked={!!f[a]}
@@ -1226,7 +1281,7 @@ export function AccessPage() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           {selectedUser ? (
             canManage(selectedUser) ? (
-              <PermissionEditor key={selectedUser.id} userId={selectedUser.id} userEmail={selectedUser.email} userRole={selectedUser.role} onSaved={() => loadUsers()} />
+              <PermissionEditor key={selectedUser.id} userId={selectedUser.id} userEmail={selectedUser.email} userRole={selectedUser.role} companyId={selectedUser.company_id} companyName={selectedUser.company_name} onSaved={() => loadUsers()} />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <ShieldCheck size={28} className="text-slate-300 mb-3" />

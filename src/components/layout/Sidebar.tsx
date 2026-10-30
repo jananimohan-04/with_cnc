@@ -134,7 +134,7 @@ export function Sidebar({
                       hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
                     }`}
                   >
-                    <span className="truncate">{section.label}</span>
+                    <span className="leading-tight text-left">{section.label}</span>
                     <ChevronDown size={11} className={`transition-transform duration-200 flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
                   </button>
                 )}

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
 import { useSort, SortLabel } from '@/components/ui/SortHeader';
+import { DocumentProfileButton } from '@/components/DocumentProfileButton';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
@@ -92,15 +93,18 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
   const pager = usePager(viewRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
-    <div className="relative shrink-0">
-      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-      <input
-        type="text"
-        placeholder="Search DC..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
-      />
+    <div className="flex shrink-0 items-center gap-1.5">
+      <DocumentProfileButton kind="dc" />
+      <div className="relative shrink-0">
+        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Search DC..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-brand-500 bg-white shadow-sm w-36 sm:w-44"
+        />
+      </div>
     </div>
   );
 

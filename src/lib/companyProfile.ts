@@ -1,7 +1,14 @@
 import { supabase } from './supabase';
-// Organisation profile used on quotation PDFs (logo, signature, GSTIN, contacts, bank) plus
-// optional sub-companies (branches / subsidiaries). Stored in this browser, per company; there is
-// no database table for it yet.
+// Organisation profile (logo, signature, GSTIN, contacts, bank) plus optional sub-companies (branches / subsidiaries).
+// There is one profile per document type: quotations, invoices and delivery challans each print their own. It is kept in
+// the database for the whole company (cnc_company_profiles), with this browser's copy as a cache.
+
+export type ProfileKind = 'quotation' | 'invoice' | 'dc';
+export const PROFILE_KINDS: { kind: ProfileKind; label: string; short: string }[] = [
+  { kind: 'quotation', label: 'Quotation Profile', short: 'quotation' },
+  { kind: 'invoice', label: 'Invoice Profile', short: 'invoice' },
+  { kind: 'dc', label: 'Delivery Challan Profile', short: 'delivery challan' },
+];
 
 export interface OrgProfile {
   orgName: string;
@@ -33,7 +40,12 @@ export interface QuoteSeller {
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 export const IMAGE_TYPES = ['image/png', 'image/jpeg'];
 
-const key = (companyId: string | null | undefined) => `argus.orgprofile.${companyId ?? 'all'}`;
+// the quotation profile keeps its original key, so profiles saved before invoices / challans had one are still found
+const key = (companyId: string | null | undefined, kind: ProfileKind = 'quotation') =>
+  kind === 'quotation' ? `argus.orgprofile.${companyId ?? 'all'}` : `argus.orgprofile.${kind}.${companyId ?? 'all'}`;
+
+/** Extra arguments for the database calls: the quotation profile is called exactly as before. */
+const kindArgs = (kind: ProfileKind): Record<string, unknown> => (kind === 'quotation' ? {} : { p_kind: kind });
 
 export const emptyProfile = (orgName = '', email = ''): OrgProfile => ({
   orgName, gstin: '', website: '', address: '', phones: [''], emails: [email], bankName: '', accountNo: '', branch: '', ifsc: '', upi: '', logo: '', signature: '',
@@ -41,28 +53,32 @@ export const emptyProfile = (orgName = '', email = ''): OrgProfile => ({
 
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
-export function loadProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }): ProfileStore {
+/** Turns whatever was saved (browser or database) into a complete, safe profile store. */
+export function normaliseStore(v: any, defaults: { orgName: string; email: string }): ProfileStore {
   const base = emptyProfile(defaults.orgName, defaults.email);
-  try {
-    const raw = localStorage.getItem(key(companyId));
-    if (!raw) return { profile: base, subs: [] };
-    const v = JSON.parse(raw);
-    const p = (v?.profile ?? {}) as Partial<OrgProfile>;
-    const s = (x: unknown) => (typeof x === 'string' ? x : '');
-    const phones = strs(p.phones), emails = strs(p.emails);
-    return {
-      profile: {
-        orgName: s(p.orgName) || base.orgName, gstin: s(p.gstin), website: s(p.website), address: s(p.address),
-        phones: phones.length ? phones : [''], emails: emails.length ? emails : [''],
-        bankName: s(p.bankName), accountNo: s(p.accountNo), branch: s(p.branch), ifsc: s(p.ifsc), upi: s(p.upi),
-        logo: s(p.logo), signature: s(p.signature),
-      },
-      subs: Array.isArray(v?.subs) ? v.subs.filter((x: SubCompany) => x && typeof x.id === 'string' && typeof x.name === 'string').map((x: SubCompany) => ({ id: x.id, name: x.name, gstin: s(x.gstin), address: s(x.address), phone: s(x.phone), email: s(x.email) })) : [],
-    };
-  } catch { return { profile: base, subs: [] }; }
+  if (!v || typeof v !== 'object') return { profile: base, subs: [] };
+  const p = (v?.profile ?? {}) as Partial<OrgProfile>;
+  const s = (x: unknown) => (typeof x === 'string' ? x : '');
+  const phones = strs(p.phones), emails = strs(p.emails);
+  return {
+    profile: {
+      orgName: s(p.orgName) || base.orgName, gstin: s(p.gstin), website: s(p.website), address: s(p.address),
+      phones: phones.length ? phones : [''], emails: emails.length ? emails : [''],
+      bankName: s(p.bankName), accountNo: s(p.accountNo), branch: s(p.branch), ifsc: s(p.ifsc), upi: s(p.upi),
+      logo: s(p.logo), signature: s(p.signature),
+    },
+    subs: Array.isArray(v?.subs) ? v.subs.filter((x: SubCompany) => x && typeof x.id === 'string' && typeof x.name === 'string').map((x: SubCompany) => ({ id: x.id, name: x.name, gstin: s(x.gstin), address: s(x.address), phone: s(x.phone), email: s(x.email) })) : [],
+  };
 }
 
-const hasContent = (v: any): boolean => {
+export function loadProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }, kind: ProfileKind = 'quotation'): ProfileStore {
+  try {
+    const raw = localStorage.getItem(key(companyId, kind));
+    return normaliseStore(raw ? JSON.parse(raw) : null, defaults);
+  } catch { return normaliseStore(null, defaults); }
+}
+
+export const hasContent = (v: any): boolean => {
   const p = v?.profile ?? {};
   return !!(p.address || p.gstin || p.website || p.bankName || p.accountNo || p.branch || p.ifsc || p.upi || p.logo || p.signature
     || (Array.isArray(p.phones) && p.phones.some(Boolean)) || (Array.isArray(v?.subs) && v.subs.length));
@@ -74,33 +90,33 @@ const hasContent = (v: any): boolean => {
  *   - it has none, but this browser has one      -> that one is uploaded, so it becomes the company's
  * Falls back to the browser copy if the database call is not available (migration not applied, offline).
  */
-export async function syncProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }): Promise<ProfileStore> {
-  if (!companyId) return loadProfileStore(companyId, defaults);
+export async function syncProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }, kind: ProfileKind = 'quotation'): Promise<ProfileStore> {
+  if (!companyId) return loadProfileStore(companyId, defaults, kind);
   try {
-    const { data, error } = await supabase.rpc('erp_get_company_profile');
+    const { data, error } = await supabase.rpc('erp_get_company_profile', kindArgs(kind) as never);
     if (!error) {
       if (data && typeof data === 'object') {
-        localStorage.setItem(key(companyId), JSON.stringify(data));
+        localStorage.setItem(key(companyId, kind), JSON.stringify(data));
       } else {
-        const raw = localStorage.getItem(key(companyId));
+        const raw = localStorage.getItem(key(companyId, kind));
         const local = raw ? JSON.parse(raw) : null;
-        if (local && hasContent(local)) await supabase.rpc('erp_save_company_profile', { p_data: local });
+        if (local && hasContent(local)) await supabase.rpc('erp_save_company_profile', { p_data: local, ...kindArgs(kind) } as never);
       }
     }
   } catch { /* keep the browser copy */ }
-  return loadProfileStore(companyId, defaults);
+  return loadProfileStore(companyId, defaults, kind);
 }
 
 /** Saves the profile for the whole company. Returns an error message, or null when saved. */
-export async function saveProfileRemote(st: ProfileStore): Promise<string | null> {
+export async function saveProfileRemote(st: ProfileStore, kind: ProfileKind = 'quotation'): Promise<string | null> {
   try {
-    const { error } = await supabase.rpc('erp_save_company_profile', { p_data: st });
+    const { error } = await supabase.rpc('erp_save_company_profile', { p_data: st, ...kindArgs(kind) } as never);
     return error ? error.message : null;
   } catch (e) { return e instanceof Error ? e.message : String(e); }
 }
 
-export function saveProfileStore(companyId: string | null | undefined, st: ProfileStore): boolean {
-  try { localStorage.setItem(key(companyId), JSON.stringify(st)); return true; } catch { return false; }
+export function saveProfileStore(companyId: string | null | undefined, st: ProfileStore, kind: ProfileKind = 'quotation'): boolean {
+  try { localStorage.setItem(key(companyId, kind), JSON.stringify(st)); return true; } catch { return false; }
 }
 
 // ---- validation ---------------------------------------------------------------------------------
@@ -180,4 +196,10 @@ export async function prepareImage(file: File, maxEdge: number): Promise<string>
     ctx.drawImage(img, 0, 0, w, h);
     return file.type === 'image/png' ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
   } finally { URL.revokeObjectURL(url); }
+}
+
+/** What a document prints for the issuing company, from a saved profile (null while nothing has been filled in yet). */
+export function sellerFromStore(st: ProfileStore | null | undefined): QuoteSeller | null {
+  if (!st || !hasContent(st)) return null;
+  return resolveSeller(st, undefined);
 }
