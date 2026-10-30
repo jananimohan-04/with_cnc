@@ -6,7 +6,8 @@ import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
-import { formatTimestamp } from '@/lib/format';
+import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 
@@ -160,13 +161,24 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
 
   const sortedQuotes = useMemo(() => {
     return [...filteredQuotes].sort((a, b) => {
-      const bTime = new Date(b.created_at || b.date || 0).getTime();
-      const aTime = new Date(a.created_at || a.date || 0).getTime();
+      const bTime = new Date(lastEditedAt(b, 'date') || 0).getTime();
+      const aTime = new Date(lastEditedAt(a, 'date') || 0).getTime();
       return bTime - aTime;
     });
   }, [filteredQuotes]);
 
-  const pager = usePager(sortedQuotes, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sort = useSort<any>({
+    ts: (r) => lastEditedAt(r, 'date'),
+    date: (r) => String(r.date || r.created_at || ''),
+    quote_no: (r) => String(r.quote_no || ''),
+    company: (r) => String(r.customer || '').toLowerCase(),
+    description: (r) => String(r.part_name || '').toLowerCase(),
+    value: (r) => Number(r.total_value) || 0,
+    status: (r) => String(r.status || '').toLowerCase(),
+  });
+  const viewQuotes = useMemo(() => sort.apply(sortedQuotes), [sortedQuotes, sort.key, sort.dir]);
+
+  const pager = usePager(viewQuotes, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   return (
     <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-violet-400/30 overflow-hidden flex flex-col">
@@ -205,11 +217,11 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold w-8">#</th>
-                <th className="p-3 font-semibold">Timestamp</th>
-                <th className="p-3 font-semibold">Quote No</th>
+                <th className="p-3 font-semibold" title="When this quotation was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
+                <th className="p-3 font-semibold"><SortLabel label="Quote Date" col="date" sort={sort} /></th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company</span>
+                    <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
@@ -217,11 +229,11 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                     />
                   </div>
                 </th>
-                <th className="p-3 font-semibold">Description</th>
-                <th className="p-3 font-semibold">Value</th>
+                <th className="p-3 font-semibold"><SortLabel label="Description" col="description" sort={sort} /></th>
+                <th className="p-3 font-semibold"><SortLabel label="Value" col="value" sort={sort} /></th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
+                    <SortLabel label="Status" col="status" sort={sort} />
                     <select
                       aria-label="Filter by Status"
                       title="Filter by Status"
@@ -243,8 +255,8 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
               {pager.pageItems.map((quote, idx) => (
                 <tr key={quote.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
-                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(quote.created_at || quote.date)}</td>
-                  <td className="p-3 font-mono text-sm text-slate-800 font-medium">{quote.quote_no || 'Pending'}</td>
+                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(quote, 'date'))}</td>
+                  <td className="p-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(quote.date || quote.created_at || '').slice(0, 10)) || '—'}</td>
                   <td className="p-3 font-semibold text-brand-700 text-sm">{quote.customer}</td>
                   <td className="p-3 text-sm text-slate-700">{quote.part_name || '—'}</td>
                   <td className="p-3 text-sm font-medium text-slate-700">₹{quote.total_value?.toLocaleString('en-IN') || '-'}</td>

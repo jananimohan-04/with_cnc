@@ -14,6 +14,7 @@ import { compactInput } from '@/lib/compactFields';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { downloadSalesInvoice, fetchCompanyPrintDetails, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
 import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
 import { loadTerms } from '@/lib/termsLibrary';
@@ -53,6 +54,8 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const effFilters = { ...filters, from: filters.from || globalFrom || '', to: filters.to || globalTo || '' };
   const [rows, setRows] = useState<InvoiceRow[]>([]);
+  // When each listed invoice was created / last edited (the list function does not return these).
+  const [stamps, setStamps] = useState<Record<string, { created_at?: string; updated_at?: string }>>({});
   const [stats, setStats] = useState<InvoiceSummary>(emptySummary);
   const [customers, setCustomers] = useState<any[]>([]);
   const [deliveries, setDeliveries] = useState<any[]>([]);
@@ -135,6 +138,8 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
         financeApi.invoiceSummary(f.from || undefined, f.to || undefined),
       ]);
       setRows(list.rows); setTotal(list.total); setStats(summary || emptySummary); setPage(p);
+      const ids = list.rows.map((r) => r.id);
+      if (ids.length) void supabase.from('cnc_invoices').select('id,created_at,updated_at').in('id', ids).then(({ data }) => setStamps(Object.fromEntries((data ?? []).map((d: any) => [d.id, d]))));
     } catch (e) { setRows([]); setTotal(0); setStats(emptySummary); setError(e instanceof Error ? e.message : 'Unable to load invoices.'); }
     finally { setLoading(false); }
   };
@@ -890,7 +895,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
 
   const allStatuses = ['Paid', 'Partially Paid', 'Overdue', 'Pending', 'Proforma', 'Credit Note', 'Cancelled'];
 
-  const displayedRows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     return rows.filter(r => {
       const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
         (r.customer_name || '').trim().toLowerCase() === companyFilter.trim().toLowerCase();
@@ -899,6 +904,24 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
       return matchesCompany && matchesStatus;
     });
   }, [rows, companyFilter, tableStatusFilter]);
+
+  // Sorts the invoices on this page (the list is loaded ten at a time).
+  const sort = useSort<InvoiceRow>({
+    ts: (r) => stamps[r.id]?.updated_at || stamps[r.id]?.created_at || String(r.invoice_date || ''),
+    date: (r) => String(r.invoice_date || ''),
+    invoice_no: (r) => String(r.invoice_no || ''),
+    company: (r) => String(r.customer_name || '').toLowerCase(),
+    po: (r) => String(r.po_no || '').toLowerCase(),
+    basic: (r) => Number(String(r.basic_value ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    cgst: (r) => Number(String(r.cgst ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    sgst: (r) => Number(String(r.sgst ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    igst: (r) => Number(String(r.igst ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    total: (r) => Number(String(r.total ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    received: (r) => Number(String(r.received ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    balance: (r) => Number(String(r.balance ?? '').replace(/[^0-9.-]/g, '')) || 0,
+    status: (r) => String(r.status || '').toLowerCase(),
+  });
+  const displayedRows = useMemo(() => sort.apply(filteredRows), [filteredRows, sort.key, sort.dir, stamps]);
 
   const invInput = 'h-6 px-1.5 py-0 text-[11px] font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-none';
   const invLbl = 'whitespace-nowrap text-[9px] font-bold text-slate-600 uppercase tracking-tight';
@@ -1427,11 +1450,12 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
             <thead>
               <tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500">
                 <th className="px-2 py-2">#</th>
-                <th className="px-2 py-2">Timestamp</th>
-                <th className="px-2 py-2">Invoice No</th>
+                <th className="px-2 py-2" title="When this invoice was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
+                <th className="px-2 py-2"><SortLabel label="Invoice Date" col="date" sort={sort} /></th>
+                <th className="px-2 py-2"><SortLabel label="Invoice No" col="invoice_no" sort={sort} /></th>
                 <th className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company</span>
+                    <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
@@ -1439,17 +1463,17 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                     />
                   </div>
                 </th>
-                <th className="px-2 py-2">PO No</th>
-                <th className="px-2 py-2 text-right">Basic</th>
-                <th className="px-2 py-2 text-right">CGST</th>
-                <th className="px-2 py-2 text-right">SGST</th>
-                <th className="px-2 py-2 text-right">IGST</th>
-                <th className="px-2 py-2 text-right">Total</th>
-                <th className="px-2 py-2 text-right">Received</th>
-                <th className="px-2 py-2 text-right">Balance</th>
+                <th className="px-2 py-2"><SortLabel label="PO No" col="po" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="Basic" col="basic" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="CGST" col="cgst" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="SGST" col="sgst" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="IGST" col="igst" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="Total" col="total" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="Received" col="received" sort={sort} /></th>
+                <th className="px-2 py-2 text-right"><SortLabel label="Balance" col="balance" sort={sort} /></th>
                 <th className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
+                    <SortLabel label="Status" col="status" sort={sort} />
                     <select
                       aria-label="Filter by Status"
                       title="Filter by Status"
@@ -1469,11 +1493,12 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={14} className="p-10 text-center">Loading invoices...</td></tr>
+                <tr><td colSpan={15} className="p-10 text-center">Loading invoices...</td></tr>
               ) : displayedRows.map((r, i) => (
                 <tr key={r.id} onClick={() => (onView ? onView(r) : void view(r))} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
                   <td className="px-2 py-2">{(page - 1) * PAGE + i + 1}</td>
-                  <td className="px-2 py-2 text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(r.created_at || r.invoice_date)}</td>
+                  <td className="px-2 py-2 text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(stamps[r.id]?.updated_at || stamps[r.id]?.created_at || r.invoice_date)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">{formatDate(r.invoice_date) || '—'}</td>
                   <td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td>
                   <td className="px-2 py-2">{r.customer_name || '-'}</td>
                   <td className="px-2 py-2">{r.po_no || '-'}</td>
@@ -1527,7 +1552,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                 </tr>
               ))}
               {!loading && !displayedRows.length && (
-                <tr><td colSpan={14} className="p-6 text-center text-slate-500">No invoices found.</td></tr>
+                <tr><td colSpan={15} className="p-6 text-center text-slate-500">No invoices found.</td></tr>
               )}
             </tbody>
           </table>

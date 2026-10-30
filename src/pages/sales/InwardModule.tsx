@@ -10,7 +10,8 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocument';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
-import { formatTimestamp } from '@/lib/format';
+import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 
 export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { company } = useAuth();
@@ -186,13 +187,26 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
 
   const sortedRecords = useMemo(() => {
     return [...filteredRecords].sort((a, b) => {
-      const bTime = new Date(b.created_at || b.inward_date || 0).getTime();
-      const aTime = new Date(a.created_at || a.inward_date || 0).getTime();
+      const bTime = new Date(lastEditedAt(b, 'inward_date') || 0).getTime();
+      const aTime = new Date(lastEditedAt(a, 'inward_date') || 0).getTime();
       return bTime - aTime;
     });
   }, [filteredRecords]);
 
-  const pager = usePager(sortedRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sort = useSort<any>({
+    ts: (r) => lastEditedAt(r, 'inward_date'),
+    date: (r) => String(r.inward_date || r.created_at || ''),
+    inward_no: (r) => String(r.inward_no || ''),
+    company: (r) => String(r.party_name || '').toLowerCase(),
+    category: (r) => String(r.category || 'GOODS PURCHASE').toLowerCase(),
+    part: (r) => String(r.part_name || '').toLowerCase(),
+    quantity: (r) => Number(r.quantity) || 0,
+    total: (r) => Number(String(rowTotal(r) ?? '').replace(/[^0-9.]/g, '')) || 0,
+    status: (r) => String(r.status || '').toLowerCase(),
+  });
+  const viewRecords = useMemo(() => sort.apply(sortedRecords), [sortedRecords, sort.key, sort.dir]);
+
+  const pager = usePager(viewRecords, `${search}||${companyFilter}||${categoryFilter}||${partNameFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   // Shared so the two row templates cannot drift apart.
   const actionCell = (record: any) => (
@@ -247,11 +261,11 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2 px-3 font-semibold w-8">#</th>
-                <th className="py-2 px-3 font-semibold">Timestamp</th>
-                <th className="py-2 px-3 font-semibold">Inward No</th>
+                <th className="py-2 px-3 font-semibold" title="When this inward was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
+                <th className="py-2 px-3 font-semibold"><SortLabel label="Inward Date" col="date" sort={sort} /></th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company</span>
+                    <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
@@ -261,7 +275,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 </th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Category</span>
+                    <SortLabel label="Category" col="category" sort={sort} />
                     <select
                       aria-label="Filter by Category"
                       title="Filter by Category"
@@ -278,7 +292,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 </th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Part Name</span>
+                    <SortLabel label="Part Name" col="part" sort={sort} />
                     <select
                       aria-label="Filter by Part Name"
                       title="Filter by Part Name"
@@ -293,11 +307,11 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                     </select>
                   </div>
                 </th>
-                <th className="py-2 px-3 font-semibold">Quantity</th>
-                <th className="py-2 px-3 font-semibold">Total Amount</th>
+                <th className="py-2 px-3 font-semibold"><SortLabel label="Quantity" col="quantity" sort={sort} /></th>
+                <th className="py-2 px-3 font-semibold"><SortLabel label="Total Amount" col="total" sort={sort} /></th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
+                    <SortLabel label="Status" col="status" sort={sort} />
                     <select
                       aria-label="Filter by Status"
                       title="Filter by Status"
@@ -318,7 +332,9 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
             <tbody>
               {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="py-2 px-3 text-sm font-mono font-medium text-slate-800">{record.inward_no || '-'}</td>
+                  <td className="py-2 px-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
+                  <td className="py-2 px-3 text-sm text-slate-800 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(record, 'inward_date'))}</td>
+                  <td className="py-2 px-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(record.inward_date || record.created_at || '').slice(0, 10)) || '—'}</td>
                   <td className="py-2 px-3 text-sm font-semibold text-brand-700">{record.party_name || '-'}</td>
                   <td className="py-2 px-3 text-sm">
                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${

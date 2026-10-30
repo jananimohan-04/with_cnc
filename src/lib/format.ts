@@ -69,6 +69,11 @@ export function todayISO(): string {
 }
 
 /** Formats timestamp into "27 Oct 2026, 10:05 AM" */
+/** When a record was last edited (updated_at), else when it was created, else the first of the fallback fields that has a value. */
+export function lastEditedAt(row: any, ...fallbacks: string[]): string {
+  return row?.updated_at || row?.created_at || fallbacks.map((f) => row?.[f]).find(Boolean) || '';
+}
+
 export function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {

@@ -4,7 +4,8 @@ import { Search, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
-import { formatTimestamp } from '@/lib/format';
+import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
@@ -71,13 +72,24 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
 
   const sortedRecords = useMemo(() => {
     return [...filteredRecords].sort((a, b) => {
-      const bTime = new Date(b.created_at || b.delivery_date || 0).getTime();
-      const aTime = new Date(a.created_at || a.delivery_date || 0).getTime();
+      const bTime = new Date(lastEditedAt(b, 'delivery_date') || 0).getTime();
+      const aTime = new Date(lastEditedAt(a, 'delivery_date') || 0).getTime();
       return bTime - aTime;
     });
   }, [filteredRecords]);
 
-  const pager = usePager(sortedRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
+  const sort = useSort<any>({
+    ts: (r) => lastEditedAt(r, 'delivery_date'),
+    date: (r) => String(r.delivery_date || r.created_at || ''),
+    dc_no: (r) => String(r.delivery_no || ''),
+    company: (r) => String(r.customer_name || '').toLowerCase(),
+    product: (r) => String(r.part_name || '').toLowerCase(),
+    quantity: (r) => Number(r.dispatch_qty ?? r.quantity) || 0,
+    status: (r) => String(r.status || '').toLowerCase(),
+  });
+  const viewRecords = useMemo(() => sort.apply(sortedRecords), [sortedRecords, sort.key, sort.dir]);
+
+  const pager = usePager(viewRecords, `${search}||${companyFilter}||${statusFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -119,11 +131,11 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold w-8">#</th>
-                <th className="p-3 font-semibold">Timestamp</th>
-                <th className="p-3 font-semibold">DC No</th>
+                <th className="p-3 font-semibold" title="When this challan was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
+                <th className="p-3 font-semibold"><SortLabel label="DC Date" col="date" sort={sort} /></th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company</span>
+                    <SortLabel label="Company" col="company" sort={sort} />
                     <select
                       aria-label="Filter by Company"
                       title="Filter by Company"
@@ -138,11 +150,11 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                     </select>
                   </div>
                 </th>
-                <th className="p-3 font-semibold">Product Name</th>
-                <th className="p-3 font-semibold">Quantity</th>
+                <th className="p-3 font-semibold"><SortLabel label="Product Name" col="product" sort={sort} /></th>
+                <th className="p-3 font-semibold"><SortLabel label="Quantity" col="quantity" sort={sort} /></th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Status</span>
+                    <SortLabel label="Status" col="status" sort={sort} />
                     <select
                       aria-label="Filter by Status"
                       title="Filter by Status"
@@ -164,8 +176,8 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
               {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
-                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(record.created_at || record.delivery_date)}</td>
-                  <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.delivery_no || '-'}</td>
+                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(record, 'delivery_date'))}</td>
+                  <td className="p-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(record.delivery_date || record.created_at || '').slice(0, 10)) || '—'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.dispatch_qty ?? record.quantity ?? '-'}</td>

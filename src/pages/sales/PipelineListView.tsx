@@ -7,7 +7,8 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
 import { exportCsv } from '@/lib/reportExport';
-import { formatTimestamp } from '@/lib/format';
+import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { todayISO } from '@/lib/format';
 
 interface PipelineListViewProps {
@@ -69,14 +70,25 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
 
   const sortedCards = useMemo(() => {
     return [...filteredCards].sort((a, b) => {
-      const bTime = new Date((b.raw as any)?.created_at || cardDate(b) || 0).getTime();
-      const aTime = new Date((a.raw as any)?.created_at || cardDate(a) || 0).getTime();
+      const bTime = new Date(lastEditedAt(b.raw, 'created_at') || cardDate(b) || 0).getTime();
+      const aTime = new Date(lastEditedAt(a.raw, 'created_at') || cardDate(a) || 0).getTime();
       if (bTime !== aTime) return bTime - aTime;
       return (b.refNo || '').localeCompare(a.refNo || '', undefined, { numeric: true });
     });
   }, [filteredCards]);
 
-  const pager = usePager(sortedCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
+  const sort = useSort<KanbanCard>({
+    ts: (c) => lastEditedAt((c as any).raw, 'created_at') || String(c.date || ''),
+    date: (c) => String(c.date || (c as any).raw?.created_at || ''),
+    ref: (c) => String(c.refNo || ''),
+    company: (c) => String(c.customer || '').toLowerCase(),
+    products: (c) => String(c.part || '').toLowerCase(),
+    stage: (c) => String(stageOf(c) || '').toLowerCase(),
+    qty: (c) => Number(c.qty) || 0,
+  });
+  const viewCards = useMemo(() => sort.apply(sortedCards), [sortedCards, sort.key, sort.dir]);
+
+  const pager = usePager(viewCards, `${search}|${companyFilter}|${stageFilter}|${globalFrom}|${globalTo}`);
   const { pageCards, start } = { pageCards: pager.pageItems, start: pager.start };
 
   const handleExport = () => {
@@ -123,11 +135,12 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
           <thead>
             <tr className="text-white text-[13px] font-bold uppercase tracking-wider">
               <th className="bg-slate-800 px-4 py-3.5 w-12">#</th>
-              <th className="bg-slate-800 px-4 py-3.5">Timestamp</th>
-              <th className="bg-slate-800 px-4 py-3.5">Ref No</th>
+              <th className="bg-slate-800 px-4 py-3.5" title="When this record was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
+              <th className="bg-slate-800 px-4 py-3.5"><SortLabel label="Date" col="date" sort={sort} /></th>
+              <th className="bg-slate-800 px-4 py-3.5"><SortLabel label="Ref No" col="ref" sort={sort} /></th>
               <th className="bg-slate-800 px-4 py-3.5">
                 <div className="flex items-center gap-1.5 flex-nowrap">
-                  <span className="whitespace-nowrap">Company</span>
+                  <SortLabel label="Company" col="company" sort={sort} />
                   <CompanyFilterInput
                     value={companyFilter || 'All Companies'}
                     onChange={setCompanyFilter}
@@ -135,10 +148,10 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
                   />
                 </div>
               </th>
-              <th className="bg-slate-800 px-4 py-3.5">Products</th>
+              <th className="bg-slate-800 px-4 py-3.5"><SortLabel label="Products" col="products" sort={sort} /></th>
               <th className="bg-slate-800 px-4 py-3.5">
                 <div className="flex items-center gap-1.5 flex-nowrap">
-                  <span className="whitespace-nowrap">Stage</span>
+                  <SortLabel label="Stage" col="stage" sort={sort} />
                   <select
                     aria-label="Filter by Stage"
                     title="Filter by Stage"
@@ -153,7 +166,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
                   </select>
                 </div>
               </th>
-              <th className="bg-slate-800 px-4 py-3.5 text-right">Qty</th>
+              <th className="bg-slate-800 px-4 py-3.5 text-right"><SortLabel label="Qty" col="qty" sort={sort} /></th>
               <th className="bg-slate-800 px-4 py-3.5">Remarks</th>
               <th className="bg-slate-800 px-4 py-3.5 text-center">Actions</th>
             </tr>
@@ -162,7 +175,8 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
             {pageCards.map((card, index) => (
               <tr key={card.id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/60 hover:bg-brand-50/50 transition-colors">
                 <td className="px-4 py-1.5 text-sm text-slate-400">{start + index + 1}</td>
-                <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp((card.raw as any)?.created_at || card.date)}</td>
+                <td className="px-4 py-1.5 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(card.raw, 'created_at') || card.date)}</td>
+                <td className="px-4 py-1.5 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(card.date || (card.raw as any)?.created_at || '').slice(0, 10)) || '—'}</td>
                 <td className="px-4 py-1.5 text-[15px] font-bold text-brand-600 cursor-pointer hover:underline" onClick={() => onView(card)}>{card.refNo}</td>
                 <td className="px-4 py-1.5 text-[15px] font-semibold text-slate-800">{card.customer}</td>
                 <td className="px-4 py-1.5 text-sm text-slate-700 max-w-[220px] truncate" title={card.part}>{card.part}</td>
@@ -190,7 +204,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
             ))}
             {filteredCards.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-slate-500">
+                <td colSpan={10} className="p-8 text-center text-slate-500">
                   No records found matching your filters.
                 </td>
               </tr>

@@ -12,6 +12,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { REJECTION_TYPES, recordProductionBatch, summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
+import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { tint } from '@/lib/entryTints';
 import { compactInput, inlineLbl } from '@/lib/compactFields';
 
@@ -241,7 +242,16 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
 
   const view = dlg?.mode === 'view';
 
-  const pager = usePager(shown, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
+  const sort = useSort<(typeof groups)[number]>({
+    company: (g) => g.company.toLowerCase(),
+    ordered: (g) => Number(g.q?.ordered) || 0,
+    finished: (g) => Number(g.q?.good) || 0,
+    rejected: (g) => g.total,
+    remaining: (g) => Number(g.q?.remaining) || 0,
+    entries: (g) => g.rows.length,
+  });
+  const viewGroups = useMemo(() => sort.apply(shown), [shown, sort.key, sort.dir]);
+  const pager = usePager(viewGroups, `${search}||${companyFilter}||${globalFrom}||${globalTo}`);
 
   const searchInput = (
     <div className="relative shrink-0">
@@ -411,7 +421,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
-                    <span className="whitespace-nowrap">Company (Order)</span>
+                    <SortLabel label="Company (Order)" col="company" sort={sort} />
                     <CompanyFilterInput
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
@@ -419,9 +429,9 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
                     />
                   </div>
                 </th>
-                <th className="p-3 font-semibold text-right">Ordered</th><th className="p-3 font-semibold text-right">Finished</th>
-                <th className="p-3 font-semibold text-right">Rejected</th><th className="p-3 font-semibold text-right">Remaining</th>
-                <th className="p-3 font-semibold text-right">Entries</th><th className="p-3 font-semibold">Actions</th>
+                <th className="p-3 font-semibold text-right"><SortLabel label="Ordered" col="ordered" sort={sort} /></th><th className="p-3 font-semibold text-right"><SortLabel label="Finished" col="finished" sort={sort} /></th>
+                <th className="p-3 font-semibold text-right"><SortLabel label="Rejected" col="rejected" sort={sort} /></th><th className="p-3 font-semibold text-right"><SortLabel label="Remaining" col="remaining" sort={sort} /></th>
+                <th className="p-3 font-semibold text-right"><SortLabel label="Entries" col="entries" sort={sort} /></th><th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>

@@ -7,6 +7,7 @@ import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { InvoicesPage } from '@/pages/finance/InvoicesPage';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
 
 export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -100,7 +101,9 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
           <table className="erp-table erp-table-indigo w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                <th className="p-3 font-semibold">Invoice No</th>
+                <th className="p-3 font-semibold w-8">#</th>
+                <th className="p-3 font-semibold" title="When this invoice was last edited">Timestamp</th>
+                <th className="p-3 font-semibold">Invoice Date</th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
@@ -135,9 +138,11 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {pager.pageItems.map(record => (
+              {pager.pageItems.map((record, idx) => (
                 <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="p-3 text-sm font-mono font-medium text-slate-800">{record.invoice_no || '-'}</td>
+                  <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
+                  <td className="p-3 text-sm text-slate-800 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(record, 'invoice_date'))}</td>
+                  <td className="p-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(record.invoice_date || record.created_at || '').slice(0, 10)) || '—'}</td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
@@ -149,7 +154,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                 </tr>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-8 text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-slate-500">No records found.</td></tr>
               )}
             </tbody>
           </table>

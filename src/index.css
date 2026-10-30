@@ -142,6 +142,15 @@
   box-shadow: inset 0 -1px 0 #1e293b;
 }
 
+/* The Retail Store stylesheet (also loaded on every page) paints every <th> dark brown with !important. ERP list tables have dark
+   header bars, so their column titles (and the arrows next to them) must stay white or they vanish into the bar. */
+.erp-table thead th,
+.erp-table thead th button,
+.erp-table thead th span,
+.erp-table thead th svg {
+  color: #ffffff !important;
+}
+
 /* Row colours on every page table: a repeating tint per row, deepened for contrast (opt out with class `no-stripe`). */
 main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: #fed7aa; }
 main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: #bfdbfe; }
