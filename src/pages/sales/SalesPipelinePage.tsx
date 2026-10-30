@@ -2,11 +2,12 @@ import { DcOptionSelect } from '@/components/DcOptionSelect';
 import { sameProduct } from '@/lib/productMatch';
 import { defaultTermsText } from '@/lib/termsLibrary';
 import { MemberSelect, useMemberNames } from '@/components/MemberSelect';
-import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback, Fragment, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { desktopToast } from '@/lib/desktop/toast';
 import { refreshSavedProducts } from '@/lib/savedProducts';
-import { productWithCompany, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
+import { productWithCompany, productOnly, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
+import { todayISO, formatDate } from '@/lib/format';
 import { financeApi } from '@/lib/finance';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -608,6 +609,8 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
     }];
   };
   const [leadNo, setLeadNo] = useState(String(raw?.lead_no || raw?.enquiry_no || ''));
+  // The day the enquiry was received (shown as Enquiry Date in the list).
+  const [receivedDate, setReceivedDate] = useState(String(raw?.received_date || raw?.created_at || '').slice(0, 10));
   const [company, setCompany] = useState(String(raw?.customer || ''));
   const [contacts, setContacts] = useState<any[]>(Array.isArray(raw?.contacts) && raw.contacts.length ? raw.contacts : [{ person: raw?.contact_person || '', phone: raw?.phone || '', email: raw?.email || '' }]);
   const [items, setItems] = useState<any[]>(initItems);
@@ -657,6 +660,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
         enquiring_for: JSON.stringify(itemsToSave),
         part_name: itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName,
         quantity: totalQty,
+        received_date: receivedDate || raw?.received_date || null,
       }).eq('id', raw.id);
       if (updErr) throw updErr;
       onSaved();
@@ -678,7 +682,6 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
   const extraFields = ([
     ['Expected Date', raw?.expected_date],
     ['Source', raw?.source],
-    ['Received Date', raw?.received_date],
     ['City', raw?.city],
     ['GST', raw?.gst],
   ] as [string, any][]).filter(([, v]) => v !== null && v !== undefined && v !== '');
@@ -713,6 +716,13 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
             <input readOnly aria-label="Company name" className={fieldClass(false)} value={company} />
           </FormField>
         )}
+        <FormField label="Enquiry Date" required>
+          {editMode ? (
+            <input type="date" className={inputClass} value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+          ) : (
+            <input readOnly aria-label="Enquiry date" className={fieldClass(false)} value={receivedDate} />
+          )}
+        </FormField>
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Products Required *</label>
           <div className="space-y-2">
@@ -3279,17 +3289,22 @@ export function SalesPipelinePage() {
             if (key === 'lead_no') formattedKey = 'Company ID';
             if (key === 'part_name') formattedKey = 'Product Name';
             const displayVal = (key === 'part_name' && title !== 'Inward') ? formatLeadProductDisplay(raw) : value;
+            // A date field (invoice_date, due_date, delivery_date ...) is picked from a calendar, so it can never be saved misspelt.
+            const isDateField = /(^|_)date$/.test(key) && /^\d{4}-\d{2}-\d{2}/.test(String(displayVal ?? ''));
             return (
               <div key={key}>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
                 {viewEditMode && key !== 'created_at' && key !== 'updated_at' ? (
-                   <input 
-                     type="text" 
+                   <input
+                     type={isDateField ? 'date' : 'text'}
                      className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
-                     defaultValue={displayVal ?? ''}
+                     defaultValue={isDateField ? String(displayVal ?? '').slice(0, 10) : (displayVal ?? '')}
                      onBlur={(e) => {
-                       if (e.target.value !== String(displayVal ?? '')) {
-                         handleInlineEdit(title, raw.id, key, e.target.value);
+                       const next = e.target.value;
+                       const before = isDateField ? String(displayVal ?? '').slice(0, 10) : String(displayVal ?? '');
+                       if (isDateField && !next) return;   // a cleared date picker keeps the saved date
+                       if (next !== before) {
+                         handleInlineEdit(title, raw.id, key, next);
                        }
                      }}
                    />
@@ -8093,8 +8108,10 @@ export function SalesPipelinePage() {
                 </div>
                 {(group.items || []).map((item: any, ii: number) => {
                   const isExp = (group.category || inwardForm.category || 'GOODS PURCHASE') === 'EXPENSES';
+                  const fullRef = String(item.productRef || item.productDisplay || item.productName || '');
                   return (
-                  <div key={ii} className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1 border-t border-slate-200 pt-1.5 py-1 w-full min-w-0'}>
+                  <Fragment key={ii}>
+                  <div className={opts?.popup ? 'mt-1.5 grid grid-cols-2 xl:grid-cols-4 items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 pb-1' : 'mt-1.5 flex flex-nowrap items-center gap-1 border-t border-slate-200 pt-1.5 py-1 w-full min-w-0'}>
                     <span className={opts?.popup ? 'hidden' : 'w-4 shrink-0 text-center text-[10px] font-bold text-slate-400'}>{ii + 1}</span>
                     {!isExp && (
                       <div className={opts?.popup ? 'flex min-w-0 items-center gap-1' : 'flex flex-[1.6_1.6_0%] min-w-0 items-center gap-1'}>
@@ -8209,6 +8226,10 @@ export function SalesPipelinePage() {
                       </button>
                     ) : null}
                   </div>
+                  {fullRef.length > 38 && (
+                    <p className="mt-0.5 break-words pl-5 text-[11px] font-medium leading-snug text-slate-600" data-testid="inward-product-full">{fullRef}</p>
+                  )}
+                  </Fragment>
                 );
               })}
                 {(inwardForm.productOptions || []).length === 0 && eligibleCatalogue.length === 0 && (group.category || 'GOODS PURCHASE') !== 'EXPENSES' && <span className="mt-1 block text-xs text-amber-700">No products found. Add the product to the Components / Raw Materials master or to an Enquiry first.</span>}

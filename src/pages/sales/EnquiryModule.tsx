@@ -310,13 +310,13 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
                   <td className="p-3 text-sm text-slate-800 whitespace-nowrap font-mono">{formatTimestamp(editedAt(enq))}</td>
                   <td className="p-3 text-sm text-slate-800 whitespace-nowrap">{formatDate(enquiryDateOf(enq)) || '—'}</td>
-                  <td className="p-3 font-semibold text-brand-700 text-sm max-w-[200px] truncate" title={enq.customer}>{enq.customer}</td>
-                  <td className="p-3 text-sm text-slate-700 max-w-[240px] truncate" title={productNames(enq)}>{productNames(enq)}</td>
+                  <td className="p-3 font-semibold text-brand-700 text-sm break-words" title={enq.customer}>{enq.customer}</td>
+                  <td className="p-3 text-sm text-slate-700 break-words" title={productNames(enq)}>{productNames(enq)}</td>
                   <td className="p-3">
                     <span className="bg-orange-200 text-orange-900 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{enq.status || 'New'}</span>
                   </td>
                   <td className="p-3 text-sm font-medium text-slate-700 text-center">{enq.quantity || '-'}</td>
-                  <td className="p-3 text-sm text-slate-600 max-w-[180px] truncate" title={productRemarks(enq)}>{productRemarks(enq)}</td>
+                  <td className="p-3 text-sm text-slate-600 break-words" title={productRemarks(enq)}>{productRemarks(enq)}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1.5 justify-center">
                       <Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(enq) : openEnquiry(enq))}>View</Button>

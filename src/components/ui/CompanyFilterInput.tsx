@@ -52,9 +52,9 @@ export function CompanyFilterInput({
     const estH = 280;
     const below = window.innerHeight - r.bottom;
     if (below < 160 && r.top > estH + 8) {
-      setMenuPos({ bottom: window.innerHeight - r.top + 4, left: r.left, width: Math.max(r.width, 200) });
+      setMenuPos({ bottom: window.innerHeight - r.top + 4, left: r.left, width: Math.max(r.width, 320) });
     } else {
-      setMenuPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 200) });
+      setMenuPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 320) });
     }
     setIsOpen(true);
     setSearchText('');
@@ -111,11 +111,11 @@ export function CompanyFilterInput({
       <button
         type="button"
         onClick={openMenu}
-        className="flex items-center gap-1 text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer max-w-[140px] truncate shadow-xs hover:border-brand-400 transition-colors"
+        className="flex items-center gap-1 text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer whitespace-nowrap shadow-xs hover:border-brand-400 transition-colors"
         title={isAllSelected ? 'All Companies' : value}
       >
         <Search size={10} className="text-slate-400 shrink-0" />
-        <span className="truncate">{isAllSelected ? placeholder : value}</span>
+        <span className="whitespace-nowrap">{isAllSelected ? placeholder : value}</span>
         {!isAllSelected && (
           <X
             size={12}
@@ -134,7 +134,7 @@ export function CompanyFilterInput({
             zIndex: 9999,
             left: Math.max(8, Math.min(menuPos.left, window.innerWidth - menuPos.width - 8)),
             width: menuPos.width,
-            maxWidth: 280,
+            maxWidth: 460,
             ...(menuPos.top != null ? { top: menuPos.top } : { bottom: menuPos.bottom }),
           }}
         >
@@ -180,7 +180,7 @@ export function CompanyFilterInput({
               filteredOptions.map((opt, i) => (
                 <div
                   key={`${opt}-${i}`}
-                  className={`px-3 py-2 text-xs cursor-pointer border-b border-slate-50 last:border-0 truncate ${
+                  className={`px-3 py-2 text-xs cursor-pointer border-b border-slate-50 last:border-0 break-words ${
                     value === opt ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-50'
                   }`}
                   title={opt}
@@ -189,7 +189,7 @@ export function CompanyFilterInput({
                     selectOption(opt);
                   }}
                 >
-                  <span className="truncate">{opt}</span>
+                  <span>{opt}</span>
                   {value === opt && <span className="ml-2 text-brand-500">✓</span>}
                 </div>
               ))

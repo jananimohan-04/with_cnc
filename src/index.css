@@ -151,6 +151,16 @@
   color: #ffffff !important;
 }
 
+/* Dropdowns that were squeezed into a narrow capped width (max-w-[..px]) cut the chosen name short ("L.G BALAKRISHNAN & BR...").
+   Let them size to the selected text so the full name always shows. */
+select[class*="max-w-["] {
+  max-width: none !important;
+  width: auto !important;
+}
+@supports (field-sizing: content) {
+  select[class*="max-w-["] { field-sizing: content; }
+}
+
 /* Row colours on every page table: a repeating tint per row, deepened for contrast (opt out with class `no-stripe`). */
 main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: #fed7aa; }
 main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: #bfdbfe; }
