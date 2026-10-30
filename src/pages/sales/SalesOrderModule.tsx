@@ -210,7 +210,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                 <th className="p-3 font-semibold"><SortLabel label="Part Name" col="part" sort={sort} /></th>
                 <th className="p-3 font-semibold"><SortLabel label="Quantity" col="quantity" sort={sort} /></th>
                 <th className="p-3 font-semibold"><SortLabel label="Total Value" col="value" sort={sort} /></th>
-                <th className="p-3 font-semibold"><SortLabel label="Delivery Date" col="delivery" sort={sort} /></th>
                 <th className="p-3 font-semibold">Actions</th>
               </tr>
             </thead>
@@ -224,7 +223,6 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                   <td className="p-3 text-sm text-slate-700">{formatLeadProductDisplay(record)}</td>
                   <td className="p-3 text-sm text-slate-700">{record.quantity ?? '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{orderValue(record) ?? '-'}</td>
-                  <td className="p-3 text-sm text-slate-700">{record.delivery_date || '-'}</td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(record) : void openRecord(record, false))}>View</Button>
@@ -266,7 +264,7 @@ Restore the missing ${miss} finished pcs (marked as already dispatched) so the r
                 </tr>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-8 text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No records found.</td></tr>
               )}
             </tbody>
           </table>
