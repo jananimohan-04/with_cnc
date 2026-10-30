@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
 import { Badge, Button, ProgressBar, statusToVariant, priorityToVariant } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Modal, FormField, FormSection, inputClass } from '@/components/ui/Modal';
+import { Modal, FormField, FormSection, inputClass, ConfirmDialog } from '@/components/ui/Modal';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import {
   Plus, Eye, Pencil, X, ChevronUp, ChevronDown, Trash2, GitBranch,
@@ -91,6 +91,31 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const [routingRef, setRoutingRef] = useState<{ routingId: string; revision: number | null; productCode: string } | null>(null);
 
   const [detailWO, setDetailWO] = useState<any | null>(null);
+  const [deleteWO, setDeleteWO] = useState<any | null>(null);
+
+  // Deletes a work order together with its planned operations. An order that already has job card runs or finished quantity
+  // keeps its history: those must be removed (or the order cancelled) first.
+  const deleteWorkOrder = async (wo: any) => {
+    try {
+      if (Number(wo.completed ?? 0) > 0 || ['Completed', 'Dispatched'].includes(String(wo.status))) {
+        throw new Error('This order has completed production, so it cannot be deleted. Set it to Cancelled instead.');
+      }
+      const runs = await supabase.from('cnc_job_cards').select('id', { count: 'exact', head: true }).eq('work_order_id', wo.id);
+      if (runs.error) throw runs.error;
+      if ((runs.count ?? 0) > 0) throw new Error(`This order has ${runs.count} job card run(s). Delete those runs first (Job Card tab).`);
+      for (const table of ['cnc_operation_plans', 'cnc_work_order_operations']) {
+        const del = await supabase.from(table).delete().eq('work_order_id', wo.id);
+        if (del.error && !isMissingTable(del.error)) throw del.error;
+      }
+      const { error } = await supabase.from('cnc_work_orders').delete().eq('id', wo.id);
+      if (error) throw error;
+      setDeleteWO(null);
+      refresh();
+    } catch (e: any) {
+      setDeleteWO(null);
+      alert(`Could not delete the work order: ${e?.message ?? e}`);
+    }
+  };
 
   const fetchExtras = async () => {
     try {
@@ -713,6 +738,13 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
               <Pencil size={15} />
             </button>
           )}
+          <button
+            onClick={() => setDeleteWO(r)}
+            title="Delete work order"
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       ),
     },
@@ -767,6 +799,16 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
         searchKeys={['wo_no', 'sales_order', 'customer', 'part_name', 'status']}
         onRowClick={(r) => setDetailWO(r)}
         emptyMessage="No work orders found"
+      />
+
+      <ConfirmDialog
+        open={!!deleteWO}
+        onClose={() => setDeleteWO(null)}
+        onConfirm={() => { if (deleteWO) void deleteWorkOrder(deleteWO); }}
+        title="Delete Work Order"
+        message={`Delete ${deleteWO ? workOrderTitle(deleteWO) : 'this order'} and its planned operations? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
       />
 
       {/* ---------- create / edit modal ---------- */}

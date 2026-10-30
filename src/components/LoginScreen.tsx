@@ -57,7 +57,7 @@ export function LoginScreen() {
             <h2 className="text-4xl font-bold leading-tight mb-4">
               Creating Future Factories<br />
               <span className="bg-gradient-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
-                Powered by ARGUSCNC™
+                Powered by Business Intelligence
               </span>
             </h2>
             <p className="text-navy-300 text-sm leading-relaxed mb-8">
@@ -104,7 +104,7 @@ export function LoginScreen() {
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-slate-800">Welcome Back</h2>
-            <p className="text-sm text-slate-500 mt-1.5">Sign in to your ARGUSCNC ERP account</p>
+            <p className="text-sm text-slate-500 mt-1.5">Sign in to your Business Intelligence account</p>
           </div>
 
           {!isLocalDev && (

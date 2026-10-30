@@ -382,36 +382,38 @@ export function InventoryPage() {
 
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
 
+  // A warehouse needs a zone and a location before an item can sit in it. The ids are real UUIDs (the key columns are uuid);
+  // any failure is reported instead of handing back an id that does not exist.
   const ensureWarehouseLocation = async (whId: string, whName: string, compId: string): Promise<string> => {
-    try {
-      const zCheck = await supabase.from('cnc_warehouse_zones').select('id').eq('warehouse_id', whId).limit(1);
-      let zoneId = zCheck.data?.[0]?.id;
-      if (!zoneId) {
-        zoneId = `zone-${whId.substring(0, 20)}`;
-        await supabase.from('cnc_warehouse_zones').insert([{
-          id: zoneId,
-          warehouse_id: whId,
-          code: 'GEN',
-          name: 'General Zone',
-          company_id: compId,
-        }]);
-      }
-      const lCheck = await supabase.from('cnc_warehouse_locations').select('id').eq('zone_id', zoneId).limit(1);
-      let locId = lCheck.data?.[0]?.id;
-      if (!locId) {
-        locId = `loc-${whId.substring(0, 20)}`;
-        await supabase.from('cnc_warehouse_locations').insert([{
-          id: locId,
-          zone_id: zoneId,
-          code: 'MAIN',
-          name: whName || 'Main Store',
-          company_id: compId,
-        }]);
-      }
-      return locId;
-    } catch {
-      return `loc-${whId.substring(0, 20)}`;
+    const fail = (what: string, err: { message?: string } | null) =>
+      new Error(`Could not set up a location in "${whName}" (${what}): ${err?.message ?? 'unknown error'}`);
+
+    const zCheck = await supabase.from('cnc_warehouse_zones').select('id').eq('warehouse_id', whId).limit(1);
+    if (zCheck.error) throw fail('zone lookup', zCheck.error);
+    let zoneId: string | undefined = zCheck.data?.[0]?.id;
+    if (!zoneId) {
+      zoneId = crypto.randomUUID();
+      const zIns = await supabase.from('cnc_warehouse_zones').insert([{
+        id: zoneId, warehouse_id: whId, code: 'GEN', name: 'General Zone', company_id: compId,
+      }]);
+      if (zIns.error) throw fail('zone', zIns.error);
     }
+
+    const lCheck = await supabase.from('cnc_warehouse_locations').select('id').eq('zone_id', zoneId).limit(1);
+    if (lCheck.error) throw fail('location lookup', lCheck.error);
+    let locId: string | undefined = lCheck.data?.[0]?.id;
+    if (!locId) {
+      locId = crypto.randomUUID();
+      const lIns = await supabase.from('cnc_warehouse_locations').insert([{
+        id: locId, zone_id: zoneId, code: 'MAIN', name: whName || 'Main Store', company_id: compId,
+      }]);
+      if (lIns.error) throw fail('location', lIns.error);
+    }
+
+    // Confirm it is really visible to this company before the item is pointed at it.
+    const verify = await supabase.from('cnc_warehouse_locations').select('id').eq('id', locId).limit(1);
+    if (verify.error || !verify.data?.length) throw fail('check', verify.error ?? { message: 'the new location is not visible to this company' });
+    return locId;
   };
 
   const handleInlineWarehouseChange = async (r: InventoryItemRow, value: string) => {
@@ -421,6 +423,7 @@ export function InventoryPage() {
       let newWarehouseId: string | null = null;
       let newWarehouseName: string | null = null;
       let newLocationName: string | null = null;
+      let createdLocation = false;
 
       if (!value) {
         newLocationId = null;
@@ -436,6 +439,7 @@ export function InventoryPage() {
           newLocationName = existingLoc.name;
         } else if (companyId) {
           newLocationId = await ensureWarehouseLocation(wid, targetWh?.name || 'Main Store', companyId);
+          createdLocation = true;
           newLocationName = targetWh?.name || 'Main Store';
         }
       } else {
@@ -453,7 +457,7 @@ export function InventoryPage() {
         kind: r.kind,
         code: r.code,
         name: r.name,
-        category_id: r.category_id,
+        category_id: r.category_id ?? '',
         specification: r.specification ?? '',
         unit: r.unit ?? 'Nos',
         min_stock: r.min_stock ?? '0',
@@ -483,6 +487,9 @@ export function InventoryPage() {
           }),
         };
       });
+
+      // The dropdown only shows locations it knows about: reload the list so the one just created is selectable (else it snaps back to "Not set").
+      if (createdLocation) void inventoryApi.filters().then(setFilters).catch(() => { /* the row already shows the change */ });
 
       try {
         const d = await retailSyncApi.resolveDesignation();
@@ -554,7 +561,7 @@ export function InventoryPage() {
         kind: r.kind,
         code: r.code,
         name: r.name,
-        category_id: r.category_id,
+        category_id: r.category_id ?? '',
         specification: r.specification ?? '',
         unit: newUnit,
         min_stock: r.min_stock ?? '0',
@@ -593,7 +600,7 @@ export function InventoryPage() {
         kind: r.kind,
         code: r.code,
         name: r.name,
-        category_id: r.category_id,
+        category_id: r.category_id ?? '',
         specification: r.specification ?? '',
         unit: r.unit ?? 'Nos',
         min_stock: val,
@@ -1450,7 +1457,8 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
     warehouse_id: item?.warehouse_id ?? '',
     location_id: item?.location_id ?? '',
     status: item?.item_status ?? 'Active' as 'Active' | 'Inactive',
-    opening_qty: '0',
+    // New item: its opening stock. Existing item: the stock now; changing it posts an adjustment for the difference.
+    opening_qty: item ? String(Number(item.current_stock) || 0) : '0',
     opening_date: todayISO(),
   });
   const [file, setFile] = useState<File | null>(null);
@@ -1476,8 +1484,9 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
     for (const [label, v] of [['Min Stock', form.min_stock], ['Reorder Qty', form.reorder_qty], ['Rate', form.rate]] as const) {
       if (!isNonNegativeDecimal(v)) return setError(`${label} must be a number of zero or more.`);
     }
-    if (isNew && !isNonNegativeDecimal(form.opening_qty)) return setError('Opening Qty must be a number of zero or more.');
-    if (isNew && isPositiveQty(form.opening_qty) && !form.opening_date) return setError('Select the opening date.');
+    if (!isNonNegativeDecimal(form.opening_qty)) return setError('Opening Qty must be a number of zero or more.');
+    const stockDiff = isNew ? 0 : Math.round((Number(form.opening_qty || 0) - Number(item!.current_stock || 0)) * 1000) / 1000;
+    if (((isNew && isPositiveQty(form.opening_qty)) || stockDiff !== 0) && !form.opening_date) return setError('Select the opening date.');
     if (file && !file.type.startsWith('image/')) return setError('The image must be a picture file (JPG, PNG, WEBP…).');
     setSaving(true);
     setError(null);
@@ -1501,6 +1510,18 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         ...(isNew ? { opening_qty: form.opening_qty.trim() || '0', opening_date: form.opening_date } : {}),
       });
 
+      // Editing the opening stock of an existing product: the books keep every change, so the difference is posted as an adjustment.
+      if (stockDiff !== 0) {
+        try {
+          await inventoryApi.adjustStock({
+            kind: item!.kind, id: item!.id, direction: stockDiff > 0 ? 'IN' : 'OUT', qty: String(Math.abs(stockDiff)),
+            reason: 'Opening stock edited', reference: '', date: form.opening_date,
+          });
+        } catch (adjErr) {
+          throw new Error(`The product was saved, but its stock was not changed: ${errText(adjErr)}`);
+        }
+      }
+
       // Retail Store: send the item when it is (or just stopped being) in the Retail Store warehouse.
       try {
         const d = await retailSyncApi.resolveDesignation();
@@ -1508,7 +1529,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         const wasRetail = !!(d && item?.warehouse_id && item.warehouse_id === d.id);
         if (d && (isRetail || wasRetail)) {
           const catObj = categories.find(c => c.id === form.category_id);
-          const stock = isNew ? Number(form.opening_qty || 0) : Number(item?.current_stock || 0);
+          const stock = Number(form.opening_qty || 0);
           const res = await retailSyncApi.syncItem({
             id: item?.id ?? form.code.trim(),
             code: form.code.trim() || item?.code || (item as any)?.part_number || (item as any)?.part_no || '',
@@ -1617,27 +1638,20 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
             </div>
           </div>
         </FormField>
-        {isNew ? (
-          <>
-            <FormField label="Opening Qty"><input className={inputClass} inputMode="decimal" value={form.opening_qty} onChange={e => set('opening_qty', e.target.value)} /></FormField>
-            <FormField label="Opening Date"><input type="date" className={inputClass} value={form.opening_date} onChange={e => set('opening_date', e.target.value)} /></FormField>
-          </>
-        ) : (
-          <div className="sm:col-span-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Current Stock (Available)</p>
-              <p className="text-lg font-bold text-slate-900">{formatQty(item!.current_stock)} {item!.unit ?? ''}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Stock is managed via inventory movements or Stock Adjustment.</p>
-            </div>
-            {onAdjustStock && (
-              <button
-                type="button"
-                onClick={() => { onClose(); onAdjustStock(item!); }}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition inline-flex items-center gap-1.5 shrink-0"
-              >
-                <SlidersHorizontal size={14} /> Adjust / Add Stock
-              </button>
-            )}
+        <FormField label={isNew ? 'Opening Qty' : 'Opening / Current Qty'} hint={!isNew ? 'Changing this posts a stock adjustment for the difference.' : undefined}>
+          <input className={inputClass} inputMode="decimal" value={form.opening_qty} onChange={e => set('opening_qty', e.target.value)} />
+        </FormField>
+        <FormField label={isNew ? 'Opening Date' : 'Date of change'}><input type="date" className={inputClass} value={form.opening_date} onChange={e => set('opening_date', e.target.value)} /></FormField>
+        {!isNew && onAdjustStock && (
+          <div className="sm:col-span-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+            <span>Need a reason or reference with it? Use the full stock adjustment instead.</span>
+            <button
+              type="button"
+              onClick={() => { onClose(); onAdjustStock(item!); }}
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition inline-flex items-center gap-1.5 shrink-0"
+            >
+              <SlidersHorizontal size={14} /> Adjust / Add Stock
+            </button>
           </div>
         )}
       </div>
@@ -2128,13 +2142,14 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
   const downloadTemplate = () => {
     const catNames = categories && categories.length > 0
       ? categories.map(c => c.name)
-      : ['Raw Materials', 'Components', 'Consumables', 'Tools'];
+      : ['Raw Material', 'Bought-out Items', 'Tools', 'Consumables', 'Finished Goods'];
 
     const sampleRows = [
-      ['RM-SS304-25', 'Stainless Steel Round Bar 25mm', catNames[0] || 'Raw Materials', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Rack-A1', '25'],
-      ['CP-BRG-6204', 'Deep Groove Ball Bearing 6204', catNames[1] || catNames[0] || 'Components', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Bin-B4', '60'],
-      ['CS-COOL-001', 'CNC Coolant Cutting Fluid', catNames[2] || catNames[0] || 'Consumables', 'Water Soluble Synthetic Coolant 20L', 'Ltr', '5', '20', '3200', 'Industrial Oils Co', 'Shelf-C2', '12'],
-      ['TL-END-010', 'Carbide End Mill 10mm 4-Flute', catNames[3] || catNames[0] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '4', '15', '1250', 'Precision Tools Inc', 'Tool-Cab-1', '8'],
+      ['RM-SS304-25', 'Stainless Steel Round Bar 25mm', catNames.find(c => /raw/i.test(c)) || catNames[0] || 'Raw Material', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Main Store', '25'],
+      ['BO-BRG-6204', 'Deep Groove Ball Bearing 6204', catNames.find(c => /bought|component/i.test(c)) || catNames[1] || 'Bought-out Items', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Bin-B4', '60'],
+      ['TL-END-10MM', 'Carbide End Mill 10mm 4-Flute', catNames.find(c => /tool/i.test(c)) || catNames[2] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '5', '20', '1250', 'Precision Tools Inc', 'Tool-Cab-1', '15'],
+      ['CS-COOL-20L', 'CNC Soluble Cutting Oil 20L', catNames.find(c => /consum/i.test(c)) || catNames[3] || 'Consumables', 'Water Soluble Coolant 20L', 'Ltr', '10', '40', '320', 'Industrial Oils Co', 'Chemical Store', '50'],
+      ['FG-SHAFT-120', 'Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
     ];
 
     exportCsv('inventory-import-template', [IMPORT_COLUMNS as unknown as string[], ...sampleRows]);

@@ -495,7 +495,7 @@ function SettingsTab({ id }) {
           </p>
         </div>
         <Link
-          to={`/admin/settings?tab=invoice&companyId=${id}`}
+          to={`/retail/admin/settings?tab=invoice&companyId=${id}`}
           className="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700 text-white border-none flex-shrink-0 shadow-xs"
         >
           Configure Invoice Profile 🧾

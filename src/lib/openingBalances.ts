@@ -175,3 +175,40 @@ export function toIsoDate(s: string): string {
   const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(t);
   return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
 }
+
+// ---- Opening balance typed in the Add / Edit form of a company, supplier or product ----
+
+export interface OpeningInput { amount: string; type: string; date: string }
+export interface ExistingOpening { id: string; status: OpeningStatus; amount: number; side: 'DR' | 'CR' | null; balance_type: string | null; opening_date: string }
+
+/** The open (not reversed) opening entry of one party: the Draft if there is one, otherwise the Posted one. */
+export async function loadPartyOpening(kind: 'CUSTOMER' | 'SUPPLIER', partyId: string): Promise<ExistingOpening | null> {
+  const { data, error } = await supabase.from('cnc_opening_entries')
+    .select('id,status,amount,side,balance_type,opening_date,created_at')
+    .eq('entry_type', kind).eq('party_id', partyId).neq('status', 'Reversed').order('created_at', { ascending: false });
+  if (error || !data?.length) return null;
+  const rows = data as unknown as ExistingOpening[];
+  return rows.find(r => r.status === 'Draft') ?? rows[0];
+}
+
+/** Saves what was typed as a Draft opening entry and posts it. A failed post leaves the draft for the Opening Balances page. */
+export async function savePartyOpening(
+  kind: 'CUSTOMER' | 'SUPPLIER',
+  p: { partyId?: string; partyName: string; input: OpeningInput; existing: ExistingOpening | null },
+): Promise<{ ok: boolean; message?: string }> {
+  const amount = num(p.input.amount);
+  if (p.existing?.status === 'Posted') return { ok: true };
+  if (!(amount > 0)) {
+    if (p.existing) { try { await openingApi.remove(p.existing.id); } catch (e) { return { ok: false, message: (e as Error).message }; } }
+    return { ok: true };
+  }
+  let id: string;
+  try {
+    id = (await openingApi.save({
+      id: p.existing?.id, entry_type: kind, party_id: p.partyId, party_name: p.partyName,
+      balance_type: p.input.type, amount, opening_date: p.input.date,
+    })).id;
+  } catch (e) { return { ok: false, message: (e as Error).message }; }
+  try { await openingApi.post([id]); return { ok: true }; }
+  catch (e) { return { ok: true, message: `Opening balance saved as a draft; it could not be posted yet (${(e as Error).message}). Post it from Opening Balances.` }; }
+}

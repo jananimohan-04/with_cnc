@@ -58,7 +58,7 @@ export default function Settings() {
           </div>
         </div>
         <Link 
-          to="/admin/settings?tab=invoice"
+          to="/retail/admin/settings?tab=invoice"
           className="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700 text-white border-none flex-shrink-0 flex items-center gap-1.5 shadow-sm"
         >
           <Receipt className="w-4 h-4" />
@@ -89,7 +89,7 @@ export default function Settings() {
               cols={[
                 { key: 'co', label: 'Company', render: (c) => (<><b>{c.logo} {c.name}</b><div className="hint">{c.code} • {c.city}</div></>) },
                 { key: 'st', label: 'Store', render: (c) => (c.storeStatus || c.status) },
-                { key: 'inv', label: 'Invoice Profile', render: (c) => <a className="btn btn-primary btn-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs" href={'#/admin/settings?tab=invoice&companyId=' + c.id}>Invoice Profile 🧾</a> },
+                { key: 'inv', label: 'Invoice Profile', render: (c) => <a className="btn btn-primary btn-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs" href={'/retail/admin/settings?tab=invoice&companyId=' + c.id}>Invoice Profile 🧾</a> },
                 { key: 'act', label: '', render: (c) => <a className="btn btn-ghost btn-sm" href={'#/super/companies/' + c.id}>Open →</a> }
               ]}
               rows={cos} rowKey={(c) => c.id} empty="No companies."

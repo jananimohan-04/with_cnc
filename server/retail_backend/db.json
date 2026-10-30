@@ -394,8 +394,8 @@
       "leadTime": "Ex-stock",
       "warehouse": "Retail Store Warehouse",
       "category": "cnc-machines",
-      "visible": false,
-      "active": false,
+      "visible": true,
+      "active": true,
       "archived": false,
       "featured": false,
       "specs": {},
@@ -407,9 +407,55 @@
       "erp_synced": true,
       "erp_item_id": "ERP-SKU-8891",
       "erp_last_synced_at": "2026-10-17T16:15:23.458Z",
-      "workflow_stage": "content_pending",
+      "workflow_stage": "published",
       "created": "2026-10-17",
-      "sold": 0
+      "sold": 0,
+      "content_by": "Janani Mohan",
+      "content_updated_at": "2026-10-29T17:52:55.722Z",
+      "workflow_updated_at": "2026-10-29T17:53:23.957Z",
+      "workflow_history": [
+        {
+          "id": "W1MVTUCZAJ",
+          "action": "content.save",
+          "from": "content_pending",
+          "to": "content_in_progress",
+          "stage": "In Progress",
+          "by": "Janani Mohan",
+          "byRole": "super_admin",
+          "companyId": "C-ARGUS",
+          "ts": "2026-10-29T17:52:55.723Z",
+          "note": ""
+        },
+        {
+          "id": "W2MVTUCZB3",
+          "action": "content.submit",
+          "from": "content_in_progress",
+          "to": "submitted_to_finance",
+          "stage": "Waiting for Finance",
+          "by": "Janani Mohan",
+          "byRole": "super_admin",
+          "companyId": "C-ARGUS",
+          "ts": "2026-10-29T17:52:55.743Z",
+          "note": ""
+        },
+        {
+          "id": "W3MVTUDL2T",
+          "action": "finance.approve",
+          "from": "submitted_to_finance",
+          "to": "published",
+          "stage": "Published",
+          "by": "Janani Mohan",
+          "byRole": "super_admin",
+          "companyId": "C-ARGUS",
+          "ts": "2026-10-29T17:53:23.957Z",
+          "note": ""
+        }
+      ],
+      "submitted_by": "Janani Mohan",
+      "submitted_at": "2026-10-29T17:52:55.743Z",
+      "approved_by": "Janani Mohan",
+      "approved_at": "2026-10-29T17:53:23.958Z",
+      "published_at": "2026-10-29T17:53:23.958Z"
     },
     {
       "id": "P-MVCIQHM6IG",
@@ -1020,6 +1066,39 @@
     "cat_cnc_machines"
   ],
   "audit_logs": [
+    {
+      "id": "A-179329640396853",
+      "ts": "2026-10-29T17:53:23.968Z",
+      "actor": "Janani Mohan",
+      "role": "super_admin",
+      "action": "workflow.publish",
+      "entity": "product",
+      "entityId": "P-MVCLL5E3UF",
+      "companyId": "C-ARGUS",
+      "summary": "Approved and published ARG-PRECISION-8891 to Sales (price: 5499)"
+    },
+    {
+      "id": "A-179329637574688",
+      "ts": "2026-10-29T17:52:55.746Z",
+      "actor": "Janani Mohan",
+      "role": "super_admin",
+      "action": "workflow.submit_finance",
+      "entity": "product",
+      "entityId": "P-MVCLL5E3UF",
+      "companyId": "C-ARGUS",
+      "summary": "Submitted ARG-PRECISION-8891 to Finance"
+    },
+    {
+      "id": "A-179329637573081",
+      "ts": "2026-10-29T17:52:55.730Z",
+      "actor": "Janani Mohan",
+      "role": "super_admin",
+      "action": "workflow.content_save",
+      "entity": "product",
+      "entityId": "P-MVCLL5E3UF",
+      "companyId": "C-ARGUS",
+      "summary": "Saved content for ARG-PRECISION-8891"
+    },
     {
       "id": "A-179256299652981",
       "ts": "2026-10-21T06:09:56.530Z",
@@ -1977,7 +2056,8 @@
         "cat_raw_materials",
         "cat_consumables",
         "cat_measuring",
-        "cat_safety"
+        "cat_safety",
+        "admin_invoice_profile"
       ]
     },
     {
@@ -2041,7 +2121,9 @@
         "cat_raw_materials",
         "cat_consumables",
         "cat_measuring",
-        "cat_safety"
+        "cat_safety",
+        "super_invoice_profile",
+        "super_settings"
       ],
       "updatedAt": "2026-10-20T19:40:22.199Z"
     }

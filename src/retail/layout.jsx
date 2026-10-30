@@ -1112,7 +1112,7 @@ export const Topbar = forwardRef(function Topbar(
                       {/* 2. Company Invoice & Quotation Profile (Super Admin & Company Admin) */}
                       {(me?.role === 'super_admin' || me?.role === 'company_admin') && (
                         <Link
-                          to="/admin/settings?tab=invoice"
+                          to="/retail/admin/settings?tab=invoice"
                           id="profileDropdownInvoiceProfileBtn"
                           onClick={() => setProfileDropdownOpen(false)}
                           className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-[#D7C4B7] hover:text-white hover:bg-[#22120A] transition-colors cursor-pointer group"

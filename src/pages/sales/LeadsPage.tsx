@@ -6,6 +6,8 @@ import { PageHeader, DateSelector } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge, Button, statusToVariant } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { OpeningBalanceFields, emptyOpening } from '@/components/OpeningBalanceFields';
+import { loadPartyOpening, savePartyOpening, type ExistingOpening, type OpeningInput } from '@/lib/openingBalances';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
@@ -30,6 +32,8 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
   const [editId, setEditId] = useState<string | null>(null);
   // Editing a master-only company row (no enquiry): updates cnc_customers only.
   const [masterEditId, setMasterEditId] = useState<string | null>(null);
+  const [opening, setOpening] = useState<OpeningInput>(emptyOpening());
+  const [existingOpening, setExistingOpening] = useState<ExistingOpening | null>(null);
   const [viewTarget, setViewTarget] = useState<any | null>(null);
   const [viewData, setViewData] = useState({ enquiries: 0, quotes: 0, orders: 0 });
   const [viewHistory, setViewHistory] = useState<any[]>([]);
@@ -368,6 +372,12 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
       });
       setMasterEditId(r.id);
       setEditId(null);
+      setOpening(emptyOpening());
+      setExistingOpening(null);
+      void loadPartyOpening('CUSTOMER', String(r.id)).then(e => {
+        setExistingOpening(e);
+        if (e && e.status === 'Draft') setOpening({ amount: String(e.amount), type: e.balance_type ?? '', date: e.opening_date });
+      });
       setShowAdd(true);
       return;
     }
@@ -441,6 +451,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
         }
         return new Error('Company save failed after retries.');
       };
+      let savedId = masterEditId;
       if (masterEditId) {
         const err = await stripUnknown(
           (p) => supabase.from('cnc_customers').update(p).eq('id', masterEditId),
@@ -466,7 +477,11 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
         if (company?.id) payload.company_id = company.id;
         const err = await stripUnknown((p) => supabase.from('cnc_customers').insert([p]), payload);
         if (err) throw err;
+        savedId = payload.id;
       }
+      // Optional opening balance typed in the form: saved and posted for this company.
+      const ob = await savePartyOpening('CUSTOMER', { partyId: savedId ?? undefined, partyName: name, input: opening, existing: existingOpening });
+      if (ob.message) alert(ob.message);
       await fetchCustomers();
       setShowAdd(false);
       setMasterEditId(null);
@@ -768,7 +783,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       {!hideHeader && <PageHeader title="All Company Library" description="Manage all incoming enquiries and convert qualified companies to companies" actions={<div className="flex items-center gap-2">{dbError && <Badge variant="error">DB Disconnected</Badge>}{loading && <Badge variant="neutral">Syncing...</Badge>}</div>} />}
 
-      <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarLeft={toolbarLeft} toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
+      <DataTable data={displayLeads} columns={columns} searchKeys={['company', 'leadNo', 'city', 'gst']} onAdd={() => { setEditId(null); setMasterEditId(null); setFormData(resetForm()); setOpening(emptyOpening()); setExistingOpening(null); setShowAdd(true); }} addLabel="New Company" inlineAdd toolbarLeft={toolbarLeft} toolbarDate={<DateSelector />} filterOptions={[{ label: 'New', value: 'New' }, { label: 'Converted', value: 'Converted' }, { label: 'Lost', value: 'Lost' }]} />
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={editId || masterEditId ? "Edit Company" : "Add New Company"} size="sm" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>Save Company</Button></>}>
         <div className="grid grid-cols-3 gap-3">
@@ -827,6 +842,7 @@ export function LeadsPage({ hideHeader = false, toolbarLeft }: { hideHeader?: bo
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
             </select>
           </FormField>
+          {!editId && <div className="col-span-3"><OpeningBalanceFields kind="CUSTOMER" className="" value={opening} onChange={setOpening} existing={existingOpening} /></div>}
 
         </div>
       </Modal>

@@ -8,7 +8,8 @@ import { Badge, Button, StatCard, statusToVariant } from '@/components/ui/Card';
 import { Modal, ConfirmDialog, FormField, inputClass } from '@/components/ui/Modal';
 import { tint } from '@/lib/entryTints';
 import { compactInput } from '@/lib/compactFields';
-import { fetchPartyOpenings, openingKey, sideLabel } from '@/lib/openingBalances';
+import { fetchPartyOpenings, openingKey, sideLabel, loadPartyOpening, savePartyOpening, type ExistingOpening, type OpeningInput } from '@/lib/openingBalances';
+import { OpeningBalanceFields, emptyOpening } from '@/components/OpeningBalanceFields';
 import type { Quotation, SalesOrder, Customer } from '@/data/mockData';
 
 export { LeadsPage } from './LeadsPage';
@@ -33,6 +34,8 @@ export function CustomersPage() {
     name: '', industry: 'Aerospace', contact: '', email: '', phone: '', city: '', status: 'Active'
   });
   const [formData, setFormData] = useState(resetForm());
+  const [opening, setOpening] = useState<OpeningInput>(emptyOpening());
+  const [existingOpening, setExistingOpening] = useState<ExistingOpening | null>(null);
 
   useEffect(() => {
     async function fetchCustomers() {
@@ -80,7 +83,20 @@ export function CustomersPage() {
       status: r.status
     });
     setEditId(r.id);
+    setOpening(emptyOpening());
+    setExistingOpening(null);
+    void loadPartyOpening('CUSTOMER', r.id).then(e => {
+      setExistingOpening(e);
+      if (e && e.status === 'Draft') setOpening({ amount: String(e.amount), type: e.balance_type ?? '', date: e.opening_date });
+    });
     setShowAdd(true);
+  };
+
+  // Saves the opening balance typed in the form (if any) for the company that was just saved, then refreshes the column.
+  const saveOpening = async (partyId: string, partyName: string) => {
+    const res = await savePartyOpening('CUSTOMER', { partyId, partyName, input: opening, existing: existingOpening });
+    if (res.message) alert(res.message);
+    void fetchPartyOpenings('CUSTOMER').then(setOpenings);
   };
 
   const handleSave = async () => {
@@ -104,6 +120,7 @@ export function CustomersPage() {
         setCustomersData(prev => prev.map(c => c.id === editId ? { 
           ...c, name: entryData.name, industry: entryData.industry, contact: entryData.contact, email: entryData.email, phone: entryData.phone, city: entryData.city, status: entryData.status as any
         } : c));
+        await saveOpening(editId, entryData.name);
         setShowAdd(false);
         setEditId(null);
         setFormData(resetForm());
@@ -120,6 +137,7 @@ export function CustomersPage() {
           id: newId, name: insertData.name, industry: insertData.industry, contact: insertData.contact, email: insertData.email, phone: insertData.phone, city: insertData.city, totalOrders: 0, totalValue: 0, outstanding: 0, rating: 3, status: 'Active'
         };
         setCustomersData([formatted, ...customersData]);
+        await saveOpening(newId, insertData.name);
         setShowAdd(false);
         setFormData(resetForm());
       } else {
@@ -164,7 +182,7 @@ export function CustomersPage() {
         <StatCard label="Total Revenue" value={`₹${(totalValue / 10000000).toFixed(2)}Cr`} icon={<FileText size={20} />} trend="12%" trendUp accent="accent" />
         <StatCard label="Outstanding" value={`₹${(outstanding / 100000).toFixed(1)}L`} icon={<FileText size={20} />} accent="warning" />
       </div>
-      <DataTable data={customersData} columns={columns} searchKeys={['name', 'contact', 'city']} onAdd={() => { setEditId(null); setFormData(resetForm()); setShowAdd(true); }} addLabel="Add Company" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Inactive', value: 'Inactive' }]} />
+      <DataTable data={customersData} columns={columns} searchKeys={['name', 'contact', 'city']} onAdd={() => { setEditId(null); setFormData(resetForm()); setOpening(emptyOpening()); setExistingOpening(null); setShowAdd(true); }} addLabel="Add Company" filterOptions={[{ label: 'Active', value: 'Active' }, { label: 'Inactive', value: 'Inactive' }]} />
       
       <Modal open={showAdd} onClose={() => { setShowAdd(false); setEditId(null); setFormData(resetForm()); }} title={editId ? "Edit Company" : "New Company"} subtitle={editId ? "Update company profile" : "Add a new company to the database"} size="lg" footer={<><Button variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update Company' : 'Save Company'}</Button></>}>
         <div className="grid grid-cols-2 gap-4">
@@ -178,6 +196,7 @@ export function CustomersPage() {
           <FormField label="Email" required><input type="email" className={inputClass} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@company.com" /></FormField>
           <FormField label="Phone"><input className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+91 ..." /></FormField>
           <FormField label="Address"><input className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="Address" /></FormField>
+          <OpeningBalanceFields kind="CUSTOMER" value={opening} onChange={setOpening} existing={existingOpening} />
           {editId && (
             <FormField label="Status">
               <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>

@@ -89,9 +89,9 @@ const PAGE_SUGGESTIONS: Record<string, { en: string; ta: string }[]> = {
 
 // The first time Help is switched on in a browser session it welcomes the person.
 const WELCOME: Record<Lang, string> = {
-  ta: 'ARGUS ERP-க்கு வரவேற்கிறோம்! சொல்லுங்கள், எப்படி உதவலாம்?',
-  tanglish: 'Welcome to Argus ERP! Sollunga, eppadi help pannalam?',
-  en: 'Welcome to Argus ERP! How can I help you?',
+  ta: 'Business Intelligence-க்கு வரவேற்கிறோம்! சொல்லுங்கள், எப்படி உதவலாம்?',
+  tanglish: 'Welcome to Business Intelligence! Sollunga, eppadi help pannalam?',
+  en: 'Welcome to Business Intelligence! How can I help you?',
 };
 const welcomedOnce = () => { try { return sessionStorage.getItem('argus.help.welcomed') === '1'; } catch { return false; } };
 const markWelcomed = () => { try { sessionStorage.setItem('argus.help.welcomed', '1'); } catch { /* ignore */ } };
@@ -561,7 +561,7 @@ export function HelpAssistant() {
     store.set(`help.voice.${kind}`, name);
     setVoiceTick((n) => n + 1);
     stopSpeaking();
-    say(kind === 'ta' ? 'ARGUS ERP-க்கு வரவேற்கிறோம்!' : 'Welcome to Argus ERP!', () => {}, setNote);
+    say(kind === 'ta' ? 'Business Intelligence-க்கு வரவேற்கிறோம்!' : 'Welcome to Business Intelligence!', () => {}, setNote);
   };
 
   return (

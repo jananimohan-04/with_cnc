@@ -1,0 +1,6 @@
+code,name,category,specification,unit,min_stock,reorder_qty,rate,supplier,location,opening_qty
+RM-SS304-25,Stainless Steel Round Bar 25mm,Raw Material,SS304 Grade 25mm Dia Rod,Mtr,10,50,450,Steel Tech Corp,Main Store,25
+BO-BRG-6204,Deep Groove Ball Bearing 6204,Bought-out Items,20x47x14mm Chrome Steel,Nos,20,100,185,Apex Bearings Ltd,Bin-B4,60
+TL-END-10MM,Carbide End Mill 10mm 4-Flute,Tools,TiAlN Coated Solid Carbide,Nos,5,20,1250,Precision Tools Inc,Tool-Cab-1,15
+CS-COOL-20L,CNC Soluble Cutting Oil 20L,Consumables,Water Soluble Coolant 20L,Ltr,10,40,320,Industrial Oils Co,Chemical Store,50
+FG-SHAFT-120,Precision Drive Shaft 120mm,Finished Goods,EN8 Hardened Ground Shaft,Nos,15,50,850,,FG Store,30

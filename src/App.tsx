@@ -389,7 +389,14 @@ function ErpApp() {
   );
 }
 
+// ERP finance pages that share the /finance prefix with the Retail Store's Finance Review (/finance, /finance/<product id>).
+const ERP_FINANCE_PAGES = ['/finance/invoices', '/finance/bank-entries', '/finance/bank-entry', '/finance/petty-cash', '/finance/ledger-dashboard'];
+
 const isRetailRoute = (path: string) =>
+  path === '/finance' ||
+  (path.startsWith('/finance/') && !ERP_FINANCE_PAGES.some((p) => path === p || path.startsWith(p + '/'))) ||
+  path.startsWith('/admin/dashboard') ||
+  path.startsWith('/admin/invoices') ||
   path.startsWith('/store') ||
   path.startsWith('/retail') ||
   path.startsWith('/super') ||

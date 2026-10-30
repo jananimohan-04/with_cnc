@@ -725,10 +725,10 @@ export function GuideCoach() {
         
         const currentPageLabel = pageTitles[path.replace(/^\//, '')] || ALL_ERP_PAGES[startIndex]?.label || 'this page';
         const welcome = lang === 'ta'
-          ? `வணக்கம்! ARGUS ERP கற்பித்தல் தொடங்குகிறது. ${currentPageLabel} பக்கத்தில் தொடங்குவோம்.`
+          ? `வணக்கம்! Business Intelligence கற்பித்தல் தொடங்குகிறது. ${currentPageLabel} பக்கத்தில் தொடங்குவோம்.`
           : lang === 'tanglish'
-            ? `Vanakkam! ARGUS ERP teaching thodanguthu. ${currentPageLabel} page-la thodanguvom.`
-            : `Welcome! ARGUS ERP teaching begins. Let's start with ${currentPageLabel}.`;
+            ? `Vanakkam! Business Intelligence teaching thodanguthu. ${currentPageLabel} page-la thodanguvom.`
+            : `Welcome! Business Intelligence teaching begins. Let's start with ${currentPageLabel}.`;
         setToast(welcome);
         say(welcome, () => {
           setToast('');

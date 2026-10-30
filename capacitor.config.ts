@@ -4,7 +4,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // Supabase project, so the phone needs an internet connection.
 const config: CapacitorConfig = {
   appId: 'com.arguscnc.erp',
-  appName: 'ARGUS CNC ERP',
+  appName: 'Business Intelligence',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

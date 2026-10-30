@@ -1,7 +1,7 @@
 {
-  "name": "ARGUS CNC ERP",
-  "short_name": "ARGUS CNC ERP",
-  "description": "ARGUS CNC ERP — install from the browser, no installer file needed.",
+  "name": "Business Intelligence",
+  "short_name": "Business Intelligence",
+  "description": "Business Intelligence — install from the browser, no installer file needed.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

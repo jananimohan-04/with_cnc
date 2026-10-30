@@ -270,6 +270,8 @@ export function RetailApp() {
           <Route path="/retail/admin/orders" element={<Gate perm="admin_orders" roles={R.admin}><AdminOrders /></Gate>} />
           <Route path="/retail/admin/quotes" element={<Gate perm="admin_quotes" roles={R.admin}><AdminQuotes /></Gate>} />
           <Route path="/retail/admin/settings" element={<Gate perm="admin_settings" roles={R.admin}><AdminSettings /></Gate>} />
+          <Route path="/retail/admin/users" element={<Gate perm="admin_users" roles={R.admin}><AdminUsers /></Gate>} />
+          <Route path="/retail/admin/dashboard" element={<Gate perm="admin_dashboard" roles={R.admin}><AdminDashboard /></Gate>} />
           <Route path="/retail/super/catalog" element={<Gate perm="super_catalog" roles={R.super}><SuperCatalog /></Gate>} />
           <Route path="/retail/super/companies" element={<Gate perm="super_companies" roles={R.super}><Companies /></Gate>} />
           <Route path="/retail/super/access" element={<Gate perm="super_access" roles={R.super}><MenuAccess /></Gate>} />

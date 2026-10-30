@@ -212,7 +212,7 @@ export const MENU_CATALOG = [
       {
         id: 'admin_users',
         label: 'Business Development Executive',
-        path: '/admin/users',
+        path: '/retail/admin/users',
         icon: 'User',
         defaultRoles: ['company_admin'],
         theme: {
@@ -228,7 +228,7 @@ export const MENU_CATALOG = [
       {
         id: 'admin_invoice_profile',
         label: 'Invoice & QR Profile',
-        path: '/admin/settings?tab=invoice',
+        path: '/retail/admin/settings?tab=invoice',
         icon: 'Receipt',
         defaultRoles: ['company_admin'],
         theme: {
@@ -244,7 +244,7 @@ export const MENU_CATALOG = [
       {
         id: 'admin_settings',
         label: 'Store Settings',
-        path: '/admin/settings',
+        path: '/retail/admin/settings',
         icon: 'Settings',
         defaultRoles: ['company_admin'],
         theme: {
@@ -362,7 +362,7 @@ export const MENU_CATALOG = [
       {
         id: 'super_invoice_profile',
         label: 'Invoice & QR Profiles',
-        path: '/admin/settings?tab=invoice',
+        path: '/retail/admin/settings?tab=invoice',
         icon: 'Receipt',
         defaultRoles: ['super_admin'],
         theme: {

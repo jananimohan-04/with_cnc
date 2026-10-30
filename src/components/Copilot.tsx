@@ -299,7 +299,20 @@ export function checkWakeWord(raw: string): { matched: boolean; trailing: string
     .replace(/\s+/g, ' ')
     .trim();
   const m = WAKE_AFTER_GREET.exec(clean) || WAKE_ALONE.exec(clean);
-  if (!m) return { matched: false, trailing: '' };
+  if (!m) {
+    // Last resort: a greeting followed by up to three sounds that read like "C-N-C" however the engine spelled them
+    // ("seen see", "sen sea", "see and see", "sin si").
+    const toks = clean.split(' ');
+    const greet = new RegExp(`^${WAKE_GREET}$`, 'iu');
+    const phon = /^(?:c|s|se+|sea|si+|ci)(?:n|and|en|in|an|nd|end)(?:c|s|se+|sea|si+|ci|ck|k)$/;
+    for (let i = 0; i < toks.length - 1; i++) {
+      if (!greet.test(toks[i])) continue;
+      for (let n = 1; n <= 3 && i + n < toks.length; n++) {
+        if (phon.test(toks.slice(i + 1, i + 1 + n).join(''))) return { matched: true, trailing: toks.slice(i + 1 + n).join(' ') };
+      }
+    }
+    return { matched: false, trailing: '' };
+  }
   // The command after the wake word is taken from what was really said, so capitals and punctuation
   // ("A-1 Tools Pvt. Ltd") survive: find the shortest run of words that already contains the wake phrase.
   const words = raw.trim().split(/\s+/);
@@ -1060,7 +1073,7 @@ export function Copilot() {
           setSpeechStatusText(`Submitted: "${said}"`);
           send(said);
         } else {
-          setSpeechStatusText(`Ready (${langName()}) · say "Hello CNC"`);
+          setSpeechStatusText(`Heard "${said}" - not the wake word. Say "Hello CNC" (${langName()})`);
         }
       } else {
         setSpeechStatusText(`Ready (${langName()})`);
