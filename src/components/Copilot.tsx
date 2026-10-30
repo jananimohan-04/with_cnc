@@ -13,6 +13,7 @@ import {
   findRecords, previewAction, runAction, fetchPipelineSummary, explainRecordStage,
   saveStageRecord, moveStageRecord, type ActionCtx, type Preview, type PipelineItem
 } from '@/lib/copilot/actions';
+import { extractStageFieldsLocal, BLANK_WORD } from '@/lib/copilot/stageExtract';
 import {
   ACTION_INTENTS, FIELD_QUESTION, missingOf, resolvePage, understandLocal,
   type Intent, type Params, type Pending, type Understood,
@@ -221,65 +222,6 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
   },
 ];
 
-/** Fast local regex extractor as fallback when offline or no API key */
-function extractStageFieldsLocal(text: string): Record<string, any> {
-  const clean = text.trim();
-  const res: Record<string, any> = {};
-
-  const custM = /(?:customer|company|party|client|for|கஸ்டமர்|கம்பெனி)\s*(?:is|name|as|:)?\s*([A-Za-z0-9\s&.\-]+?)(?=\s*(?:part|product|item|qty|quantity|price|rate|value|po|order|date|பார்ட்|விலை|$))/i.exec(clean);
-  if (custM && custM[1].trim()) res.customer = custM[1].trim();
-
-  const partM = /(?:part|product|item|material|பார்ட்|பொருள்)\s*(?:is|name|as|:)?\s*([A-Za-z0-9\s&.\-]+?)(?=\s*(?:qty|quantity|price|rate|value|po|customer|company|date|விலை|$))/i.exec(clean);
-  if (partM && partM[1].trim()) res.part_name = partM[1].trim();
-
-  const qtyM = /(?:qty|quantity|quantities|count|pieces|pcs|அளவு|எண்ணிக்கை)\s*(?:is|are|as|to|:|=)?\s*(\d+(?:\.\d+)?)/i.exec(clean);
-  if (qtyM) res.quantity = Number(qtyM[1]);
-
-  const priceM = /(?:price|rate|value|cost|amount|விலை|தொகை|ரூபாய்|rs\.?|₹)\s*(?:is|are|as|to|:|=)?\s*(\d+(?:\.\d+)?)/i.exec(clean);
-  if (priceM) res.price = Number(priceM[1]);
-
-  const poM = /(?:po|order|p\.o\.)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\-_]+)/i.exec(clean);
-  if (poM) res.po_no = poM[1].trim();
-
-  const dateM = /(?:delivery|due|expected|valid)?\s*(?:date|on|by|till|தேதி)\s*[:\-=]?\s*([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}|[A-Za-z0-9\s]+?(?=\s*(?:qty|price|po|notes|$)))/i.exec(clean);
-  if (dateM && dateM[1].trim()) res.delivery_date = dateM[1].trim();
-
-  const inwM = /(?:inward|challan|inw)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\-_]+)/i.exec(clean);
-  if (inwM) res.inward_no = inwM[1].trim();
-
-  const heatM = /(?:heat|batch|lot)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\-_]+)/i.exec(clean);
-  if (heatM) res.heat_no = heatM[1].trim();
-
-  const dcM = /(?:dc|delivery\s*challan)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\-_]+)/i.exec(clean);
-  if (dcM) res.dc_no = dcM[1].trim();
-
-  const vehM = /(?:vehicle|lorry|truck|van|transport)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\s\-_]+)/i.exec(clean);
-  if (vehM) res.vehicle_no = vehM[1].trim();
-
-  const invM = /(?:invoice|inv|bill)\s*(?:no|number)?\s*[:\-=]?\s*([A-Za-z0-9\-_]+)/i.exec(clean);
-  if (invM) res.invoice_no = invM[1].trim();
-
-  const rsnM = /(?:reason|defect|cause|problem|காரணம்)\s*[:\-=]?\s*([A-Za-z0-9\s\-_]+)/i.exec(clean);
-  if (rsnM) res.reason = rsnM[1].trim();
-
-  const valM = /(?:validity|valid|validity period|valid for|செல்லுபடியாகும்)\s*[:\-=]?\s*([0-9]+\s*(?:days|day|months|month|weeks|week)|[A-Za-z0-9\s]+?)(?=\s*(?:price|rate|payment|terms|notes|remarks|$))/i.exec(clean);
-  if (valM && valM[1].trim()) res.validity = valM[1].trim();
-
-  const payM = /(?:payment\s*terms?|payment|terms|கட்டண)\s*[:\-=]?\s*([A-Za-z0-9\s&.\-]+?)(?=\s*(?:validity|price|rate|notes|remarks|$))/i.exec(clean);
-  if (payM && payM[1].trim()) res.payment_terms = payM[1].trim();
-
-  const remM = /(?:remarks?|notes?|comment|குறிப்பு)\s*[:\-=]?\s*([A-Za-z0-9\s&.\-]+)$/i.exec(clean);
-  if (remM && remM[1].trim()) res.remarks = remM[1].trim();
-
-  // If price not found by prefix, extract standalone numbers (e.g. "120" or "120 rupees")
-  if (!res.price) {
-    const rawNumM = /(?:^|\s)(?:rs\.?|₹)?\s*(\d+(?:\.\d+)?)\s*(?:rs|rupees|inr|per|\/)?(?:\s|$)/i.exec(clean);
-    if (rawNumM) res.price = Number(rawNumM[1]);
-  }
-
-  return res;
-}
-
 /**
  * Wake word: "Hello CNC", "Hey CNC", "Hi C N C", "வணக்கம் சிஎன்சி" ... The speech engine often writes CNC as "see and see",
  * "science", "C N C" or "cmc", so those are accepted too. Returns what was said after the wake word.
@@ -379,6 +321,8 @@ interface Msg {
   role: 'user' | 'ai';
   text: string;
   rows?: string[];
+  /** A stage picked by voice or click: the records that can move into it and the details to fill. */
+  guide?: { box: PipelineBox; cards: PipelineItem[] };
   go?: { path: string; label: string };
   error?: boolean;
 }
@@ -426,6 +370,32 @@ async function understandRemote(
     const intent = String(j.intent ?? 'unknown') as Intent;
     const params = (j.params && typeof j.params === 'object' ? j.params : {}) as Params;
     return { intent, params, missing: missingOf(intent, params), reply: String(j.reply ?? '') };
+  } catch {
+    return null;
+  }
+}
+
+// Set once the server function turns out not to be deployed, so every spoken detail does not wait on a request that cannot work.
+let remoteExtractUnavailable = false;
+
+/** Uses the OpenAI key kept in Supabase (through the help-assistant function) to sort spoken details into a stage's fields. */
+async function extractStageRemote(
+  stageId: string,
+  stageName: string,
+  message: string,
+  fields: Array<{ key: string; label: string }>
+): Promise<Record<string, any> | null> {
+  if (remoteExtractUnavailable) return null;
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ extract: { stage: stageId, stageName, message, fields, today: new Date().toISOString().slice(0, 10) } }),
+    });
+    if (res.status === 404) { remoteExtractUnavailable = true; return null; }
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j && typeof j.fields === 'object' && j.fields ? j.fields : null;
   } catch {
     return null;
   }
@@ -484,6 +454,8 @@ export function Copilot() {
   // Selected Card from Previous Stage for Stage Transition (e.g. Quotation to advance to Sales Order)
   const [selectedSourceCard, setSelectedSourceCard] = useState<PipelineItem | null>(null);
   const selectedSourceCardRef = useRef<PipelineItem | null>(null);
+  // What has been said so far for the stage being filled: several sentences add up until every required detail is in.
+  const stageDraftRef = useRef<Record<string, any>>({});
   selectedSourceCardRef.current = selectedSourceCard;
 
   // Transition Preview before Confirmation (Source Card + Target Stage + Extra Fields)
@@ -533,6 +505,8 @@ export function Copilot() {
 
   // Pipeline summary list
   const [pipelineCards, setPipelineCards] = useState<PipelineItem[]>([]);
+  const pipelineCardsRef = useRef<PipelineItem[]>([]);
+  pipelineCardsRef.current = pipelineCards;
   const [loadingPipeline, setLoadingPipeline] = useState(false);
   const [showCardsDrawer, setShowCardsDrawer] = useState(false);
   const [cardFilter, setCardFilter] = useState<string>('all');
@@ -860,6 +834,31 @@ export function Copilot() {
     return cards.slice(0, 8);
   }, []);
 
+  // What the assistant shows and says when a stage is picked: the records that can move into it (numbered, clickable)
+  // and the details to speak, so the person never has to guess what to say next.
+  const stageGuideMessage = useCallback((box: PipelineBox): Omit<Msg, 'id'> => {
+    const cards = getSourceCardsForStage(box, pipelineCardsRef.current);
+    const need = box.fields.filter((f) => f.required).map((f) => (ta ? f.labelTa : f.label)).join(', ');
+    let text: string;
+    if (box.isNewOnly) {
+      text = L(
+        `${box.name} - a new entry. Tell me these details in your voice and I will save them:`,
+        `${box.nameTa} - புதிய பதிவு. இந்த விவரங்களை குரலில் சொல்லுங்கள், நான் சேமிக்கிறேன்:`
+      );
+    } else if (cards.length === 0) {
+      text = L(
+        `${box.name}: there is no ${box.sourceStageName} record to move yet. Add one first, then come back. Details I will need:`,
+        `${box.nameTa}: நகர்த்த ${box.sourceStageNameTa} பதிவு இல்லை. முதலில் ஒன்றைச் சேர்க்கவும். தேவையான விவரங்கள்:`
+      );
+    } else {
+      text = L(
+        `${box.name}: ${cards.length} ${box.sourceStageName} record${cards.length === 1 ? '' : 's'} available. Click one or say its number, then tell me the details below.`,
+        `${box.nameTa}: ${cards.length} ${box.sourceStageNameTa} பதிவுகள் உள்ளன. ஒன்றை கிளிக் செய்யவும் அல்லது எண்ணைச் சொல்லுங்கள், பிறகு கீழே உள்ள விவரங்களைச் சொல்லுங்கள்.`
+      );
+    }
+    return { role: 'ai', text, guide: { box, cards } };
+  }, [L, ta, getSourceCardsForStage]);
+
   // Handle stage selection (Step 1 -> Step 2)
   const selectStage = useCallback((stageId: string) => {
     const box = PIPELINE_8_BOXES.find((b) => b.id === stageId) || PIPELINE_8_BOXES[0];
@@ -867,33 +866,18 @@ export function Copilot() {
     activeAddStageRef.current = box.id;
     setSelectedSourceCard(null);
     selectedSourceCardRef.current = null;
+    stageDraftRef.current = {};
     setTransitionPreview(null);
     setExtractedPreview(null);
 
-    if (box.isNewOnly) {
-      const announcement = L(
-        `Selected Enquiry. You can add this newly! Tell me in your voice: Customer, Part name, and Quantity.`,
-        `Enquiry தேர்ந்தெடுக்கப்பட்டது. புதிதாகச் சேர்க்கலாம்! கஸ்டமர், பாகம் பெயர், அளவு போன்ற விவரங்களை மைக் மூலம் சொல்லுங்கள்.`
-      );
-      add({ role: 'ai', text: announcement }, true);
-    } else {
-      const prevName = box.sourceStageName || 'Previous Stage';
-      const prevNameTa = box.sourceStageNameTa || 'முந்தைய நிலை';
-      const announcement = L(
-        `Selected ${box.name}. To advance to ${box.name}, please choose one ${prevName} from the list below (or speak its card number/customer). Then tell me the extra details!`,
-        `${box.nameTa} தேர்ந்தெடுக்கப்பட்டது. ${box.nameTa}-க்கு நகர்த்த கீழே உள்ள ${prevNameTa} பட்டியலிலிருந்து ஒன்றைத் தேர்ந்தெடுக்கவும்.`
-      );
-      add({ role: 'ai', text: announcement }, false);
-      if (speak) {
-        speakText(L(`Selected ${box.name}. Please choose one ${prevName}.`, `${box.nameTa} தேர்ந்தெடுக்கப்பட்டது. ஒன்றை தேர்ந்தெடுக்கவும்.`));
-      }
-    }
-  }, [add, L]);
+    add(stageGuideMessage(box), true);
+  }, [add, stageGuideMessage]);
 
   // Handle source card selection (Step 2A -> Step 2B)
   const selectSourceCard = useCallback((card: PipelineItem) => {
     setSelectedSourceCard(card);
     selectedSourceCardRef.current = card;
+    stageDraftRef.current = {};
     setTransitionPreview(null);
 
     const targetBox = PIPELINE_8_BOXES.find((b) => b.id === activeAddStageRef.current);
@@ -920,10 +904,14 @@ export function Copilot() {
     try {
       const res = await moveStageRecord(sourceCard, targetBox.id, extraFields, ctx);
       setTransitionPreview(null);
-      setSelectedSourceCard(null);
-      selectedSourceCardRef.current = null;
-      setActiveAddStage(null);
-      activeAddStageRef.current = null;
+      if (res.ok) {
+        setSelectedSourceCard(null);
+        selectedSourceCardRef.current = null;
+        stageDraftRef.current = {};
+        setActiveAddStage(null);
+        activeAddStageRef.current = null;
+      }
+      // When it did not save, the stage and the chosen record stay: say the corrected detail and confirm again.
 
       add({
         role: 'ai',
@@ -1273,7 +1261,8 @@ export function Copilot() {
       return false;
     });
 
-    if (stageMatch && (!activeAddStageRef.current || stageMatch.id !== activeAddStageRef.current)) {
+    if (stageMatch && (!activeAddStageRef.current || stageMatch.id !== activeAddStageRef.current
+      || (!stageMatch.isNewOnly && !selectedSourceCardRef.current))) {
       selectStage(stageMatch.id);
       return;
     }
@@ -1313,20 +1302,15 @@ export function Copilot() {
             return;
           }
 
-          // Prompt user to pick a card
-          add({
-            role: 'ai',
-            text: L(
-              `Please choose which ${currentStageBox.sourceStageName} to advance (click one above or say the card number/customer).`,
-              `நகர்த்த வேண்டிய ${currentStageBox.sourceStageNameTa}-ஐத் தேர்ந்தெடுக்கவும் (மேலே கிளிக் செய்யவும் அல்லது கார்டு எண் சொல்லவும்).`
-            ),
-          }, true);
+          // Prompt user to pick a card: show the list again
+          add(stageGuideMessage(currentStageBox), true);
           return;
         }
 
-        // 2. User has spoken details: analyze with ChatGPT API (or local fallback)
+        // 2. User has spoken details: ChatGPT (or the offline reader when there is no key) sorts them into the stage's fields.
+        const skipping = BLANK_WORD.test(text.trim());
         let extracted: Record<string, any> | null = null;
-        if (hasApiKey) {
+        if (!skipping && hasApiKey) {
           extracted = await extractStageFieldsWithChatGPT(
             currentStageBox.id,
             currentStageBox.name,
@@ -1334,9 +1318,44 @@ export function Copilot() {
             currentStageBox.fields.map((f) => ({ key: f.key, label: f.label }))
           );
         }
-
-        if (!extracted || Object.keys(extracted).length === 0) {
+        if (!skipping && (!extracted || Object.keys(extracted).length === 0)) {
+          // no key in this browser: use the one kept safely in Supabase
+          extracted = await extractStageRemote(
+            currentStageBox.id, currentStageBox.name, text,
+            currentStageBox.fields.map((f) => ({ key: f.key, label: f.label }))
+          );
+        }
+        if (!skipping && (!extracted || Object.keys(extracted).length === 0)) {
           extracted = extractStageFieldsLocal(text);
+        }
+        const heard = Object.fromEntries(
+          Object.entries(extracted ?? {}).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+        );
+        const draft: Record<string, any> = { ...stageDraftRef.current, ...heard };
+        stageDraftRef.current = draft;
+        extracted = draft;
+
+        const labelOf = (k: string) => {
+          const f = currentStageBox.fields.find((x) => x.key === k);
+          return f ? (ta ? f.labelTa : f.label) : k.replace(/_/g, ' ');
+        };
+        const summary = Object.entries(draft).map(([k, v]) => `${labelOf(k)}: ${v}`).join(' · ');
+        const cardQty = Number(selectedSourceCardRef.current?.qty) || 0;
+        const missingReq = currentStageBox.fields.filter(
+          (f) => f.required && draft[f.key] === undefined && !(f.key === 'quantity' && cardQty > 0 && currentStageBox.id !== 'rejected')
+        );
+        if (missingReq.length && !skipping) {
+          const need = missingReq.map((f) => (ta ? f.labelTa : f.label)).join(', ');
+          add({
+            role: 'ai',
+            text: L(
+              `${summary ? `Got it - ${summary}.
+` : ''}I still need: ${need}. For example: ${missingReq[0].example}. (Say "skip" to continue without.)`,
+              `${summary ? `சரி - ${summary}.
+` : ''}இன்னும் தேவை: ${need}. எ.கா: ${missingReq[0].example}. ("skip" என்று சொன்னால் இல்லாமல் தொடரலாம்.)`
+            ),
+          }, true);
+          return;
         }
 
         // A) If brand new Enquiry: Save directly to database!
@@ -1344,6 +1363,7 @@ export function Copilot() {
           const saveRes = await saveStageRecord(currentStageBox.id, extracted, ctx);
 
           if (saveRes.ok) {
+            stageDraftRef.current = {};
             setExtractedPreview({
               stage: currentStageBox,
               fields: extracted,
@@ -1377,8 +1397,10 @@ export function Copilot() {
           });
 
           const previewMsg = L(
-            `Extracted extra details for ${currentStageBox.name}. Please confirm to move #${selectedSourceCardRef.current.refNo} (${selectedSourceCardRef.current.customer}) to ${currentStageBox.name}.`,
-            `${currentStageBox.nameTa}-க்கான கூடுதல் விவரங்கள் பெறப்பட்டன. #${selectedSourceCardRef.current.refNo} (${selectedSourceCardRef.current.customer}) ஐ ${currentStageBox.nameTa}-க்கு மாற்றவா? உறுதிப்படுத்தவும்.`
+            `${summary ? `${summary}
+` : ''}Please confirm (say "yes") to move #${selectedSourceCardRef.current.refNo} (${selectedSourceCardRef.current.customer}) to ${currentStageBox.name}, or say "no" to cancel.`,
+            `${summary ? `${summary}
+` : ''}#${selectedSourceCardRef.current.refNo} (${selectedSourceCardRef.current.customer}) ஐ ${currentStageBox.nameTa}-க்கு மாற்றவா? "yes" என்று உறுதிப்படுத்தவும்.`
           );
           add({ role: 'ai', text: previewMsg }, true);
           return;
@@ -1535,7 +1557,7 @@ export function Copilot() {
     } finally {
       setBusy(false);
     }
-  }, [busy, awaiting, pending, msgs, lang, page, pageTitle, ctx, hasApiKey, pipelineCards, add, confirm, cancel, navigate, L, loadPipeline, selectStage]);
+  }, [busy, awaiting, pending, msgs, lang, page, pageTitle, ctx, hasApiKey, pipelineCards, add, confirm, cancel, navigate, L, loadPipeline, selectStage, stageGuideMessage, getSourceCardsForStage]);
 
   submitRef.current = submit;
 
@@ -2304,6 +2326,41 @@ export function Copilot() {
                     <li key={i}>{r}</li>
                   ))}
                 </ul>
+              )}
+              {m.guide && (
+                <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-xs">
+                  {m.guide.cards.length > 0 && (
+                    <div className="space-y-1">
+                      {m.guide.cards.map((c, i) => (
+                        <button
+                          key={`${c.type}-${c.id}-${i}`}
+                          type="button"
+                          onClick={() => selectSourceCard(c)}
+                          className="flex w-full items-center gap-2 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-left hover:border-violet-400 hover:bg-violet-50"
+                        >
+                          <span className="rounded bg-violet-100 px-1.5 text-[10px] font-bold text-violet-800">#{i + 1}</span>
+                          <span className="min-w-0 flex-1 truncate">
+                            <b>{c.refNo}</b> · {c.customer}
+                            <span className="text-slate-500"> · {c.part}{c.qty > 0 ? ` · Qty ${c.qty}` : ''}{c.value > 0 ? ` · ₹${c.value.toLocaleString('en-IN')}` : ''}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {L('Details to tell me', 'சொல்ல வேண்டிய விவரங்கள்')}
+                    </p>
+                    <ul className="space-y-0.5">
+                      {m.guide.box.fields.map((f) => (
+                        <li key={f.key}>
+                          {f.icon} <b>{ta ? f.labelTa : f.label}</b>{f.required && <span className="text-red-500"> *</span>}
+                          <span className="text-slate-500"> - {L('e.g.', 'எ.கா.')} {f.example}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               )}
               {m.go && (
                 <button

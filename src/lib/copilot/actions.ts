@@ -4,6 +4,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
+import { recordProductionBatch } from '@/lib/orderQuantities';
 import type { Intent, Params } from './understand';
 
 export interface ActionCtx {
@@ -904,7 +905,7 @@ export async function saveStageRecord(
   if (normStage === 'salesorder') {
     return await addSalesOrder({
       company: fields.customer || fields.company || 'Unknown Customer',
-      po_no: fields.po_no || `PO-${Math.floor(1000 + Math.random() * 9000)}`,
+      po_no: fields.po_no || '',
       products: [{
         name: fields.part_name || fields.part || 'Component',
         qty: Number(fields.quantity) || 1,
@@ -1055,6 +1056,56 @@ export async function saveStageRecord(
   return { ok: false, message: `Unsupported stage ${stageId}.` };
 }
 
+/** "2026-11-14", "14/11/2026", "14 Nov 2026", "November 14th, 2026" -> yyyy-mm-dd ('' when it cannot be read). */
+export function isoDateLoose(v: unknown): string {
+  const t = String(v ?? '').trim();
+  if (!t) return '';
+  const ok = (y: number, mo: number, d: number) => {
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d
+      ? `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+  };
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (m) return ok(+m[1], +m[2], +m[3]);
+  m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/.exec(t);
+  if (m) return ok(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1]);
+  const MON = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+  const monthNo = (x: string) => MON.split('|').indexOf(x.slice(0, 3).toLowerCase()) + 1;
+  m = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MON})[a-z]*\\.?,?\\s+(\\d{4})`, 'i').exec(t);
+  if (m) return ok(+m[3], monthNo(m[2]), +m[1]);
+  m = new RegExp(`(${MON})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})`, 'i').exec(t);
+  if (m) return ok(+m[3], monthNo(m[1]), +m[2]);
+  return '';
+}
+
+/** The line items of a quotation / sales order row (stored as a JSON string or an array in `items` / `description`). */
+function lineItemsOf(raw: any): any[] {
+  for (const d of [raw?.items, raw?.description]) {
+    if (Array.isArray(d)) return d.filter((x) => x && typeof x === 'object');
+    if (typeof d === 'string' && d.trim().startsWith('[')) {
+      try { const j = JSON.parse(d); if (Array.isArray(j)) return j.filter((x) => x && typeof x === 'object'); } catch { /* not JSON */ }
+    }
+  }
+  return [];
+}
+
+/** "30 Days", "2 weeks", "1 month", "45" -> number of days (default 30). */
+function validityDays(v: unknown): number {
+  const m = /(\d+(?:\.\d+)?)\s*(day|week|month)?/i.exec(String(v ?? ''));
+  if (!m) return 30;
+  const n = Number(m[1]);
+  const unit = (m[2] || 'day').toLowerCase();
+  const days = unit === 'month' ? n * 30 : unit === 'week' ? n * 7 : n;
+  return days > 0 && days <= 3650 ? Math.round(days) : 30;
+}
+
+/** The sales order a card belongs to, for the production batch rows that record finished and rejected quantity. */
+function salesOrderOf(card: PipelineItem): { id: string | null; no: string | null } {
+  if (card.type === 'sales_order') return { id: card.id, no: card.refNo };
+  const ref = String(card.raw?.sales_order_ref ?? card.raw?.sales_order_no ?? '').trim();
+  return { id: null, no: ref || null };
+}
+
 /**
  * Moves an existing pipeline card from its current stage to the next stage
  * with extra information provided by the user via voice / form.
@@ -1067,12 +1118,19 @@ export async function moveStageRecord(
 ): Promise<RunResult> {
   const norm = targetStageId.toLowerCase().replace(/[\s_-]+/g, '');
 
+  const raw: any = sourceCard.raw ?? {};
+  const orderDate = new Date().toISOString().slice(0, 10);
+
   // 1. Move to Quotation (source is Enquiry)
   if (norm === 'quotation') {
     const quoteNo = `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const unitPrice = Number(extraFields.price || extraFields.rate || 0);
     const qty = Number(sourceCard.qty) || 1;
     const totalVal = unitPrice ? unitPrice * qty : Number(sourceCard.value || 0);
+    const lineItems = [{
+      id: crypto.randomUUID(), partName: sourceCard.part || '', partNumber: '', quantity: String(qty),
+      unitPrice: String(unitPrice), discount: '0', unitDiscount: '0', gst: '18',
+    }];
 
     const payload: any = {
       id: crypto.randomUUID(),
@@ -1080,12 +1138,19 @@ export async function moveStageRecord(
       lead_id: sourceCard.id,
       enquiry_no: sourceCard.refNo,
       customer: sourceCard.customer,
+      contact_person: raw.contact_person || '',
+      phone: raw.phone || '',
+      email: raw.email || '',
       part_name: sourceCard.part,
+      part_number: '',
+      description: JSON.stringify(lineItems),
       quantity: qty,
       unit_price: unitPrice,
       total_value: totalVal,
-      date: new Date().toISOString().slice(0, 10),
-      valid_till: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      discount_percent: 0,
+      gst_percent: 18,
+      date: orderDate,
+      valid_till: new Date(Date.now() + validityDays(extraFields.validity) * 86400000).toISOString().slice(0, 10),
       payment_terms: extraFields.payment_terms || '30 days net',
       remarks: extraFields.remarks || '',
       status: 'Sent',
@@ -1117,27 +1182,80 @@ export async function moveStageRecord(
     };
   }
 
-  // 2. Move to Sales Order (source is Quotation or Enquiry)
+  // 2. Move to Sales Order (source is Quotation or Enquiry). Same row shape as the pipeline's own Quotation -> Sales Order.
   if (norm === 'salesorder') {
-    const orderNo = `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const poNo = extraFields.po_no || `PO-${Math.floor(1000 + Math.random() * 9000)}`;
-    const qty = Number(sourceCard.qty) || 1;
-    const price = Number(extraFields.price || 0) || (sourceCard.value && sourceCard.qty ? sourceCard.value / sourceCard.qty : 0);
-    const totalVal = sourceCard.value || (price * qty);
+    const deliveryRaw = String(extraFields.delivery_date ?? '').trim();
+    const delivery = isoDateLoose(deliveryRaw);
+    if (deliveryRaw && !delivery) return { ok: false, message: `I could not read the delivery date "${deliveryRaw}". Say it like 14 November 2026.` };
+    if (delivery && delivery <= orderDate) return { ok: false, message: 'The delivery date must be after today.' };
+
+    const { attachDateTimeToProduct } = await import('@/pages/sales/SalesPipelinePage');
+    const now = new Date();
+    const qty0 = Number(sourceCard.qty) || 1;
+    const spokenPrice = Number(extraFields.price || 0);
+    const fromRows = lineItemsOf(raw);
+    const base = fromRows.length ? fromRows : [{
+      partName: sourceCard.part, partNumber: '', quantity: qty0,
+      unitPrice: Number(raw.unit_price) || (sourceCard.value && sourceCard.qty ? sourceCard.value / sourceCard.qty : 0),
+      discount: '0', unitDiscount: '0', gst: '18',
+    }];
+    const finalItems = base.map((i: any) => ({
+      id: crypto.randomUUID(),
+      filePaths: [] as string[],
+      partName: attachDateTimeToProduct(String(i.partName || i.productName || i.item || sourceCard.part || ''), null, now),
+      partNumber: String(i.partNumber || ''),
+      description: '',
+      quantity: String(Number(i.quantity ?? i.qty) || 0),
+      rejectedQty: 0,
+      status: 'Confirmed',
+      unitPrice: String(base.length === 1 && spokenPrice > 0 ? spokenPrice : (Number(i.unitPrice) || 0)),
+      discount: String(i.discount ?? '0'),
+      unitDiscount: String(i.unitDiscount ?? '0'),
+      gst: String(i.gst ?? 18),
+    }));
+
+    const { data: orders } = await supabase.from('cnc_sales_orders').select('order_no');
+    const taken = new Set((orders ?? []).map((o: any) => String(o.order_no)));
+    let orderNo = '';
+    for (let i = 0; i < 30 && (!orderNo || taken.has(orderNo)); i++) {
+      orderNo = `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+    const names = finalItems.map((i) => i.partName);
+    const totalQty = finalItems.reduce((t, i) => t + (Number(i.quantity) || 0), 0);
+    const computed = finalItems.reduce((t, i) => t + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (1 + (Number(i.gst) || 0) / 100), 0);
+    const totalVal = computed > 0 ? computed : Number(sourceCard.value || 0);
 
     const payload: any = {
       id: crypto.randomUUID(),
       order_no: orderNo,
-      po_no: poNo,
+      quotation_id: sourceCard.type === 'quotation' ? sourceCard.id : null,
+      quote_no: raw.quote_no || '',
+      lead_no: raw.enquiry_no || raw.lead_no || '',
       customer: sourceCard.customer,
-      part_name: sourceCard.part,
-      quantity: qty,
-      unit_price: price,
+      customer_id: raw.customer_id || null,
+      contact_person: raw.contact_person || '',
+      phone: raw.phone || '',
+      email: raw.email || '',
+      billing_address: '',
+      delivery_address: '',
+      shipping_contact: '',
+      shipping_phone: '',
+      order_date: orderDate,
+      customer_po_no: String(extraFields.po_no || ''),
+      customer_po_date: null,
+      items: finalItems,
+      part_name: finalItems.length > 1 ? `${names.join(', ')} (${finalItems.length} Products)` : (names[0] ?? ''),
+      part_number: finalItems[0]?.partNumber ?? '',
+      part_no: finalItems[0]?.partNumber ?? '',
+      quantity: totalQty,
+      delivered: 0,
+      value: totalVal,
       total_value: totalVal,
-      delivery_date: extraFields.delivery_date || null,
+      delivery_date: delivery || orderDate,
       status: 'Confirmed',
-      order_date: new Date().toISOString().slice(0, 10),
-      created_at: new Date().toISOString(),
+      payment_terms: raw.payment_terms || 'Net 30',
+      special_instructions: '',
+      internal_remarks: String(extraFields.remarks || ''),
     };
     if (ctx.companyId) payload.company_id = ctx.companyId;
 
@@ -1145,21 +1263,21 @@ export async function moveStageRecord(
     if (error) return { ok: false, message: `Could not save Sales Order: ${error.message}` };
 
     if (sourceCard.type === 'quotation') {
-      await supabase.from('cnc_quotations').update({ status: 'Ordered' }).eq('id', sourceCard.id);
+      await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', sourceCard.id);
     } else if (sourceCard.type === 'enquiry') {
       await supabase.from('cnc_enquiries').update({ pipeline_stage: 'Sales Order', status: 'Converted' }).eq('id', sourceCard.id);
     }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'Sales Order', po_no: poNo }
+        detail: { identifier: sourceCard.refNo, targetStage: 'Sales Order', po_no: payload.customer_po_no }
       }));
       window.dispatchEvent(new CustomEvent('argus:data-changed'));
     }
 
     return {
       ok: true,
-      message: `Record #${sourceCard.refNo} (${sourceCard.customer}) moved to Sales Order ${orderNo} with PO ${poNo}.`,
+      message: `Record #${sourceCard.refNo} (${sourceCard.customer}) moved to Sales Order ${orderNo}${payload.customer_po_no ? ` with PO ${payload.customer_po_no}` : ''}${delivery ? `, delivery ${delivery}` : ''}.`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
@@ -1171,13 +1289,16 @@ export async function moveStageRecord(
     const payload: any = {
       id: crypto.randomUUID(),
       inward_no: inwNo,
+      category: 'GOODS PURCHASE',
+      project_name: raw.lead_no || '',
+      sales_order_ref: sourceCard.type === 'sales_order' ? sourceCard.refNo : '',
       party_name: sourceCard.customer,
       part_name: sourceCard.part,
       product_name: sourceCard.part,
       quantity: qty,
-      price: sourceCard.value || 0,
-      heat_no: extraFields.heat_no || '',
-      inward_date: new Date().toISOString().slice(0, 10),
+      price: Number(extraFields.price) || 0,
+      remarks: [extraFields.heat_no && `Heat/Batch: ${extraFields.heat_no}`, extraFields.remarks].filter(Boolean).join(' | '),
+      inward_date: orderDate,
       status: 'Received',
       created_at: new Date().toISOString(),
     };
@@ -1204,45 +1325,60 @@ export async function moveStageRecord(
     };
   }
 
-  // 4. Move to Finished Goods
+  // 4. Move to Finished Goods: recorded as a good-quantity production batch (the same rows the pipeline's own forms write)
   if (norm === 'finishedgoods') {
     const fgQty = Number(extraFields.quantity || extraFields.fg_qty) || sourceCard.qty || 1;
-    const batchNo = extraFields.batch_no || 'BATCH-01';
-    const location = extraFields.location || 'Rack 1';
+    const batchNo = String(extraFields.batch_no || `FG-${Date.now().toString().slice(-6)}`);
+    const location = String(extraFields.location || '');
+    const so = salesOrderOf(sourceCard);
+
+    const res = await recordProductionBatch({
+      salesOrderId: so.id, salesOrderNo: so.no, productName: sourceCard.part || null,
+      batchNo, grossQty: fgQty, goodQty: fgQty, rejectedQty: 0, reworkQty: 0,
+      notes: [location && `Location: ${location}`, extraFields.remarks && `QC: ${extraFields.remarks}`].filter(Boolean).join(' | ') || null,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    if (res.pendingMigration) return { ok: false, message: 'Finished goods storage is not set up in the database yet (production batches migration).' };
+    if (!res.saved) return { ok: false, message: 'Could not save the finished goods. Nothing was saved.' };
 
     if (sourceCard.type === 'sales_order') {
       await supabase.from('cnc_sales_orders').update({ status: 'Finished Goods' }).eq('id', sourceCard.id);
     }
-
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'Finished Goods' }
-      }));
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', { detail: { identifier: sourceCard.refNo, targetStage: 'Finished Goods' } }));
       window.dispatchEvent(new CustomEvent('argus:data-changed'));
     }
-
     return {
       ok: true,
-      message: `#${sourceCard.refNo} (${sourceCard.part}) moved to Finished Goods (Qty: ${fgQty}, Batch: ${batchNo}, Bin: ${location}).`,
+      message: `#${sourceCard.refNo} (${sourceCard.part}) saved as Finished Goods (Qty: ${fgQty}, Batch: ${batchNo}${location ? `, Bin: ${location}` : ''}).`,
       where: { path: '/sales/pipeline', label: 'Finished Goods' },
     };
   }
 
-  // 5. Move to Rejected
+  // 5. Move to Rejected: recorded as a rejected-quantity production batch (never enters stock, DCs or invoices)
   if (norm === 'rejected') {
-    const rejQty = Number(extraFields.quantity || extraFields.rejected_qty) || 1;
-    const reason = extraFields.reason || 'Dimension Defect';
+    const rejQty = Number(extraFields.quantity || extraFields.rejected_qty);
+    if (!(rejQty > 0)) return { ok: false, message: 'How many were rejected? Tell me the rejected quantity.' };
+    const reason = String(extraFields.reason || '').trim();
+    if (!reason) return { ok: false, message: 'What is the defect reason? Tell me the reason for the rejection.' };
+    const so = salesOrderOf(sourceCard);
+
+    const res = await recordProductionBatch({
+      salesOrderId: so.id, salesOrderNo: so.no, productName: sourceCard.part || null,
+      batchNo: `REJ-${Date.now().toString().slice(-6)}`, grossQty: rejQty, goodQty: 0, rejectedQty: rejQty, reworkQty: 0,
+      rejectionType: String(extraFields.disposition || '').trim() || null, rejectionReason: reason,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    if (res.pendingMigration) return { ok: false, message: 'Rejection storage is not set up in the database yet (production batches migration).' };
+    if (!res.saved) return { ok: false, message: 'Could not save the rejection. Nothing was saved.' };
 
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'Rejected' }
-      }));
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', { detail: { identifier: sourceCard.refNo, targetStage: 'Rejected' } }));
       window.dispatchEvent(new CustomEvent('argus:data-changed'));
     }
-
     return {
       ok: true,
-      message: `#${sourceCard.refNo} logged to Rejection (Part: ${sourceCard.part}, Qty: ${rejQty}, Reason: ${reason}).`,
+      message: `#${sourceCard.refNo} rejection saved (Part: ${sourceCard.part}, Qty: ${rejQty}, Reason: ${reason}).`,
       where: { path: '/sales/pipeline', label: 'Rejected Stage' },
     };
   }
@@ -1257,9 +1393,12 @@ export async function moveStageRecord(
       id: crypto.randomUUID(),
       delivery_no: dcNo,
       customer_name: sourceCard.customer,
+      sales_order_id: sourceCard.type === 'sales_order' ? sourceCard.id : null,
+      sales_order_no: sourceCard.type === 'sales_order' ? sourceCard.refNo : null,
       part_name: sourceCard.part,
       quantity: qty,
       vehicle_no: vehicle,
+      remarks: String(extraFields.remarks || ''),
       status: 'Dispatched',
       delivery_date: new Date().toISOString().slice(0, 10),
       created_at: new Date().toISOString(),
