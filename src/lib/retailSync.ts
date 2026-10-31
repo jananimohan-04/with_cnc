@@ -1,5 +1,5 @@
 // ============================================================================
-// ERP Inventory ↔ Retail Store API Client
+// BI Inventory ↔ Retail Store API Client
 // Secure client communicating via /api/retail-sync (never exposes server secrets)
 // ============================================================================
 

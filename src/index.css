@@ -142,7 +142,7 @@
   box-shadow: inset 0 -1px 0 #1e293b;
 }
 
-/* The Retail Store stylesheet (also loaded on every page) paints every <th> dark brown with !important. ERP list tables have dark
+/* The Retail Store stylesheet (also loaded on every page) paints every <th> dark brown with !important. BI list tables have dark
    header bars, so their column titles (and the arrows next to them) must stay white or they vanish into the bar. */
 .erp-table thead th,
 .erp-table thead th button,
@@ -219,7 +219,7 @@ main table.erp-table-indigo > tbody > tr:nth-child(odd) { background-color: #fff
 main table.erp-table-indigo > tbody > tr:hover { background-color: #e0e7ff !important; }
 
 /* Global readability bump: every standard text step renders ~2px larger across
-   the whole ERP. Only font sizes change — rem-based layout spacing is untouched.
+   the whole BI. Only font sizes change — rem-based layout spacing is untouched.
    (Unlayered rules win over the utilities layer, so no !important is needed.) */
 body { font-size: 15px; }
 .text-xs { font-size: 13px; }

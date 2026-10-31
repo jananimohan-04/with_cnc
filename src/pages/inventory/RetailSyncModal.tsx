@@ -380,7 +380,7 @@ export function RetailSyncModal({
               <tr className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                 <th className="px-3 py-2.5">Product & SKU</th>
                 <th className="px-3 py-2.5">Warehouse</th>
-                <th className="px-3 py-2.5 text-center">ERP Stock</th>
+                <th className="px-3 py-2.5 text-center">BI Stock</th>
                 <th className="px-3 py-2.5 text-center">Store Stock</th>
                 <th className="px-3 py-2.5">Status</th>
                 <th className="px-3 py-2.5">Last Sync</th>

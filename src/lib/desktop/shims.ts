@@ -1,6 +1,6 @@
 // Desktop compatibility shims for the WebView2 shell.
 //
-// The ERP's print/preview flows are built around browser popups:
+// The BI's print/preview flows are built around browser popups:
 //   * `const tab = window.open('', '_blank'); tab.document.write(html); ... window.print()`
 //   * `const tab = window.open(''); tab.location.href = blobUrlOrSignedUrl; tab.close()`
 //   * `<a download>` + `URL.createObjectURL` for CSV/PDF exports
@@ -86,7 +86,7 @@ function createOverlayPopup(features?: string): Window {
     "color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;user-select:none;";
 
   const title = document.createElement('span');
-  title.textContent = 'CNCFORGE ERP — Preview';
+  title.textContent = 'CNCFORGE BI — Preview';
   title.style.cssText = 'flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
 
   const buttonStyle =

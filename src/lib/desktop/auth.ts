@@ -16,7 +16,7 @@
 //      browsers never send to a server — so the Rust side serves a tiny relay
 //      page that posts the fragment back and emits `oauth-callback`.
 //   5. Here we parse the fragment and hand the session to supabase-js exactly
-//      like the web flow would; all ERP profile/permission loading then happens
+//      like the web flow would; all BI profile/permission loading then happens
 //      through the existing onAuthStateChange path (RLS untouched).
 //
 // The three loopback URLs must be present in the Supabase Dashboard →
@@ -47,7 +47,7 @@ function parseCallbackPayload(payload: string): CallbackParams {
 
 /**
  * Runs the full desktop sign-in. Resolves once the Supabase session has been
- * established (the ERP then loads its profile through onAuthStateChange), or
+ * established (the BI then loads its profile through onAuthStateChange), or
  * throws with a message suitable for the login screen.
  */
 export async function desktopGoogleSignIn(): Promise<void> {

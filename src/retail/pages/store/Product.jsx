@@ -382,7 +382,7 @@ export default function Product() {
             {/* Catalog Guarantees */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10.5px] text-slate-500 flex-wrap gap-2">
               <span className="flex items-center gap-1 text-slate-600">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Live ERP stock
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Live BI stock
               </span>
               <span className="flex items-center gap-1 text-slate-600">
                 <FileText className="w-3.5 h-3.5 text-blue-600" /> GST invoice included

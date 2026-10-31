@@ -172,7 +172,7 @@ export default function Profile() {
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-sm">Navigation Menu Position</h3>
-              <p className="text-xs text-slate-500">Choose where the main ERP navigation appears on your screen</p>
+              <p className="text-xs text-slate-500">Choose where the main BI navigation appears on your screen</p>
             </div>
           </div>
           <span className="text-[11px] font-black uppercase px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">

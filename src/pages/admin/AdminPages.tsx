@@ -15,7 +15,7 @@ import { isTauri } from '@/lib/desktop/isTauri';
 import { UpdatesSettingsPage } from '@/components/desktop/UpdatesSettingsPage';
 import { DocumentProfilePage } from '@/pages/quotation/CompanyProfilePage';
 import {
-  ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES,
+  ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES, VISIBLE_MODULES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
   type PermAction, type PermMatrix,
 } from '@/config/permissions';
@@ -151,7 +151,7 @@ export function UsersPage() {
     if ((await save(form)) === null) setShowForm(false);
   };
 
-  // Permanent: removes the ERP user and their Google sign-in (erp_delete_user enforces who may do this).
+  // Permanent: removes the BI user and their Google sign-in (erp_delete_user enforces who may do this).
   const confirmDeleteUser = async () => {
     if (!toDelete) return;
     setDeleting(true); setDeleteError(null);
@@ -213,7 +213,7 @@ export function UsersPage() {
 
   const handleExport = () => {
     if (searchedUsers.length === 0) return;
-    exportCsv(`ERP_Users_${todayISO()}`, [
+    exportCsv(`BI_Users_${todayISO()}`, [
       ['Full Name', 'Email', 'Company', 'Role', 'Status', 'Created Date'],
       ...searchedUsers.map(u => [
         u.full_name || '',
@@ -306,7 +306,7 @@ export function UsersPage() {
       <div className="lg:hidden">
         <PageHeader
           title="User Management"
-          description={isSuperAdmin ? 'All ERP users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
+          description={isSuperAdmin ? 'All BI users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
           actions={isSuperAdmin ? (
             <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className={`${inputClass} w-56`}>
               <option value="">All companies</option>
@@ -476,7 +476,7 @@ export function CompaniesPage() {
 
   const handleExport = () => {
     if (searchedRows.length === 0) return;
-    exportCsv(`ERP_Companies_${todayISO()}`, [
+    exportCsv(`BI_Companies_${todayISO()}`, [
       ['Company Name', 'Code', 'Users', 'Status', 'Created Date'],
       ...searchedRows.map(r => [
         r.company_name || '',
@@ -579,7 +579,7 @@ export function CompaniesPage() {
   return (
     <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
       <div className="lg:hidden">
-        <PageHeader title="Company Management" description="Companies using this ERP. Each company's data is isolated by the database." />
+        <PageHeader title="Company Management" description="Companies using this BI. Each company's data is isolated by the database." />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <StatCard label="Companies" value={companies.length.toString()} icon={<Building2 size={20} />} accent="brand" />
           <StatCard label="Active" value={activeCount.toString()} icon={<Building2 size={20} />} accent="success" />
@@ -742,6 +742,10 @@ const CATEGORY_THEMES: Record<string, {
     accent: 'accent-amber-600',
     toggleOn: 'bg-amber-600',
   },
+  'Sales Pipeline Columns': {
+    cardBg: 'bg-rose-50/40', cardBorder: 'border-rose-200/80', headerBg: 'bg-rose-100/70', headerBorder: 'border-rose-200', headerText: 'text-rose-900',
+    badgeBg: 'bg-rose-200/60', badgeText: 'text-rose-800', divider: 'divide-rose-100/70', rowHover: 'hover:bg-rose-100/30', accent: 'accent-rose-600', toggleOn: 'bg-rose-600',
+  },
   Logistics: {
     cardBg: 'bg-sky-50/40',
     cardBorder: 'border-sky-200/80',
@@ -816,7 +820,8 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
 }) {
   // These stages live on the Sales Pipeline strip (no sidebar entry): their
   // matrix rows still control the pipeline column, KPI tile and list access.
-  const PIPELINE_ONLY: Record<string, boolean> = { 'finished-goods': true, delivery: true, invoices: true };
+  const emptyFlags0 = { view: false, create: false, edit: false, delete: false, approve: false, export: false };
+  const PIPELINE_ONLY: Record<string, boolean> = { enquiries: true, rejected: true, inward: true };
   const { profile, isSuperAdmin, refreshPermissions } = useAuth();
   const [matrix, setMatrix] = useState<PermMatrix>(emptyMatrix);
   const [saved, setSaved] = useState<PermMatrix | null>(null);
@@ -835,9 +840,9 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
   }, [companyId]);
   const toggleFullOff = async (key: string, label: string) => {
     const turnOff = !fullOff.has(key);
-    const where = companyName || 'this company';
+    const where = isSuperAdmin ? 'ALL companies' : (companyName || 'this company');
     const msg = turnOff
-      ? `Switch "${label}" fully OFF for everyone in ${where}?\n\nIts menu, pages, pipeline column and KPI tile will disappear for every user, administrators included, until you switch it on again.`
+      ? `Switch "${label}" fully OFF for everyone in ${where}?\n\nIts menu, pages, pipeline column and KPI tile will disappear for every user, administrators included, until you switch it on again.${isSuperAdmin ? ' This applies to every company, including companies added later.' : ''}`
       : `Switch "${label}" back on for ${where}?\n\nEach user will see it again if they have access to it.`;
     if (!window.confirm(msg)) return;
     setError(null); setNotice(null);
@@ -855,7 +860,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
   const setCategoryView = (cat: string, on: boolean) => {
     setMatrix((prev) => {
       const next = { ...prev };
-      MODULE_CATALOG.filter((m) => m.category === cat).forEach((m) => {
+      VISIBLE_MODULES.filter((m) => m.category === cat).forEach((m) => {
         if (lockedForCaller(m.key) || isSuperTarget) return;
         next[m.key] = on
           ? { ...next[m.key], view: true }
@@ -868,7 +873,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
   const setCategoryAction = (cat: string, action: PermAction | 'clear') => {
     setMatrix((prev) => {
       const next = { ...prev };
-      MODULE_CATALOG.filter((m) => m.category === cat).forEach((m) => {
+      VISIBLE_MODULES.filter((m) => m.category === cat).forEach((m) => {
         if (lockedForCaller(m.key) || isSuperTarget) return;
         if (action === 'clear') {
           next[m.key] = { ...next[m.key], create: false, edit: false, delete: false, approve: false, export: false };
@@ -902,7 +907,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
   useEffect(() => { load(); }, [load]);
 
   const dirty = saved !== null && JSON.stringify(matrix) !== JSON.stringify(saved);
-  const grantedCount = MODULE_CATALOG.filter((m) => matrix[m.key]?.view).length;
+  const grantedCount = VISIBLE_MODULES.filter((m) => matrix[m.key]?.view).length;
 
   const setModule = (key: string, patch: Partial<Record<PermAction, boolean>>) => {
     setMatrix((prev) => {
@@ -919,7 +924,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
 
   const selectAll = () => {
     const next = emptyMatrix();
-    MODULE_CATALOG.forEach((m) => {
+    VISIBLE_MODULES.forEach((m) => {
       if (lockedForCaller(m.key)) return;
       m.actions.forEach((a) => { next[m.key][a] = true; });
     });
@@ -929,7 +934,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
   const save = async () => {
     if (isSelf) { setError('You cannot edit your own permissions — ask another administrator.'); return; }
     if (isSuperTarget) { setError('Super Admins always have full access — nothing to configure.'); return; }
-    const revoked = saved ? MODULE_CATALOG.filter((m) => saved[m.key]?.view && !matrix[m.key]?.view).map((m) => m.label) : [];
+    const revoked = saved ? VISIBLE_MODULES.filter((m) => saved[m.key]?.view && !matrix[m.key]?.view).map((m) => m.label) : [];
     if (revoked.length && !window.confirm(`Remove access to ${revoked.join(', ')} for ${userEmail}?`)) return;
     setSaving(true);
     setError(null);
@@ -953,7 +958,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-slate-800 truncate">User Access — {userEmail}</h3>
-          <p className="text-[11px] text-slate-500">{grantedCount} of {MODULE_CATALOG.length} modules enabled{dirty ? ' · unsaved changes' : ''}</p>
+          <p className="text-[11px] text-slate-500">{grantedCount} of {VISIBLE_MODULES.length} modules enabled{dirty ? ' · unsaved changes' : ''}</p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" onClick={selectAll}>Select All Allowed</Button>
@@ -967,7 +972,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
       {isSuperTarget && <p className="text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">Super Admins always have full access across all companies — there is nothing to configure here.</p>}
       {(() => {
         const renderCategoryCard = (cat: string) => {
-          const mods = MODULE_CATALOG.filter((m) => m.category === cat);
+          const mods = VISIBLE_MODULES.filter((m) => m.category === cat);
           const isCollapsed = collapsed.has(cat);
           const selectable = isSuperTarget ? [] : mods.filter((m) => !lockedForCaller(m.key));
           const viewOn = selectable.filter((m) => matrix[m.key]?.view).length;
@@ -996,6 +1001,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
                   className="flex items-center gap-1.5 min-w-0 shrink-0 hover:opacity-80" title={isCollapsed ? `Expand ${cat}` : `Collapse ${cat}`}>
                   {isCollapsed ? <ChevronRight size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
                   <span className={`text-xs font-bold ${theme.headerText} uppercase tracking-wider truncate`}>{cat}</span>
+                  {cat === 'Sales Pipeline Columns' && <span className="ml-1 text-[10px] font-medium normal-case text-slate-500">· the columns inside Sales Pipelines</span>}
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${theme.badgeBg} ${theme.badgeText} shrink-0`}>{viewOn}/{mods.length}</span>
                 </button>
                 <TriCheckbox checked={allOn} indeterminate={someOn} disabled={selectable.length === 0}
@@ -1034,7 +1040,9 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
                 <div className={`divide-y ${theme.divider}`}>
                   {mods.map((m) => {
                     const locked = lockedForCaller(m.key);
-                    const f = matrix[m.key];
+                    const isOff = fullOff.has(m.key);
+                    // A module that is fully off has no rights for anybody, so its row is shown switched off and locked.
+                    const f = isOff ? emptyFlags0 : matrix[m.key];
                     return (
                       <div key={m.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-1.5 ${theme.rowHover} transition-colors`}>
                         <label className="flex items-center gap-2 min-w-[9.5rem] cursor-pointer">
@@ -1059,8 +1067,8 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
                             </button>
                           )}
                           {m.actions.filter((a) => a !== 'view').map((a) => (
-                            <label key={a} className={`flex items-center gap-1 text-[11px] ${(locked || isSuperTarget || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer hover:text-slate-900'}`}>
-                              <input type="checkbox" disabled={locked || isSuperTarget || !f.view} checked={!!f[a]}
+                            <label key={a} className={`flex items-center gap-1 text-[11px] ${(locked || isSuperTarget || isOff || !f.view) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 cursor-pointer hover:text-slate-900'}`}>
+                              <input type="checkbox" disabled={locked || isSuperTarget || isOff || !f.view} checked={!!f[a]}
                                 onChange={(e) => setModule(m.key, { [a]: e.target.checked } as Partial<Record<PermAction, boolean>>)}
                                 className={`w-3.5 h-3.5 rounded ${theme.accent}`} />
                               {ACTION_LABELS[a]}
@@ -1078,7 +1086,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
 
         // Distribute categories across two vertical columns so cards stack tightly with no blank gaps below shorter boxes
         const leftCategories = ['Overview', 'Production', 'Inventory & Purchasing'];
-        const rightCategories = ['Sales', 'Logistics', 'Finance', 'Administration'];
+        const rightCategories = ['Sales', 'Sales Pipeline Columns', 'Logistics', 'Finance', 'Administration'];
 
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">

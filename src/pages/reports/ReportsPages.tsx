@@ -96,7 +96,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
   const overdueWos = pendingWos.filter(w=>w.due_date && w.due_date < todayISO());
   const topCustomer = Object.entries(filteredInvoices.reduce<Record<string,number>>((a,x)=>{if(!x.cancelled&&x.invoice_type!=='Proforma Invoice'){const k=x.customer_name||'Unspecified';a[k]=(a[k]||0)+Number(x.amount||0)*(x.invoice_type==='Credit Note'?-1:1)}return a},{})).sort((a,b)=>b[1]-a[1])[0];
 
-  const exportReport = () => exportCsv(`ERP_Report_${section.replace(/ /g,'_')}_${todayISO()}`,[
+  const exportReport = () => exportCsv(`BI_Report_${section.replace(/ /g,'_')}_${todayISO()}`,[
     ['Report',section],['Company',company?.company_name||'Current authorized company'],['Date From',from],['Date To',to],['Company',data.customers.find(c=>c.id===customer)?.name||'All'],['Machine',machine||'All'],[],
     ['KPI','Value'],['Invoiced Sales',salesTotal],['Production Completed Qty',productionTotal],['Finished Goods Stock Value',fgValue],['Machine Utilization %',avgUtil??''],['Net Profit (P&L)',data.pnl?.totals?.net_profit||''],[],
     ['Sales Trend Month','Invoiced','Invoices'],...trend.map(x=>[x.month,x.sales,x.orders]),[],['Product','Quantity','Sales Value'],...products.map(x=>[x.name,x.qty,x.value]),[],['Recent Sales Order','Date','Company','Value','Status'],...filteredOrders.slice(0,20).map(x=>[x.order_no,x.order_date,x.customer,x.total_value??x.value,x.status]),[],['Work Order','Date','Part','Quantity','Completed','Rejected','Status'],...filteredWos.slice(0,20).map(x=>[x.wo_no,x.created_at,x.part_name,x.quantity,x.completed,x.rejected,x.status]),[],['Inventory Category','Products','Stock Value'],...categoryValues.map((x:any)=>[x.name,x.items,x.value]),[],['Machine','Status','Utilization %'],...utilizationRows.map(x=>[x.code,x.status,x.utilizationValue]),[],['P&L Account','Type','Amount'],...(data.pnl?.rows||[]).map((x:any)=>[x.name,x.account_type,x.amount]),
@@ -196,7 +196,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
       </div></Card>
     </div>
     <div className="flex gap-1 overflow-x-auto border-b">{sections.map(s=><button key={s} onClick={()=>{setSection(s);const path:Record<Section,string>={Overview:'/reports/production',Sales:'/reports/sales',Production:'/reports/production',Inventory:'/reports/inventory','Machine Utilization':'/reports/machine-utilization',Profitability:'/reports/cost-analysis','Custom Reports':'/reports/quality'};navigate(path[s]);}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(section===s?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{s}</button>)}</div>
-    {loading ? <Card className="p-12 text-center text-sm text-slate-500"><BarChart3 className="inline mr-2" size={18}/>Generating report from current ERP records…</Card> : <>
+    {loading ? <Card className="p-12 text-center text-sm text-slate-500"><BarChart3 className="inline mr-2" size={18}/>Generating report from current BI records…</Card> : <>
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <Metric title="Total Sales" value={money(salesTotal)} icon={<TrendingUp size={18}/>} tone="blue" note="Posted invoice totals in range"/>
         <Metric title="Total Production" value={`${productionTotal.toLocaleString('en-IN')} Nos`} icon={<Factory size={18}/>} tone="green" note="Completed work order quantity"/>

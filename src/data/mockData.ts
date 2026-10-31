@@ -1,4 +1,4 @@
-// CNC Manufacturing ERP — Mock Data
+// CNC Manufacturing BI — Mock Data
 // All sample data is realistic CNC manufacturing content, UI-only.
 
 export type MachineStatus = 'Running' | 'Idle' | 'Maintenance' | 'Breakdown';

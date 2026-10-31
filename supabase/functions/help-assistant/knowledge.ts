@@ -1,10 +1,10 @@
-// The help assistant's knowledge: short notes about how each part of the ERP works, in English and Tamil. The assistant
+// The help assistant's knowledge: short notes about how each part of the BI works, in English and Tamil. The assistant
 // answers ONLY from these notes (plus the name of the page the person is on), and says "not sure" when the answer is not
 // here. To teach it something new, add or edit a note and redeploy the function:  supabase functions deploy help-assistant
 //
 // Each note: id, title, `pages` (route prefixes where it is the first thing offered), `keywords` (English words, Tamil
 // words and Tanglish spellings people actually type or say), and `body` (English steps, then Tamil).
-// NOTE: written from the screens as built; have a team member who uses the ERP daily review the Tamil wording.
+// NOTE: written from the screens as built; have a team member who uses the BI daily review the Tamil wording.
 
 export interface Note { id: string; title: string; pages: string[]; keywords: string[]; body: string }
 
@@ -124,7 +124,7 @@ TA: Inventory-ல் மூலப்பொருள், வாங்கிய �
   {
     id: 'tips', title: 'Shortcuts, voice and apps', pages: [],
     keywords: ['esc', 'escape', 'back', 'voice', 'mic', 'microphone', 'speak', 'tamil', 'filter', 'all', 'dropdown', 'search', 'app', 'apk', 'android', 'desktop', 'install', 'download', 'tips', 'shortcut', 'login', 'google', 'sign in'],
-    body: `EN: Esc takes you back to the page you used before (it first closes any open popup, and leaves a typing box). The orange mic button (bottom left) turns on voice entry: say a field name and its value ("company Aabee", "quantity 50"), or "save". Columns in tables have an "All" dropdown in the heading to filter. A text box with a list shows the whole list when you click it. Sign in with your Google account that the administrator added. The ERP can be installed as a Windows app or an Android app; the Android app needs internet.
+    body: `EN: Esc takes you back to the page you used before (it first closes any open popup, and leaves a typing box). The orange mic button (bottom left) turns on voice entry: say a field name and its value ("company Aabee", "quantity 50"), or "save". Columns in tables have an "All" dropdown in the heading to filter. A text box with a list shows the whole list when you click it. Sign in with your Google account that the administrator added. The BI can be installed as a Windows app or an Android app; the Android app needs internet.
 TA: Esc அழுத்தினால் முந்தைய பக்கத்துக்குச் செல்லும் (திறந்த popup இருந்தால் முதலில் அதை மூடும்). கீழே இடதுபுற ஆரஞ்சு மைக் = குரல் மூலம் நிரப்ப ("company Aabee", "quantity 50", "save"). அட்டவணைத் தலைப்பில் உள்ள "All" dropdown மூலம் வடிகட்டலாம்.`,
   },
   {

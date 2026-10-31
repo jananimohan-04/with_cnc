@@ -1,5 +1,5 @@
 /**
- * Unified per-module and per-page colour theming for CNCFORGE ERP.
+ * Unified per-module and per-page colour theming for CNCFORGE BI.
  *
  * Every module has one synchronized colour identity across:
  *   1. Top KPI counter (background, icon chip, active glow ring, ping dot)

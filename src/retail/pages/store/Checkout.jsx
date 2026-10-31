@@ -528,7 +528,7 @@ export default function Checkout() {
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>GST (CGST + SGST 18%)</span>
-                    <span className="text-slate-500">Invoiced as per ERP</span>
+                    <span className="text-slate-500">Invoiced as per BI</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Freight / Logistics</span>

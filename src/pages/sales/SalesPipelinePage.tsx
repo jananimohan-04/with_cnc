@@ -2125,7 +2125,7 @@ export function SalesPipelinePage() {
   const [cards, setCards] = useState<KanbanCard[]>([]);
   // Records that are no longer on the Kanban board; the List View adds them so it shows everything ever entered.
   const [historyCards, setHistoryCards] = useState<KanbanCard[]>([]);
-  // ERP-wide date filter: board, list/calendar views and KPI counts show only cards
+  // BI-wide date filter: board, list/calendar views and KPI counts show only cards
   // whose record date falls in range. Pickers and quantity math keep using `cards`.
   const { inRange: inGlobalDateRange } = useGlobalDateFilter();
   const cardRecordDate = (c: KanbanCard): string | null =>
@@ -2479,7 +2479,7 @@ export function SalesPipelinePage() {
   }, [dcModalTarget]);
 
   // ── Inward purchase catalogue (product + supplier masters) ──────────────
-  // cnc_parts is the ERP product master and cnc_raw_materials holds bought-out
+  // cnc_parts is the BI product master and cnc_raw_materials holds bought-out
   // materials (the Purchase module already buys from both combined). Neither
   // was wired into Inward before: its product list only contained enquiry /
   // sales-order line items keyed by enquiry, never by product ID.
@@ -2549,7 +2549,7 @@ export function SalesPipelinePage() {
   }), [partsCatalogue, makeBuyByCode]);
 
   const round2 = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
-  // GST-exclusive ERP convention (same as quotations: CGST+SGST on top):
+  // GST-exclusive BI convention (same as quotations: CGST+SGST on top):
   // Total = Q × P − discount% + GST% on the taxable amount, rounded to 2dp.
   const inwardLineTotal = (q: any, p: any, d: any, g: any) => {
     const Q = Number(q) || 0, P = Number(p) || 0, D = Number(d) || 0, G = Number(g) || 0;
@@ -5348,7 +5348,7 @@ export function SalesPipelinePage() {
   useEffect(() => {
     const m = ACTIVE_VIEW_MODULE[activeView];
     if (m && permissions && !canView(m)) setActiveView('pipeline');
-    if (activeView === 'pipeline' && pipelineViewMode === 'companies' && permissions && !canView('companies')) {
+    if (activeView === 'pipeline' && pipelineViewMode === 'companies' && permissions && !canView('sales-pipeline')) {
       setPipelineViewMode('kanban');
     }
   }, [activeView, pipelineViewMode, permissions, canView]);
@@ -8576,7 +8576,7 @@ export function SalesPipelinePage() {
     </div>
   );
 
-  const addCompanyButton = canView('companies') ? (
+  const addCompanyButton = canView('sales-pipeline') ? (
     <button
       type="button"
       onClick={openNewLeadModal}
@@ -8588,7 +8588,7 @@ export function SalesPipelinePage() {
     </button>
   ) : null;
 
-  const allCompaniesButton = canView('companies') ? (
+  const allCompaniesButton = canView('sales-pipeline') ? (
     <button
       type="button"
       onClick={() => {

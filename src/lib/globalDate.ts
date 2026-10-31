@@ -1,4 +1,4 @@
-// Shared helpers for the ERP-wide global date-range filter.
+// Shared helpers for the BI-wide global date-range filter.
 // All comparisons use YYYY-MM-DD calendar days (inclusive on both ends) so every
 // module filters identically, whether its rows carry datetimes or plain dates.
 

@@ -12,7 +12,7 @@ import { PAGE_TEACHINGS } from '@/lib/guides/pageTeachings';
 
 // Teaching mode. Two kinds:
 //   "This page"  explains the screen you are on: every option on it, one by one, pointing at each and speaking about it.
-//   "Whole ERP"  does the same for every screen of the menu in turn, opening each Add / New form to explain its fields too.
+//   "Whole BI"  does the same for every screen of the menu in turn, opening each Add / New form to explain its fields too.
 // The options are read from the live screen (so nothing is skipped and nothing is out of date); the sentences come from ChatGPT
 // (through the help-assistant function) and from built-in notes when the AI is not reachable.
 
@@ -348,7 +348,7 @@ export function TeachingTour() {
         <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={17} /></span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-500">{view.kind === 'erp' ? (ta ? 'முழு ERP கற்பித்தல்' : 'Teaching · Whole ERP') : (ta ? 'இந்தப் பக்கம் கற்பித்தல்' : 'Teaching · This page')}</p>
+            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-500">{view.kind === 'erp' ? (ta ? 'முழு BI கற்பித்தல்' : 'Teaching · Whole BI') : (ta ? 'இந்தப் பக்கம் கற்பித்தல்' : 'Teaching · This page')}</p>
             <p className="truncate text-[10px] text-slate-400">
               {view.kind === 'erp' && view.pageNo > 0 ? `${ta ? 'பக்கம்' : 'Page'} ${view.pageNo}/${view.pageCount} · ` : ''}{view.pageLabel}
               {view.itemCount > 0 && view.itemNo > 0 ? ` · ${view.inForm ? `${view.inForm} · ` : ''}${ta ? 'தேர்வு' : 'Option'} ${view.itemNo}/${view.itemCount}` : ''}

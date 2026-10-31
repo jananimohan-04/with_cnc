@@ -27,7 +27,7 @@ export default function Pending() {
       toast(`Signed in as ${s.name}`, '👋');
       nav(rolePath(s.role), { replace: true });
     } catch (e) {
-      toast('Could not resolve your ERP role: ' + (e.message || 'error'), '⚠️');
+      toast('Could not resolve your BI role: ' + (e.message || 'error'), '⚠️');
     }
     setBusy(false);
   };

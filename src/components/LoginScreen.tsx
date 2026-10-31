@@ -17,7 +17,7 @@ export function LoginScreen() {
   const [devEmail, setDevEmail] = useState('jananimohan44@gmail.com');
   const [devPassword, setDevPassword] = useState('');
 
-  // Redirects to Google; on return AuthProvider checks the account against the ERP user list.
+  // Redirects to Google; on return AuthProvider checks the account against the BI user list.
   const handleGoogle = async () => {
     setLoading(true);
     await signInWithGoogle();

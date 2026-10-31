@@ -7,7 +7,7 @@ import {
   type DatePreset,
 } from '@/lib/globalDate';
 
-// ERP-wide date-range filter. Default is All Time (no filtering), so every page
+// BI-wide date-range filter. Default is All Time (no filtering), so every page
 // behaves exactly as before until the user picks a range in the Topbar calendar.
 // The selection lives at the app root, so it stays active while navigating.
 

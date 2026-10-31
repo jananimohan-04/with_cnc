@@ -1,4 +1,4 @@
-// Detects whether the app is running inside the CNCFORGE ERP Tauri desktop shell
+// Detects whether the app is running inside the CNCFORGE BI Tauri desktop shell
 // (WebView2) or in a normal browser tab (the deployed web app).
 //
 // `__TAURI_INTERNALS__` is injected by the Tauri IPC initialization script into every

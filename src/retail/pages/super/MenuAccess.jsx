@@ -1020,7 +1020,7 @@ export default function MenuAccess() {
                   <Globe className="w-3.5 h-3.5" />
                   <span>Platform-Wide Master Switch</span>
                 </div>
-                <h2 className="text-base font-extrabold text-white">Disable Menus Globally Across Entire ERP Platform</h2>
+                <h2 className="text-base font-extrabold text-white">Disable Menus Globally Across Entire BI Platform</h2>
                 <p className="text-xs text-rose-200/80 leading-relaxed">
                   Turn OFF any menu or entire module platform-wide. When toggled OFF, the page is immediately hidden from navigation and blocked from direct URL access for <span className="text-white font-bold">ALL roles and users</span>.
                 </p>

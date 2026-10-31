@@ -442,7 +442,7 @@ export async function createAuthUserWithoutLogin(email: string, password: string
 }
 
 export async function listProfiles(partyId?: string) {
-  // 1. Fetch ERP users from company_users (the source of truth for all users in the ERP)
+  // 1. Fetch BI users from company_users (the source of truth for all users in the BI)
   let erpUsers: any[] = [];
   try {
     const { data, error } = await supabase
@@ -471,7 +471,7 @@ export async function listProfiles(partyId?: string) {
     console.warn("Could not query cncvault_profiles:", e);
   }
 
-  // 3. Merge: Every ERP user is primary
+  // 3. Merge: Every BI user is primary
   const profileMap = new Map<string, any>();
 
   for (const u of erpUsers) {

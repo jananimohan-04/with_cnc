@@ -223,13 +223,13 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
 ];
 
 /**
- * Wake word: "Hello CNC", "Hey CNC", "Hi C N C", "வணக்கம் சிஎன்சி" ... The speech engine often writes CNC as "see and see",
+ * Wake word: "Hi Raaju", "Hey Raaju", "Ey Raaju" (or "Hello CNC"), "Hi C N C", "வணக்கம் சிஎன்சி" ... The speech engine often writes CNC as "see and see",
  * "science", "C N C" or "cmc", so those are accepted too. Returns what was said after the wake word.
  * (No \b here: it does not work next to Tamil letters, so spaces / end of text are used instead.)
  */
-const WAKE_GREET = '(?:hello|hallo|helo|hullo|hey|hi|hai|ok|okay|ஹலோ|ஹாய்|ஹெலோ|வணக்கம்)';
-const WAKE_NAME = '(?:c\\s*n\\s*c|cnc|c\\s*and\\s*c|see\\s*and\\s*see|see\\s*n\\s*see|seen\\s*see|sin\\s*see|sien\\s*see|sience|science|sienci|cmc|cfc|snc|cnn|csc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி|சீ\\s*என்\\s*சீ)';
-const WAKE_ONLY = '(?:c\\s*n\\s*c|cnc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி)';
+const WAKE_GREET = '(?:hello|hallo|helo|hullo|hey|hi|hai|ey|ay|aye|eh|yo|ok|okay|ஹலோ|ஹாய்|ஹெலோ|வணக்கம்)';
+const WAKE_NAME = '(?:c\\s*n\\s*c|cnc|c\\s*and\\s*c|see\\s*and\\s*see|see\\s*n\\s*see|seen\\s*see|sin\\s*see|sien\\s*see|sience|science|sienci|cmc|cfc|snc|cnn|csc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி|சீ\\s*என்\\s*சீ|r\\s*a+\\s*j+\\s*[ou]+|r\\s*a+\\s*j+\\s*a+|r\\s*a+\\s*z+\\s*h*\\s*[ou]+|ராஜு|ராஜூ|ராஜா|ராசு)';
+const WAKE_ONLY = '(?:r\\s*a+\\s*j+\\s*[ou]+|ராஜு|ராஜூ|ராசு|c\\s*n\\s*c|cnc|சி\\s*என்\\s*சி|சிஎன்சி|சிஎன்ஸி)';
 const WAKE_AFTER_GREET = new RegExp(`(?:^|\\s)${WAKE_GREET}\\s+${WAKE_NAME}(?=\\s|$)\\s*(.*)$`, 'iu');
 const WAKE_ALONE = new RegExp(`^${WAKE_ONLY}(?=\\s|$)\\s*(.*)$`, 'iu');
 export function checkWakeWord(raw: string): { matched: boolean; trailing: string } {
@@ -437,6 +437,13 @@ export function Copilot() {
   const location = useLocation();
   const { company, canDo } = useAuth();
   const [open, setOpen] = useState(false);
+  // The standby pill can be dragged anywhere on the screen; the place is remembered in this browser.
+  const [pillPos, setPillPos] = useState<{ x: number; y: number } | null>(() => {
+    try { const v = JSON.parse(localStorage.getItem('coworker-pill-pos') || 'null'); return v && typeof v.x === 'number' && typeof v.y === 'number' ? v : null; } catch { return null; }
+  });
+  const pillDrag = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const pillMoved = useRef(false);
+  const pillPosRef = useRef(pillPos); pillPosRef.current = pillPos;
   const [lang, setLang] = useState<Lang>(readLang);
   const [speak, setSpeak] = useState(() => ls.get('argus.copilot.speak', '1') === '1');
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -478,7 +485,7 @@ export function Copilot() {
       const saved = localStorage.getItem('argus.copilot.speechLang');
       if (saved === 'ta-IN' || saved === 'en-IN') return saved;
     } catch {}
-    return 'en-IN'; // Default Indian English: recognizes English ERP stage names and numbers accurately
+    return 'en-IN'; // Default Indian English: recognizes English BI stage names and numbers accurately
   });
   const speechLangRef = useRef<'en-IN' | 'ta-IN'>('en-IN');
   speechLangRef.current = speechLang;
@@ -966,7 +973,7 @@ export function Copilot() {
       startedOnceRef.current = true;
       setListening(true);
       setMicError(null);
-      setSpeechStatusText(`Listening (${langName()})... say "Hello CNC"`);
+      setSpeechStatusText(`Listening (${langName()})... say "Hi Raaju"`);
     };
 
     r.onresult = (e: any) => {
@@ -1061,7 +1068,7 @@ export function Copilot() {
           setSpeechStatusText(`Submitted: "${said}"`);
           send(said);
         } else {
-          setSpeechStatusText(`Heard "${said}" - not the wake word. Say "Hello CNC" (${langName()})`);
+          setSpeechStatusText(`Heard "${said}" - not the wake word. Say "Hi Raaju" (${langName()})`);
         }
       } else {
         setSpeechStatusText(`Ready (${langName()})`);
@@ -1198,14 +1205,14 @@ export function Copilot() {
     if (wake.matched) {
       playWakeChime();
       const welcomeMsg = L(
-        'Welcome to ERP! Which stage would you like to add data to? (8 stages available)',
-        'Welcome to ERP! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+        'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
+        'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
       );
       if (!wake.trailing) {
         add({ role: 'ai', text: welcomeMsg }, true);
         return;
       } else {
-        add({ role: 'ai', text: L('Welcome to ERP!', 'Welcome to ERP!') }, true, () => {
+        add({ role: 'ai', text: L('Welcome to BI!', 'Welcome to BI!') }, true, () => {
           void submitRef.current(wake.trailing);
         });
         return;
@@ -1578,14 +1585,14 @@ export function Copilot() {
     setOpen(true);
     greetedRef.current = true;
     const welcome = L(
-      'Welcome to ERP! Which stage would you like to add data to? (8 stages available)',
-      'Welcome to ERP! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+      'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
+      'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
     );
     const clean = trailingCmd.trim();
     if (!clean) {
       add({ role: 'ai', text: welcome }, true);
     } else {
-      add({ role: 'ai', text: L('Welcome to ERP!', 'Welcome to ERP!') }, true, () => {
+      add({ role: 'ai', text: L('Welcome to BI!', 'Welcome to BI!') }, true, () => {
         void submitRef.current(clean);
       });
     }
@@ -1598,8 +1605,8 @@ export function Copilot() {
     if (open && !greetedRef.current && msgs.length === 0) {
       greetedRef.current = true;
       const welcome = L(
-        'Welcome to ERP! Which stage would you like to add data to? (8 stages available)',
-        'Welcome to ERP! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+        'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
+        'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
       );
       add({ role: 'ai', text: welcome }, true);
     }
@@ -1663,8 +1670,30 @@ export function Copilot() {
   if (!open) {
     return (
       <div
-        className="fixed bottom-4 left-[5.5rem] z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs transition-all hover:shadow-xl hover:scale-105 cursor-pointer select-none max-lg:bottom-20 max-lg:left-2"
+        className={`fixed ${pillPos ? '' : 'bottom-4 left-[5.5rem] max-lg:bottom-20 max-lg:left-2'} z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs hover:shadow-xl cursor-grab active:cursor-grabbing select-none touch-none`}
+        style={pillPos ? { left: pillPos.x, top: pillPos.y } : undefined}
+        onPointerDown={(e) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          pillDrag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+          pillMoved.current = false;
+          (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = pillDrag.current; if (!d) return;
+          if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) return;
+          d.moved = true; pillMoved.current = true;
+          const el = e.currentTarget as HTMLElement;
+          const x = Math.min(Math.max(0, e.clientX - d.dx), window.innerWidth - el.offsetWidth);
+          const y = Math.min(Math.max(0, e.clientY - d.dy), window.innerHeight - el.offsetHeight);
+          setPillPos({ x, y });
+        }}
+        onPointerUp={() => {
+          const d = pillDrag.current; pillDrag.current = null;
+          if (d?.moved) { try { localStorage.setItem('coworker-pill-pos', JSON.stringify(pillPosRef.current)); } catch { /* not saved */ } setTimeout(() => { pillMoved.current = false; }, 0); }
+        }}
+        onDoubleClick={() => { setPillPos(null); try { localStorage.removeItem('coworker-pill-pos'); } catch { /* ignore */ } }}
         onClick={async () => {
+          if (pillMoved.current) return;
           setMicMuted(false);
           micMutedRef.current = false;
           haltedRef.current = false;
@@ -1676,7 +1705,7 @@ export function Copilot() {
           playWakeChime();
           setOpen(true);
         }}
-        title="Co-worker is listening! Say 'Hello CNC!' or click to open."
+        title="Co-worker is listening! Say 'Hi Raaju!' or click to open, drag to move."
       >
         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white shadow-xs">
           <Sparkles size={13} />
@@ -1689,7 +1718,7 @@ export function Copilot() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span>Say "Hello CNC !"</span>
+              <span>Say "Hi Raaju !"</span>
             </span>
           ) : !micMuted ? (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" title={micError ?? 'Click once anywhere on the page so the browser lets the microphone start.'}>
@@ -1754,7 +1783,7 @@ export function Copilot() {
             </button>
           </div>
           <p className="truncate text-[10px] text-white/70">
-            {L('🎙️ Say "Hello CNC!" anytime · Ask what to add, edit or delete', '🎙️ "Hello CNC!" என்று எப்போது வேண்டுமானாலும் சொல்லலாம்')}
+            {L('🎙️ Say "Hi Raaju!" anytime · Ask what to add, edit or delete', '🎙️ "Hi Raaju!" என்று எப்போது வேண்டுமானாலும் சொல்லலாம்')}
           </p>
         </div>
 

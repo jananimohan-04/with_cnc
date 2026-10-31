@@ -1,5 +1,5 @@
 
-/* CNCFORGE ERP — design tokens. Single source of truth for colour, type, space, motion. */
+/* CNCFORGE BI — design tokens. Single source of truth for colour, type, space, motion. */
 :root{
   --navy:#0E0704; --blue:#FF6500; --brand-dark:#EA580C; --orange:#FF6500; --orange-dark:#EA580C;
   --violet:#7C3AED; --emerald:#10B981; --emerald-dark:#065F46; --amber:#F59E0B; --red:#DC2626;
@@ -38,6 +38,6 @@
 ::-webkit-scrollbar-thumb{background:#BAA794;border-radius:8px;border:2px solid var(--bg)}
 ::-webkit-scrollbar-track{background:transparent}
 
-/* numeric alignment for ERP figures */
+/* numeric alignment for BI figures */
 .num{font-variant-numeric:tabular-nums;text-align:right}
 th.num,td.num{text-align:right}

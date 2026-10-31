@@ -201,7 +201,7 @@ function FolderTree({ folders, parentId, depth }: { folders: any[], parentId: st
 function SettingsPage() {
   const { session, profile } = useAuth();
   const { can } = usePermissions();
-  // Main ERP tenant scope: Super Admin sees every tenant company,
+  // Main BI tenant scope: Super Admin sees every tenant company,
   // company users see only their own company.
   const { company: erpCompany, isSuperAdmin: isErpSuperAdmin, profile: erpProfile } = useErpAuth();
   const navigate = useNavigate();
@@ -216,7 +216,7 @@ function SettingsPage() {
     }
   }, []);
 
-  // Tenant companies from the main ERP (Company Management master).
+  // Tenant companies from the main BI (Company Management master).
   // Super Admin sees all of them; company users see only their own company.
   // Drive state still lives per vault party, matched here by company name.
   const { data: tenantData, isLoading: tenantsLoading, refetch: refetchTenants } = useQuery({

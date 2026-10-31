@@ -15,7 +15,7 @@ import {
 } from '@/lib/openingBalances';
 
 
-// Opening Balances: enter what the company already had when it started using the ERP (bank balances, what customers owe,
+// Opening Balances: enter what the company already had when it started using the BI (bank balances, what customers owe,
 // what is owed to suppliers, stock in the warehouse). Draft -> Validate & Preview -> Post -> view in the ledger / stock.
 // A posted entry is never edited or deleted; it is reversed (an audit trail is kept) and a corrected entry entered.
 

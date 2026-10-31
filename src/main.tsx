@@ -11,7 +11,7 @@ import './index.css';
 // any application code can open one, brand the window, and start update checks.
 // None of this runs — or changes anything — in the deployed web app.
 if (isTauri()) {
-  document.title = 'CNCFORGE ERP';
+  document.title = 'CNCFORGE BI';
   installDesktopShims();
   startUpdateScheduler();
 }

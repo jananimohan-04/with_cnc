@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Cpu, Plus, FileText, Clock, CheckCircle2, Package, Truck, LogOut, Eye, AlertCircle } from 'lucide-react';
 
-// ── Status mapping: ERP internal → customer-facing ──
+// ── Status mapping: BI internal → customer-facing ──
 const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
   // Enquiry statuses
   'New':            { label: 'Enquiry Received', color: 'bg-blue-100 text-blue-700', icon: FileText },

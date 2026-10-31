@@ -119,7 +119,7 @@ export function AdminAssistant() {
       {open && (
         <div role="dialog" aria-label="Data assistant" data-testid="assistant-panel" className="fixed bottom-5 right-5 z-50 w-[min(420px,calc(100vw-2rem))] h-[min(620px,calc(100vh-2.5rem))] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-900 text-white">
-            <div className="flex items-center gap-2 min-w-0"><Bot size={18} className="shrink-0" /><div className="min-w-0"><p className="text-sm font-bold leading-tight">Data Assistant</p><p className="text-[10px] text-slate-300 truncate">Answers only from your ERP data · read-only{company ? ` · ${company.company_name}` : ' · all companies'}</p></div></div>
+            <div className="flex items-center gap-2 min-w-0"><Bot size={18} className="shrink-0" /><div className="min-w-0"><p className="text-sm font-bold leading-tight">Data Assistant</p><p className="text-[10px] text-slate-300 truncate">Answers only from your BI data · read-only{company ? ` · ${company.company_name}` : ' · all companies'}</p></div></div>
             <div className="flex items-center gap-1">
               {turns.length > 0 && <button type="button" aria-label="Clear chat" title="Clear chat" onClick={() => setTurns([])} className="p-1.5 hover:bg-white/10 rounded"><Trash2 size={15} /></button>}
               <button type="button" aria-label="Close assistant" onClick={() => setOpen(false)} className="p-1.5 hover:bg-white/10 rounded"><X size={16} /></button>
@@ -128,7 +128,7 @@ export function AdminAssistant() {
           <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50 text-sm" data-testid="assistant-log">
             {turns.length === 0 && (
               <div className="text-slate-500">
-                <p className="mb-2">Ask anything about your ERP data. I only use what is in the database.</p>
+                <p className="mb-2">Ask anything about your BI data. I only use what is in the database.</p>
                 <div className="flex flex-wrap gap-1.5">{EXAMPLES.map(e => <button key={e} type="button" onClick={() => void ask(e)} className="text-xs px-2.5 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-100">{e}</button>)}</div>
               </div>
             )}

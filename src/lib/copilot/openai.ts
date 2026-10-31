@@ -38,7 +38,7 @@ export async function analyzeWithChatGPT(
         .join('\n')
     : '(No active records currently in pipeline)';
 
-  const systemPrompt = `You are "Co-worker", an intelligent AI ERP assistant for an engineering/manufacturing company's Sales Pipeline.
+  const systemPrompt = `You are "Co-worker", an intelligent AI BI assistant for an engineering/manufacturing company's Sales Pipeline.
 The user speaks or types commands (in English, Tamil, or Tanglish) to ADD, EDIT, DELETE, MOVE, or VIEW records.
 Current Date: ${new Date().toISOString().slice(0, 10)}.
 Language preference: ${lang === 'ta' ? 'Tamil' : lang === 'tanglish' ? 'Tanglish' : 'English'}.
@@ -234,7 +234,7 @@ export async function extractStageFieldsWithChatGPT(
 
   const fieldsDesc = fieldsInfo.map((f) => `"${f.key}": (${f.label})`).join(', ');
 
-  const systemPrompt = `You are an AI data extractor for an ERP manufacturing company.
+  const systemPrompt = `You are an AI data extractor for an BI manufacturing company.
 The user is adding a record into the "${stageName}" (stage: ${stageId}) stage of the Sales Pipeline.
 The user spoke or typed the following details: "${userSpeech}".
 

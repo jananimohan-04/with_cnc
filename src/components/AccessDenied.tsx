@@ -4,19 +4,19 @@ import { useAuth, type AuthStatus } from '@/contexts/AuthContext';
 const MESSAGES: Partial<Record<AuthStatus, { title: string; body: string }>> = {
   not_registered: {
     title: 'Access Not Granted',
-    body: 'is not registered for this ERP. Please contact your company administrator.',
+    body: 'is not registered for this BI. Please contact your company administrator.',
   },
   inactive: {
     title: 'Account Inactive',
-    body: 'Your ERP account is inactive. Please contact your administrator.',
+    body: 'Your BI account is inactive. Please contact your administrator.',
   },
   company_inactive: {
     title: 'Company Inactive',
-    body: 'Your company is currently deactivated in this ERP. Please contact your administrator.',
+    body: 'Your company is currently deactivated in this BI. Please contact your administrator.',
   },
   not_google: {
     title: 'Google Sign-in Required',
-    body: 'This ERP only accepts Google sign-in. Please sign in again with Continue with Google.',
+    body: 'This BI only accepts Google sign-in. Please sign in again with Continue with Google.',
   },
   account_conflict: {
     title: 'Account Mismatch',
@@ -24,7 +24,7 @@ const MESSAGES: Partial<Record<AuthStatus, { title: string; body: string }>> = {
   },
   error: {
     title: 'Could Not Verify Access',
-    body: 'Something went wrong while checking your ERP access. Please try again or contact your administrator.',
+    body: 'Something went wrong while checking your BI access. Please try again or contact your administrator.',
   },
 };
 

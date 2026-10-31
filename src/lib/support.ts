@@ -145,7 +145,7 @@ export interface SupportNotification {
   created_at: string;
 }
 
-/** ERP modules a ticket can be filed against. */
+/** BI modules a ticket can be filed against. */
 export function supportModules(): { key: string; label: string }[] {
   return MODULE_CATALOG.filter((m) => !m.key.startsWith('admin-') && m.key !== 'dashboard' && m.key !== 'reports')
     .map((m) => ({ key: m.key, label: m.label }));

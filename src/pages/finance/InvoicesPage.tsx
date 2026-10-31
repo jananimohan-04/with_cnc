@@ -39,10 +39,10 @@ const emptySummary: InvoiceSummary = { total_invoices: 0, total_value: '0', tota
 
 export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: () => void; onView?: (record: any) => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void } = {}) {
   const { company, canDo } = useAuth();
-  const canCreateInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'create') : true;
-  const canEditInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'edit') : true;
-  const canDeleteInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'delete') : true;
-  const canExportInv: boolean = typeof canDo === 'function' ? !!canDo('invoices', 'export') : true;
+  const canCreateInv: boolean = typeof canDo === 'function' ? !!canDo('menu-invoices', 'create') : true;
+  const canEditInv: boolean = typeof canDo === 'function' ? !!canDo('menu-invoices', 'edit') : true;
+  const canDeleteInv: boolean = typeof canDo === 'function' ? !!canDo('menu-invoices', 'delete') : true;
+  const canExportInv: boolean = typeof canDo === 'function' ? !!canDo('menu-invoices', 'export') : true;
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const [searchParams] = useSearchParams();
   const linkedInvoiceId = searchParams.get('invoice') || '';

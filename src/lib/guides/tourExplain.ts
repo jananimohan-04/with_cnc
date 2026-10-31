@@ -45,7 +45,7 @@ async function viaBrowserKey(pageTitle: string, lang: TourLang, items: Slim[]): 
       body: JSON.stringify({
         model: 'gpt-4o-mini', temperature: 0.2, max_tokens: 3000, response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: `You are the Teaching voice of an ERP for a CNC machining company, walking a new user through the screen "${pageTitle}" one option at a time. For EACH option write ONE short spoken sentence (max 25 words) saying what it is for and what happens when it is used. Never invent features. ${langRule} Return JSON {"items": {"<id>": "<sentence>"}} with every id.` },
+          { role: 'system', content: `You are the Teaching voice of an BI for a CNC machining company, walking a new user through the screen "${pageTitle}" one option at a time. For EACH option write ONE short spoken sentence (max 25 words) saying what it is for and what happens when it is used. Never invent features. ${langRule} Return JSON {"items": {"<id>": "<sentence>"}} with every id.` },
           { role: 'user', content: JSON.stringify(items) },
         ],
       }),

@@ -69,7 +69,7 @@ export function RfqModal({ p, me, onClose, onDone }) {
         <Field label="Delivery requirements" full><input value={del} onChange={(e) => setDel(e.target.value)} placeholder="e.g. Needed at Chakan plant by month-end" /></Field>
       </div>
       <button className="btn btn-coral" style={{ width: '100%' }} disabled={busy} onClick={submit}>{busy ? 'Submitting…' : 'Submit RFQ'}</button>
-      <p className="hint">Maps to the ERP Quotations module. No stock is reserved by an RFQ.</p>
+      <p className="hint">Maps to the BI Quotations module. No stock is reserved by an RFQ.</p>
     </Modal>
   );
 }
@@ -170,9 +170,9 @@ export default function Home() {
     <>
       <div className="hero"><div className="hero-inner">
         <div>
-          <span className="hero-tag">ARGUSCNC ERP • INDUSTRIAL PROCUREMENT</span>
+          <span className="hero-tag">ARGUSCNC BI • INDUSTRIAL PROCUREMENT</span>
           <h1>Precision Products for Modern Manufacturing</h1>
-          <p>Discover CNC machine components, precision tooling, industrial spares, and manufacturing essentials — sourced from live ERP inventory.</p>
+          <p>Discover CNC machine components, precision tooling, industrial spares, and manufacturing essentials — sourced from live BI inventory.</p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link className="btn btn-coral" to="/store/listing">Explore Products →</Link>
             <Link className="btn btn-ghost" style={{ background: 'rgba(255,255,255,.1)', borderColor: 'rgba(255,255,255,.3)', color: '#fff' }} to="/store/listing?cat=cutting-tools">Browse Categories</Link>

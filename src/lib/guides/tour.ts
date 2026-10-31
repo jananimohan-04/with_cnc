@@ -49,7 +49,7 @@ function fieldLabel(el: HTMLElement): string {
   }
   const aria = clean(el.getAttribute('aria-label'));
   if (aria) return aria;
-  // a caption right above / beside it (the ERP's FormField puts a <label> or small text in the same wrapper)
+  // a caption right above / beside it (the BI's FormField puts a <label> or small text in the same wrapper)
   const box = el.parentElement;
   const cap = box?.querySelector(':scope > label, :scope > span, :scope > p');
   if (cap && cap !== el && !cap.contains(el)) {

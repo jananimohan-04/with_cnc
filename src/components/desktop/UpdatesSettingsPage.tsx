@@ -79,7 +79,7 @@ export function UpdatesSettingsPage() {
     <div className="p-4 lg:p-6 bg-grid min-h-full">
       <PageHeader
         title="Company Settings"
-        description="Global ERP configuration and preferences"
+        description="Global BI configuration and preferences"
       />
 
       <div className="grid gap-4 max-w-3xl">
@@ -88,7 +88,7 @@ export function UpdatesSettingsPage() {
           <h2 className="text-base font-bold text-slate-800 mb-4">About</h2>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <dt className="text-slate-500">Application</dt>
-            <dd className="text-slate-800 font-semibold">CNCFORGE ERP</dd>
+            <dd className="text-slate-800 font-semibold">CNCFORGE BI</dd>
             <dt className="text-slate-500">Version</dt>
             <dd className="text-slate-800 font-semibold">{version ? `${version} (stable)` : '—'}</dd>
             <dt className="text-slate-500">Identifier</dt>

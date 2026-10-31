@@ -45,7 +45,7 @@ const CNC_SLIDES = [
   {
     image: 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&w=1400&q=85',
     title: 'Modern CNC Factory Ecosystem',
-    subtitle: 'Live ERP synchronization with real-time inventory balances',
+    subtitle: 'Live BI synchronization with real-time inventory balances',
     category: 'Connected Factory Floor'
   }
 ];
@@ -108,7 +108,7 @@ export default function Login() {
         toast(`Signed in as ${res.name} (${res.role === 'super_admin' ? 'Super Admin' : res.role})`, '👋');
         nav(rolePath(res.role), { replace: true });
       } else {
-        toast('Account not found or not active in ERP', '⚠️');
+        toast('Account not found or not active in BI', '⚠️');
       }
     } catch (e) {
       toast('Login failed: ' + e.message, '⚠️');
@@ -162,7 +162,7 @@ export default function Login() {
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
             <span className="hidden xl:inline text-xs font-bold tracking-widest text-slate-300 uppercase pl-2 border-l border-white/20">
-              Industrial Store & ERP
+              Industrial Store & BI
             </span>
           </div>
 
@@ -186,13 +186,13 @@ export default function Login() {
           </h1>
 
           <p className="text-sm xl:text-base text-slate-300 leading-relaxed mb-6 font-normal max-w-lg">
-            Your connected enterprise platform for CNC manufacturing, industrial procurement, and ERP shop-floor operations.
+            Your connected enterprise platform for CNC manufacturing, industrial procurement, and BI shop-floor operations.
           </p>
 
           {/* Feature Badges */}
           <div className="flex flex-wrap gap-2 pt-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-slate-100 shadow-xs">
-              <span className="text-orange-400 font-bold">⚙️</span> Multi-Company ERP
+              <span className="text-orange-400 font-bold">⚙️</span> Multi-Company BI
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-slate-100 shadow-xs">
               <span className="text-orange-400 font-bold">📦</span> Industrial Inventory
@@ -357,7 +357,7 @@ export default function Login() {
 
           {/* Micro Footer */}
           <div className="text-center text-[10.5px] text-slate-400 mt-6 pt-4 border-t border-slate-100">
-            <span>ARGUSCNC Enterprise • Industrial Store & ERP Platform</span>
+            <span>ARGUSCNC Enterprise • Industrial Store & BI Platform</span>
           </div>
         </div>
       </div>

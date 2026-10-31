@@ -9,6 +9,7 @@ export const NEVER_OFF: readonly string[] = ['dashboard', 'admin-access', 'setti
 export async function fetchDisabledModules(companyId?: string | null): Promise<string[]> {
   try {
     const { data, error } = await supabase.rpc('erp_get_disabled_modules', (companyId ? { p_company_id: companyId } : {}) as never);
+    if (error) console.warn('erp_get_disabled_modules failed (is the Full off SQL applied?):', error.message);
     if (error || !Array.isArray(data)) return [];
     return (data as unknown[]).filter((k): k is string => typeof k === 'string');
   } catch { return []; }

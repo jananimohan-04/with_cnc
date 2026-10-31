@@ -211,7 +211,7 @@ export function Sidebar({ counts, onItemClick, mini = false }) {
         <div className="mt-2 p-2.5 rounded-xl bg-[#180A04]/95 border border-[#36180C]/95">
           <div className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400 mb-1">GUIDANCE</div>
           <p className="text-[11px] leading-relaxed text-[#D7C4B7]">
-            Products arrive here automatically from ERP Inventory. Write sales copy, attach media, then
+            Products arrive here automatically from BI Inventory. Write sales copy, attach media, then
             <span className="font-bold text-white"> Submit to Finance</span> for pricing.
           </p>
         </div>
@@ -540,7 +540,7 @@ export function BottomNavigation({ counts, onItemClick, fullPage = false, onTogg
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-white">ARGUSCNC Navigation Hub</h3>
-                    <p className="text-[10px] text-[#A89080]">Access all ERP modules &amp; product categories</p>
+                    <p className="text-[10px] text-[#A89080]">Access all BI modules &amp; product categories</p>
                   </div>
                 </div>
                 <button
@@ -638,7 +638,7 @@ export function MenuPositionModal({ isOpen, onClose, currentPosition, onSelectPo
             </div>
             <div>
               <h2 className="text-base font-black text-white">Menu Position</h2>
-              <p className="text-xs text-[#A89080]">Choose where the main ERP navigation appears on your screen</p>
+              <p className="text-xs text-[#A89080]">Choose where the main BI navigation appears on your screen</p>
             </div>
           </div>
           <button
@@ -924,10 +924,10 @@ export const Topbar = forwardRef(function Topbar(
             <Link
               to="/sales/pipeline"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300 hover:text-white bg-[#1A0C06] hover:bg-[#2A1408] border border-[#4A2510] transition-colors shadow-xs"
-              title="Return to ERP Pipeline & Manufacturing modules"
+              title="Return to BI Pipeline & Manufacturing modules"
             >
               <span className="text-amber-400 font-extrabold text-sm leading-none">←</span>
-              <span>Back to ERP</span>
+              <span>Back to BI</span>
             </Link>
 
             {/* Quick Full Page View Toggle for Left/Right sidebar layouts */}
@@ -1537,7 +1537,7 @@ export function Shell({ counts, noSide, children }) {
           <footer className="border-t border-[#26140B] bg-[#0E0704] py-4 text-xs text-[#A89080] w-full mt-auto">
             <div className="w-full px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
               <div>
-                <span className="font-bold text-white">ARGUSCNC ERP Industrial Procurement</span> • Connected B2B Factory Platform
+                <span className="font-bold text-white">ARGUSCNC BI Industrial Procurement</span> • Connected B2B Factory Platform
               </div>
               <div className="flex items-center gap-4 text-[#A89080] font-medium">
                 <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>Multi-Tenant Architecture</span>

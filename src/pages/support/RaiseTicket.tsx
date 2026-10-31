@@ -80,7 +80,7 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
 
   const submit = async () => {
     if (!subject.trim()) { setError('Subject is required.'); return; }
-    if (!module) { setError('Choose the ERP module this issue belongs to.'); return; }
+    if (!module) { setError('Choose the BI module this issue belongs to.'); return; }
     if (!description.trim()) { setError('Description is required.'); return; }
     setBusy(true);
     setError('');
@@ -135,7 +135,7 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
       </FormField>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <FormField label="ERP Module" required>
+        <FormField label="BI Module" required>
           <select className={inputClass} value={module} onChange={(e) => setModule(e.target.value)}>
             <option value="">Select module…</option>
             {modules.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}

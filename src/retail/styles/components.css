@@ -1,4 +1,4 @@
-/* CNCFORGE ERP — shared components. Class names are the component API. */
+/* CNCFORGE BI — shared components. Class names are the component API. */
 /* ---------- layout ---------- */
 .top-strip{background:var(--navy);color:#CBD5E1;font-size:11.5px;font-weight:600}
 .top-strip .topbar-inner{padding-top:6px;padding-bottom:6px;justify-content:space-between}

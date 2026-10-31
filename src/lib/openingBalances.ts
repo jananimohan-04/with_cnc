@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-// Opening balances & opening stock: what the company already had when it started using the ERP.
+// Opening balances & opening stock: what the company already had when it started using the BI.
 // Everything is saved, validated and posted by database functions (see the cnc_opening_balances migration); this file
 // is only the typed client for them plus a few pure helpers.
 

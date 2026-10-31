@@ -51,7 +51,7 @@ export default function Orders() {
     <div className="space-y-6">
       <PageHero
         title="Commercial Purchase Orders"
-        subtitle={`${data.total} total order records • Linked to ERP sales requisition and delivery pipeline.`}
+        subtitle={`${data.total} total order records • Linked to BI sales requisition and delivery pipeline.`}
         icon={Receipt}
         badgeText="Purchase Orders"
         badgeColor="purple"

@@ -17,7 +17,7 @@ import {
 } from '@/lib/ledgerDashboard';
 
 // Ledger Dashboard: every bank entry, invoice and inward in one party ledger, with filters, a party statement
-// and a party-wise ledger book. Read-only: it reads the same records the rest of the ERP writes.
+// and a party-wise ledger book. Read-only: it reads the same records the rest of the BI writes.
 
 const btn = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none';
 const btnPrimary = 'inline-flex items-center justify-center gap-1.5 h-9 px-5 text-[13px] font-bold text-white bg-gradient-to-b from-orange-500 to-orange-600 rounded-lg shadow-md shadow-orange-500/25 hover:from-orange-500 hover:to-orange-700 active:scale-[0.98] transition disabled:opacity-40';

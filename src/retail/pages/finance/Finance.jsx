@@ -466,7 +466,7 @@ function FinanceDetail({ id }) {
           </section>
 
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5">
-            <h3 className="font-extrabold text-slate-900 text-sm mb-3">ERP facts</h3>
+            <h3 className="font-extrabold text-slate-900 text-sm mb-3">BI facts</h3>
             <dl className="space-y-2 text-xs">
               <Row k="SKU" v={p.sku || p.id} mono />
               <Row k="Brand" v={p.brand || '—'} />
@@ -475,7 +475,7 @@ function FinanceDetail({ id }) {
               <Row k="Unit" v={p.uom || '—'} />
               <Row k="Warehouse" v={p.warehouse || '—'} mono />
               <Row k="Stock" v={p.stock ?? '—'} mono strong />
-              {p.erp_item_id && <Row k="ERP product ID" v={p.erp_item_id} mono />}
+              {p.erp_item_id && <Row k="BI product ID" v={p.erp_item_id} mono />}
             </dl>
           </section>
 

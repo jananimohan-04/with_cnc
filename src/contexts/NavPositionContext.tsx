@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 
-/** The four dock positions the main ERP menu can adopt. */
+/** The four dock positions the main BI menu can adopt. */
 export type NavPosition = 'left' | 'right' | 'top' | 'bottom';
 
 export const NAV_POSITIONS: NavPosition[] = ['left', 'right', 'top', 'bottom'];
@@ -47,7 +47,7 @@ export function NavPositionProvider({ children }: { children: React.ReactNode })
   const userId = profile?.id ?? null;
   const [position, setPositionState] = useState<NavPosition>(() => readStored(userId));
 
-  // The ERP profile loads after sign-in: adopt the signed-in user's saved position.
+  // The BI profile loads after sign-in: adopt the signed-in user's saved position.
   useEffect(() => {
     setPositionState(readStored(userId));
   }, [userId]);

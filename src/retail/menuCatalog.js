@@ -1,4 +1,4 @@
-/* Menu Catalog — authoritative navigation definition & color theme system for ARGUS CNC ERP */
+/* Menu Catalog — authoritative navigation definition & color theme system for ARGUS CNC BI */
 import {
   LayoutDashboard, Building2, Boxes, FolderTree, Image as ImageIcon,
   Receipt, FileText, Settings, ShieldCheck, Store, Home, ShoppingCart,

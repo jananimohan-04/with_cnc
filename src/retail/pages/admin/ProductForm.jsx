@@ -151,7 +151,7 @@ export default function ProductForm({ edit }) {
           <Field label="Specification summary"><input value={f.short} onChange={S('short')} placeholder="e.g. CNMG 120408 • CVD coated" /></Field>
           <Field label="Selling price (₹) — leave empty for quotation-only"><input type="number" value={f.price} onChange={S('price')} placeholder="Empty = Request Quotation" /></Field>
           <Field label="Unit of measurement"><select value={f.uom} onChange={S('uom')}>{UOMS.map((u) => <option key={u}>{u}</option>)}</select></Field>
-          <Field label="Stock (from ERP inventory) *"><input type="number" value={f.stock} onChange={S('stock')} placeholder="0" /></Field>
+          <Field label="Stock (from BI inventory) *"><input type="number" value={f.stock} onChange={S('stock')} placeholder="0" /></Field>
           <Field label="Minimum order qty (MOQ)"><input type="number" value={f.moq} onChange={S('moq')} /></Field>
           <Field label="Lead time"><input value={f.leadTime} onChange={S('leadTime')} placeholder="e.g. Ex-stock / 7 days" /></Field>
           <Field label="Warehouse"><input value={f.warehouse} onChange={S('warehouse')} placeholder="e.g. WH-Pune-01" /></Field>
@@ -193,7 +193,7 @@ export default function ProductForm({ edit }) {
           <button className="btn btn-primary" disabled={saving} onClick={save}>💾 {saving ? 'Saving…' : (editId ? 'Save changes' : 'Publish product')}</button>
           <Link className="btn btn-ghost" to="/admin/products">Cancel</Link>
         </div>
-        <p className="hint">Reuses the ERP product record: SKU unique per company • stock mirrors inventory balances • media goes to Storage buckets.</p>
+        <p className="hint">Reuses the BI product record: SKU unique per company • stock mirrors inventory balances • media goes to Storage buckets.</p>
       </div></div>
     </>
   );

@@ -17,8 +17,11 @@ create table if not exists public.cnc_disabled_modules (
   id           uuid primary key default gen_random_uuid(),
   module_key   text not null,
   disabled_by  text,
-  disabled_at  timestamptz not null default now()
+  disabled_at  timestamptz not null default now(),
+  -- true when a Super Admin switched it off: then it is off for EVERY company (including companies added later)
+  is_global    boolean not null default false
 );
+alter table public.cnc_disabled_modules add column if not exists is_global boolean not null default false;
 select public.erp_secure_table('cnc_disabled_modules');
 create unique index if not exists cnc_disabled_modules_company_module_key on public.cnc_disabled_modules (company_id, module_key);
 -- written only by erp_set_module_off below
@@ -34,16 +37,16 @@ declare
   v_company uuid;
 begin
   if me.id is null then raise exception 'Not authorized' using errcode = '42501'; end if;
-  if p_company_id is not null and me.role = 'SUPER_ADMIN' then
-    v_company := p_company_id;
-  elsif p_company_id is not null and p_company_id = me.company_id then
+  if p_company_id is not null and (me.role = 'SUPER_ADMIN' or p_company_id = me.company_id) then
     v_company := p_company_id;
   elsif p_company_id is not null then
     raise exception 'Not authorized' using errcode = '42501';
+  elsif me.role = 'SUPER_ADMIN' then
+    v_company := me.active_company_id;   -- may be null ("all companies"): then only the global switches apply
   else
-    v_company := public.erp_report_company();
+    v_company := me.company_id;
   end if;
-  return coalesce((select array_agg(d.module_key order by d.module_key) from public.cnc_disabled_modules d where d.company_id = v_company), '{}');
+  return coalesce((select array_agg(d.module_key order by d.module_key) from public.cnc_disabled_modules d where d.company_id = v_company or d.is_global), '{}');
 end;
 $$;
 
@@ -76,13 +79,19 @@ begin
   if v_company is null then raise exception 'Choose a company first'; end if;
 
   if p_off then
-    insert into public.cnc_disabled_modules (company_id, module_key, disabled_by)
-    values (v_company, p_module, me.full_name)
-    on conflict (company_id, module_key) do nothing;
+    -- a Super Admin switches it off for ALL companies; a Company Admin only for their own
+    insert into public.cnc_disabled_modules (company_id, module_key, disabled_by, is_global)
+    values (v_company, p_module, me.full_name, me.role = 'SUPER_ADMIN')
+    on conflict (company_id, module_key) do update set is_global = public.cnc_disabled_modules.is_global or excluded.is_global;
+  elsif me.role = 'SUPER_ADMIN' then
+    delete from public.cnc_disabled_modules where module_key = p_module;
   else
+    if exists (select 1 from public.cnc_disabled_modules where is_global and module_key = p_module) then
+      raise exception 'A Super Admin switched this module off for all companies; only a Super Admin can switch it back on' using errcode = '42501';
+    end if;
     delete from public.cnc_disabled_modules where company_id = v_company and module_key = p_module;
   end if;
-  return coalesce((select array_agg(d.module_key order by d.module_key) from public.cnc_disabled_modules d where d.company_id = v_company), '{}');
+  return coalesce((select array_agg(d.module_key order by d.module_key) from public.cnc_disabled_modules d where d.company_id = v_company or d.is_global), '{}');
 end;
 $$;
 

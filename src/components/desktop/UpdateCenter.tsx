@@ -132,7 +132,7 @@ export function UpdateCenter() {
   const cardBase =
     'fixed bottom-4 right-4 z-[2147483500] w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/25 overflow-hidden';
   const titleBar =
-    'flex items-center gap-2 bg-navy-950 text-white px-4 py-3'; // matches ERP chrome
+    'flex items-center gap-2 bg-navy-950 text-white px-4 py-3'; // matches BI chrome
   const actions = 'flex items-center justify-end gap-2 px-4 py-3 bg-slate-50 border-t border-slate-200';
   const btnPrimary =
     'px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold transition-colors disabled:opacity-60';
@@ -160,7 +160,7 @@ export function UpdateCenter() {
           )}
           {!summary.notes && (
             <p className="text-xs text-slate-500">
-              A new version of CNCFORGE ERP is ready to install. Your data is preserved.
+              A new version of CNCFORGE BI is ready to install. Your data is preserved.
             </p>
           )}
         </div>
@@ -210,7 +210,7 @@ export function UpdateCenter() {
         </div>
         <div className="px-4 py-4">
           <p className="text-xs text-slate-600">
-            CNCFORGE ERP will restart automatically. Please do not shut down the app.
+            CNCFORGE BI will restart automatically. Please do not shut down the app.
           </p>
         </div>
       </div>

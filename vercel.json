@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "api/**/*.js": {
+      "includeFiles": "server/**",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/api/retail-sync/(.*)",

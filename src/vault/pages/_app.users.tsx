@@ -56,7 +56,7 @@ function InviteUserModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
         userId = crypto.randomUUID();
       }
 
-      // 2. Sync to Main ERP company_users
+      // 2. Sync to Main BI company_users
       try {
         await supabase.from("company_users").upsert({
           auth_user_id: userId,
@@ -452,7 +452,7 @@ function UsersPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Users & Access Control</h2>
           <p className="text-muted-foreground mt-1">
-            Manage ERP users and control their Part & Drawings access permissions.
+            Manage BI users and control their Part & Drawings access permissions.
           </p>
         </div>
         <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => setIsInviteOpen(true)}>

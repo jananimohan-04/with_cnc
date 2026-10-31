@@ -925,7 +925,7 @@ export default function Settings({ defaultTab }) {
                             <span>How Dynamic Auto-Amount QR Works:</span>
                           </div>
                           <p className="text-xs text-emerald-800 leading-relaxed">
-                            By specifying your company's <b>UPI ID / VPA Handle</b>, the ERP automatically generates a real-time NPCI QR code on every quotation and tax invoice with the <b>exact payable amount pre-filled</b> (e.g. ₹1,25,000). When customers scan with Google Pay, PhonePe, or Paytm, the exact amount is entered automatically without typing mistakes!
+                            By specifying your company's <b>UPI ID / VPA Handle</b>, the BI automatically generates a real-time NPCI QR code on every quotation and tax invoice with the <b>exact payable amount pre-filled</b> (e.g. ₹1,25,000). When customers scan with Google Pay, PhonePe, or Paytm, the exact amount is entered automatically without typing mistakes!
                           </p>
                         </div>
 

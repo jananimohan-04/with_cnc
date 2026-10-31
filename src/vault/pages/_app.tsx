@@ -70,7 +70,7 @@ function AppShell() {
           <div className="flex h-16 items-center justify-between">
             {/* Logo and Primary Nav */}
             <div className="flex items-center gap-8">
-              {/* Logo removed as it duplicates the ERP shell branding */}
+              {/* Logo removed as it duplicates the BI shell branding */}
               
               <nav className="hidden md:flex items-center gap-1">
                 {filteredNavItems.map((item) => (
@@ -86,7 +86,7 @@ function AppShell() {
               </nav>
             </div>
 
-            {/* Removed Right side actions as they duplicate the main ERP shell */}
+            {/* Removed Right side actions as they duplicate the main BI shell */}
           </div>
         </div>
       </header>

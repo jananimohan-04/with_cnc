@@ -1,4 +1,4 @@
-// Copilot: turning what the person typed or said into an ERP action.
+// Copilot: turning what the person typed or said into an BI action.
 // Two brains with the same output: the AI service / ChatGPT API for natural language in Tamil /
 // Tanglish / English, and the local rules below, which handle commands when the service is not reachable.
 

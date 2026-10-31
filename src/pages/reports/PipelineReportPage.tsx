@@ -781,7 +781,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     const filename = `Pipeline_Report_${activeRange.from || 'all'}_${activeRange.to || 'time'}`;
 
     const rows: unknown[][] = [
-      ['ARGUSCNC ERP - PIPELINE REPORT'],
+      ['ARGUSCNC BI - PIPELINE REPORT'],
       ['Date Range:', dateRangeLabel],
       ['Company Filter:', selectedCompany || 'All Companies'],
       ['Generated On:', todayISO()],
@@ -857,7 +857,7 @@ export function PipelineReportPage({ embedded = false, onBack, onSwitchTab }: Pi
     const bodyHtml = `
       <div class="brand">
         <div>
-          <h1>ARGUSCNC ERP — Pipeline Report</h1>
+          <h1>ARGUSCNC BI — Pipeline Report</h1>
           <div class="meta">Period: <b>${rangeText}</b> | Company: <b>${selectedCompany || 'All Companies'}</b> | Date: ${todayISO()}</div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 // Minimal self-contained toast host for the desktop shell.
 //
-// The ERP web app has no global toast system (the vault subtree has its own sonner
+// The BI web app has no global toast system (the vault subtree has its own sonner
 // instance), so the desktop shell carries this tiny dependency-free one instead of
 // pulling a new provider into the shared layout. Only rendered in the Tauri app.
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDateRange } from '@/contexts/DateRangeContext';
 import { PRESET_LABELS, displayDay, presetRange, type DatePreset } from '@/lib/globalDate';
 
-// Compact popup opened from the Topbar date/time display. Same ERP styling as the
+// Compact popup opened from the Topbar date/time display. Same BI styling as the
 // other header dropdowns; deliberately small (no full-screen modal).
 export function GlobalDateFilterPopup({ onClose }: { onClose: () => void }) {
   const { from, to, preset, setCustomRange, applyPreset, reset } = useDateRange();

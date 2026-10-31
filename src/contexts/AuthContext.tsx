@@ -111,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const payload = data as { role?: ErpRole | null; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
       // modules switched fully off for the company (Access Management > Full off) are removed for everyone
       const off = await fetchDisabledModules();
+      (window as unknown as { __fullOff?: string[] }).__fullOff = off;   // for support: type __fullOff in the browser console
       setPermissions(applyDisabledModules(effectiveMatrix(payload.role ?? role ?? null, payload.permissions), off));
     } catch (e) {
       console.error('erp_get_permissions failed:', e);
@@ -204,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // TEMPORARY (local dev only): Google OAuth has no credentials configured locally, so this
   // lets you sign in against the local Supabase with a password instead. The onAuthStateChange
-  // listener above picks the session up and loads the ERP profile as usual.
+  // listener above picks the session up and loads the BI profile as usual.
   // TODO: delete this callback and the matching form in LoginScreen.tsx once
   // SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID/SECRET are set for local dev.
   const signInWithPassword = useCallback(async (emailAddress: string, password: string) => {

@@ -316,7 +316,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
       <div className="lg:hidden">
         <PageHeader
           title="Order Quantity Tracking"
-          description="Partial production, rejections, batch deliveries and invoice quantities — reconciled from live ERP rows."
+          description="Partial production, rejections, batch deliveries and invoice quantities — reconciled from live BI rows."
           actions={<Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportReport} disabled={loading}><span>Export CSV</span></Button>}
         />
         <div className="flex gap-2 border-b border-slate-200 my-2">
