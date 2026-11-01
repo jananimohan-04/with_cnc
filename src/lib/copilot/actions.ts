@@ -4,7 +4,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { generateUniqueProjectNo } from '@/lib/projectNumber';
-import { recordProductionBatch } from '@/lib/orderQuantities';
+import { recordProductionBatch, fetchOrderQty } from '@/lib/orderQuantities';
+import { financeApi } from '@/lib/finance';
 import type { Intent, Params } from './understand';
 
 export interface ActionCtx {
@@ -132,135 +133,73 @@ export async function findSalesOrder(identifier: string, companyId: string | nul
   return null;
 }
 
+/**
+ * The records the Co-worker can move to the next stage: what is on the Kanban board now. Every table is read on its own (a problem in
+ * one never hides the others) and with all its columns, so a renamed or missing column cannot make a whole stage disappear.
+ * A record that has already moved on (an enquiry that became a quotation, a quotation that became an order) is not listed again.
+ */
 export async function fetchPipelineSummary(companyId: string | null): Promise<PipelineItem[]> {
   const items: PipelineItem[] = [];
-  try {
-    let eqQ = supabase
-      .from('cnc_enquiries')
-      .select('id, lead_no, enquiry_no, customer, part_name, quantity, estimated_value, pipeline_stage, status, created_at, received_date')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    if (companyId) eqQ = eqQ.eq('company_id', companyId);
-    const { data: enqs } = await eqQ;
-    if (enqs) {
-      for (const e of enqs) {
-        items.push({
-          id: e.id,
-          type: 'enquiry',
-          refNo: e.lead_no || e.enquiry_no || 'ENQ',
-          customer: e.customer || 'Unknown',
-          part: e.part_name || '-',
-          qty: Number(e.quantity) || 0,
-          value: Number(e.estimated_value) || 0,
-          stage: e.pipeline_stage || 'Enquiry',
-          status: e.status || 'New',
-          date: e.received_date || (e.created_at ? e.created_at.slice(0, 10) : ''),
-          raw: e,
-        });
-      }
-    }
+  const rows = async (table: string): Promise<any[]> => {
+    try {
+      let q: any = supabase.from(table).select('*').order('created_at', { ascending: false }).limit(300);
+      if (companyId) q = q.eq('company_id', companyId);
+      const { data, error } = await q;
+      if (error) { console.warn(`Pipeline: ${table} could not be read:`, error.message); return []; }
+      return (data ?? []) as any[];
+    } catch (e) { console.warn(`Pipeline: ${table} could not be read:`, e); return []; }
+  };
+  const dateOf = (d: any, ...keys: string[]) => { for (const k of keys) if (d[k]) return String(d[k]).slice(0, 10); return d.created_at ? String(d.created_at).slice(0, 10) : ''; };
+  const MOVED = /quot|order|inward|finish|deliver|dc\b|invoice|convert|lost|cancel|reject|closed|declin/i;
+  const DEAD = /cancel|lost|reject|declin|closed|void|deleted/i;
 
-    let soQ = supabase
-      .from('cnc_sales_orders')
-      .select('id, order_no, customer, part_name, quantity, total_value, status, order_date, created_at')
-      .order('created_at', { ascending: false })
-      .limit(15);
-    if (companyId) soQ = soQ.eq('company_id', companyId);
-    const { data: sos } = await soQ;
-    if (sos) {
-      for (const s of sos) {
-        items.push({
-          id: s.id,
-          type: 'sales_order',
-          refNo: s.order_no || 'SO',
-          customer: s.customer || 'Unknown',
-          part: s.part_name || '-',
-          qty: Number(s.quantity) || 0,
-          value: Number(s.total_value) || 0,
-          stage: 'Sales Order',
-          status: s.status || 'Confirmed',
-          date: s.order_date || (s.created_at ? s.created_at.slice(0, 10) : ''),
-          raw: s,
-        });
-      }
-    }
+  const [enqs, qus, sos, inws, dcs, invs] = await Promise.all([
+    rows('cnc_enquiries'), rows('cnc_quotations'), rows('cnc_sales_orders'), rows('cnc_inwards'), rows('cnc_deliveries'), rows('cnc_invoices'),
+  ]);
 
-    let quQ = supabase
-      .from('cnc_quotations')
-      .select('id, quote_no, customer, part_name, total_value, status, quotation_date, created_at')
-      .order('created_at', { ascending: false })
-      .limit(10);
-    if (companyId) quQ = quQ.eq('company_id', companyId);
-    const { data: qus } = await quQ;
-    if (qus) {
-      for (const q of qus) {
-        items.push({
-          id: q.id,
-          type: 'quotation',
-          refNo: q.quote_no || 'QT',
-          customer: q.customer || 'Unknown',
-          part: q.part_name || '-',
-          qty: 0,
-          value: Number(q.total_value) || 0,
-          stage: 'Quotation',
-          status: q.status || 'Draft',
-          date: q.quotation_date || (q.created_at ? q.created_at.slice(0, 10) : ''),
-          raw: q,
-        });
-      }
-    }
-
-    let dcQ = supabase
-      .from('cnc_deliveries')
-      .select('id, delivery_no, customer_name, part_name, quantity, status, delivery_date, created_at')
-      .order('created_at', { ascending: false })
-      .limit(10);
-    if (companyId) dcQ = dcQ.eq('company_id', companyId);
-    const { data: dcs } = await dcQ;
-    if (dcs) {
-      for (const d of dcs) {
-        items.push({
-          id: d.id,
-          type: 'dc',
-          refNo: d.delivery_no || 'DC',
-          customer: d.customer_name || 'Unknown',
-          part: d.part_name || '-',
-          qty: Number(d.quantity) || 0,
-          value: 0,
-          stage: 'DC',
-          status: d.status || 'Delivered',
-          date: d.delivery_date || (d.created_at ? d.created_at.slice(0, 10) : ''),
-          raw: d,
-        });
-      }
-    }
-
-    let inwQ = supabase
-      .from('cnc_inwards')
-      .select('id, inward_no, party_name, part_name, quantity, status, inward_date, created_at')
-      .order('created_at', { ascending: false })
-      .limit(10);
-    if (companyId) inwQ = inwQ.eq('company_id', companyId);
-    const { data: inws } = await inwQ;
-    if (inws) {
-      for (const iw of inws) {
-        items.push({
-          id: iw.id,
-          type: 'inward',
-          refNo: iw.inward_no || 'INW',
-          customer: iw.party_name || 'Party',
-          part: iw.part_name || '-',
-          qty: Number(iw.quantity) || 0,
-          value: 0,
-          stage: 'Inward',
-          status: iw.status || 'Received',
-          date: iw.inward_date || (iw.created_at ? iw.created_at.slice(0, 10) : ''),
-          raw: iw,
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('Error fetching pipeline summary:', err);
+  for (const e of enqs) {
+    // still an enquiry: its stage is "Enquiry" (or empty) and it has not been quoted, converted or closed
+    const stage = str(e.pipeline_stage);
+    if ((stage && stage.toLowerCase() !== 'enquiry' && MOVED.test(stage)) || MOVED.test(str(e.status))) continue;
+    items.push({
+      id: e.id, type: 'enquiry', refNo: e.lead_no || e.enquiry_no || 'ENQ', customer: e.customer || 'Unknown', part: e.part_name || '-',
+      qty: num(e.quantity), value: num(e.estimated_value), stage: e.pipeline_stage || 'Enquiry', status: e.status || 'New',
+      date: dateOf(e, 'received_date'), raw: e,
+    });
+  }
+  for (const q of qus) {
+    if (DEAD.test(str(q.status)) || /convert|order|won|accept/i.test(str(q.status))) continue;
+    items.push({
+      id: q.id, type: 'quotation', refNo: q.quote_no || 'QT', customer: q.customer || 'Unknown', part: q.part_name || '-',
+      qty: num(q.quantity), value: num(q.total_value), stage: 'Quotation', status: q.status || 'Draft', date: dateOf(q, 'date', 'quotation_date'), raw: q,
+    });
+  }
+  for (const s of sos) {
+    if (DEAD.test(str(s.status))) continue;
+    items.push({
+      id: s.id, type: 'sales_order', refNo: s.order_no || 'SO', customer: s.customer || 'Unknown', part: s.part_name || '-',
+      qty: num(s.quantity), value: num(s.total_value) || num(s.value), stage: 'Sales Order', status: s.status || 'Confirmed', date: dateOf(s, 'order_date'), raw: s,
+    });
+  }
+  for (const iw of inws) {
+    if (/delete/i.test(str(iw.status))) continue;
+    items.push({
+      id: iw.id, type: 'inward', refNo: iw.inward_no || 'INW', customer: iw.party_name || 'Party', part: iw.part_name || '-',
+      qty: num(iw.quantity), value: 0, stage: 'Inward', status: iw.status || 'Received', date: dateOf(iw, 'inward_date'), raw: iw,
+    });
+  }
+  for (const d of dcs) {
+    items.push({
+      id: d.id, type: 'dc', refNo: d.delivery_no || 'DC', customer: d.customer_name || 'Unknown', part: d.part_name || '-',
+      qty: num(d.quantity), value: 0, stage: 'DC', status: d.status || 'Delivered', date: dateOf(d, 'delivery_date'), raw: d,
+    });
+  }
+  for (const v of invs) {
+    if (v.cancelled) continue;
+    items.push({
+      id: v.id, type: 'invoice', refNo: v.invoice_no || 'INV', customer: v.customer_name || 'Unknown', part: v.part_name || '-',
+      qty: num(v.quantity), value: num(v.amount), stage: 'Invoice', status: v.status || 'Unpaid', date: dateOf(v, 'invoice_date'), raw: v,
+    });
   }
   return items;
 }
@@ -1106,6 +1045,48 @@ function salesOrderOf(card: PipelineItem): { id: string | null; no: string | nul
   return { id: null, no: ref || null };
 }
 
+/** Inserts a row the way the pipeline's own forms do: a column an older database does not have is dropped and the save is retried. */
+async function insertTolerant(table: string, row: Record<string, any>): Promise<{ error: any; skipped: string[] }> {
+  const payload: Record<string, any> = { ...row };
+  const skipped: string[] = [];
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const res = await supabase.from(table).insert([payload]);
+    if (!res.error) return { error: null, skipped };
+    const m = /Could not find the '([A-Za-z0-9_]+)' column/.exec(res.error.message || '');
+    if (m && m[1] in payload) { delete payload[m[1]]; skipped.push(m[1]); continue; }
+    return { error: res.error, skipped };
+  }
+  return { error: { message: 'Too many missing columns.' }, skipped };
+}
+
+/** Inward categories that go on to production: they get a Draft work order (released later from Production), like the Inward form does. */
+const PRODUCTION_INWARD = ['CUSTOMERDC', 'DC', 'NODC', 'NEWPART', 'NEWPROJECT'];
+const isProductionInward = (cat: unknown) => PRODUCTION_INWARD.includes(String(cat ?? '').toUpperCase().replace(/[\s_-]+/g, ''));
+
+async function createDraftWorkOrderForInward(inward: Record<string, any>, qty: number, customer: string): Promise<boolean> {
+  if (!isProductionInward(inward.category) || !(qty > 0)) return false;
+  const { data: existing } = await supabase.from('cnc_work_orders').select('wo_no,sales_order,part_name,quantity');
+  const rows = (existing ?? []) as any[];
+  const key = (so: string, part: string, q: number) => `${so}||${part}||${q}`;
+  if (rows.some((w) => key(w.sales_order ?? '', w.part_name ?? '', Number(w.quantity) || 0) === key(inward.sales_order_ref || '', inward.part_name || '', qty))) return false;
+  const used = new Set(rows.map((w) => w.wo_no));
+  const d = new Date();
+  const prefix = `WO-${d.getFullYear().toString().slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-`;
+  let woNo = '';
+  for (let i = 0; i < 50 && (!woNo || used.has(woNo)); i++) woNo = `${prefix}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+  if (!woNo || used.has(woNo)) woNo = `${prefix}${Date.now().toString().slice(-3)}`;
+  const { error } = await supabase.from('cnc_work_orders').insert([{
+    id: crypto.randomUUID(), wo_no: woNo, sales_order: inward.sales_order_ref || '', customer: customer || inward.party_name || '',
+    part_name: inward.part_name || '-', part_no: inward.part_number || 'N/A', quantity: qty, completed: 0, rejected: 0,
+    start_date: inward.inward_date || null, due_date: inward.inward_date || null, status: 'Draft', priority: 'Normal',
+  }]);
+  if (error) console.error('Failed to auto-create draft work order:', error);
+  return !error;
+}
+
+const pct = (v: unknown, dflt: number): number => (v === undefined || v === null || v === '' ? dflt : Math.min(100, Math.max(0, Number(v) || 0)));
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 /**
  * Moves an existing pipeline card from its current stage to the next stage
  * with extra information provided by the user via voice / form.
@@ -1125,11 +1106,14 @@ export async function moveStageRecord(
   if (norm === 'quotation') {
     const quoteNo = `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const unitPrice = Number(extraFields.price || extraFields.rate || 0);
-    const qty = Number(sourceCard.qty) || 1;
-    const totalVal = unitPrice ? unitPrice * qty : Number(sourceCard.value || 0);
+    const qty = Number(extraFields.quantity) || Number(sourceCard.qty) || 1;
+    const discountPct = extraFields.discount !== undefined && extraFields.discount !== '' ? Math.min(100, Math.max(0, Number(extraFields.discount) || 0)) : 0;
+    const gstPct = extraFields.gst !== undefined && extraFields.gst !== '' ? Math.min(100, Math.max(0, Number(extraFields.gst) || 0)) : 18;
+    // the same maths as the quotation's own line: quantity x rate, less the discount, plus GST
+    const totalVal = unitPrice ? Math.round(qty * unitPrice * (1 - discountPct / 100) * (1 + gstPct / 100) * 100) / 100 : Number(sourceCard.value || 0);
     const lineItems = [{
       id: crypto.randomUUID(), partName: sourceCard.part || '', partNumber: '', quantity: String(qty),
-      unitPrice: String(unitPrice), discount: '0', unitDiscount: '0', gst: '18',
+      unitPrice: String(unitPrice), discount: String(discountPct), unitDiscount: '0', gst: String(gstPct),
     }];
 
     const payload: any = {
@@ -1147,8 +1131,8 @@ export async function moveStageRecord(
       quantity: qty,
       unit_price: unitPrice,
       total_value: totalVal,
-      discount_percent: 0,
-      gst_percent: 18,
+      discount_percent: discountPct,
+      gst_percent: gstPct,
       date: orderDate,
       valid_till: new Date(Date.now() + validityDays(extraFields.validity) * 86400000).toISOString().slice(0, 10),
       payment_terms: extraFields.payment_terms || '30 days net',
@@ -1187,32 +1171,38 @@ export async function moveStageRecord(
     const deliveryRaw = String(extraFields.delivery_date ?? '').trim();
     const delivery = isoDateLoose(deliveryRaw);
     if (deliveryRaw && !delivery) return { ok: false, message: `I could not read the delivery date "${deliveryRaw}". Say it like 14 November 2026.` };
-    if (delivery && delivery <= orderDate) return { ok: false, message: 'The delivery date must be after today.' };
+    const orderDayEarly = isoDateLoose(String(extraFields.order_date ?? '')) || orderDate;
+    if (delivery && delivery <= orderDayEarly) return { ok: false, message: 'The delivery date must be after the order date.' };
 
     const { attachDateTimeToProduct } = await import('@/pages/sales/SalesPipelinePage');
     const now = new Date();
     const qty0 = Number(sourceCard.qty) || 1;
     const spokenPrice = Number(extraFields.price || 0);
+    const spokenQty = Number(extraFields.quantity || 0);
+    const spokenGst = extraFields.gst !== undefined && extraFields.gst !== '' ? Math.min(100, Math.max(0, Number(extraFields.gst) || 0)) : null;
     const fromRows = lineItemsOf(raw);
     const base = fromRows.length ? fromRows : [{
       partName: sourceCard.part, partNumber: '', quantity: qty0,
       unitPrice: Number(raw.unit_price) || (sourceCard.value && sourceCard.qty ? sourceCard.value / sourceCard.qty : 0),
       discount: '0', unitDiscount: '0', gst: '18',
     }];
+    // a single product line takes the quantity, rate and GST said here; several lines keep the quotation's own figures
+    const single = base.length === 1;
     const finalItems = base.map((i: any) => ({
       id: crypto.randomUUID(),
       filePaths: [] as string[],
       partName: attachDateTimeToProduct(String(i.partName || i.productName || i.item || sourceCard.part || ''), null, now),
       partNumber: String(i.partNumber || ''),
       description: '',
-      quantity: String(Number(i.quantity ?? i.qty) || 0),
+      quantity: String(single && spokenQty > 0 ? spokenQty : (Number(i.quantity ?? i.qty) || 0)),
       rejectedQty: 0,
       status: 'Confirmed',
-      unitPrice: String(base.length === 1 && spokenPrice > 0 ? spokenPrice : (Number(i.unitPrice) || 0)),
+      unitPrice: String(single && spokenPrice > 0 ? spokenPrice : (Number(i.unitPrice) || 0)),
       discount: String(i.discount ?? '0'),
       unitDiscount: String(i.unitDiscount ?? '0'),
-      gst: String(i.gst ?? 18),
+      gst: String(single && spokenGst !== null ? spokenGst : (i.gst ?? 18)),
     }));
+    const orderDay = isoDateLoose(String(extraFields.order_date ?? '')) || orderDate;
 
     const { data: orders } = await supabase.from('cnc_sales_orders').select('order_no');
     const taken = new Set((orders ?? []).map((o: any) => String(o.order_no)));
@@ -1240,7 +1230,7 @@ export async function moveStageRecord(
       delivery_address: '',
       shipping_contact: '',
       shipping_phone: '',
-      order_date: orderDate,
+      order_date: orderDay,
       customer_po_no: String(extraFields.po_no || ''),
       customer_po_date: null,
       items: finalItems,
@@ -1251,7 +1241,7 @@ export async function moveStageRecord(
       delivered: 0,
       value: totalVal,
       total_value: totalVal,
-      delivery_date: delivery || orderDate,
+      delivery_date: delivery || orderDay,
       status: 'Confirmed',
       payment_terms: raw.payment_terms || 'Net 30',
       special_instructions: '',
@@ -1282,45 +1272,59 @@ export async function moveStageRecord(
     };
   }
 
-  // 3. Move to Inward (source is Sales Order)
+  // 3. Move to Inward (source is Sales Order): the same row the Inward form saves, and the same checks
   if (norm === 'inward') {
-    const inwNo = extraFields.inward_no || `INW-${Math.floor(1000 + Math.random() * 9000)}`;
-    const qty = Number(extraFields.received_qty) || sourceCard.qty || 1;
-    const payload: any = {
+    const category = String(extraFields.category || '').trim().toUpperCase() || 'CUSTOMER DC';
+    const qty = Number(extraFields.quantity) || Number(extraFields.received_qty) || Number(sourceCard.qty) || 0;
+    const price = Number(extraFields.price) || 0;
+    if (!(qty > 0)) return { ok: false, message: 'Enter a quantity greater than zero.' };
+    if (!(price > 0)) return { ok: false, message: 'Enter the purchase price. A price is never assumed to be zero.' };
+    const discount = pct(extraFields.discount, 0);
+    const gst = pct(extraFields.gst, 18);
+    const inwardDate = isoDateLoose(String(extraFields.inward_date ?? '')) || orderDate;
+    const total = round2(qty * price * (1 - discount / 100) * (1 + gst / 100));
+    const inwNo = String(extraFields.inward_no || '') || `INW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const soNo = sourceCard.type === 'sales_order' ? sourceCard.refNo : String(raw.sales_order_ref || '');
+    const row: Record<string, any> = {
       id: crypto.randomUUID(),
       inward_no: inwNo,
-      category: 'GOODS PURCHASE',
+      category,
+      product_name: sourceCard.part || '',
       project_name: raw.lead_no || '',
-      sales_order_ref: sourceCard.type === 'sales_order' ? sourceCard.refNo : '',
+      sales_order_ref: soNo,
+      reference_no: String(extraFields.reference_no || ''),
+      inward_date: inwardDate,
       party_name: sourceCard.customer,
-      part_name: sourceCard.part,
-      product_name: sourceCard.part,
+      remarks: String(extraFields.remarks || ''),
+      part_name: sourceCard.part || '-',
+      part_number: String(raw.part_number || raw.part_no || ''),
       quantity: qty,
-      price: Number(extraFields.price) || 0,
-      remarks: [extraFields.heat_no && `Heat/Batch: ${extraFields.heat_no}`, extraFields.remarks].filter(Boolean).join(' | '),
-      inward_date: orderDate,
-      status: 'Received',
+      price,
+      discount_percent: discount,
+      gst_percent: gst,
+      total_amount: total,
+      status: 'Pending',
       created_at: new Date().toISOString(),
     };
-    if (ctx.companyId) payload.company_id = ctx.companyId;
+    if (ctx.companyId) row.company_id = ctx.companyId;
 
-    const { error } = await supabase.from('cnc_inwards').insert([payload]);
+    const { error } = await insertTolerant('cnc_inwards', row);
     if (error) return { ok: false, message: `Could not save Inward: ${error.message}` };
 
-    if (sourceCard.type === 'sales_order') {
-      await supabase.from('cnc_sales_orders').update({ status: 'Inward' }).eq('id', sourceCard.id);
-    }
+    // CUSTOMER DC / NO DC / NEW PART flow to Production as a Draft work order (released manually from the Production page).
+    let draft = false;
+    try { draft = await createDraftWorkOrderForInward(row, qty, sourceCard.customer); } catch (e) { console.error('Draft work order auto-create failed:', e); }
 
+    if (sourceCard.type === 'sales_order') {
+      await supabase.from('cnc_sales_orders').update({ status: 'Inwarded' }).eq('id', sourceCard.id);
+    }
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'Inward', inward_no: inwNo }
-      }));
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', { detail: { identifier: sourceCard.refNo, targetStage: 'Inward', inward_no: inwNo } }));
       window.dispatchEvent(new CustomEvent('argus:data-changed'));
     }
-
     return {
       ok: true,
-      message: `Sales Order #${sourceCard.refNo} (${sourceCard.customer}) moved to Inward ${inwNo} (Qty: ${qty}).`,
+      message: `Sales Order #${sourceCard.refNo} (${sourceCard.customer}) moved to Inward ${inwNo}: ${category}, Qty ${qty}, ₹${price.toLocaleString('en-IN')} each, total ₹${total.toLocaleString('en-IN')}${draft ? '. A draft work order was created in Production.' : '.'}`,
       where: { path: '/sales/pipeline', label: 'Sales Pipeline' },
     };
   }
@@ -1383,83 +1387,135 @@ export async function moveStageRecord(
     };
   }
 
-  // 6. Move to Delivery Challan (DC)
+  // 6. Move to Delivery Challan (DC): the same row the DC form saves (status Pending, the sales order's delivered quantity updated)
   if (norm === 'dc' || norm === 'deliverychallan') {
-    const dcNo = extraFields.dc_no || `DC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const qty = Number(extraFields.quantity || extraFields.dispatch_qty) || sourceCard.qty || 1;
-    const vehicle = extraFields.vehicle_no || '';
+    const dcNo = String(extraFields.dc_no || '') || `DC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qty = Number(extraFields.quantity || extraFields.dispatch_qty) || Number(sourceCard.qty) || 0;
+    if (!(qty > 0)) return { ok: false, message: 'Enter the quantity being dispatched.' };
 
-    const payload: any = {
+    // the sales order this delivery belongs to (a Finished Goods / Inward card knows it by its number)
+    const soRef = sourceCard.type === 'sales_order' ? { id: sourceCard.id, no: sourceCard.refNo } : salesOrderOf(sourceCard);
+    const { so, summary } = soRef.id || soRef.no ? await fetchOrderQty(soRef.id, soRef.no ?? '') : { so: null, summary: null };
+    // an order that has production rows can only deliver what is finished and not yet delivered
+    if (summary?.hasProduction && qty > summary.fgAvailable) {
+      return { ok: false, message: `Only ${summary.fgAvailable} finished piece${summary.fgAvailable === 1 ? ' is' : 's are'} available to deliver for this order. Enter ${summary.fgAvailable} or less.` };
+    }
+
+    // customer_id cannot be empty: from the sales order, else the company list
+    let customerId: string | null = so?.customer_id || raw.customer_id || null;
+    if (!customerId && sourceCard.customer) {
+      const { data: cust } = await supabase.from('cnc_customers').select('id,name').ilike('name', sourceCard.customer).limit(1);
+      customerId = (cust as any[] | null)?.[0]?.id ?? null;
+    }
+    if (!customerId) return { ok: false, message: 'Could not find this company in the company list. Add it as a company first, then make the delivery challan.' };
+
+    const lines = lineItemsOf(so ?? raw);
+    const first: any = lines[0] ?? {};
+    const unitPrice = Number(first.unitPrice ?? first.rate ?? first.price) || Number((so ?? raw).unit_price) || 0;
+    const row: Record<string, any> = {
       id: crypto.randomUUID(),
       delivery_no: dcNo,
       customer_name: sourceCard.customer,
-      sales_order_id: sourceCard.type === 'sales_order' ? sourceCard.id : null,
-      sales_order_no: sourceCard.type === 'sales_order' ? sourceCard.refNo : null,
+      customer_id: customerId,
+      sales_order_id: so?.id ?? (sourceCard.type === 'sales_order' ? sourceCard.id : null),
+      sales_order_no: so?.order_no ?? soRef.no ?? null,
       part_name: sourceCard.part,
       quantity: qty,
-      vehicle_no: vehicle,
-      remarks: String(extraFields.remarks || ''),
-      status: 'Dispatched',
+      dispatch_qty: qty,
       delivery_date: new Date().toISOString().slice(0, 10),
+      vehicle_no: String(extraFields.vehicle_no || ''),
+      status: 'Pending',
       created_at: new Date().toISOString(),
+      billing_address: String((so ?? raw).billing_address || ''),
+      customer_gstin: String((so ?? raw).customer_gstin || ''),
+      eway_bill: String(extraFields.eway_bill || ''),
+      po_no: String(extraFields.po_no || (so ?? raw).customer_po_no || (so ?? raw).po_no || ''),
+      place_of_supply: String(extraFields.place_of_supply || ''),
+      packaging_details: String(extraFields.packaging || ''),
+      enquiry_no: String((so ?? raw).lead_no || ''),
+      phone: String((so ?? raw).phone || ''),
+      remarks: String(extraFields.remarks || ''),
+      hsn: String(first.hsn || ''),
+      unit: String(first.unit || 'Nos'),
+      unit_price: unitPrice,
+      total_amount: round2(qty * unitPrice),
     };
-    if (ctx.companyId) payload.company_id = ctx.companyId;
+    if (ctx.companyId) row.company_id = ctx.companyId;
 
-    const { error } = await supabase.from('cnc_deliveries').insert([payload]);
+    const { error, skipped } = await insertTolerant('cnc_deliveries', row);
     if (error) return { ok: false, message: `Could not save DC: ${error.message}` };
 
-    if (sourceCard.type === 'sales_order') {
-      await supabase.from('cnc_sales_orders').update({ status: 'Delivered' }).eq('id', sourceCard.id);
+    if (so) {
+      const delivered = (Number(so.delivered) || 0) + qty;
+      const status = delivered >= (Number(so.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
+      const { error: soErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);
+      if (soErr) console.error('Failed to update sales order delivery:', soErr);
     }
-
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'DC', dc_no: dcNo }
-      }));
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', { detail: { identifier: sourceCard.refNo, targetStage: 'DC', dc_no: dcNo } }));
       window.dispatchEvent(new CustomEvent('argus:data-changed'));
     }
-
+    const vehicle = String(extraFields.vehicle_no || '');
     return {
       ok: true,
-      message: `#${sourceCard.refNo} (${sourceCard.customer}) moved to Delivery Challan ${dcNo} (Qty: ${qty}${vehicle ? `, Vehicle: ${vehicle}` : ''}).`,
+      message: `#${sourceCard.refNo} (${sourceCard.customer}) moved to Delivery Challan ${dcNo} (Qty: ${qty}${vehicle ? `, Vehicle: ${vehicle}` : ''})${skipped.length ? `. Not stored (no database column yet): ${skipped.join(', ')}` : ''}.`,
       where: { path: '/sales/pipeline', label: 'Delivery Stage' },
     };
   }
 
-  // 7. Move to Invoice
+  // 7. Move to Invoice: saved through the finance module (the database works out the tax and posts it to the books), like the Invoice form
   if (norm === 'invoice') {
-    const invNo = extraFields.invoice_no || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const amt = Number(extraFields.amount) || Number(sourceCard.value) || ((sourceCard.qty || 1) * 100);
-    const qty = sourceCard.qty || 1;
+    const docType = ['Sales Invoice', 'Proforma Invoice', 'Credit Note'].includes(String(extraFields.doc_type)) ? String(extraFields.doc_type) : 'Sales Invoice';
+    const qty = Number(extraFields.quantity) || Number(sourceCard.qty) || 0;
+    const rate = Number(extraFields.price) || 0;
+    if (!(qty > 0)) return { ok: false, message: 'Enter the quantity to bill.' };
+    if (!(rate > 0)) return { ok: false, message: 'Enter the rate per piece. An invoice is never priced silently at zero.' };
+    const gst = pct(extraFields.gst, 18);
+    const invDate = isoDateLoose(String(extraFields.invoice_date ?? '')) || orderDate;
+    const dcId = sourceCard.type === 'dc' ? sourceCard.id : null;
 
-    const payload: any = {
-      id: crypto.randomUUID(),
-      invoice_no: invNo,
-      customer_name: sourceCard.customer,
-      part_name: sourceCard.part,
-      quantity: qty,
-      amount: amt,
-      status: 'Unpaid',
-      invoice_date: new Date().toISOString().slice(0, 10),
-      due_date: extraFields.due_date || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-      created_at: new Date().toISOString(),
-    };
-    if (ctx.companyId) payload.company_id = ctx.companyId;
+    // one invoice per delivery challan (a proforma never blocks the real one)
+    if (dcId && docType === 'Sales Invoice') {
+      const { data: dup } = await supabase.from('cnc_invoices').select('invoice_no').eq('delivery_id', dcId).neq('invoice_type', 'Proforma Invoice').limit(1);
+      if (dup && (dup as any[]).length) return { ok: false, message: `Invoice ${(dup as any[])[0].invoice_no ?? ''} already exists for this delivery challan.` };
+    }
+    const dueRaw = String(extraFields.due_date ?? '').trim();
+    const due = dueRaw ? (isoDateLoose(dueRaw) || '') : '';
+    if (dueRaw && !due) return { ok: false, message: `I could not read the due date "${dueRaw}". Say it like 30 November 2026.` };
 
-    const { error } = await supabase.from('cnc_invoices').insert([payload]);
-    if (error) return { ok: false, message: `Could not save Invoice: ${error.message}` };
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('argus:move-card-stage', {
-        detail: { identifier: sourceCard.refNo, targetStage: 'Invoice', invoice_no: invNo }
-      }));
-      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    let res: { id: string; invoice_no: string };
+    try {
+      res = await financeApi.saveInvoice({
+        invoice_no: null,
+        invoice_type: docType,
+        customer_name: sourceCard.customer,
+        customer_id: raw.customer_id || null,
+        part_name: sourceCard.part,
+        quantity: qty,
+        invoice_date: invDate,
+        ...(due ? { due_date: due } : {}),
+        dc_no: sourceCard.type === 'dc' ? sourceCard.refNo : null,
+        delivery_id: dcId,
+        sales_order_id: raw.sales_order_id || null,
+        notes: 'Raised by the Co-worker',
+      }, [{ description: sourceCard.part || 'Item', quantity: qty, unit: raw.unit || 'Nos', rate, gst_rate: gst }]);
+    } catch (e) {
+      return { ok: false, message: `Could not save the invoice: ${e instanceof Error ? e.message : String(e)}. Nothing was created.` };
+    }
+    if (dcId && docType === 'Sales Invoice') {
+      const { error: dcErr } = await supabase.from('cnc_deliveries').update({ status: 'Billed' }).eq('id', dcId);
+      if (dcErr) console.error('Failed to mark the delivery challan as billed:', dcErr);
     }
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('argus:move-card-stage', { detail: { identifier: sourceCard.refNo, targetStage: 'Invoice', invoice_no: res.invoice_no } }));
+      window.dispatchEvent(new CustomEvent('argus:data-changed'));
+    }
+    const net = round2(qty * rate);
     return {
       ok: true,
-      message: `#${sourceCard.refNo} (${sourceCard.customer}) moved to Invoice ${invNo} (Amount: ₹${amt.toLocaleString('en-IN')}).`,
-      where: { path: '/sales/pipeline', label: 'Invoices' },
+      message: `#${sourceCard.refNo} (${sourceCard.customer}) ${docType === 'Sales Invoice' ? 'invoiced' : `saved as ${docType}`}: ${res.invoice_no}, ${qty} × ₹${rate.toLocaleString('en-IN')} = ₹${net.toLocaleString('en-IN')} plus ${gst}% GST.`,
+      where: { path: '/finance/invoices', label: 'Invoices' },
     };
   }
 

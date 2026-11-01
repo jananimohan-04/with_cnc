@@ -83,6 +83,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'maintenance', label: 'Maintenance', category: 'Inventory & Purchasing', actions: [...VCED], pages: ['maintenance/machines', 'maintenance/preventive', 'maintenance/breakdown', 'maintenance/history', 'maintenance/downtime'] },
 
   { key: 'admin-users', label: 'User Management', category: 'Administration', actions: [...V], pages: ['admin/users'] },
+  { key: 'jd-build', label: 'JD Build', category: 'Administration', actions: [...VCEDX], pages: ['admin/jd-build'] },
   { key: 'admin-access', label: 'Access Management', category: 'Administration', actions: [...V], pages: ['admin/access', 'admin/roles', 'admin/permissions'] },
   { key: 'admin-companies', label: 'Company Management', category: 'Administration', actions: [...V], pages: ['admin/companies'] },
   { key: 'settings', label: 'Settings', category: 'Administration', actions: [...V], pages: ['admin/settings'] },

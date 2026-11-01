@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button } from '@/components/ui/Card';
+import { ListTodo } from 'lucide-react';
+import { AddTaskModal } from '@/components/production/AddTaskModal';
+import { fetchScheduledTasks, type ScheduledTask } from '@/lib/scheduledTasks';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Time24 } from '@/components/ui/Time24';
 import { supabase } from '@/lib/supabase';
@@ -28,10 +31,17 @@ export function ActualTimeline() {
   // Add actual runs line by line (Add runs button, or drag a time range on the calendar to start from that slot).
   const [showAdd, setShowAdd] = useState(false);
   const [slot, setSlot] = useState(defaultActualSlot());
+  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<ScheduledTask | null>(null);
   const openRun = useCallback((r: { date: string; start: string; end: string }) => {
     setSlot(r);
     setShowAdd(true);
   }, []);
+  useEffect(() => {
+    void fetchScheduledTasks().then(setTasks);
+  }, [signal]);
+
   // The first line starts on the last whole hour (a run cannot end in the future); just after midnight it uses yesterday evening.
   const openAddButton = () => { setSlot(defaultActualSlot()); setShowAdd(true); };
 
@@ -56,8 +66,32 @@ export function ActualTimeline() {
         onClick: () => setPicked(j),
       }));
     }
+    // Include member / machine tasks
+    for (const t of tasks) {
+      if (t.mode !== 'actual') continue;   // planned tasks are on the Planned timeline
+      if (operator !== 'All' && t.member_name && t.member_name !== operator) continue;
+      if (machine !== 'All' && t.machine && t.machine !== machine) continue;
+      const [sh, sm] = String(t.start_time || '09:00').split(':').map(Number);
+      const [eh, em] = String(t.end_time || '10:00').split(':').map(Number);
+      const sMin = Math.max(0, Math.min(24 * 60 - 1, (sh || 0) * 60 + (sm || 0)));
+      const eMin = Math.max(sMin + 15, Math.min(24 * 60, (eh || 0) * 60 + (em || 0)));
+      out.push({
+        id: `task-${t.id}`,
+        date: t.task_date,
+        startMin: sMin,
+        endMin: eMin,
+        className: 'bg-indigo-600 border-indigo-800 text-white shadow-sm hover:bg-indigo-700',
+        title: `[Task] ${t.task_name} · ${t.member_name || ''} · ${fmtTime24(t.start_time)}–${fmtTime24(t.end_time)}`,
+        lines: [
+          `📋 ${t.task_name}`,
+          `${t.member_name || 'Member'}${t.machine ? ` · ${t.machine}` : ''}`,
+          `${fmtTime24(t.start_time)}–${fmtTime24(t.end_time)}${t.status === 'Completed' ? ' · Done' : ''}`
+        ],
+        onClick: () => { setTaskToEdit(t); setShowAddTask(true); }
+      });
+    }
     return out;
-  }, [data.jobs, data.woByNo, machine, operator, q]);
+  }, [data.jobs, data.woByNo, machine, operator, q, tasks]);
 
   const hoursInView = blocks.filter(b => nav.days.includes(b.date)).reduce((n, b) => n + (b.endMin - b.startMin) / 60, 0);
   const anyActual = data.jobs.some(j => j.actual_start);
@@ -77,12 +111,23 @@ export function ActualTimeline() {
         <input aria-label="Search" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
         <Badge variant="neutral">{Math.round(hoursInView * 10) / 10} h run in view</Badge>
         <Button variant="primary" onClick={openAddButton} className="ml-auto" aria-label="Add runs">+ Add runs</Button>
+        <Button variant="secondary" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1.5" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={16} /> Add Task</Button>
       </div>
       <TimelineGrid key={signal} days={nav.days} blocks={blocks} testId="actual-grid" onDragRange={openRun} />
       {!data.loading && !anyActual && (
         <p className="text-sm text-slate-500">Nothing has run yet. A job shows here from the moment it is started in Production → Job Cards until it is completed. Press Add runs (or drag on the calendar) to add a run, or use the Job Board tab to assign jobs to machines and operators.</p>
       )}
       <AddRunsModal open={showAdd} onClose={() => setShowAdd(false)} initial={slot} mode="actual" onSaved={(firstDate) => { void data.reload(); nav.setAnchor(firstDate); }} />
+      <AddTaskModal
+        open={showAddTask}
+        onClose={() => { setShowAddTask(false); setTaskToEdit(null); }}
+        onSaved={() => { void data.reload(); void fetchScheduledTasks().then(setTasks); }}
+        initialDate={nav.anchor}
+        initialMode="actual"
+        initialTask={taskToEdit}
+        machineOptions={data.machines}
+        memberOptions={data.operators}
+      />
 
       <Modal open={!!picked} onClose={() => setPicked(null)} title="Actual run" size="sm" footer={<Button variant="secondary" onClick={() => setPicked(null)}>Close</Button>}>
         {picked && (() => {

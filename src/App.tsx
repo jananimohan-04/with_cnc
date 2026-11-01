@@ -99,6 +99,7 @@ import { PipelineReportPage } from './pages/reports/PipelineReportPage';
 import {
   UsersPage, CompaniesPage, SettingsPage, AuditLogsPage, AccessPage
 } from './pages/admin/AdminPages';
+import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { getPageTheme } from './lib/pageThemes';
@@ -309,6 +310,7 @@ function MainLayout() {
 
             {/* Administration */}
             <Route path="/admin/users" element={<RequireRole roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}><UsersPage /></RequireRole>} />
+            <Route path="/admin/jd-build" element={<JdBuildPage />} />
             <Route path="/admin/companies" element={<RequireRole roles={['SUPER_ADMIN']}><CompaniesPage /></RequireRole>} />
             <Route path="/admin/access" element={<RequireRole roles={['SUPER_ADMIN', 'COMPANY_ADMIN']}><AccessPage /></RequireRole>} />
             <Route path="/admin/roles" element={<Navigate to="/admin/access" replace />} />

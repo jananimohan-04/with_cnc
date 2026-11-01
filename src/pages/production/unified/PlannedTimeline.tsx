@@ -1,7 +1,9 @@
 import { AddRunsModal, defaultPlanSlot } from './AddRunsModal';
 import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, ListTodo } from 'lucide-react';
+import { AddTaskModal } from '@/components/production/AddTaskModal';
+import { fetchScheduledTasks, type ScheduledTask } from '@/lib/scheduledTasks';
 import { supabase } from '@/lib/supabase';
 import { Badge, Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
@@ -159,6 +161,9 @@ export function PlannedTimeline() {
 
   const [showPlan, setShowPlan] = useState(false);
   const [planSlot, setPlanSlot] = useState(defaultPlanSlot());
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<ScheduledTask | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<{ woId: string; seq: string; process: string; machine: string; operator: string; qty: string; plan: PlanDraft }>({ woId: '', seq: '', process: '', machine: '', operator: '', qty: '', plan: emptyPlan() });
 
@@ -220,7 +225,10 @@ export function PlannedTimeline() {
     setOperators([...men.values()].sort((a, b) => a.localeCompare(b)));
     setLoading(false);
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    void fetchScheduledTasks().then(setScheduledTasks);
+  }, [load]);
 
   useEffect(() => {
     const t = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60000);
@@ -523,6 +531,7 @@ export function PlannedTimeline() {
         {loading && <Badge variant="neutral">Loading…</Badge>}
         <span className="flex-1" />
         <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={() => openPlan()}><Plus size={16} /> Plan Operation</Button>
+        <Button variant="secondary" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1.5" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={16} /> Add Task</Button>
       </div>
 
       {missing && (
@@ -556,6 +565,31 @@ export function PlannedTimeline() {
                   </div>
                 )}
                 {d === today && <div className="absolute inset-x-0 z-10 pointer-events-none" style={{ top: (nowMin / 60) * HOUR_PX }}><div className="h-0.5 bg-red-500" /><div className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" /></div>}
+                {scheduledTasks.filter(t => t.task_date === d && t.mode !== 'actual').map(t => {
+                  const sMin = Math.max(0, Math.min(24 * 60 - 1, toMinutes(t.start_time)));
+                  const eMin = Math.max(sMin + 15, Math.min(24 * 60, toMinutes(t.end_time)));
+                  const top = (sMin / 60) * HOUR_PX;
+                  const height = Math.max(22, ((eMin - sMin) / 60) * HOUR_PX);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => { setTaskToEdit(t); setShowAddTask(true); }}
+                      title={`[Task] ${t.task_name} · ${t.member_name || 'Member'} (${t.start_time}-${t.end_time})`}
+                      className="absolute inset-x-1 overflow-hidden rounded-md border-l-[4px] border-indigo-800 bg-indigo-600/90 hover:bg-indigo-700 text-white px-2 py-0.5 text-left shadow-sm transition-all z-20"
+                      style={{ top, height }}
+                    >
+                      <div className="font-bold text-[11px] truncate flex items-center gap-1">
+                        <span>📋</span>
+                        <span>{t.task_name}</span>
+                        {t.status === 'Completed' && <span className="text-[9px] bg-emerald-500/80 px-1 rounded">Done</span>}
+                      </div>
+                      <div className="truncate text-[10px] opacity-90">
+                        {t.member_name ? `${t.member_name} · ` : ''}{t.machine ? `${t.machine} · ` : ''}{fmtTime24(t.start_time)}–{fmtTime24(t.end_time)}
+                      </div>
+                    </button>
+                  );
+                })}
                 {layoutDayRows(dayRows).map(({ row: r, lane, lanes, top, height }) => {
                   const wo = woById.get(String(r.work_order_id));
                   const width = `calc(${(1 / lanes) * 100}% - 4px)`;
@@ -580,6 +614,16 @@ export function PlannedTimeline() {
       {!loading && rows.length === 0 && !missing && <p className="text-sm text-slate-500">Nothing is planned yet. Drag on the calendar to plan a time, use Plan Operation, or plan an operation while releasing a work order in Production.</p>}
 
       <AddRunsModal open={showPlan} onClose={() => setShowPlan(false)} initial={planSlot} mode="plan" onSaved={() => { void load(); }} />
+      <AddTaskModal
+        open={showAddTask}
+        onClose={() => { setShowAddTask(false); setTaskToEdit(null); }}
+        onSaved={() => { void load(); void fetchScheduledTasks().then(setScheduledTasks); }}
+        initialDate={anchor}
+        initialMode="planned"
+        initialTask={taskToEdit}
+        machineOptions={machines}
+        memberOptions={operators}
+      />
 
       <Modal open={!!picked} onClose={() => setPicked(null)} title="Edit Planned Slot" size="md"
         subtitle={picked ? (() => {

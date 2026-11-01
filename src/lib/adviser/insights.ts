@@ -333,3 +333,85 @@ export function reportToSpeech(r: AdviserReport): string {
   const top = bad.slice(0, 4).map((i, n) => `${n + 1}. ${i.title}. ${i.action}`).join(' ');
   return `I found ${bad.length} ${bad.length === 1 ? 'thing' : 'things'} that need attention. ${top}`;
 }
+
+// ---------------------------------------------------------------- today's improvement points
+export interface Idea { area: Insight['area'] | 'General'; title: string; how: string; fromData: boolean }
+
+/** A few proven improvements for each area. Which ones show today depends on what the records say and on the date, so the list changes every day. */
+const IDEA_POOL: Record<Insight['area'] | 'General', { title: string; how: string }[]> = {
+  Payments: [
+    { title: 'Ask for an advance on new orders', how: 'Take 30 to 50 percent with the purchase order for customers who paid late before; it removes the chasing later.' },
+    { title: 'Send a payment reminder on a fixed day', how: 'Pick one weekday (for example Monday) to send every overdue statement together, so no customer is forgotten.' },
+    { title: 'Offer a small discount for early payment', how: 'One or two percent for payment within 7 days often brings money in weeks sooner than a reminder does.' },
+    { title: 'Put the due date on every invoice', how: 'Set payment terms on each customer so the system can show what is overdue without anyone counting days.' },
+  ],
+  Sales: [
+    { title: 'Answer every enquiry within one working day', how: 'Reply with a price or a clear date for it; customers usually order from whoever answers first.' },
+    { title: 'Follow up each quotation after 3 days', how: 'One short call asking what is holding the decision turns a surprising number of quotes into orders.' },
+    { title: 'Ask your best customers for their next requirement', how: 'A call to the top five customers each month finds orders that never reach you as enquiries.' },
+    { title: 'Record why quotations are lost', how: 'Price, lead time or a competitor: after a month the pattern tells you what to change.' },
+  ],
+  Delivery: [
+    { title: 'Promise dates you can keep', how: 'Add two days to what the schedule says; a date kept builds more trust than a fast date missed.' },
+    { title: 'Tell customers early when an order will be late', how: 'A message the day you know costs nothing; a surprise on the due date costs the customer.' },
+    { title: 'Check material and drawings the day an order is placed', how: 'Most delays start because a job waits for material or an approval; clear that first.' },
+    { title: 'Review open orders every morning for 10 minutes', how: 'Sort by delivery date and ask of each one: what is stopping it today?' },
+  ],
+  Billing: [
+    { title: 'Raise the invoice on the day of dispatch', how: 'Make it a step of the dispatch checklist, so no challan leaves without a bill.' },
+    { title: 'Match challans and invoices every Friday', how: 'List the challans not yet billed and clear the list before the week ends.' },
+    { title: 'Send the invoice with the goods', how: 'A copy in the box or on WhatsApp the same day starts the payment clock at once.' },
+  ],
+  Production: [
+    { title: 'Find the top reason for rejection', how: 'Group last month\'s rejected pieces by machine and by reason; fixing the top one usually removes half of them.' },
+    { title: 'Plan the next day\'s jobs before you leave', how: 'Tools, material and programs ready the evening before save the first hour of every shift.' },
+    { title: 'Track machine stoppages for one week', how: 'Write down every stop and its reason; the biggest cause is rarely the one people expect.' },
+    { title: 'Group similar jobs together', how: 'Running the same tool or material one after another cuts setup time, which is often the largest loss.' },
+  ],
+  Stock: [
+    { title: 'Set a minimum for your 20 most used materials', how: 'A minimum quantity per item turns running out into a reorder alert before a job waits.' },
+    { title: 'Reorder together from one supplier', how: 'A weekly combined order gets a better price and fewer deliveries than many small ones.' },
+    { title: 'Count the fast movers every week', how: 'A short weekly count of the ten items you use most catches errors before they stop a job.' },
+  ],
+  Customers: [
+    { title: 'Add two or three new customers this quarter', how: 'If one customer is over a third of your billing, new customers are the best protection.' },
+    { title: 'Review each big customer every quarter', how: 'Look at what they ordered, paid and complained about, and plan the next three months with them.' },
+    { title: 'Move slow payers to shorter credit', how: 'Customers who are often late can be offered advance payment or fewer credit days.' },
+  ],
+  General: [
+    { title: 'Hold a 10 minute start-of-day meeting', how: 'Today\'s jobs, today\'s problems, who does what; it prevents most of the day\'s confusion.' },
+    { title: 'Thank the person who found a mistake', how: 'Mistakes found early are cheap; people only report them when it is safe to do so.' },
+    { title: 'Write one standard instruction for a repeated task', how: 'Setting up a job, packing, or checking a part: one page saves the same explanation every week.' },
+    { title: 'Look at one number every day', how: 'Pick the one that matters most this month (cash received, late orders, rejections) and say it aloud each morning.' },
+  ],
+};
+
+/** The day number, so the same day gives the same points and the next day gives different ones. */
+const dayNumber = (d: Date) => Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY);
+
+/** Four improvement points for today: the first ones answer what the records show, the rest rotate through the other areas. */
+export function improvementIdeas(report: AdviserReport, now: Date = new Date(), count = 4): Idea[] {
+  const day = dayNumber(now);
+  const out: Idea[] = [];
+  const seen = new Set<string>();
+  const add = (area: Idea['area'], i: number, fromData: boolean) => {
+    const pool = IDEA_POOL[area];
+    for (let k = 0; k < pool.length; k++) {
+      const idea = pool[(i + k) % pool.length];
+      if (seen.has(idea.title)) continue;
+      seen.add(idea.title);
+      out.push({ area, ...idea, fromData });
+      return true;
+    }
+    return false;
+  };
+  // areas with something wrong, most serious first (each area once)
+  const areas: Insight['area'][] = [];
+  for (const i of report.insights) if (i.severity !== 'good' && !areas.includes(i.area)) areas.push(i.area);
+  areas.slice(0, 2).forEach((a, n) => add(a, day + n, true));
+  // the rest: other areas in a different order every day, then the general ones
+  const rest = (Object.keys(IDEA_POOL) as (Insight['area'] | 'General')[]).filter((a) => a !== 'General' && !areas.slice(0, 2).includes(a as Insight['area']));
+  for (let n = 0; out.length < count - 1 && n < rest.length; n++) add(rest[(day + n) % rest.length] as Insight['area'], day + n * 3, false);
+  for (let n = 0; out.length < count && n < IDEA_POOL.General.length; n++) add('General', day + n, false);
+  return out.slice(0, count);
+}

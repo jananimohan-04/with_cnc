@@ -3,7 +3,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { Card, Badge } from '@/components/ui/Card';
-import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, GripVertical, AlertTriangle } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, User, Settings2, Clock, GripVertical, AlertTriangle, ListTodo } from 'lucide-react';
+import { AddTaskModal } from '@/components/production/AddTaskModal';
+import { fetchScheduledTasks, type ScheduledTask } from '@/lib/scheduledTasks';
+import { ymd } from '@/lib/operationPlans';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Time24 } from '@/components/ui/Time24';
@@ -51,6 +54,9 @@ function ActualScheduling() {
   // Edit / view state for the schedule modal.
   const [editingJob, setEditingJob] = useState<any>(null);
   const [viewOnly, setViewOnly] = useState(false);
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<ScheduledTask | null>(null);
   const todayStr = currentDate.toISOString().split('T')[0];
   const [newJobForm, setNewJobForm] = useState({
     workOrder: '', operationId: '', operationSeq: '', processName: '',
@@ -416,6 +422,7 @@ function ActualScheduling() {
 
   useEffect(() => {
     fetchData();
+    void fetchScheduledTasks().then(setScheduledTasks);
   }, []);
 
   async function fetchData() {
@@ -732,6 +739,7 @@ function ActualScheduling() {
 
           <Button variant="secondary" className="bg-white" onClick={() => setCurrentDate(new Date())}>Today</Button>
           <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={openAddJob}><Plus size={18} /> Add Job</Button>
+          <Button variant="secondary" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1.5" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={16} /> Add Task</Button>
         </div>
       </div>
 
@@ -739,6 +747,42 @@ function ActualScheduling() {
         {/* MAIN GRID */}
         <div className="flex-1 space-y-6 overflow-hidden">
           
+          {/* SCHEDULED MEMBER TASKS BAR */}
+          {(() => {
+            const curDateStr = ymd(currentDate);
+            const dayTasks = scheduledTasks.filter(t => t.task_date === curDateStr);
+            if (!dayTasks.length) return null;
+            return (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <ListTodo size={15} className="text-indigo-600" /> Scheduled Member Tasks ({dayTasks.length})
+                  </span>
+                  <Button variant="secondary" size="sm" className="text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}>
+                    + Add Task
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {dayTasks.map(t => (
+                    <div
+                      key={t.id}
+                      onClick={() => { setTaskToEdit(t); setShowAddTask(true); }}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 cursor-pointer transition-colors text-xs shadow-2xs"
+                      title="Click to edit task"
+                    >
+                      <span className="font-bold text-slate-800">📋 {t.task_name}</span>
+                      {t.member_name && <span className="text-indigo-700 font-semibold bg-white px-1.5 py-0.5 rounded border border-indigo-200">👤 {t.member_name}</span>}
+                      <span className="text-slate-500 font-mono text-[11px]">{t.start_time}–{t.end_time}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${t.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* MACHINES GRID */}
           <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm flex flex-col relative">
             <div className="flex items-center gap-2 p-3 border-b border-slate-200 bg-slate-50">
@@ -1002,6 +1046,17 @@ function ActualScheduling() {
 
         </div>
       </div>
+
+      <AddTaskModal
+        open={showAddTask}
+        onClose={() => { setShowAddTask(false); setTaskToEdit(null); }}
+        onSaved={() => { void fetchScheduledTasks().then(setScheduledTasks); }}
+        initialDate={ymd(currentDate)}
+        initialMode="planned"
+        initialTask={taskToEdit}
+        machineOptions={machines.map((m: any) => m.code)}
+        memberOptions={operators}
+      />
 
       {/* Add Job Modal */}
       <Modal open={showAddJob} onClose={closeScheduleModal} title={viewOnly ? 'View Scheduled Job' : editingJob ? 'Edit Scheduled Job' : 'Schedule New Job'} size="lg" footer={

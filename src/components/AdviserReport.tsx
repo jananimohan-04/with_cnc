@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, RefreshCw, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Info, Lightbulb, Loader2, RefreshCw, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
-import { buildReport, reportToFacts, reportToSpeech, type AdviserReport as Report, type Insight, type Severity } from '@/lib/adviser/insights';
+import { buildReport, improvementIdeas, reportToFacts, reportToSpeech, type AdviserReport as Report, type Idea, type Insight, type Severity } from '@/lib/adviser/insights';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
 
@@ -21,15 +21,31 @@ const REVIEW_SYSTEM = (lang: Lang) => `You are the business Adviser of a CNC mac
 Write a short management report: (1) the 3 most urgent problems, each with the customer / order / invoice names and amounts given, (2) one concrete action for each, (3) 3 ideas to improve cash collection, delivery speed and profit over the next month.
 Use only the figures given; never invent customers, amounts or days. About 12 short lines, plain text, no markdown symbols, numbered lines. ${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
 
+const DAILY_SYSTEM = (lang: Lang, avoid: string[]) => `You are the business Adviser of a CNC machining company. From the figures given, write exactly 4 numbered improvement points for TODAY: practical things the owner can do this week to collect cash faster, deliver on time, cut rejections or win more orders.
+Each point: a short title, a colon, then one sentence on how (at most 28 words in all). Start with what the figures show is most wrong. Plain text, no markdown symbols. ${avoid.length ? `These were shown yesterday, so give different ones: ${avoid.join('; ')}. ` : ''}${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
+
+const DAILY_KEY = 'adviser.daily.v1';
+interface DailyCache { date: string; lang: string; ideas: { title: string; how: string }[]; prev: string[] }
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const readDaily = (): DailyCache | null => { try { const v = JSON.parse(localStorage.getItem(DAILY_KEY) || 'null'); return v && Array.isArray(v.ideas) ? v : null; } catch { return null; } };
+const writeDaily = (c: DailyCache) => { try { localStorage.setItem(DAILY_KEY, JSON.stringify(c)); } catch { /* not saved */ } };
+/** "1. Title: how" lines -> points. */
+function parsePoints(text: string): { title: string; how: string }[] {
+  return text.split(/\n+/).map((l) => /^\s*\d+[.)]\s*(.+)$/.exec(l)?.[1]?.trim() ?? '').filter(Boolean).map((l) => {
+    const m = /^(.{3,80}?)\s*[:–—-]\s+(.+)$/.exec(l);
+    return m ? { title: m[1].replace(/^[*_\s]+|[*_\s]+$/g, ''), how: m[2].trim() } : { title: l.slice(0, 60), how: l };
+  }).slice(0, 4);
+}
+
 /** Streams the improvement ideas: the help function first, then the OpenAI key saved in this browser. */
-async function* reviewStream(facts: string, lang: Lang): AsyncGenerator<string> {
+async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[] }): AsyncGenerator<string> {
   let unreachable = false;
   try {
     const { data } = await supabase.auth.getSession();
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}`, apikey: String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''), 'content-type': 'application/json' },
-      body: JSON.stringify({ review: { facts, lang } }),
+      body: JSON.stringify({ review: { facts, lang, ...(daily ? { mode: 'daily', avoid: daily.avoid } : {}) } }),
     });
     if (res.ok && res.body) {
       const reader = res.body.getReader();
@@ -67,7 +83,7 @@ async function* reviewStream(facts: string, lang: Lang): AsyncGenerator<string> 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, temperature: 0.3, max_tokens: 700, messages: [{ role: 'system', content: REVIEW_SYSTEM(lang) }, { role: 'user', content: facts }] }),
+    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, temperature: 0.3, max_tokens: 700, messages: [{ role: 'system', content: daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang) }, { role: 'user', content: facts }] }),
   });
   if (!res.ok || !res.body) throw new Error(res.status === 401 ? 'The OpenAI key saved in this browser was rejected.' : `ChatGPT is not available right now (HTTP ${res.status}).`);
   const reader = res.body.getReader();
@@ -121,6 +137,35 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
     } finally { if (alive.current) setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  // Today's improvement points: shown at once from the records; the AI writes today's set once a day (kept for the day, never repeating yesterday's).
+  const [daily, setDaily] = useState<{ ideas: { title: string; how: string; area?: string }[]; ai: boolean } | null>(null);
+  const [dailyBusy, setDailyBusy] = useState(false);
+  useEffect(() => {
+    if (!report || loading) return;
+    const base: Idea[] = improvementIdeas(report);
+    const cache = readDaily();
+    const today = todayKey();
+    if (cache && cache.date === today && cache.lang === lang && cache.ideas.length >= 3) { setDaily({ ideas: cache.ideas, ai: true }); return; }
+    setDaily({ ideas: base, ai: false });
+    // Only the totals and names go to the AI. If the assistant is not reachable the points above stay.
+    let stop = false;
+    setDailyBusy(true);
+    (async () => {
+      let text = '';
+      try {
+        const avoid = cache && cache.date !== today ? cache.ideas.map((x) => x.title) : (cache?.prev ?? []);
+        for await (const piece of reviewStream(reportToFacts(report), lang, { avoid })) { if (stop) return; text += piece; }
+        const pts = parsePoints(text);
+        if (!stop && pts.length >= 3) {
+          writeDaily({ date: today, lang, ideas: pts, prev: cache && cache.date !== today ? cache.ideas.map((x) => x.title) : (cache?.prev ?? []) });
+          setDaily({ ideas: pts, ai: true });
+        }
+      } catch { /* the points from the records stay */ }
+      finally { if (!stop) setDailyBusy(false); }
+    })();
+    return () => { stop = true; };
+  }, [report, loading, lang]);
 
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -180,6 +225,26 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
             <p className="px-0.5 text-[11px] text-slate-500">
               {counts.high + counts.medium === 0 ? 'Nothing urgent today.' : `${counts.high ? `${counts.high} urgent` : ''}${counts.high && counts.medium ? ' and ' : ''}${counts.medium ? `${counts.medium} to look at` : ''}. Tap a point to see the records behind it.`}
             </p>
+
+            {daily && daily.ideas.length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-2.5" data-testid="daily-ideas">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Lightbulb size={14} className="text-emerald-600" />
+                  <span className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-800">{lang === 'ta' ? 'இன்றைய மேம்பாட்டு யோசனைகள்' : "Today's improvements"}</span>
+                  <span className="text-[10px] text-emerald-700">{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
+                  <span className={`ml-auto rounded-full px-1.5 py-px text-[9px] font-bold uppercase ${daily.ai ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{dailyBusy ? 'AI writing…' : daily.ai ? 'AI' : 'Daily tips'}</span>
+                </div>
+                <ol className="space-y-1.5">
+                  {daily.ideas.map((x, n) => (
+                    <li key={`${n}-${x.title}`} className="flex gap-2 text-[12px] leading-snug text-slate-700">
+                      <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">{n + 1}</span>
+                      <span><b className="text-slate-900">{x.title}.</b> {x.how}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-1.5 text-[10px] text-emerald-700">{lang === 'ta' ? 'ஒவ்வொரு நாளும் மாறும்.' : 'A new set every day.'}</p>
+              </div>
+            )}
 
             {report.insights.map((i: Insight) => {
               const v = SEV[i.severity];

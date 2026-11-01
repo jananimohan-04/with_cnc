@@ -26,6 +26,7 @@ import {
   Tag,
   MapPin,
   Wrench,
+  Briefcase,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -115,6 +116,7 @@ export const navSections: NavSection[] = [
     label: 'Administration',
     items: [
       { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
+      { label: 'JD Build', icon: Briefcase, page: 'admin/jd-build', iconClass: 'text-purple-400', module: 'jd-build' },
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },
       { label: 'Settings', icon: Settings, page: 'admin/settings', iconClass: 'text-gray-400', module: 'settings' },
@@ -128,6 +130,7 @@ export const navSections: NavSection[] = [
 
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Executive Dashboard',
+  'admin/jd-build': 'JD Build',
   'sales/pipeline': 'In-house Sales Pipeline',
   'sales/in-house': 'In-house Sales Pipeline',
   'sales/site-visits': 'Site Visit Sales',

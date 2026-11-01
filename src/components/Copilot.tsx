@@ -6,9 +6,11 @@ import {
   ArrowRight, Check, HelpCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useResizable, ResizeGrip } from '@/lib/useResizable';
+import { isHardRequired, missingHard, namedDetails, parseAnswer, parseCommand, prefillFor, questionFor, stageFromSpeech } from '@/lib/copilot/wizard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBreadcrumbs } from '@/config/navigation';
-import { say, stopSpeaking, offlineAnswer } from '@/components/HelpAssistant';
+import { say, stopSpeaking, offlineAnswer, voiceBusy } from '@/components/HelpAssistant';
 import {
   findRecords, previewAction, runAction, fetchPipelineSummary, explainRecordStage,
   saveStageRecord, moveStageRecord, type ActionCtx, type Preview, type PipelineItem
@@ -64,6 +66,8 @@ export interface PipelineBox {
     icon: string;
     required: boolean;
     example: string;
+    /** the answers the real form offers in a drop-down */
+    options?: string[];
   }>;
 }
 
@@ -80,12 +84,12 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: null,
     sourceStageName: null,
     sourceStageNameTa: null,
+    // the Enquiry form: Company, Product Name, Qty, Remarks
     fields: [
-      { key: 'customer', label: 'Customer / Company', labelTa: 'வாடிக்கையாளர்', icon: '🏢', required: true, example: 'Apple Tech' },
-      { key: 'part_name', label: 'Part / Product Name', labelTa: 'பாகம் பெயர்', icon: '⚙️', required: true, example: 'Flicker' },
-      { key: 'quantity', label: 'Quantity', labelTa: 'அளவு', icon: '🔢', required: true, example: '50' },
-      { key: 'price', label: 'Target Price / Est. Value', labelTa: 'விலை', icon: '💰', required: false, example: '₹120' },
-      { key: 'remarks', label: 'Remarks / Notes', labelTa: 'குறிப்பு', icon: '📝', required: false, example: 'Tolerance +/-0.02' },
+      { key: 'customer', label: 'Company', labelTa: 'கம்பெனி', icon: '🏢', required: true, example: 'Apple Tech' },
+      { key: 'part_name', label: 'Product Name', labelTa: 'பாகம் பெயர்', icon: '⚙️', required: true, example: 'Flicker' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: true, example: '50' },
+      { key: 'remarks', label: 'Remarks', labelTa: 'குறிப்பு', icon: '📝', required: false, example: 'Tolerance +/-0.02' },
     ],
   },
   {
@@ -100,11 +104,15 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'enquiry',
     sourceStageName: 'Enquiry',
     sourceStageNameTa: 'என்குயரி',
+    // the quotation's product line (qty, unit price, discount, GST), its validity and terms, and the additional notes
     fields: [
-      { key: 'price', label: 'Unit Rate / Price', labelTa: 'யூனிட் விலை', icon: '💵', required: true, example: '₹120 / piece' },
-      { key: 'validity', label: 'Validity Period', labelTa: 'செல்லுபடியாகும் காலம்', icon: '📅', required: false, example: '30 Days' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: false, example: '50' },
+      { key: 'price', label: 'Unit Price', labelTa: 'யூனிட் விலை', icon: '💵', required: true, example: '₹120 / piece' },
+      { key: 'discount', label: 'Discount %', labelTa: 'தள்ளுபடி %', icon: '🏷️', required: false, example: '0' },
+      { key: 'gst', label: 'GST %', labelTa: 'GST %', icon: '🧾', required: false, example: '18' },
+      { key: 'validity', label: 'Valid For', labelTa: 'செல்லுபடியாகும் காலம்', icon: '📅', required: false, example: '30 Days' },
       { key: 'payment_terms', label: 'Payment Terms', labelTa: 'கட்டண விதிமுறைகள்', icon: '📝', required: false, example: '30 Days Net' },
-      { key: 'remarks', label: 'Quotation Remarks', labelTa: 'குறிப்பு', icon: '📋', required: false, example: 'Standard terms' },
+      { key: 'remarks', label: 'Additional Notes', labelTa: 'குறிப்பு', icon: '📋', required: false, example: 'Delivery in 10 days' },
     ],
   },
   {
@@ -119,11 +127,14 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'quotation',
     sourceStageName: 'Quotation',
     sourceStageNameTa: 'கொட்டேஷன்',
+    // the Sales Order form: Order Date, Delivery Date, PO No, and the product's Qty, Unit Price (Rs) and GST %
     fields: [
-      { key: 'po_no', label: 'Customer PO Number', labelTa: 'PO எண்', icon: '📄', required: true, example: 'PO-2026-88' },
-      { key: 'delivery_date', label: 'Delivery Due Date', labelTa: 'டெலிவரி தேதி', icon: '📅', required: true, example: '15 Nov 2026' },
-      { key: 'price', label: 'Confirmed Unit Price', labelTa: 'உறுதிசெய்த விலை', icon: '💰', required: false, example: '₹120' },
-      { key: 'remarks', label: 'Order Notes', labelTa: 'ஆர்டர் குறிப்பு', icon: '📝', required: false, example: 'Urgent delivery' },
+      { key: 'po_no', label: 'PO No', labelTa: 'PO எண்', icon: '📄', required: false, example: 'PO-2026-88' },
+      { key: 'order_date', label: 'Order Date', labelTa: 'ஆர்டர் தேதி', icon: '📆', required: false, example: 'today' },
+      { key: 'delivery_date', label: 'Delivery Date', labelTa: 'டெலிவரி தேதி', icon: '📅', required: false, example: '15 Nov 2026' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: false, example: '50' },
+      { key: 'price', label: 'Unit Price (₹)', labelTa: 'யூனிட் விலை', icon: '💰', required: false, example: '₹120' },
+      { key: 'gst', label: 'GST %', labelTa: 'GST %', icon: '🧾', required: false, example: '18' },
     ],
   },
   {
@@ -138,11 +149,16 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'sales_order',
     sourceStageName: 'Sales Order',
     sourceStageNameTa: 'சேல்ஸ் ஆர்டர்',
+    // the Inward form: Category, Company, Inward Date, Reference No., and the part's Qty, Price, Disc %, GST %, Remarks
     fields: [
-      { key: 'inward_no', label: 'Inward / DC Number', labelTa: 'இன்வார்ட் எண்', icon: '📄', required: true, example: 'INW-5021' },
-      { key: 'heat_no', label: 'Heat / Batch Number', labelTa: 'ஹீட் / பேட்ச் எண்', icon: '🏷️', required: false, example: 'HT-2026-A' },
-      { key: 'received_qty', label: 'Received Quantity', labelTa: 'பெறப்பட்ட அளவு', icon: '🔢', required: false, example: '50' },
-      { key: 'remarks', label: 'Material Notes', labelTa: 'பொருள் குறிப்பு', icon: '📝', required: false, example: 'Aluminium 6061' },
+      { key: 'category', label: 'Category', labelTa: 'வகை', icon: '🗂️', required: true, example: 'CUSTOMER DC', options: ['CUSTOMER DC', 'NO DC', 'NEW PART', 'GOODS PURCHASE', 'SERVICE PURCHASE', 'EXPENSES'] },
+      { key: 'inward_date', label: 'Inward Date', labelTa: 'இன்வார்ட் தேதி', icon: '📆', required: true, example: 'today' },
+      { key: 'reference_no', label: 'Reference No.', labelTa: 'ரெஃபரன்ஸ் எண்', icon: '📄', required: false, example: 'DC-5021' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: true, example: '50' },
+      { key: 'price', label: 'Price', labelTa: 'விலை', icon: '💰', required: true, example: '₹120' },
+      { key: 'discount', label: 'Disc %', labelTa: 'தள்ளுபடி %', icon: '🏷️', required: false, example: '0' },
+      { key: 'gst', label: 'GST %', labelTa: 'GST %', icon: '🧾', required: false, example: '18' },
+      { key: 'remarks', label: 'Remarks', labelTa: 'குறிப்பு', icon: '📝', required: false, example: 'Aluminium 6061' },
     ],
   },
   {
@@ -157,10 +173,11 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'inward',
     sourceStageName: 'Inward',
     sourceStageNameTa: 'இன்வார்ட்',
+    // the Finished Goods form: how many finished, which warehouse, batch, QC
     fields: [
-      { key: 'quantity', label: 'Finished Quantity', labelTa: 'முடிக்கப்பட்ட அளவு', icon: '🔢', required: true, example: '50' },
+      { key: 'quantity', label: 'Finished Qty', labelTa: 'முடிக்கப்பட்ட அளவு', icon: '🔢', required: true, example: '50' },
+      { key: 'location', label: 'Warehouse / Bin', labelTa: 'வேர்ஹவுஸ் / இடம்', icon: '📍', required: false, example: 'Main Store, Rack 2' },
       { key: 'batch_no', label: 'Batch / Lot No', labelTa: 'பேட்ச் எண்', icon: '🏷️', required: false, example: 'BATCH-01' },
-      { key: 'location', label: 'Bin / Rack Location', labelTa: 'சேமிப்பு இடம்', icon: '📍', required: false, example: 'Rack 2' },
       { key: 'remarks', label: 'QC Status', labelTa: 'QC தரம்', icon: '📝', required: false, example: 'Passed 100%' },
     ],
   },
@@ -179,7 +196,7 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     fields: [
       { key: 'quantity', label: 'Rejected Quantity', labelTa: 'ரிஜெக்ட் அளவு', icon: '🔢', required: true, example: '2' },
       { key: 'reason', label: 'Defect Reason', labelTa: 'காரணம்', icon: '❌', required: true, example: 'Dimension oversize' },
-      { key: 'disposition', label: 'Action / Disposition', labelTa: 'நடவடிக்கை', icon: '🛠️', required: false, example: 'Scrap / Return to Vendor' },
+      { key: 'disposition', label: 'Action / Disposition', labelTa: 'நடவடிக்கை', icon: '🛠️', required: false, example: 'Scrap', options: ['Scrap', 'Rework', 'Return to vendor', 'Use as is'] },
     ],
   },
   {
@@ -194,11 +211,15 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'finished_goods',
     sourceStageName: 'Finished Goods',
     sourceStageNameTa: 'ஃபினிஷ்ட் கூட்ஸ்',
+    // the Delivery Challan form: Qty, Vehicle No, E-way bill, PO number, Place of supply, Packaging details, Notes
     fields: [
-      { key: 'dc_no', label: 'Delivery Challan No', labelTa: 'DC எண்', icon: '📄', required: true, example: 'DC-2026-55' },
-      { key: 'vehicle_no', label: 'Vehicle / Transport No', labelTa: 'வாகன எண்', icon: '🚛', required: false, example: 'TN-37-AB-1234' },
-      { key: 'quantity', label: 'Dispatched Quantity', labelTa: 'அனுப்பிய அளவு', icon: '🔢', required: true, example: '50' },
-      { key: 'remarks', label: 'Transport Notes', labelTa: 'போக்குவரத்து குறிப்பு', icon: '📝', required: false, example: 'By direct tempo' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: true, example: '50' },
+      { key: 'vehicle_no', label: 'Vehicle No', labelTa: 'வாகன எண்', icon: '🚛', required: false, example: 'TN-37-AB-1234' },
+      { key: 'eway_bill', label: 'E-way bill', labelTa: 'இ-வே பில்', icon: '📃', required: false, example: '3412 0000 1234' },
+      { key: 'po_no', label: 'PO number', labelTa: 'PO எண்', icon: '📄', required: false, example: 'PO-2026-88' },
+      { key: 'place_of_supply', label: 'Place of supply', labelTa: 'சப்ளை இடம்', icon: '📍', required: false, example: 'Tamil Nadu' },
+      { key: 'packaging', label: 'Packaging details', labelTa: 'பேக்கிங்', icon: '📦', required: false, example: '2 boxes' },
+      { key: 'remarks', label: 'Notes', labelTa: 'குறிப்பு', icon: '📝', required: false, example: 'By direct tempo' },
     ],
   },
   {
@@ -213,11 +234,14 @@ export const PIPELINE_8_BOXES: PipelineBox[] = [
     sourceStageId: 'dc',
     sourceStageName: 'Delivery Challan',
     sourceStageNameTa: 'டெலிவரி சலான்',
+    // the Invoice form: Document type, invoice date, and the billed Qty, rate and GST % (the system works out the tax and the total)
     fields: [
-      { key: 'invoice_no', label: 'Invoice Number', labelTa: 'இன்வாய்ஸ் எண்', icon: '📄', required: true, example: 'INV-2026-104' },
-      { key: 'amount', label: 'Total Invoice Amount', labelTa: 'மொத்த தொகை', icon: '💰', required: true, example: '₹6,000' },
-      { key: 'due_date', label: 'Payment Due Date', labelTa: 'செலுத்த வேண்டிய தேதி', icon: '📅', required: false, example: '30 Days' },
-      { key: 'payment_terms', label: 'Payment Terms', labelTa: 'கட்டண விதிமுறைகள்', icon: '📝', required: false, example: 'Immediate / NEFT' },
+      { key: 'doc_type', label: 'Document type', labelTa: 'ஆவண வகை', icon: '🧾', required: false, example: 'Sales Invoice', options: ['Sales Invoice', 'Proforma Invoice', 'Credit Note'] },
+      { key: 'invoice_date', label: 'Invoice Date', labelTa: 'இன்வாய்ஸ் தேதி', icon: '📆', required: false, example: 'today' },
+      { key: 'quantity', label: 'Qty', labelTa: 'அளவு', icon: '🔢', required: false, example: '50' },
+      { key: 'price', label: 'Rate (₹ per piece)', labelTa: 'விலை (ஒரு பீஸ்)', icon: '💰', required: true, example: '₹120' },
+      { key: 'gst', label: 'GST %', labelTa: 'GST %', icon: '🧾', required: false, example: '18' },
+      { key: 'due_date', label: 'Payment Due Date', labelTa: 'செலுத்த வேண்டிய தேதி', icon: '📅', required: false, example: '30 days' },
     ],
   },
 ];
@@ -325,6 +349,18 @@ interface Msg {
   guide?: { box: PipelineBox; cards: PipelineItem[] };
   go?: { path: string; label: string };
   error?: boolean;
+}
+interface Wizard {
+  box: PipelineBox;
+  /** the record being moved (null for a new enquiry) */
+  source: PipelineItem | null;
+  index: number;
+  answers: Record<string, string | number>;
+  /** values that came with the record (for example its quantity): "same" keeps them */
+  prefill: Record<string, string | number>;
+  /** details already answered or skipped */
+  done: string[];
+  phase: 'ask' | 'review';
 }
 interface Awaiting {
   intent: Intent;
@@ -442,6 +478,8 @@ export function Copilot() {
     try { const v = JSON.parse(localStorage.getItem('coworker-pill-pos') || 'null'); return v && typeof v.x === 'number' && typeof v.y === 'number' ? v : null; } catch { return null; }
   });
   const pillDrag = useRef<{ dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
+  // The Co-worker panel can be dragged bigger or smaller by its top-right corner (a little bigger than before by default).
+  const panelSize = useResizable('coworker-panel-size', { w: 496, h: 640 }, { w: 340, h: 380 });
   const pillMoved = useRef(false);
   const pillPosRef = useRef(pillPos); pillPosRef.current = pillPos;
   const [lang, setLang] = useState<Lang>(readLang);
@@ -464,6 +502,11 @@ export function Copilot() {
   // What has been said so far for the stage being filled: several sentences add up until every required detail is in.
   const stageDraftRef = useRef<Record<string, any>>({});
   selectedSourceCardRef.current = selectedSourceCard;
+
+  // The guided entry: one question at a time for the chosen stage, then a check of everything before it is saved.
+  const [wizard, setWizardState] = useState<Wizard | null>(null);
+  const wizardRef = useRef<Wizard | null>(null);
+  const setWizard = useCallback((w: Wizard | null) => { wizardRef.current = w; setWizardState(w); }, []);
 
   // Transition Preview before Confirmation (Source Card + Target Stage + Extra Fields)
   const [transitionPreview, setTransitionPreview] = useState<{
@@ -785,7 +828,8 @@ export function Copilot() {
     };
 
     // Safety timeout in case speech engine hangs
-    const safetyMs = Math.min(20000, Math.max(3000, text.length * 85));
+    // (say() always ends; this only guards a hang. The natural voice fetches each sentence before speaking, so it needs room.)
+    const safetyMs = Math.min(90000, Math.max(12000, text.length * 160));
     const safetyTimer = setTimeout(cleanup, safetyMs);
 
     say(
@@ -807,38 +851,19 @@ export function Copilot() {
     }
   }, [speak, speakText]);
 
-  // Helper to filter cards from previous stage
+  // The records that can move into a stage: exactly what is in the previous stage on the board (nothing unrelated is shown).
   const getSourceCardsForStage = useCallback((box: PipelineBox, cards: PipelineItem[]): PipelineItem[] => {
     if (box.isNewOnly || !box.sourceStageId) return [];
-
-    const srcId = box.sourceStageId.toLowerCase();
-    const matched = cards.filter((c) => {
-      const st = (c.stage || '').toLowerCase();
-      const tp = (c.type || '').toLowerCase();
-
-      if (srcId === 'enquiry') {
-        return tp === 'enquiry' || st.includes('enquiry') || st === 'new';
-      }
-      if (srcId === 'quotation') {
-        return tp === 'quotation' || st.includes('quot');
-      }
-      if (srcId === 'sales_order') {
-        return tp === 'sales_order' || st.includes('order') || st.includes('sales');
-      }
-      if (srcId === 'inward') {
-        return tp === 'inward' || st.includes('inward') || tp === 'sales_order';
-      }
-      if (srcId === 'finished_goods') {
-        return st.includes('finished') || tp === 'sales_order' || tp === 'inward';
-      }
-      if (srcId === 'dc') {
-        return tp === 'dc' || st.includes('dc') || st.includes('deliver');
-      }
-      return false;
-    });
-
-    if (matched.length > 0) return matched;
-    return cards.slice(0, 8);
+    const FROM: Record<string, PipelineItem['type'][]> = {
+      enquiry: ['enquiry'],
+      quotation: ['quotation'],
+      sales_order: ['sales_order'],
+      inward: ['inward', 'sales_order'],
+      finished_goods: ['sales_order', 'inward'],
+      dc: ['dc'],
+    };
+    const types = FROM[box.sourceStageId.toLowerCase()] ?? [];
+    return cards.filter((c) => types.includes(c.type));
   }, []);
 
   // What the assistant shows and says when a stage is picked: the records that can move into it (numbered, clickable)
@@ -854,17 +879,160 @@ export function Copilot() {
       );
     } else if (cards.length === 0) {
       text = L(
-        `${box.name}: there is no ${box.sourceStageName} record to move yet. Add one first, then come back. Details I will need:`,
-        `${box.nameTa}: நகர்த்த ${box.sourceStageNameTa} பதிவு இல்லை. முதலில் ஒன்றைச் சேர்க்கவும். தேவையான விவரங்கள்:`
+        `${box.name}: there is no ${box.sourceStageName} record on the board to move yet. New records are only added in Enquiry; add one there, move it up, and come back.`,
+        `${box.nameTa}: நகர்த்த ${box.sourceStageNameTa} பதிவு இல்லை. புதிய பதிவு Enquiry-ல் மட்டுமே சேர்க்கப்படும்; அங்கே சேர்த்து, நகர்த்திவிட்டு வாருங்கள்.`
       );
     } else {
       text = L(
-        `${box.name}: ${cards.length} ${box.sourceStageName} record${cards.length === 1 ? '' : 's'} available. Click one or say its number, then tell me the details below.`,
-        `${box.nameTa}: ${cards.length} ${box.sourceStageNameTa} பதிவுகள் உள்ளன. ஒன்றை கிளிக் செய்யவும் அல்லது எண்ணைச் சொல்லுங்கள், பிறகு கீழே உள்ள விவரங்களைச் சொல்லுங்கள்.`
+        `${box.name}: ${cards.length} ${box.sourceStageName} record${cards.length === 1 ? '' : 's'} on the board. Click one or say its number, and I will ask a few short questions. (New records are only added in Enquiry.)`,
+        `${box.nameTa}: ${cards.length} ${box.sourceStageNameTa} பதிவுகள் உள்ளன. ஒன்றை கிளிக் செய்யவும் அல்லது எண்ணைச் சொல்லுங்கள், பிறகு சில சிறு கேள்விகள் கேட்கிறேன். (புதிய பதிவு Enquiry-ல் மட்டுமே.)`
       );
     }
     return { role: 'ai', text, guide: { box, cards } };
   }, [L, ta, getSourceCardsForStage]);
+
+  // ---------------------------------------------------------------- guided entry
+  const fieldLabel = useCallback((f: { label: string; labelTa: string }) => (ta ? f.labelTa : f.label), [ta]);
+  const askField = useCallback((w: Wizard, i: number, lead?: string) => {
+    const next: Wizard = { ...w, index: i, phase: 'ask' };
+    setWizard(next);
+    const f = next.box.fields[i];
+    let q = questionFor(f, next.box.id, ta ? 'ta' : 'en');
+    const pre = next.prefill[f.key];
+    if (pre !== undefined && String(pre) !== '') q += L(` It is ${pre} now; say "same" to keep it.`, ` இப்போது ${pre}; அதே என்றால் "same" என்று சொல்லுங்கள்.`);
+    add({ role: 'ai', text: `${lead ? `${lead} ` : ''}${q}` }, true);
+  }, [add, L, ta, setWizard]);
+
+  const showReview = useCallback((w: Wizard) => {
+    const miss = missingHard(w.box.id, w.answers);
+    if (miss.length) {
+      const i = w.box.fields.findIndex((f) => f.key === miss[0]);
+      askField(w, Math.max(0, i), L('This one cannot be left empty.', 'இதை காலியாக விட முடியாது.'));
+      return;
+    }
+    setWizard({ ...w, phase: 'review' });
+    add({ role: 'ai', text: L(
+      'Please check the details on the screen. Say "yes" to save, or say "change" and the detail, for example "change quantity".',
+      'திரையில் உள்ள விவரங்களைச் சரிபார்க்கவும். சேமிக்க "yes" என்று சொல்லுங்கள், மாற்ற "change quantity" போல் சொல்லுங்கள்.') }, true);
+  }, [add, askField, L, setWizard]);
+
+  const startWizard = useCallback((box: PipelineBox, source: PipelineItem | null) => {
+    // what the form already knows: the record's quantity, rate, PO number, and today's date for the date boxes
+    const today = new Date(); const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const prefill: Record<string, string | number> = prefillFor(box.id, source, todayIso);
+    const w: Wizard = { box, source, index: 0, answers: { ...prefill }, prefill, done: [], phase: 'ask' };
+    const n = box.fields.length;
+    const intro = source
+      ? L(`Selected #${source.refNo} for ${source.customer}. I will ask ${n} short questions; say "skip" for any you want to leave.`,
+          `#${source.refNo} (${source.customer}) தேர்ந்தெடுக்கப்பட்டது. ${n} சிறு கேள்விகள் கேட்கிறேன்; வேண்டாததற்கு "skip" என்று சொல்லுங்கள்.`)
+      : L(`New ${box.name}. I will ask ${n} short questions; say "skip" for any you want to leave.`,
+          `புதிய ${box.nameTa}. ${n} சிறு கேள்விகள் கேட்கிறேன்; வேண்டாததற்கு "skip" என்று சொல்லுங்கள்.`);
+    askField(w, 0, intro);
+  }, [askField, L]);
+
+  const finishWizard = useCallback(async () => {
+    const w = wizardRef.current;
+    if (!w) return;
+    const miss = missingHard(w.box.id, w.answers);
+    if (miss.length) { showReview(w); return; }
+    setBusy(true);
+    try {
+      const res = w.box.isNewOnly || !w.source
+        ? await saveStageRecord(w.box.id, w.answers, ctx)
+        : await moveStageRecord(w.source, w.box.id, w.answers, ctx);
+      if (res.ok) {
+        setWizard(null);
+        setSelectedSourceCard(null); selectedSourceCardRef.current = null;
+        setActiveAddStage(null); activeAddStageRef.current = null;
+        stageDraftRef.current = {};
+        add({ role: 'ai', text: `✓ ${res.message}`, go: res.where }, true, () => {
+          add({ role: 'ai', text: L('Which stage next?', 'அடுத்து எந்த stage?') }, true);
+        });
+        window.dispatchEvent(new CustomEvent('argus:data-changed'));
+        void loadPipeline();
+      } else {
+        // it stays on the check screen so the detail can be corrected and saved again
+        add({ role: 'ai', text: `⚠ ${res.message}`, error: true }, true);
+      }
+    } catch (err: any) {
+      add({ role: 'ai', text: `⚠ ${err?.message ?? err}`, error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [ctx, add, L, loadPipeline, setWizard, showReview]);
+
+  const cancelWizard = useCallback((quiet = false) => {
+    setWizard(null);
+    setSelectedSourceCard(null); selectedSourceCardRef.current = null;
+    setActiveAddStage(null); activeAddStageRef.current = null;
+    stageDraftRef.current = {};
+    if (!quiet) add({ role: 'ai', text: L('Cancelled. Nothing was saved. Which stage would you like?', 'ரத்து செய்யப்பட்டது. எதுவும் சேமிக்கப்படவில்லை. எந்த stage வேண்டும்?') }, true);
+  }, [add, L, setWizard]);
+
+  /** Goes to the next detail that has not been answered yet (or to the check screen). */
+  const advance = useCallback((w: Wizard) => {
+    const fields = w.box.fields;
+    for (let i = w.index + 1; i < fields.length; i++) if (!w.done.includes(fields[i].key)) { askField(w, i); return; }
+    for (let i = 0; i < fields.length; i++) if (!w.done.includes(fields[i].key)) { askField(w, i); return; }
+    showReview(w);
+  }, [askField, showReview]);
+
+  /** What the person said while a guided entry is open. Returns false when it is not for the guided entry. */
+  const handleWizardInput = useCallback(async (text: string): Promise<boolean> => {
+    const w = wizardRef.current;
+    if (!w) return false;
+    if (/^(?:change stage|switch stage|different stage|மாற்று)$/i.test(text.trim())) { cancelWizard(true); return false; }
+    const fields = w.box.fields;
+    const cmd = parseCommand(text, fields);
+    const keyOf = (c: { edit: string }) => fields.findIndex((f) => f.key === c.edit);
+
+    if (cmd === 'cancel') { cancelWizard(); return true; }
+
+    if (w.phase === 'review') {
+      if (cmd === 'save' || YES.test(text)) { await finishWizard(); return true; }
+      if (NO.test(text)) { cancelWizard(); return true; }
+      if (cmd === 'back') { askField(w, fields.length - 1); return true; }
+      if (cmd && typeof cmd === 'object') { askField(w, keyOf(cmd)); return true; }
+      const named = namedDetails(text, fields.map((f) => f.key));
+      if (Object.keys(named).length) {
+        const next = { ...w, answers: { ...w.answers, ...named }, done: Array.from(new Set([...w.done, ...Object.keys(named)])) };
+        setWizard(next);
+        add({ role: 'ai', text: L(`Updated: ${Object.entries(named).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v}`).join(', ')}. Say "yes" to save.`, `மாற்றப்பட்டது. சேமிக்க "yes" என்று சொல்லுங்கள்.`) }, true);
+        return true;
+      }
+      add({ role: 'ai', text: L('Say "yes" to save, "change" and a detail to correct something, or "cancel".', 'சேமிக்க "yes", திருத்த "change quantity" போல், அல்லது "cancel" என்று சொல்லுங்கள்.') }, true);
+      return true;
+    }
+
+    if (cmd === 'back') { askField(w, w.index > 0 ? w.index - 1 : 0); return true; }
+    if (cmd === 'save') { showReview(w); return true; }
+    if (cmd && typeof cmd === 'object') { askField(w, keyOf(cmd)); return true; }
+
+    const f = fields[w.index];
+    // details named in the sentence ("quantity 50 and price 120") are taken for their own questions
+    const named = namedDetails(text, fields.map((x) => x.key));
+    if (Object.keys(named).length) {
+      const next: Wizard = { ...w, answers: { ...w.answers, ...named }, done: Array.from(new Set([...w.done, ...Object.keys(named)])) };
+      const said = Object.entries(named).map(([k, v]) => { const ff = fields.find((x) => x.key === k); return `${ff ? fieldLabel(ff) : k}: ${v}`; }).join(' · ');
+      add({ role: 'ai', text: `✓ ${said}` }, false);
+      if (next.done.includes(f.key)) advance(next); else askField(next, w.index);
+      return true;
+    }
+
+    const ans = parseAnswer(f, text, w.prefill[f.key]);
+    if (ans.kind === 'invalid') {
+      add({ role: 'ai', text: ta ? ans.hintTa : ans.hint }, true);
+      return true;
+    }
+    const answers = { ...w.answers };
+    if (ans.kind === 'value') answers[f.key] = ans.value;
+    else if (w.prefill[f.key] !== undefined) answers[f.key] = w.prefill[f.key];
+    else delete answers[f.key];
+    const next: Wizard = { ...w, answers, done: Array.from(new Set([...w.done, f.key])) };
+    add({ role: 'ai', text: ans.kind === 'value' ? `✓ ${fieldLabel(f)}: ${ans.value}` : `➜ ${fieldLabel(f)}: ${ans.kind === 'keep' ? L('kept', 'அப்படியே') : L('skipped', 'தவிர்க்கப்பட்டது')}` }, false);
+    advance(next);
+    return true;
+  }, [add, advance, askField, cancelWizard, fieldLabel, finishWizard, L, setWizard, showReview, ta]);
 
   // Handle stage selection (Step 1 -> Step 2)
   const selectStage = useCallback((stageId: string) => {
@@ -876,32 +1044,23 @@ export function Copilot() {
     stageDraftRef.current = {};
     setTransitionPreview(null);
     setExtractedPreview(null);
+    setWizard(null);
 
+    // Only an enquiry is a new entry: its questions start at once. Every other stage moves a record that is already on the board.
+    if (box.isNewOnly) { startWizard(box, null); return; }
     add(stageGuideMessage(box), true);
-  }, [add, stageGuideMessage]);
+  }, [add, stageGuideMessage, startWizard, setWizard]);
 
-  // Handle source card selection (Step 2A -> Step 2B)
+  // Handle source card selection (Step 2A -> Step 2B): the questions for the chosen record start
   const selectSourceCard = useCallback((card: PipelineItem) => {
     setSelectedSourceCard(card);
     selectedSourceCardRef.current = card;
     stageDraftRef.current = {};
     setTransitionPreview(null);
-
     const targetBox = PIPELINE_8_BOXES.find((b) => b.id === activeAddStageRef.current);
     if (!targetBox) return;
-
-    const extraFieldsDesc = targetBox.fields.map((f) => (ta ? f.labelTa : f.label)).join(', ');
-    const announcement = L(
-      `Selected #${card.refNo} for ${card.customer} (${card.part}, Qty: ${card.qty}). Now please speak the extra details into the mic: ${extraFieldsDesc}.`,
-      `#${card.refNo} (${card.customer}) தேர்ந்தெடுக்கப்பட்டது. இப்போது கூடுதல் விவரங்களை மைக் மூலம் சொல்லுங்கள்: ${extraFieldsDesc}.`
-    );
-
-    // Speak a short 2-second prompt so the user can speak immediately into the mic without waiting!
-    add({ role: 'ai', text: announcement }, false);
-    if (speak) {
-      speakText(L(`Selected ${card.refNo}. Please speak the extra details.`, `${card.refNo} தேர்ந்தெடுக்கப்பட்டது. விவரங்களைச் சொல்லுங்கள்.`));
-    }
-  }, [add, L, ta]);
+    startWizard(targetBox, card);
+  }, [startWizard]);
 
   // Execute stage move transition after confirmation
   const executeMoveTransition = useCallback(async () => {
@@ -964,6 +1123,7 @@ export function Copilot() {
     let interimText = '';
     let errored = '';
     let woke = false;
+    let tainted = false;   // some of what was heard came while the assistant was talking: that is its own voice, not a command
     let wakeAlt: { matched: boolean; trailing: string } | null = null;
     const mine = () => recRef.current === r;
     const langName = () => (speechLangRef.current === 'ta-IN' ? 'Tamil' : 'English');
@@ -1016,7 +1176,7 @@ export function Copilot() {
       }
 
       // 2. The assistant's own voice coming back through the speakers is not a command.
-      if (speakingRef.current) return;
+      if (speakingRef.current || voiceBusy()) { tainted = true; return; }
 
       // 3. Live typing into the box while the panel is open.
       if (openRef.current) {
@@ -1055,8 +1215,8 @@ export function Copilot() {
       const own = checkWakeWord(said);
       const wake = own.matched ? own : (wakeAlt ?? own);
       const norm = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-      const echo = norm(said).length > 6 && norm(lastSpokenRef.current).includes(norm(said));
-      if (!echo && (said.length >= 2 || wake.matched)) {
+      const echo = (tainted && !wake.matched) || (norm(said).length > 6 && norm(lastSpokenRef.current).includes(norm(said)));
+      if (!echo && (said.length >= 2 || wake.matched || (wizardRef.current && said.length >= 1))) {
         const send = (text: string) => {
           const go = () => void submitRef.current(text);
           if (busyRef.current) window.setTimeout(go, 1200); else go();
@@ -1221,6 +1381,11 @@ export function Copilot() {
 
     add({ role: 'user', text }, false);
 
+    // A guided entry is open: what is said is the answer to its question (or one of its commands).
+    if (wizardRef.current) {
+      if (await handleWizardInput(text)) return;
+    }
+
     // If awaiting transition preview confirmation
     if (transitionPreview && YES.test(text)) {
       await executeMoveTransition();
@@ -1259,14 +1424,10 @@ export function Copilot() {
     }
 
     // Check if user is asking to select or switch to one of the 8 stages (supports all synonyms and voice typos)
-    let stageMatch = PIPELINE_8_BOXES.find((b) => {
-      const alias = STAGE_ALIASES[b.id];
-      if (alias && alias.test(text)) return true;
-      if (new RegExp(`\\b(?:add|create|open|select|choose|சேர்க்க|போட)\\s+${b.id}\\b`, 'i').test(text)) return true;
-      if (new RegExp(`\\b${b.name}\\b`, 'i').test(text)) return true;
-      if (b.nameTa && new RegExp(`\\b${b.nameTa}\\b`, 'i').test(text)) return true;
-      return false;
-    });
+    const stageId = stageFromSpeech(text, PIPELINE_8_BOXES, STAGE_ALIASES)
+      ?? PIPELINE_8_BOXES.find((b) => new RegExp(`\\b(?:add|create|open|select|choose|சேர்க்க|போட)\\s+${b.id}\\b`, 'i').test(text))?.id
+      ?? null;
+    const stageMatch = stageId ? PIPELINE_8_BOXES.find((b) => b.id === stageId) : undefined;
 
     if (stageMatch && (!activeAddStageRef.current || stageMatch.id !== activeAddStageRef.current
       || (!stageMatch.isNewOnly && !selectedSourceCardRef.current))) {
@@ -1742,8 +1903,10 @@ export function Copilot() {
       role="dialog"
       aria-label="Co-worker"
       data-voice-ignore
-      className="fixed bottom-[4.5rem] left-[5.5rem] z-[75] flex h-[36rem] max-h-[calc(100vh-5.5rem)] w-[27rem] max-w-[calc(100vw-1.5rem)] flex-col rounded-2xl border border-slate-200 bg-white font-sans shadow-2xl max-lg:bottom-[8.5rem] max-lg:left-2 overflow-hidden"
+      className="fixed bottom-[4.5rem] left-[5.5rem] z-[75] flex flex-col rounded-2xl border border-slate-200 bg-white font-sans shadow-2xl max-lg:bottom-[8.5rem] max-lg:left-2 overflow-hidden"
+      style={panelSize.style}
     >
+      <ResizeGrip corner="right" onPointerDown={panelSize.begin(1)} onDoubleClick={panelSize.reset} />
       {/* Header */}
       <div className="flex items-center gap-2 bg-gradient-to-r from-violet-700 via-purple-700 to-indigo-700 px-3.5 py-2.5 text-white shadow-sm shrink-0">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-amber-300">
@@ -2193,55 +2356,6 @@ export function Copilot() {
                   </div>
                 )}
 
-                {/* Section header for filling boxes */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-800">
-                    {!activeBox.isNewOnly
-                      ? L(`Extra Information needed to move to ${activeBox.name}:`, `${activeBox.nameTa}-க்கு பூர்த்தி செய்ய வேண்டிய கூடுதல் விவரங்கள்:`)
-                      : L(`Filling Boxes (Fields):`, `பூர்த்தி செய்ய வேண்டிய பெட்டிகள்:`)}
-                  </span>
-                  <span className="rounded-full bg-violet-200 px-1.5 py-0.2 text-[9px] font-bold text-violet-800">
-                    {activeBox.fields.length} {L('Boxes', 'பெட்டிகள்')}
-                  </span>
-                </div>
-
-                {/* The individual filling boxes */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  {activeBox.fields.map((f) => (
-                    <div key={f.key} className="flex items-center gap-1.5 bg-white/95 border border-violet-100 rounded-lg p-1.5 text-[11px]">
-                      <span className="text-xs shrink-0">{f.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-slate-800 truncate text-[10px] leading-tight">
-                          {ta ? f.labelTa : f.label}
-                        </p>
-                        <p className="text-[9px] text-slate-400 truncate">
-                          e.g. {f.example}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Voice guidance card */}
-                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-emerald-900 flex items-start gap-1.5">
-                  <span className="text-sm shrink-0">🎙️</span>
-                  <div className="text-[11px] leading-snug">
-                    <p className="font-bold text-emerald-900">
-                      {L('Speak now in mic or type:', 'மைக் மூலம் இப்போது சொல்லுங்கள்:')}
-                    </p>
-                    <p className="text-[10px] text-emerald-800 mt-0.5">
-                      {!activeBox.isNewOnly
-                        ? L(
-                            `Say the extra details in one sentence (e.g. "${activeBox.fields.map(f => `${f.label} is ${f.example}`).join(', ')}"). ChatGPT will extract them and show confirmation!`,
-                            `கூடுதல் விவரங்களை மைக் மூலம் சொல்லுங்கள். ChatGPT ஆராய்ந்து உறுதிப்படுத்தல் காண்பிக்கும்!`
-                          )
-                        : L(
-                            'Say details in one sentence, e.g. "Customer Apple Tech, part flicker, quantity 50". ChatGPT will extract and save directly into the database!',
-                            'எ.கா: "கஸ்டமர் Apple Tech, பார்ட் flicker, குவான்டிட்டி 50". ChatGPT ஆராய்ந்து டேட்டாபேஸில் சேமிக்கும்!'
-                          )}
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -2450,6 +2564,85 @@ export function Copilot() {
             <span>{hasApiKey ? L('Analyzing voice with ChatGPT & saving to database…', 'ChatGPT மூலம் குரலை ஆராய்ந்து டேட்டாபேஸில் சேமிக்கிறேன்…') : L('Working…', 'செய்கிறேன்…')}</span>
           </div>
         )}
+        {/* The guided entry: one question at a time, then a check before saving (below the conversation, so it is always in view) */}
+        {wizard && (() => {
+          const fields = wizard.box.fields;
+          const f = fields[wizard.index];
+          const answered = fields.filter((x) => wizard.answers[x.key] !== undefined && String(wizard.answers[x.key]) !== '').length;
+          const pre = f ? wizard.prefill[f.key] : undefined;
+          const jump = (i: number) => { const w = wizardRef.current; if (w) askField(w, i); };
+          return (
+            <div className="space-y-2 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/90 to-indigo-50/70 p-3 shadow-xs" data-testid="co-wizard">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
+                <span>
+                  {wizard.phase === 'review'
+                    ? L('Check the details, then save', 'விவரங்களைச் சரிபார்த்து சேமிக்கவும்')
+                    : L(`Question ${wizard.index + 1} of ${fields.length}`, `கேள்வி ${wizard.index + 1} / ${fields.length}`)}
+                </span>
+                <span className="rounded-full bg-violet-200 px-1.5 py-0.5 text-[9px] font-bold text-violet-800">{answered}/{fields.length} {L('filled', 'நிரப்பப்பட்டது')}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-violet-100">
+                <div className="h-full rounded-full bg-violet-600 transition-all" style={{ width: `${wizard.phase === 'review' ? 100 : (wizard.index / fields.length) * 100}%` }} />
+              </div>
+
+              {wizard.phase === 'ask' && f && (
+                <div className="rounded-xl border-2 border-violet-300 bg-white p-3 shadow-xs">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">{f.icon} {fieldLabel(f)}{isHardRequired(wizard.box.id, f.key) && <span className="text-red-500"> *</span>}</p>
+                  <p className="mt-1 text-sm font-bold leading-snug text-slate-900">{questionFor(f, wizard.box.id, ta ? 'ta' : 'en')}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{L('e.g.', 'எ.கா.')} {f.example}</p>
+                  {f.options && (
+                    <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={fieldLabel(f)}>
+                      {f.options.map((o) => (
+                        <button key={o} type="button" onClick={() => void submitRef.current(o)}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${String(wizard.answers[f.key] ?? '') === o ? 'border-violet-600 bg-violet-600 text-white' : 'border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100'}`}>{o}</button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {pre !== undefined && String(pre) !== '' && (
+                      <button type="button" onClick={() => void submitRef.current('same')} className="rounded-md bg-violet-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-violet-700">{L(`Keep ${pre}`, `${pre} அப்படியே`)}</button>
+                    )}
+                    <button type="button" onClick={() => void submitRef.current('skip')} className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">{L('Skip', 'தவிர்')}</button>
+                    {wizard.index > 0 && <button type="button" onClick={() => void submitRef.current('back')} className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">{L('Back', 'பின்')}</button>}
+                    <button type="button" onClick={() => cancelWizard()} className="ml-auto text-[11px] font-semibold text-slate-400 underline hover:text-red-600">{L('Cancel', 'ரத்து')}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* everything entered so far; click one to change it */}
+              <div className="rounded-lg border border-violet-100 bg-white/95 p-1.5">
+                {fields.map((x, i) => {
+                  const v = wizard.answers[x.key];
+                  const has = v !== undefined && String(v) !== '';
+                  const current = wizard.phase === 'ask' && i === wizard.index;
+                  const needed = wizard.phase === 'review' && !has && isHardRequired(wizard.box.id, x.key);
+                  return (
+                    <button key={x.key} type="button" onClick={() => jump(i)} title={L('Click to change', 'மாற்ற கிளிக் செய்யவும்')}
+                      className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] hover:bg-violet-50 ${current ? 'bg-violet-50 ring-1 ring-violet-300' : ''}`}>
+                      <span className="w-4 shrink-0 text-center">{x.icon}</span>
+                      <span className="w-28 shrink-0 truncate font-semibold text-slate-600">{fieldLabel(x)}</span>
+                      <span className={`min-w-0 flex-1 truncate ${has ? 'font-bold text-slate-900' : needed ? 'font-bold text-red-600' : 'text-slate-400'}`}>
+                        {has ? String(v) : needed ? L('needed', 'தேவை') : wizard.done.includes(x.key) ? L('skipped', 'தவிர்க்கப்பட்டது') : '—'}
+                      </span>
+                      {wizard.phase === 'review' && <Edit3 size={11} className="shrink-0 text-slate-300" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {wizard.phase === 'review' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => void finishWizard()} disabled={busy}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50">
+                    <CheckCircle2 size={14} />
+                    <span>{wizard.box.isNewOnly ? L('Save enquiry', 'Enquiry சேமி') : L(`Save & move to ${wizard.box.name}`, `சேமித்து ${wizard.box.nameTa}-க்கு நகர்த்து`)}</span>
+                  </button>
+                  <button type="button" onClick={() => cancelWizard()} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">{L('Cancel', 'ரத்து')}</button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div ref={endRef} />
       </div>
 
@@ -2627,6 +2820,10 @@ export function Copilot() {
               ? L('Mic is muted. Type command or click mic...', 'மைக் அணைக்கப்பட்டுள்ளது. தட்டச்சு செய்யுங்கள்...')
               : activeBox && !activeBox.isNewOnly && !selectedSourceCard
               ? L(`🎙️ Choose a ${activeBox.sourceStageName} card above or speak name/number...`, `🎙️ மேலே உள்ள கார்டைத் தேர்ந்தெடுக்கவும்...`)
+              : wizard
+              ? (wizard.phase === 'review'
+                ? L('🎙️ Say "yes" to save, "change quantity", or "cancel"...', '🎙️ சேமிக்க "yes", மாற்ற "change quantity", அல்லது "cancel"...')
+                : L('🎙️ Say or type the answer (or "skip")...', '🎙️ பதிலைச் சொல்லுங்கள் அல்லது தட்டச்சு செய்யுங்கள் (அல்லது "skip")...'))
               : activeBox && selectedSourceCard
               ? L(`🎙️ Say extra details for #${selectedSourceCard.refNo} (e.g. ${activeBox.fields.map(f => f.label).join(', ')})...`, `🎙️ கூடுதல் விவரங்களைச் சொல்லுங்கள்...`)
               : activeBox && activeBox.isNewOnly
