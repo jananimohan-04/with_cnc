@@ -9,6 +9,7 @@ import { refreshSavedProducts } from '@/lib/savedProducts';
 import { productWithCompany, productOnly, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
 import { todayISO, formatDate } from '@/lib/format';
 import { financeApi } from '@/lib/finance';
+import { baseNo, downstreamLeadKeys, leadIsLinked, enquiryColumnLeads } from '@/lib/pipelineLinks';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { OpeningBalanceFields, emptyOpening } from '@/components/OpeningBalanceFields';
@@ -4231,29 +4232,9 @@ export function SalesPipelinePage() {
       return false;
     });
 
-    // Active quotation keys: if quotation was deleted, a quoted enquiry should reappear in Enquiry column
-    const activeQuoteLeadKeys = new Set((resolvedQuotes || []).flatMap((q: any) => [
-      String(q.lead_id || '').trim().toLowerCase(),
-      String(q.lead_no || '').trim().toLowerCase(),
-      String(q.enquiry_no || '').trim().toLowerCase(),
-      String(q.quote_no || '').trim().toLowerCase(),
-      baseUniqueNo(q.lead_no || '').toLowerCase(),
-      baseUniqueNo(q.enquiry_no || '').toLowerCase(),
-    ]).filter(Boolean));
-
-    // Filter leads for the Enquiry column (returns from Quotation if quote was deleted)
-    const activeLeads = allLeads?.filter(l => {
-      if (['New', 'Contacted', 'Qualified', 'Under Review'].includes(l.status) && (l.pipeline_stage === 'Enquiry' || !l.pipeline_stage)) return true;
-      if (l.status === 'Quoted' || l.pipeline_stage === 'Quotation' || l.status === 'Converted') {
-        const lId = String(l.id || '').trim().toLowerCase();
-        const lNo = String(l.lead_no || l.enquiry_no || '').trim().toLowerCase();
-        const lBase = baseUniqueNo(l.lead_no || l.enquiry_no || '').toLowerCase();
-        const hasQuote = activeQuoteLeadKeys.has(lId) || activeQuoteLeadKeys.has(lNo) || (lBase && activeQuoteLeadKeys.has(lBase));
-        const hasOrder = activeOrderQuoteKeys.has(lId) || activeOrderQuoteKeys.has(lNo) || (lBase && activeOrderQuoteKeys.has(lBase));
-        return !hasQuote && !hasOrder;
-      }
-      return false;
-    }) || [];
+    // Enquiry column: an enquiry comes back when its quotation / order is deleted, but never shows next to a quotation, sales order
+    // or inward that still stands on it (that was the same job in two columns).
+    const activeLeads = enquiryColumnLeads(allLeads || [], { quotes: resolvedQuotes, orders: allOrders || [], inwards: inwards || [] });
 
     const newCards: KanbanCard[] = [];
 
@@ -4885,6 +4866,27 @@ export function SalesPipelinePage() {
         if (card.type === 'inward' && String(raw.status || '') === 'Processed') {
           return 'Cannot delete: finished goods were already made from this inward.\n\nDelete those finished goods first, then this inward.';
         }
+        if (card.type === 'lead' || card.type === 'quotation') {
+          const [qs, os, iw] = await Promise.all([
+            supabase.from('cnc_quotations').select('id,quote_no,lead_id,lead_no,enquiry_no,status'),
+            supabase.from('cnc_sales_orders').select('id,order_no,lead_no,quote_no,quotation_id'),
+            supabase.from('cnc_inwards').select('id,project_name,enquiry_id,status').neq('status', 'Deleted'),
+          ]);
+          const quotes = (qs.data ?? []).filter((q: any) => !(card.type === 'quotation' && String(q.id) === String(raw.id)));
+          const orders = os.data ?? [];
+          if (card.type === 'lead') {
+            const own = quotes.filter((q: any) => leadIsLinked(raw, downstreamLeadKeys({ quotes: [q] })));
+            const ordersOf = orders.filter((o: any) => leadIsLinked(raw, downstreamLeadKeys({ orders: [o], quotes })));
+            const inwardsOf = (iw.data ?? []).filter((i: any) => leadIsLinked(raw, downstreamLeadKeys({ inwards: [i] })));
+            const parts = [[own.length, 'quotation'], [ordersOf.length, 'sales order'], [inwardsOf.length, 'inward']].filter(([n]) => Number(n) > 0).map(([n, l]) => `${n} ${l}${Number(n) === 1 ? '' : 's'}`);
+            if (parts.length) return `Cannot delete: enquiry ${raw.lead_no || raw.enquiry_no || ''} already has ${parts.join(', ')}.\n\nDelete those later stages first (inward, then order, then quotation), then the enquiry.`;
+          } else {
+            const qId = String(raw.id || '');
+            const qNo = String(raw.quote_no || '').trim();
+            const linked = orders.filter((o: any) => (qId && String(o.quotation_id || '') === qId) || (qNo && String(o.quote_no || '').trim() === qNo));
+            if (linked.length) return `Cannot delete: quotation ${qNo} already became sales order ${linked.map((o: any) => o.order_no).join(', ')}.\n\nDelete the sales order (and anything after it) first, then the quotation.`;
+          }
+        }
         if (card.type === 'order') {
           const soNo = String(raw.order_no || '').trim();
           const soId = String(raw.id || '').trim();
@@ -5044,8 +5046,10 @@ export function SalesPipelinePage() {
                 if (dcNo && dNo === dcNo) return true;
 
                 const matchesKey = keyList.some(k => k === dNo || k === dBase || k === dSo || k === dProj || baseUniqueNo(k) === dBase || baseUniqueNo(k) === baseUniqueNo(dProj));
-                const matchesCust = cardCust && dCust && (cardCust === dCust || cardCust.includes(dCust) || dCust.includes(cardCust));
-                return matchesKey || matchesCust;
+                // the company's name alone says nothing about WHICH challan was billed: another invoiced challan of the same company stays billed
+                const knowsItsChallan = !!(deliveryId || dcNo);
+                const matchesCust = !knowsItsChallan && cardCust && dCust && (cardCust === dCust || cardCust.includes(dCust) || dCust.includes(cardCust));
+                return (matchesKey && !knowsItsChallan) || matchesCust;
               }).map((d: any) => d.id);
 
               if (toRevertDcIds.length > 0) {
@@ -5200,10 +5204,24 @@ export function SalesPipelinePage() {
           }
         }
 
+        // Does another record of a later stage still stand on this lead / quotation? Then it must not be pulled back.
+        const stillStandsOn = async (leadNo: string, quoteId?: string, quoteNo?: string): Promise<boolean> => {
+          const base = baseNo(leadNo);
+          const [os, qs] = await Promise.all([
+            supabase.from('cnc_sales_orders').select('id,lead_no,quotation_id,quote_no'),
+            supabase.from('cnc_quotations').select('id,lead_no,enquiry_no,quote_no'),
+          ]);
+          const hitOrder = (os.data ?? []).some((o: any) => (quoteId && String(o.quotation_id || '') === String(quoteId)) || (quoteNo && String(o.quote_no || '') === quoteNo) || (base && baseNo(o.lead_no) === base));
+          const hitQuote = (qs.data ?? []).some((q: any) => String(q.id) !== String(quoteId ?? '') && base && (baseNo(q.lead_no) === base || baseNo(q.enquiry_no) === base));
+          return hitOrder || hitQuote;
+        };
+
         // --- 5. SALES ORDER DELETED: Return quotation back to Quotation column ---
         if (card.type === 'order') {
           try {
             const raw = card.raw as any;
+            // another order of the same quotation / enquiry still exists: leave the earlier stages as they are
+            if (await stillStandsOn(String(raw?.lead_no || card.refNo || ''), raw?.quotation_id, String(raw?.quote_no || '').trim() || undefined)) throw new Error('__keep');
             const quoteId = raw?.quotation_id;
             const quoteNo = String(raw?.quote_no || '').trim();
             const leadNo = String(raw?.lead_no || '').trim();
@@ -5249,7 +5267,7 @@ export function SalesPipelinePage() {
               }
             }
           } catch (e) {
-            console.error('Quotation/Enquiry reversal after sales order delete failed:', e);
+            if (!(e instanceof Error && e.message === '__keep')) console.error('Quotation/Enquiry reversal after sales order delete failed:', e);
           }
         }
 
@@ -5259,6 +5277,8 @@ export function SalesPipelinePage() {
             const raw = card.raw as any;
             const leadId = raw?.lead_id;
             const leadNo = String(raw?.lead_no || raw?.enquiry_no || card.refNo || '').trim();
+            // another quotation or an order of the same enquiry still exists: the enquiry stays where it is
+            if (await stillStandsOn(leadNo, String(raw?.id || ''), String(raw?.quote_no || '').trim() || undefined)) throw new Error('__keep');
 
             if (leadId) {
               await supabase.from('cnc_enquiries').update({ status: 'New', pipeline_stage: 'Enquiry' }).eq('id', leadId);
@@ -5283,7 +5303,7 @@ export function SalesPipelinePage() {
               }
             }
           } catch (e) {
-            console.error('Enquiry reversal after quotation delete failed:', e);
+            if (!(e instanceof Error && e.message === '__keep')) console.error('Enquiry reversal after quotation delete failed:', e);
           }
         }
 
