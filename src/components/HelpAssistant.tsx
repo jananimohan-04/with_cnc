@@ -163,12 +163,13 @@ async function serverVoice(text: string): Promise<HTMLAudioElement | null> {
     return new Audio(URL.createObjectURL(await res.blob()));
   } catch { serverVoiceDown = true; return null; }
 }
-function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: string) => void) {
+function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: string) => void, googleFirst = false) {
   const parts = chunksOf(text);
   const token = ++onlineToken;
   const play = (a: HTMLAudioElement) => new Promise<boolean>((resolve) => {
     onlineAudio = a;
     a.volume = 1;
+    try { a.playbackRate = tl === 'ta' ? 0.92 : 1; } catch { /* default speed */ }   // Tamil a little slower: easier to follow
     a.onended = () => resolve(true);
     a.onerror = () => resolve(false);
     a.play().catch(() => resolve(false));
@@ -177,12 +178,16 @@ function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: st
     if (token !== onlineToken) return;               // stopped or replaced
     if (i >= parts.length) { onEnd(); return; }
     const piece = parts[i].trim();
-    // 1) the server's voice (needs the help function + OPENAI_API_KEY), 2) Google's online voice.
+    // Google's online voice and the server's voice (needs the help function + OPENAI_API_KEY); which one goes first is the person's choice.
     let ok = false;
-    const sv = await serverVoice(piece);
-    if (token !== onlineToken) return;
-    if (sv) ok = await play(sv);
-    if (!ok && token === onlineToken) ok = await play(new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(piece)}`));
+    const google = () => play(new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(piece)}`));
+    if (googleFirst) ok = await google();
+    if (!ok && token === onlineToken) {
+      const sv = await serverVoice(piece);
+      if (token !== onlineToken) return;
+      if (sv) ok = await play(sv);
+    }
+    if (!ok && !googleFirst && token === onlineToken) ok = await google();
     if (token !== onlineToken) return;
     if (!ok) {
       if (!tamilVoiceFailed) { tamilVoiceFailed = true; notify?.('Tamil voice is not available on this PC. Open the BI in Microsoft Edge (it has Tamil voices built in), or install a Tamil voice in Windows, or switch Language to English / Tanglish.'); }
@@ -287,6 +292,17 @@ function neuralSay(text: string, onEnd: () => void, fallback: (rest: string) => 
   })();
 }
 
+// Tamil is the hardest language to speak clearly. Three ways, the person can choose (and it is remembered):
+//   clear   - Google's online Tamil voice (the default: the words are easy to follow), a little slower
+//   natural - the OpenAI voice (more human, but Tamil words are less clear)
+//   browser - an installed Tamil voice of the browser (Microsoft Edge has natural ones built in)
+export type TamilEngine = 'clear' | 'natural' | 'browser';
+const TAMIL_ENGINE_KEY = 'help.tamilEngine';
+export const tamilEngine = (): TamilEngine => { const v = store.get(TAMIL_ENGINE_KEY, 'clear'); return v === 'natural' || v === 'browser' ? v : 'clear'; };
+export const setTamilEngine = (v: TamilEngine) => store.set(TAMIL_ENGINE_KEY, v);
+/** A natural-sounding Tamil voice installed in the browser (Edge: "Microsoft Pallavi / Valluvar Online (Natural)"). */
+const installedTamilVoice = (): SpeechSynthesisVoice | undefined => { loadVoices(); return voiceList('ta').find((v) => /natural|neural|online/i.test(v.name)); };
+
 // While the assistant is talking (and for a moment after), a microphone only hears the assistant's own voice coming back through
 // the speakers. Anything that listens (Co-worker) asks voiceBusy() and ignores what it hears in that time.
 let voiceActive = false;
@@ -300,6 +316,17 @@ export function say(text: string, onEnd: () => void, notify?: (m: string) => voi
   stopSpeaking();   // cancel any prior speech
   voiceActive = true;
   const done = () => { voiceActive = false; quietUntil = Date.now() + 900; onEnd(); };
+  if (TAMIL.test(t)) {
+    const engine = tamilEngine();
+    // a natural Tamil voice that is installed beats everything else; otherwise the person's choice
+    if (installedTamilVoice() || (engine === 'browser' && voiceList('ta').length)) { browserSay(t, done, notify); return; }
+    if (engine === 'natural' && neuralVoiceOn() && Date.now() >= neuralDownUntil) {
+      neuralSay(t, done, (rest) => playOnline(rest || t, 'ta', done, notify, true));
+      return;
+    }
+    playOnline(t, 'ta', done, notify, engine !== 'natural');
+    return;
+  }
   if (neuralVoiceOn() && Date.now() >= neuralDownUntil) {
     neuralSay(t, done, (rest) => browserSay(rest || t, done, notify));
     return;
@@ -348,7 +375,7 @@ function browserSay(t: string, onEnd: () => void, notify?: (m: string) => void) 
     } else {
       u.lang = tamil ? 'ta-IN' : 'en-IN';
     }
-    u.rate = 1.0;
+    u.rate = tamil ? 0.92 : 1.0;
     u.pitch = 1;
     u.volume = 1;
 
@@ -503,6 +530,7 @@ export function HelpAssistant() {
   // The Adviser panel can be dragged bigger or smaller by its top corner.
   const advSize = useResizable('adviser-panel-size', { w: 432, h: 576 }, { w: 320, h: 360 });
   const [natural, setNatural] = useState(neuralVoiceOn);
+  const [tamilPick, setTamilPick] = useState<TamilEngine>(tamilEngine);
   useEffect(() => { store.set(NEURAL_KEY, natural ? '1' : '0'); if (natural) neuralDownUntil = 0; }, [natural]);
   const { canView } = useAuth();
   const navigate = useNavigate();
@@ -911,6 +939,14 @@ export function HelpAssistant() {
             <button type="button" role="switch" aria-checked={natural} onClick={() => setNatural((v) => !v)}
               title={natural ? 'A natural, human-sounding voice is used (click for the plain browser voice)' : 'The plain browser voice is used (click for the natural voice)'}
               className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${natural ? 'bg-violet-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>Natural voice</button>
+            {lang === 'ta' && (
+              <select aria-label="Tamil voice" value={tamilPick} onChange={(e) => { const v = e.target.value as TamilEngine; setTamilEngine(v); setTamilPick(v); stopSpeaking(); }}
+                title="Which voice speaks Tamil. Clear is the easiest to follow." className="ml-1 h-6 rounded border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-700">
+                <option value="clear">Tamil: Clear</option>
+                <option value="natural">Tamil: Natural</option>
+                <option value="browser">Tamil: Browser</option>
+              </select>
+            )}
             {choices.length > 1 && !natural && (
               <select aria-label="Choose the voice" value={chosen} onChange={(e) => pickVoice(e.target.value)} className="ml-auto h-6 max-w-[7.5rem] rounded border border-slate-200 bg-white px-1 text-[10px]">
                 {choices.map((v) => <option key={v.name} value={v.name}>{v.name.replace(/^(Microsoft|Google)\s+/, '$1 ')}</option>)}

@@ -68,17 +68,22 @@ export function Sidebar({
     });
   };
 
-  // Sections are dealt into two columns, each going to the shorter one (a collapsed section counts as its title only).
-  const sectionHeight = (sec: (typeof visibleSections)[number]) => 1 + (expandedSections.has(sec.label) ? sec.items.length : 0);
+  // Two columns of about the same height, so neither is crowded while the other is half empty (a collapsed section counts as its title only).
+  // The split keeps the menu order (left column first, then the right one) unless a different split saves more than one row.
+  const sectionHeight = (sec: (typeof visibleSections)[number]) => 1 + (expandedSections.has(sec.label) ? sec.items.length : 0) + 0.5;
   const balancedColumns = (() => {
-    const cols: (typeof visibleSections)[] = [[], []];
-    const heights = [0, 0];
-    visibleSections.forEach((sec) => {
-      const k = heights[0] <= heights[1] ? 0 : 1;
-      cols[k].push(sec);
-      heights[k] += sectionHeight(sec) + 0.5;
-    });
-    return cols;
+    const secs = visibleSections;
+    const hs = secs.map(sectionHeight);
+    const total = hs.reduce((x, y) => x + y, 0);
+    const maxOf = (mask: number) => { let l = 0; hs.forEach((h, i) => { if (mask & (1 << i)) l += h; }); return Math.max(l, total - l); };
+    // the best split that keeps the order
+    let ordered = (1 << secs.length) - 1, orderedMax = Infinity;
+    for (let k = 1; k <= secs.length; k++) { const m = (1 << k) - 1; if (maxOf(m) < orderedMax - 0.01) { orderedMax = maxOf(m); ordered = m; } }
+    // the best split of any kind (a few sections only, so every combination can be tried)
+    let any = ordered, anyMax = orderedMax;
+    if (secs.length <= 12) for (let m = 1; m < (1 << secs.length); m++) if (maxOf(m) < anyMax - 0.01) { anyMax = maxOf(m); any = m; }
+    const pick = orderedMax - anyMax > 1 ? any : ordered;
+    return [secs.filter((_, i) => pick & (1 << i)), secs.filter((_, i) => !(pick & (1 << i)))];
   })();
   const renderSection = (section: (typeof visibleSections)[number]) => {
             const isExpanded = expandedSections.has(section.label);
@@ -88,7 +93,7 @@ export function Sidebar({
                 {!collapsed && (
                   <button
                     onClick={() => toggleSection(section.label)}
-                    className={`w-full flex items-center justify-between px-2 py-0.5 mb-0.5 rounded bg-navy-900/70 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                    className={`w-full flex items-center justify-between px-2 py-0.5 mb-0.5 rounded bg-navy-900/70 text-[11px] font-bold uppercase tracking-wider transition-colors ${
                       hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
                     }`}
                   >
@@ -121,7 +126,7 @@ export function Sidebar({
                             <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1 h-3.5 bg-white shadow-sm`} />
                           )}
                           {!collapsed && (
-                            <span className="text-[11.5px] leading-tight text-left py-px font-medium truncate">
+                            <span className="text-[13px] leading-tight text-left py-0.5 font-medium truncate">
                               {item.label}
                             </span>
                           )}
@@ -189,10 +194,10 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto scrollbar-none py-1 px-2 relative z-0">
         <div>
           <div className="flex flex-col gap-y-1 lg:hidden">{visibleSections.map(renderSection)}</div>
-          {/* Wide menu: two columns filled shortest-first, so there are no gaps and no scrolling */}
+          {/* Wide menu: two balanced columns in menu order, so there are no gaps and no scrolling */}
           <div className="hidden lg:flex items-start gap-x-2">
             {balancedColumns.map((col, i) => (
-              <div key={i} className="flex min-w-0 flex-1 flex-col gap-y-1">{col.map(renderSection)}</div>
+              <div key={i} className="flex min-w-0 flex-1 flex-col gap-y-1.5">{col.map(renderSection)}</div>
             ))}
           </div>
         </div>
