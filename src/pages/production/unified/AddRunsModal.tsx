@@ -189,7 +189,7 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
   };
 
   const qtyHead = plan ? 'Planned qty' : 'Finished qty';
-  const cols = 'grid grid-cols-[minmax(240px,2.4fr)_96px_minmax(130px,1fr)_minmax(110px,1fr)_130px_92px_92px_64px] items-center gap-2';
+  const cols = 'grid grid-cols-[minmax(210px,2.2fr)_92px_minmax(120px,1fr)_minmax(100px,1fr)_128px_124px_124px_64px] items-center gap-2';
   const noun = plan ? 'plan' : 'run';
   return (
     <Modal open={open} onClose={onClose} title={plan ? 'Add planned operations' : 'Add actual runs'} size="3xl"
@@ -215,8 +215,8 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
               </select>
               <input className={cell} list="add-runs-operators" value={r.operator} onChange={(e) => upd(r.key, { operator: e.target.value })} placeholder="Operator" />
               <input type="date" aria-label="Date" className={cell} value={r.date} onChange={(e) => upd(r.key, { date: e.target.value })} />
-              <div className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="Start" value={r.start} onChange={(v) => upd(r.key, { start: v })} /></div>
-              <div className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="End" value={r.end} onChange={(v) => upd(r.key, { end: v })} /></div>
+              <div className="inline-flex h-9 w-full min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="Start" value={r.start} onChange={(v) => upd(r.key, { start: v })} /></div>
+              <div className="inline-flex h-9 w-full min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm"><Time24 label="End" value={r.end} onChange={(v) => upd(r.key, { end: v })} /></div>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => addAfter(r.key)} title="Add the next line (starts when this one ends)" aria-label="Add next line"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-700"><Plus size={16} /></button>
