@@ -108,7 +108,8 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
     for (const [i, r] of rows.entries()) {
       const n = i + 1;
       if (!parts.find((p) => p.key === r.partKey)) return alert(`Line ${n}: select the part.`);
-      if (!(Number(r.qty) > 0)) return alert(`Line ${n}: enter the ${plan ? 'planned' : 'finished'} quantity.`);
+      if (r.qty !== '' && !Number.isFinite(Number(r.qty))) return alert(`Line ${n}: enter a valid quantity.`);
+      if (Number(r.qty) < 0) return alert(`Line ${n}: quantity cannot be negative.`);
       const s = new Date(`${r.date}T${r.start}:00`);
       const e = new Date(`${r.date}T${r.end}:00`);
       if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return alert(`Line ${n}: set a valid date and times.`);
@@ -132,9 +133,9 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
         const rowQty = Math.max(0, Number(r.qty) || 0);
         const over = rowQty > 0 ? runExceeds({ ordered: part.ordered, external, sameProcess: same, qty: rowQty }) : null;
         if (over) {
-          return alert(`Line ${i + 1}: ${part.part} cannot have ${Number(r.qty)} more finished${r.process ? ` in ${r.process}` : ''}. ${part.ordered} ordered, ${external + same} already recorded, so ${over.left} can still be added.\n\nTo change a run you saved earlier, open it in the Actual list and edit its quantity.`);
+          return alert(`Line ${i + 1}: ${part.part} cannot have ${rowQty} more finished${r.process ? ` in ${r.process}` : ''}. ${part.ordered} ordered, ${external + same} already recorded, so ${over.left} can still be added.\n\nTo change a run you saved earlier, open it in the Actual list and edit its quantity.`);
         }
-        pending.set(k, (pending.get(k) ?? 0) + Number(r.qty));
+        pending.set(k, (pending.get(k) ?? 0) + rowQty);
       }
     }
     setSaving(true);
@@ -152,7 +153,7 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
           woByPart.set(part.key, wo);
           opByWo.set(wo.wo_no, Math.max(0, ...ref.jobs.filter((j) => String(j.work_order) === String(wo.wo_no)).map((j) => Number(j.op_no) || 0)));
         }
-        const qty = Number(r.qty);
+        const qty = Math.max(0, Number(r.qty) || 0);
         const s = new Date(`${r.date}T${r.start}:00`);
         const e = new Date(`${r.date}T${r.end}:00`);
         const proc = ref.processes.find((p) => p.name === r.process);
