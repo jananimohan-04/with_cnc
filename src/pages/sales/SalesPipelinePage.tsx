@@ -6545,7 +6545,7 @@ export function SalesPipelinePage() {
         }
       }
     // Resolve the real sales order (work orders store the SO order_no in `sales_order`)
-    const soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || f.salesOrderNo || '';
+    let soNo: string = (fromWorkOrder ? dcModalTarget.raw.sales_order : '') || f.salesOrderNo || '';
     let so: any = null;
     if (soNo) {
       const { data: soRow, error: soErr } = await supabase.from('cnc_sales_orders').select('id, customer_id, quantity, delivered').eq('order_no', soNo).maybeSingle();
@@ -6623,6 +6623,92 @@ export function SalesPipelinePage() {
       }
     }
     if (!customerId) { alert('Could not resolve a company for this delivery. Add the party as a company first.'); return; }
+
+    // sales_order_id is NOT NULL in cnc_deliveries: resolve from candidate references, matching orders, or auto-create.
+    if (!so?.id) {
+      const candidates = [
+        soNo,
+        fromWorkOrder ? (dcModalTarget.raw as any)?.sales_order : null,
+        fromWorkOrder ? (dcModalTarget.raw as any)?.wo_no : null,
+        dcModalTarget?.refNo,
+        f.salesOrderNo,
+        f.enquiryNo,
+      ].map(s => String(s || '').trim()).filter(Boolean);
+
+      for (const cand of candidates) {
+        const { data: candSo } = await supabase.from('cnc_sales_orders')
+          .select('id, customer_id, order_no, quantity, delivered')
+          .or(`order_no.eq."${cand}",lead_no.eq."${cand}",id.eq."${cand}"`)
+          .limit(1)
+          .maybeSingle();
+        if (candSo) {
+          so = candSo;
+          if (!soNo) soNo = candSo.order_no || cand;
+          break;
+        }
+      }
+
+      // Try finding by customer and part name
+      if (!so?.id && (customerId || partyName)) {
+        const partNames = lines.map(l => l.name.toLowerCase());
+        const { data: matchedSos } = await supabase.from('cnc_sales_orders')
+          .select('id, customer_id, order_no, quantity, delivered, part_name')
+          .or(customerId ? `customer_id.eq."${customerId}",customer.ilike."${partyName}"` : `customer.ilike."${partyName}"`)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (matchedSos && matchedSos.length > 0) {
+          const match = matchedSos.find((s: any) => partNames.some(pn => String(s.part_name || '').toLowerCase().includes(pn))) || matchedSos[0];
+          if (match) {
+            so = match;
+            if (!soNo) soNo = match.order_no;
+          }
+        }
+      }
+
+      // If still no sales order exists, auto-create one for this direct delivery to satisfy the not-null constraint
+      if (!so?.id) {
+        const autoSoNo = soNo || `SO-DC-${Math.floor(1000 + Math.random() * 9000)}`;
+        const autoSoId = crypto.randomUUID();
+        const autoItems = lines.map(l => ({
+          partName: l.name,
+          quantity: l.qty,
+          unitPrice: l.price || 0,
+          hsn: l.hsn || '',
+          unit: l.unit || 'Nos',
+        }));
+        const autoSoPayload: any = {
+          id: autoSoId,
+          order_no: autoSoNo,
+          customer: partyName,
+          customer_id: customerId,
+          order_date: f.date || new Date().toISOString().split('T')[0],
+          part_name: lines.map(l => l.name).join(', '),
+          quantity: q,
+          delivered: isCancelled ? 0 : q,
+          status: isCancelled ? 'Cancelled' : 'Delivered',
+          items: autoItems,
+          billing_address: f.partyAddress || '',
+          customer_gstin: f.partyGstin || '',
+        };
+        if (company?.id) autoSoPayload.company_id = company.id;
+        const { data: newSoData, error: newSoErr } = await supabase
+          .from('cnc_sales_orders')
+          .insert([autoSoPayload])
+          .select('id, customer_id, order_no, quantity, delivered')
+          .maybeSingle();
+
+        if (!newSoErr && newSoData) {
+          so = newSoData;
+          soNo = newSoData.order_no || autoSoNo;
+        } else if (!newSoErr) {
+          so = { id: autoSoId, ...autoSoPayload };
+          soNo = autoSoNo;
+        } else {
+          console.error('Failed to auto-create sales order for delivery:', newSoErr);
+        }
+      }
+    }
+
     // One delivery row per product under the same challan number (multi-item
     // challans are read back together by the invoice flow). Extra columns are
     // attempted when the database already has them and skipped otherwise, so
