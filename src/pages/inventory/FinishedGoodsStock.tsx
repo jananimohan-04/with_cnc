@@ -178,7 +178,7 @@ export function useFinishedGoods(refreshKey: number) {
         const skip = new Set((partIds.data ?? []).map((r: { id: string }) => String(r.id)));
         wos = wos.filter(w => !skip.has(String(w.id)));
       }
-      const dcs = await supabase.from('cnc_deliveries').select('sales_order_no,part_name,dispatch_qty,quantity,status');
+      const dcs = await supabase.from('cnc_deliveries').select('sales_order_no,part_name,dispatch_qty,quantity,status,category');
       if (dcs.error) throw dcs.error;
       setRows(finishedGoodsStock(wos, (dcs.data ?? []) as never[]));
       setCanAssign(assignable);

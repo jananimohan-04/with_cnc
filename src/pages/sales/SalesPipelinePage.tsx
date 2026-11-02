@@ -1206,6 +1206,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
   const save = async (): Promise<boolean> => {
     if (!String(date || '').trim()) { setError('Enter the date.'); return false; }
     if (!String(partyName || '').trim()) { setError('Enter the company name.'); return false; }
+    const isCancelled = String(category || '').trim().toUpperCase() === 'CANCELLED';
     const entered = lines.filter((l: any) => String(l.partName || '').trim());
     if (!entered.length) { setError('Add at least one product with a part name.'); return false; }
     for (const l of entered) {
@@ -1227,6 +1228,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
         billing_address: partyAddress, customer_gstin: partyGstin, customer_code: partyCode,
         eway_bill: ewayBill, po_no: poNumber, place_of_supply: placeOfSupply, packaging_details: packaging,
         enquiry_no: enquiryNo, vehicle_no: vehicleNo, phone, category, process,
+        status: isCancelled ? 'Cancelled' : (first.status || 'Delivered'),
         receiver_name: receiverName, sender_name: senderName,
         customer_signature: custSignature, authorized_signature: authSignature,
       };
@@ -1250,7 +1252,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
           const soR = await supabase.from('cnc_sales_orders').select('id,quantity').eq('order_no', soNo).maybeSingle();
           if (!soR.error && soR.data) {
             const dR = await supabase.from('cnc_deliveries').select('dispatch_qty,quantity,status').eq('sales_order_no', soNo);
-            const act = ((dR.error ? [] : dR.data) ?? []).filter((d: any) => !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')));
+            const act = ((dR.error ? [] : dR.data) ?? []).filter((d: any) => !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')) && String(d?.category ?? '').trim().toUpperCase() !== 'CANCELLED');
             const delivered = act.reduce((s: number, d: any) => s + (Number(d?.dispatch_qty ?? d?.quantity) || 0), 0);
             const qty0 = Number((soR.data as any).quantity) || 0;
             await supabase.from('cnc_sales_orders').update({
@@ -4328,8 +4330,12 @@ export function SalesPipelinePage() {
       setInvoicesList(invs);
     }
 
-    // Active deliveries set: used to reconcile Dispatched work orders whose DC was deleted
-    const activeDcKeys = new Set((effectiveDcs || []).flatMap((d: any) => [
+    const isCancelledDc = (d: any) =>
+      ['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')) ||
+      String(d?.category ?? '').trim().toUpperCase() === 'CANCELLED';
+
+    // Active deliveries set: used to reconcile Dispatched work orders whose DC was deleted or cancelled
+    const activeDcKeys = new Set((effectiveDcs || []).filter(d => !isCancelledDc(d)).flatMap((d: any) => [
       String(d.sales_order_no || '').trim().toLowerCase(),
       String(d.sales_order_ref || '').trim().toLowerCase(),
       String(d.delivery_no || '').trim().toLowerCase(),
@@ -4400,7 +4406,7 @@ export function SalesPipelinePage() {
     };
     // Same challan number = one card: group multi-product delivery rows.
     const dcGroups = new Map<string, any[]>();
-    effectiveDcs.forEach(d => {
+    effectiveDcs.filter(d => !isCancelledDc(d)).forEach(d => {
       const key = d.delivery_no || orderMap.get(d.sales_order_no) || `DC-${d.id.substring(0, 4)}`;
       if (!dcGroups.has(key)) dcGroups.set(key, []);
       dcGroups.get(key)!.push(d);
@@ -6501,6 +6507,7 @@ export function SalesPipelinePage() {
     if (!String(f.dcNo || '').trim()) { alert('Enter the DC number.'); return; }
     if (!String(f.date || '').trim()) { alert('Enter the date.'); return; }
     if (!String(f.partyName || '').trim()) { alert('Enter the company name.'); return; }
+    const isCancelled = String(f.category || '').trim().toUpperCase() === 'CANCELLED' || String(f.status || '').trim().toLowerCase() === 'cancelled';
     // Product lines (selected rows only).
     const lines = (dcItems || []).filter((i) => i.selected).map((i) => ({
       name: String(i.name || '').trim(),
@@ -6513,11 +6520,11 @@ export function SalesPipelinePage() {
     if (!lines.length) { alert('Add at least one product with a part name.'); return; }
     for (const l of lines) {
       if (!(l.qty > 0)) { alert(`Enter a dispatch quantity greater than 0 for ${l.name}.`); return; }
-      if (l.avail != null && l.qty > l.avail) { alert(`${l.name}: quantity exceeds the available ${l.avail} pcs.`); return; }
+      if (!isCancelled && l.avail != null && l.qty > l.avail) { alert(`${l.name}: quantity exceeds the available ${l.avail} pcs.`); return; }
     }
     const q = lines.reduce((s, l) => s + l.qty, 0);
     const fromWorkOrder = !!dcModalTarget.raw?.id;
-    if (fromWorkOrder) {
+    if (fromWorkOrder && !isCancelled) {
       const maxQ = Number(dcModalTarget.qty) || 0;
       if (q > maxQ) {
         alert(`Quantity cannot exceed the finished goods stock of ${maxQ} pcs.`);
@@ -6551,7 +6558,7 @@ export function SalesPipelinePage() {
     let availNow: number | null = null;
     let goodTotal = 0;
     let deliveredTotal = 0;
-    if (so) {
+    if (so && !isCancelled) {
       try {
         const { summary } = await fetchOrderQty(String(so.id), soNo);
         if (summary && summary.hasProduction) {
@@ -6625,7 +6632,7 @@ export function SalesPipelinePage() {
       delivery_no: f.dcNo, customer_name: f.partyName,
       customer_id: customerId, sales_order_id: so?.id || null, sales_order_no: soNo || null,
       part_name: l.name, quantity: l.qty, dispatch_qty: l.qty, delivery_date: f.date || null,
-      vehicle_no: f.vehicleNo || '', status: 'Pending',
+      vehicle_no: f.vehicleNo || '', status: isCancelled ? 'Cancelled' : 'Pending',
       created_at: new Date().toISOString(),
       billing_address: f.partyAddress || '', customer_gstin: f.partyGstin || '',
       customer_code: f.partyCode || '', eway_bill: f.ewayBill || '', po_no: f.poNumber || '',
@@ -6668,7 +6675,7 @@ export function SalesPipelinePage() {
         if (woErr) console.error("Failed to update work order status:", woErr);
       }
     }
-    if (so) {
+    if (so && !isCancelled) {
       const delivered = (Number(so.delivered) || 0) + q;
       const status = delivered >= (Number(so.quantity) || 0) ? 'Delivered' : 'Partially Delivered';
       const { error: soUpdErr } = await supabase.from('cnc_sales_orders').update({ delivered, status }).eq('id', so.id);

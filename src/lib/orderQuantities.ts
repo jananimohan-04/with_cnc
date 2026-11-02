@@ -38,7 +38,8 @@ export const REJECTION_TYPES = [
 
 /** Delivery rows that still count as dispatched. */
 export const isActiveDelivery = (d: any) =>
-  !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? ''));
+  !['Cancelled', 'Returned', 'Return'].includes(String(d?.status ?? '')) &&
+  String(d?.category ?? '').trim().toUpperCase() !== 'CANCELLED';
 
 /** Invoice rows that count toward billed quantity. */
 const isBillableInvoice = (i: any) =>

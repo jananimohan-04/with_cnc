@@ -2,7 +2,7 @@
 // Same rule as the pipeline's Finished Goods card: available = good completed - delivered (cancelled / returned challans do not count).
 
 export interface WoLike { is_part_order?: boolean | null; id: string; wo_no?: string | null; sales_order?: string | null; part_name?: string | null; customer?: string | null; completed?: number | string | null; warehouse_id?: string | null }
-export interface DcLike { sales_order_no?: string | null; part_name?: string | null; dispatch_qty?: number | string | null; quantity?: number | string | null; status?: string | null }
+export interface DcLike { sales_order_no?: string | null; part_name?: string | null; dispatch_qty?: number | string | null; quantity?: number | string | null; status?: string | null; category?: string | null; }
 
 export interface FgStockRow {
   key: string;
@@ -18,7 +18,7 @@ export interface FgStockRow {
 
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-const activeDc = (d: DcLike) => !['Cancelled', 'Returned', 'Return'].includes(String(d.status ?? ''));
+const activeDc = (d: DcLike) => !['Cancelled', 'Returned', 'Return'].includes(String(d.status ?? '')) && String(d.category ?? '').trim().toUpperCase() !== 'CANCELLED';
 
 export function finishedGoodsStock(wos: WoLike[], dcs: DcLike[]): FgStockRow[] {
   const delivered = new Map<string, number>();

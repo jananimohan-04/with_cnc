@@ -48,6 +48,10 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [records, companyOptions]);
 
+  const isDcCancelled = (r: any) =>
+    String(r?.category || '').trim().toUpperCase() === 'CANCELLED' ||
+    String(r?.status || '').trim().toLowerCase() === 'cancelled';
+
   const statuses = useMemo(() => {
     const set = new Set<string>();
     records.forEach(r => {
@@ -185,7 +189,15 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.dispatch_qty ?? record.quantity ?? '-'}</td>
-                  <td className="p-3 text-sm text-slate-700">{record.status || '-'}</td>
+                  <td className="p-3 text-sm text-slate-700">
+                    {isDcCancelled(record) ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        Cancelled
+                      </span>
+                    ) : (
+                      record.status || 'Pending'
+                    )}
+                  </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" icon={<Eye size={13} />} onClick={() => (onView ? onView(record) : openRecord(record))}>View</Button>{onEdit && <Button variant="secondary" size="sm" onClick={() => onEdit(record)}>Edit</Button>}{onDelete && <Button variant="secondary" size="sm" className="!text-red-600 hover:!bg-red-50" onClick={() => onDelete(record)}>Delete</Button>}</div>
                   </td>
