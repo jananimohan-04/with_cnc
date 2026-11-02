@@ -37,8 +37,12 @@ export function ProductWorkingsPage({ title, initial, onBack, onSave }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [w]);
   const back = () => { if (!dirty || r.issues.length === 0 || window.confirm('Leave without saving this product\'s workings?')) onBack(); };
+  const [saveError, setSaveError] = useState<string | null>(null);
   const save = (leave: boolean) => {
-    if (r.issues.length) { setNote(r.issues[0]); return; }
+    setSaveError(null);
+    if (r.issues.length) { setNote(r.issues[0]); setSaveError(r.issues[0]); return; }
+    // nothing to price yet: say so next to the button (the page's own message is at the very top, out of sight)
+    if (!(r.total > 0)) { const m = 'Add at least one material, process or expense with a rate first, so there is a cost to save.'; setNote(m); setSaveError(m); return; }
     onSave(w, r.total, leave);
     if (!leave) { setDirty(false); setNote(`Saved. Unit price ${inr(r.total)} applied to the quotation line.`); }
   };
@@ -140,8 +144,10 @@ export function ProductWorkingsPage({ title, initial, onBack, onSave }: {
           </div>
         </div>
         {r.issues.map(m => <p key={m} className="text-xs text-red-600 mt-2">{m}</p>)}
+        {saveError && <p role="alert" className="text-xs font-semibold text-red-600 mt-2 text-right">{saveError}</p>}
         <div className="flex justify-end gap-2 mt-4">
-          <button type="button" data-testid="save-calcs" onClick={() => save(false)} className="flex items-center gap-2 h-9 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"><Save size={15} /> Save Calculations</button>
+          {/* saves the cost as the quotation line's unit price and goes back to the quotation, where the saved price is shown */}
+          <button type="button" data-testid="save-calcs" onClick={() => save(true)} className="flex items-center gap-2 h-9 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"><Save size={15} /> Save Calculations</button>
           <button type="button" data-testid="clear-sheet" onClick={() => { change(() => emptyWorkings()); setNote(null); }} className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50"><RotateCcw size={14} /> Clear Sheet</button>
         </div>
       </section>

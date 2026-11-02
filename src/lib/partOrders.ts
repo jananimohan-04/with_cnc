@@ -47,6 +47,8 @@ export interface PartChoice {
   used: number;
   remaining: number;
   label: string;
+  /** a whole-product entry for the same material of the same order that was merged into this one (see dropDuplicateParts) */
+  alsoWhole?: PartChoice;
 }
 
 function soItems(so: any): any[] {
@@ -127,11 +129,44 @@ export function buildPartChoices(products: ProductChoice[], inwards: any[], work
       });
     }
   }
-  return out;
+  return dropDuplicateParts(out);
+}
+
+/**
+ * The same material of the same sales order can be reached twice: once as the order's own product (the sales order item) and once
+ * as a part of a product named on its inward (the inward was entered under a different product name). Both then show the same
+ * quantity, so the same pieces could be produced twice. Such a pair is shown once: the part of the product (the inward is behind
+ * it) is kept, and the pieces already made against the whole-product entry are counted into it.
+ */
+function dropDuplicateParts(list: PartChoice[]): PartChoice[] {
+  const sig = (c: PartChoice) => (c.so ? `${norm(c.so.order_no || c.so.id)}|${baseKey(c.part)}|${c.ordered}` : '');
+  const kept: PartChoice[] = [];
+  const at = new Map<string, number>();
+  for (const c of list) {
+    const k = sig(c);
+    if (!k || !at.has(k)) { if (k) at.set(k, kept.length); kept.push(c); continue; }
+    const i = at.get(k)!;
+    const prev = kept[i];
+    const merge = (part: PartChoice, whole: PartChoice): PartChoice => {
+      const used = part.used + whole.used;                                  // what was made against either entry counts once here
+      const remaining = Math.max(0, part.ordered - used);
+      return { ...part, alsoWhole: whole, used, remaining, label: part.label.replace(/Remaining \d+/, `Remaining ${remaining}`) };
+    };
+    if (prev.whole && !c.whole) kept[i] = merge(c, prev);                    // keep the part, remember the whole-product entry
+    else if (!prev.whole && c.whole) kept[i] = merge(prev, c);
+    // two entries of the same kind (a true repeat): the first one stays
+  }
+  return kept;
 }
 
 /** The production orders that belong to a part choice (a part order for that part, or a whole-product order for the product). */
 export function workOrdersForPart(choice: PartChoice, workOrders: any[]): any[] {
+  if (choice.alsoWhole) {
+    // the orders of both entries are one and the same production
+    const seen = new Set<unknown>();
+    return [...workOrdersForPart({ ...choice, alsoWhole: undefined }, workOrders), ...workOrdersForPart(choice.alsoWhole, workOrders)]
+      .filter((w) => (seen.has(w.id ?? w) ? false : (seen.add(w.id ?? w), true)));
+  }
   const isSameAsProduct = baseKey(choice.part) === baseKey(choice.productName);
   return (workOrders ?? []).filter((w) => {
     if (choice.whole || isSameAsProduct) {

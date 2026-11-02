@@ -62,6 +62,9 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
   const [theme, setTheme] = useState<PdfThemeId>('orange');
   const [themeOpen, setThemeOpen] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // a message is shown at the top of the quotation: bring it into view (after the workings sheet the page is still scrolled down)
+  const msgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (msg) msgRef.current?.scrollIntoView({ block: 'nearest' }); }, [msg]);
   const [showIssues, setShowIssues] = useState(false);
   const [busy, setBusy] = useState(false);
   // Read again whenever the company changes (it can arrive after this page opens), so the phone, address and bank details of the right company are printed.
@@ -196,7 +199,13 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
     return (
       <div className={embed ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
         <ProductWorkingsPage key={wl.id} title={wl.description} initial={wl.workings} onBack={() => setWorkingsFor(null)}
-          onSave={(w: Workings, price: number, leave: boolean) => { setLine(wl.id, { workings: w, unitPrice: String(price) }); if (leave) setWorkingsFor(null); }} />
+          onSave={(w: Workings, price: number, leave: boolean) => {
+            setLine(wl.id, { workings: w, unitPrice: String(price) });
+            if (leave) {
+              setWorkingsFor(null);
+              setMsg({ kind: 'ok', text: `Calculations saved: unit price ${formatINR(price, { decimals: 'always' })} applied to ${wl.description.trim() ? `“${wl.description.trim()}”` : 'the quotation line'}.` });
+            }
+          }} />
       </div>
     );
   }
@@ -205,7 +214,7 @@ export function CreateQuotationPage({ embed }: { embed?: QuotationEmbed } = {}) 
     <div className={embed ? '' : 'p-2 lg:p-3 bg-grid min-h-full'}>
       <div className={embed ? 'space-y-2' : 'bg-white border border-slate-200 rounded-2xl p-2.5 space-y-2'}>
         {msg && (
-          <div role="status" className={`flex items-start justify-between gap-3 text-sm rounded-lg px-3 py-2 border ${msg.kind === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <div ref={msgRef} role="status" className={`flex items-start justify-between gap-3 text-sm rounded-lg px-3 py-2 border ${msg.kind === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
             <span>{msg.text}</span><button aria-label="Dismiss" onClick={() => setMsg(null)}><X size={14} /></button>
           </div>
         )}
