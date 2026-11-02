@@ -776,19 +776,75 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     setNewOp({ process: '', machine: '', hours: '', mRate: '', lHours: '', lRate: '' });
   };
 
-  const persistVersion = async (status: 'Draft' | 'Calculated' | 'Approved', approved: number) => {
+  const persistVersion = async (status: 'Draft' | 'Calculated' | 'Approved', approved: number): Promise<number> => {
     // Commit any typed-but-unadded input first so the saved version matches the screen.
     if (draftMat) setExtraMats((ls) => [...ls, draftMat]);
     if (draftOp) setExtraOps((ls) => [...ls, draftOp]);
     const soPayload = so ?? (inward.sales_order_ref || card?.refNo ? { order_no: inward.sales_order_ref || card?.refNo } : null);
-    const { error } = await supabase.from('cnc_costing_sheets').insert([
-      buildVersionPayload({
-        quote: quote ?? {}, so: soPayload, productCode: code, productName, baseQty,
-        status, version: nextVersion, totals, approved,
-        matLines: effMatLines, opLines: effOpLines, userName, quoteOverrides,
-      }),
-    ]);
-    if (error) throw error;
+    const qNo = String(quote?.quote_no || '').trim();
+    const soNo = String(soPayload?.order_no || '').trim();
+    const pCode = String(code || '').trim();
+
+    // Query highest existing version to ensure unique version numbers
+    let highestVer = versions[0]?.version ?? 0;
+    try {
+      let q = supabase.from('cnc_costing_sheets').select('version').order('version', { ascending: false }).limit(1);
+      if (qNo) {
+        q = q.eq('quotation_no', qNo);
+      } else {
+        q = q.eq('quotation_no', '');
+        if (soNo) q = q.eq('sales_order_no', soNo);
+      }
+      if (pCode) q = q.eq('product_code', pCode);
+      const { data: vRows } = await q;
+      if (vRows && vRows.length > 0 && vRows[0]?.version != null) {
+        highestVer = Math.max(highestVer, Number(vRows[0].version));
+      }
+
+      // If direct order without quote, also check potential legacy shared index on quotation_no=''
+      if (!qNo) {
+        const { data: directRows } = await supabase.from('cnc_costing_sheets')
+          .select('version')
+          .eq('quotation_no', '')
+          .eq('product_code', pCode)
+          .order('version', { ascending: false })
+          .limit(1);
+        if (directRows && directRows.length > 0 && directRows[0]?.version != null) {
+          highestVer = Math.max(highestVer, Number(directRows[0].version));
+        }
+      }
+    } catch (verErr) {
+      console.warn('Could not query latest costing sheet version:', verErr);
+    }
+
+    let targetVer = highestVer + 1;
+    let savedVer = targetVer;
+    let inserted = false;
+    let lastError: any = null;
+
+    // Retry loop in case of concurrent insert or unique index collision
+    for (let attempt = 0; attempt < 5; attempt++) {
+      savedVer = targetVer + attempt;
+      const { error } = await supabase.from('cnc_costing_sheets').insert([
+        buildVersionPayload({
+          quote: quote ?? {}, so: soPayload, productCode: code, productName, baseQty,
+          status, version: savedVer, totals, approved,
+          matLines: effMatLines, opLines: effOpLines, userName, quoteOverrides,
+        }),
+      ]);
+      if (!error) {
+        inserted = true;
+        break;
+      }
+      lastError = error;
+      const msg = String(error?.message || '');
+      if (msg.includes('cnc_costing_sheets_ver_key') || (error as any)?.code === '23505') {
+        continue;
+      }
+      break;
+    }
+    if (!inserted && lastError) throw lastError;
+    return savedVer;
   };
 
   const reloadVersions = async () => {
@@ -821,9 +877,9 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         onClose();
         return;
       }
-      await persistVersion('Draft', effectiveApproved);
+      const savedVer = await persistVersion('Draft', effectiveApproved);
       await reloadVersions();
-      alert(`Costing draft saved as version ${nextVersion}. The card stays in Inward until approval.`);
+      alert(`Costing draft saved as version ${savedVer}. The card stays in Inward until approval.`);
     } catch (e: any) {
       alert(`Failed to save draft: ${e?.message ?? e}`);
     } finally {
@@ -874,7 +930,11 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       // trigger would reject an Approved version anyway, and they never saw the
       // pricing. A quotation is optional: a direct order is costed and approved against its sales order instead.
       if (canApproveCosting) {
-        await persistVersion('Approved', effectiveApproved);
+        try {
+          await persistVersion('Approved', effectiveApproved);
+        } catch (csErr: any) {
+          console.warn('Costing sheet version could not be saved, continuing with finished goods move:', csErr);
+        }
       }
       // 2) One work-order row + batch per selected product. Good quantity
       // becomes FG stock (via the stock trigger on `completed`); rejected
