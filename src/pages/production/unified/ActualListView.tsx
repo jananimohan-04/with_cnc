@@ -8,14 +8,15 @@ import { fmtTime24, parseYmd, ymd } from '@/lib/operationPlans';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { Time24 } from '@/components/ui/Time24';
-import { buildRunPartChoices, ensureRunWorkOrder } from '@/lib/partOrders';
+import { buildRunPartChoices, ensureRunWorkOrder, workOrdersForPart } from '@/lib/partOrders';
+import { processKey, runExceeds, syncWorkOrderCompleted } from '@/lib/workOrderProgress';
 import { getProductBaseName } from '@/pages/sales/SalesPipelinePage';
 import { dt, dur, jobSpan } from './ComparisonPage';
 
 const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const baseKey = (s: unknown) => norm(getProductBaseName(String(s ?? '')));
 const runCell = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm focus:border-brand-500 focus:outline-none';
-const runCols = 'grid grid-cols-[minmax(240px,2.4fr)_96px_minmax(130px,1fr)_minmax(110px,1fr)_130px_92px_92px_64px] items-center gap-2';
+const runCols = 'grid grid-cols-[minmax(210px,2.2fr)_92px_minmax(120px,1fr)_minmax(100px,1fr)_128px_124px_124px_64px] items-center gap-2';
 
 interface JobCard {
   id: string;
@@ -315,7 +316,7 @@ export function ActualListView() {
 
     setEditForm({
       partKey: matchingPart?.key || (parts[0]?.key ?? (target ? `fallback:${target}` : '')),
-      qty: j.qty_completed != null ? String(j.qty_completed) : '1',
+      qty: j.qty_completed != null && Number(j.qty_completed) > 0 ? String(j.qty_completed) : '',
       process: j.operation || (processes[0]?.name ?? 'Machining'),
       operator: j.operator || '',
       date: dateStr,
@@ -327,19 +328,31 @@ export function ActualListView() {
   const saveEdit = async () => {
     if (!picked) return;
     const part = displayParts.find((p) => p.key === editForm.partKey);
-    const qty = Number(editForm.qty);
-    if (!(qty > 0)) return alert('Please enter a valid finished quantity.');
+    const qty = Math.max(0, Number(editForm.qty) || 0);
     const s = new Date(`${editForm.date}T${editForm.start}:00`);
     const e = new Date(`${editForm.date}T${editForm.end}:00`);
     if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return alert('Please set a valid date and times.');
     if (e.getTime() <= s.getTime()) return alert('The end time must be after the start time.');
     if (e.getTime() > Date.now() + 60000) return alert('A run cannot end in the future. Use the Planned Timeline to plan ahead.');
 
+    if (qty > 0 && part && part.ordered > 0) {
+      // the part's other runs of the same process add up; pieces finished another way count for every process
+      const wosOfPart = workOrdersForPart(part, wos);
+      const woNos = new Set(wosOfPart.map((w) => String(w.wo_no)));
+      const hasRuns = (w: any) => jobs.some((j: any) => String(j.work_order) === String(w.wo_no));
+      const external = wosOfPart.filter((w) => !hasRuns(w)).reduce((t, w) => t + (Number(w.completed) || 0), 0);
+      const proc = processKey(editForm.process);
+      const others = jobs.filter((j: any) => String(j.id) !== String(picked.id) && woNos.has(String(j.work_order)) && processKey(j.operation) === proc)
+        .reduce((t, j: any) => t + (Number(j.qty_completed) || 0), 0);
+      const over = runExceeds({ ordered: part.ordered, external, sameProcess: others, qty });
+      if (over) return alert(`${part.part} cannot have ${qty} finished${editForm.process ? ` in ${editForm.process}` : ''}: ${part.ordered} ordered, ${external + others} already recorded elsewhere, so at most ${over.left} here.`);
+    }
+
     setSavingEdit(true);
     try {
       const proc = processes.find((p) => p.name === editForm.process);
+      const previousWo = woMap.get(String(picked.work_order ?? '').trim().toLowerCase());
       const oldQtyCompleted = Number(picked.qty_completed) || 0;
-      const qtyDiff = qty - oldQtyCompleted;
 
       let targetWo = woMap.get(String(picked.work_order ?? '').trim().toLowerCase());
       if (part && (!targetWo || (part.part && targetWo.part_name !== part.part))) {
@@ -365,12 +378,9 @@ export function ActualListView() {
       const res = await supabase.from('cnc_job_cards').update(payload).eq('id', picked.id);
       if (res.error) throw res.error;
 
-      if (targetWo?.id) {
-        const nextCompleted = Math.max(0, (Number(targetWo.completed) || 0) + qtyDiff);
-        const target = Number(targetWo.quantity) || 0;
-        const nextStatus = target > 0 && nextCompleted >= target ? 'Completed' : (nextCompleted > 0 ? 'In Progress' : targetWo.status);
-        await supabase.from('cnc_work_orders').update({ completed: nextCompleted, status: nextStatus }).eq('id', targetWo.id);
-      }
+      // the finished quantity follows the runs (the busiest process); a run moved to another order leaves the old one too
+      if (targetWo?.id) await syncWorkOrderCompleted(targetWo);
+      if (previousWo?.id && String(previousWo.id) !== String(targetWo?.id ?? '')) await syncWorkOrderCompleted(previousWo, oldQtyCompleted);
 
       setPicked(null);
       await load();
@@ -390,12 +400,8 @@ export function ActualListView() {
       const completedQty = Number(j.qty_completed) || 0;
       if (completedQty > 0 && j.work_order) {
         const wo = woMap.get(String(j.work_order).trim().toLowerCase());
-        if (wo?.id) {
-          const nextCompleted = Math.max(0, (Number(wo.completed) || 0) - completedQty);
-          const target = Number(wo.quantity) || 0;
-          const nextStatus = target > 0 && nextCompleted >= target ? 'Completed' : (nextCompleted > 0 ? 'In Progress' : 'Planned');
-          await supabase.from('cnc_work_orders').update({ completed: nextCompleted, status: nextStatus }).eq('id', wo.id);
-        }
+        // runs left: the finished quantity is worked out from them again; none left: what this run had added is taken off
+        if (wo?.id) await syncWorkOrderCompleted(wo, completedQty);
       }
 
       await load();
@@ -859,11 +865,11 @@ export function ActualListView() {
                 onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
               />
 
-              <div className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm">
+              <div className="inline-flex h-9 w-full min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm">
                 <Time24 label="Start" value={editForm.start} onChange={(v) => setEditForm((f) => ({ ...f, start: v }))} />
               </div>
 
-              <div className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white text-sm">
+              <div className="inline-flex h-9 w-full min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm">
                 <Time24 label="End" value={editForm.end} onChange={(v) => setEditForm((f) => ({ ...f, end: v }))} />
               </div>
 

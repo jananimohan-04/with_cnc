@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase';
 import { insertTolerant } from '@/lib/partRouting';
 import { generateJobNo } from '@/lib/jobCards';
 import { parseYmd, ymd } from '@/lib/operationPlans';
-import { buildRunPartChoices, ensureRunWorkOrder } from '@/lib/partOrders';
+import { buildRunPartChoices, ensureRunWorkOrder, workOrdersForPart } from '@/lib/partOrders';
+import { processKey, runExceeds, syncWorkOrderCompleted } from '@/lib/workOrderProgress';
 
 // One entry window for the four add popups (Actual / Planned, timeline and list). Line by line: Part, Qty, Process,
 // Operator, Date, Start, End. The "+" on a line adds the next line straight after it: same part / qty / process /
@@ -70,7 +71,7 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
         supabase.from('cnc_inwards').select('*').neq('status', 'Deleted'),
         supabase.from('cnc_work_orders').select('*'),
         supabase.from('cnc_processes').select('*'),
-        supabase.from('cnc_job_cards').select('work_order,op_no,operator'),
+        supabase.from('cnc_job_cards').select('work_order,op_no,operator,operation,qty_completed'),
         supabase.from('cnc_operation_plans').select('operator'),
       ]);
       if (off) return;
@@ -113,6 +114,28 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
       if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return alert(`Line ${n}: set a valid date and times.`);
       if (e.getTime() <= s.getTime()) return alert(`Line ${n}: the end must be after the start.`);
       if (!plan && e.getTime() > Date.now() + 60000) return alert(`Line ${n}: a run cannot end in the future. Use the Planned Timeline to plan ahead.`);
+    }
+    if (!plan) {
+      // The same pieces pass through several processes, so only the SAME process adds up. Pieces already finished another way
+      // (the Finished Goods form) count as done for every process. Nothing can be recorded beyond the ordered quantity.
+      const pending = new Map<string, number>();
+      for (const [i, r] of rows.entries()) {
+        const part = parts.find((p) => p.key === r.partKey)!;
+        const wosOfPart = workOrdersForPart(part, ref.wos);
+        const woNos = new Set(wosOfPart.map((w) => String(w.wo_no)));
+        const hasRuns = (w: any) => ref.jobs.some((j) => String(j.work_order) === String(w.wo_no));
+        const external = wosOfPart.filter((w) => !hasRuns(w)).reduce((t, w) => t + (Number(w.completed) || 0), 0);
+        const proc = processKey(r.process);
+        const saved = ref.jobs.filter((j) => woNos.has(String(j.work_order)) && processKey(j.operation) === proc).reduce((t, j) => t + (Number(j.qty_completed) || 0), 0);
+        const k = `${part.key}|${proc}`;
+        const same = saved + (pending.get(k) ?? 0);
+        const rowQty = Math.max(0, Number(r.qty) || 0);
+        const over = rowQty > 0 ? runExceeds({ ordered: part.ordered, external, sameProcess: same, qty: rowQty }) : null;
+        if (over) {
+          return alert(`Line ${i + 1}: ${part.part} cannot have ${Number(r.qty)} more finished${r.process ? ` in ${r.process}` : ''}. ${part.ordered} ordered, ${external + same} already recorded, so ${over.left} can still be added.\n\nTo change a run you saved earlier, open it in the Actual list and edit its quantity.`);
+        }
+        pending.set(k, (pending.get(k) ?? 0) + Number(r.qty));
+      }
     }
     setSaving(true);
     try {
@@ -167,11 +190,9 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
             qty_planned: part.ordered, qty_completed: qty, qty_rejected: 0, cycle_time: 0, setup_time: 0,
             status: 'Completed', actual_start: s.toISOString(), actual_end: e.toISOString(), completed_at: e.toISOString(), created_at: s.toISOString(),
           }]);
-          wo.completed = (Number(wo.completed) || 0) + qty;
-          const target = Number(wo.quantity) || 0;
-          wo.status = target > 0 && wo.completed >= target ? 'Completed' : 'In Progress';
-          const up = await supabase.from('cnc_work_orders').update({ completed: wo.completed, status: wo.status }).eq('id', wo.id);
-          if (up.error) throw new Error(`A run was saved but the finished quantity could not be updated: ${up.error.message}`);
+          // the finished quantity follows the runs (the busiest process), so the same pieces through two processes are not counted twice
+          const synced = await syncWorkOrderCompleted(wo);
+          if (synced) { wo.completed = synced.completed; wo.status = synced.status; }
         }
       }
       onSaved(rows[0].date);

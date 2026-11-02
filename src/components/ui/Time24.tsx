@@ -10,15 +10,38 @@ export function Time24({ label, value, onChange }: { label: string; value: strin
   const [hh, mm] = (value || '08:00').split(':').map(n => Number(n) || 0);
   const emitHour = (h: number) => onChange(`${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
   const emitMinute = (m: number) => onChange(`${String(hh).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-  const sel = 'bg-transparent py-2 focus:outline-none cursor-pointer';
+  const selStyle: React.CSSProperties = {
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+    appearance: 'none',
+    textAlign: 'center',
+  };
+  const sel = 'appearance-none bg-transparent px-1.5 py-1 text-center font-semibold text-slate-800 hover:bg-slate-100 hover:text-brand-600 rounded focus:bg-brand-50 focus:text-brand-700 focus:outline-none cursor-pointer w-7 tabular-nums text-sm transition-colors';
+
   return (
-    <div className="flex items-center gap-0.5 px-2" role="group" aria-label={label}>
-      <select aria-label={`${label} hour`} className={sel} value={hh} onChange={e => emitHour(Number(e.target.value))}>
-        {Array.from({ length: 24 }, (_, i) => i).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}</option>)}
+    <div className="flex items-center justify-center gap-0.5 px-1.5 w-full h-full" role="group" aria-label={label}>
+      <select
+        aria-label={`${label} hour`}
+        className={sel}
+        style={selStyle}
+        value={hh}
+        onChange={e => emitHour(Number(e.target.value))}
+      >
+        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+          <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
+        ))}
       </select>
-      <span className="text-slate-400">:</span>
-      <select aria-label={`${label} minute`} className={sel} value={mm} onChange={e => emitMinute(Number(e.target.value))}>
-        {Array.from({ length: 60 }, (_, i) => i).map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
+      <span className="text-slate-400 font-bold select-none px-0.5">:</span>
+      <select
+        aria-label={`${label} minute`}
+        className={sel}
+        style={selStyle}
+        value={mm}
+        onChange={e => emitMinute(Number(e.target.value))}
+      >
+        {Array.from({ length: 60 }, (_, i) => i).map(m => (
+          <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+        ))}
       </select>
     </div>
   );
