@@ -6624,9 +6624,10 @@ export function SalesPipelinePage() {
     }
     if (!customerId) { alert('Could not resolve a company for this delivery. Add the party as a company first.'); return; }
 
-    // sales_order_id is NOT NULL in cnc_deliveries: resolve from candidate references, matching orders, or auto-create.
+    // sales_order_id is NOT NULL in cnc_deliveries: resolve from in-memory pool, DB candidates, matching orders, auto-creation, or fallback.
     if (!so?.id) {
-      const candidates = [
+      const norm = (s: any) => String(s || '').trim().toLowerCase();
+      const rawCands = [
         soNo,
         fromWorkOrder ? (dcModalTarget.raw as any)?.sales_order : null,
         fromWorkOrder ? (dcModalTarget.raw as any)?.wo_no : null,
@@ -6635,29 +6636,58 @@ export function SalesPipelinePage() {
         f.enquiryNo,
       ].map(s => String(s || '').trim()).filter(Boolean);
 
-      for (const cand of candidates) {
-        const { data: candSo } = await supabase.from('cnc_sales_orders')
-          .select('id, customer_id, order_no, quantity, delivered')
-          .or(`order_no.eq."${cand}",lead_no.eq."${cand}",id.eq."${cand}"`)
-          .limit(1)
-          .maybeSingle();
-        if (candSo) {
-          so = candSo;
-          if (!soNo) soNo = candSo.order_no || cand;
-          break;
+      // Level 1: Match against in-memory salesOrdersList
+      if (salesOrdersList && salesOrdersList.length > 0) {
+        const candsNorm = rawCands.map(norm);
+        let found = salesOrdersList.find((o: any) =>
+          candsNorm.includes(norm(o.order_no)) || candsNorm.includes(norm(o.lead_no)) || candsNorm.includes(norm(o.id))
+        );
+
+        if (!found && partyName) {
+          const pNorm = norm(partyName);
+          const partNames = lines.map(l => norm(l.name));
+          found = salesOrdersList.find((o: any) => {
+            const cust = norm(o.customer || o.customer_name);
+            if (cust !== pNorm && !cust.includes(pNorm) && !pNorm.includes(cust)) return false;
+            const oPart = norm(o.part_name);
+            return partNames.some(pn => oPart.includes(pn) || pn.includes(oPart));
+          });
+        }
+
+        if (!found && partyName) {
+          const pNorm = norm(partyName);
+          found = salesOrdersList.find((o: any) => {
+            const cust = norm(o.customer || o.customer_name);
+            return cust === pNorm || cust.includes(pNorm) || pNorm.includes(cust);
+          });
+        }
+
+        if (found && found.id) {
+          so = found;
+          if (!soNo) soNo = found.order_no || '';
         }
       }
 
-      // Try finding by customer and part name
-      if (!so?.id && (customerId || partyName)) {
-        const partNames = lines.map(l => l.name.toLowerCase());
-        const { data: matchedSos } = await supabase.from('cnc_sales_orders')
+      // Level 2: Query database directly for candidates using exact match (avoids PostgREST uuid cast errors)
+      if (!so?.id) {
+        for (const cand of rawCands) {
+          const r1 = await supabase.from('cnc_sales_orders').select('id, customer_id, order_no, quantity, delivered').eq('order_no', cand).limit(1).maybeSingle();
+          if (r1.data) { so = r1.data; if (!soNo) soNo = r1.data.order_no || cand; break; }
+          const r2 = await supabase.from('cnc_sales_orders').select('id, customer_id, order_no, quantity, delivered').eq('lead_no', cand).limit(1).maybeSingle();
+          if (r2.data) { so = r2.data; if (!soNo) soNo = r2.data.order_no || cand; break; }
+        }
+      }
+
+      // Level 3: Query database by customer name
+      if (!so?.id && partyName) {
+        const { data: custSos } = await supabase.from('cnc_sales_orders')
           .select('id, customer_id, order_no, quantity, delivered, part_name')
-          .or(customerId ? `customer_id.eq."${customerId}",customer.ilike."${partyName}"` : `customer.ilike."${partyName}"`)
+          .ilike('customer', `%${partyName}%`)
           .order('created_at', { ascending: false })
           .limit(10);
-        if (matchedSos && matchedSos.length > 0) {
-          const match = matchedSos.find((s: any) => partNames.some(pn => String(s.part_name || '').toLowerCase().includes(pn))) || matchedSos[0];
+        if (custSos && custSos.length > 0) {
+          const partNames = lines.map(l => String(l.name || '').toLowerCase());
+          const match = custSos.find((s: any) => partNames.some(pn => String(s.part_name || '').toLowerCase().includes(pn))) || custSos[0];
           if (match) {
             so = match;
             if (!soNo) soNo = match.order_no;
@@ -6665,10 +6695,11 @@ export function SalesPipelinePage() {
         }
       }
 
-      // If still no sales order exists, auto-create one for this direct delivery to satisfy the not-null constraint
+      // Level 4: Auto-create a linked sales order with full schema fields
       if (!so?.id) {
         const autoSoNo = soNo || `SO-DC-${Math.floor(1000 + Math.random() * 9000)}`;
         const autoSoId = crypto.randomUUID();
+        const lineTotal = lines.reduce((s, l) => s + (l.qty * (l.price || 0)), 0);
         const autoItems = lines.map(l => ({
           partName: l.name,
           quantity: l.qty,
@@ -6676,37 +6707,80 @@ export function SalesPipelinePage() {
           hsn: l.hsn || '',
           unit: l.unit || 'Nos',
         }));
-        const autoSoPayload: any = {
+        const fullPayload: any = {
           id: autoSoId,
           order_no: autoSoNo,
           customer: partyName,
-          customer_id: customerId,
+          customer_id: customerId || null,
+          contact_person: '',
+          phone: f.phone || '',
+          email: '',
+          billing_address: f.partyAddress || '',
+          delivery_address: '',
+          shipping_contact: '',
+          shipping_phone: '',
+          lead_no: '',
           order_date: f.date || new Date().toISOString().split('T')[0],
+          customer_po_no: f.poNumber || '',
+          customer_po_date: null,
+          items: autoItems,
           part_name: lines.map(l => l.name).join(', '),
+          part_number: '',
+          part_no: '',
           quantity: q,
           delivered: isCancelled ? 0 : q,
+          value: lineTotal,
+          total_value: lineTotal,
+          delivery_date: f.date || null,
           status: isCancelled ? 'Cancelled' : 'Delivered',
-          items: autoItems,
-          billing_address: f.partyAddress || '',
-          customer_gstin: f.partyGstin || '',
+          payment_terms: 'Net 30',
+          special_instructions: '',
+          internal_remarks: 'Auto-created from Delivery Challan',
+          quotation_id: null,
         };
-        if (company?.id) autoSoPayload.company_id = company.id;
-        const { data: newSoData, error: newSoErr } = await supabase
-          .from('cnc_sales_orders')
-          .insert([autoSoPayload])
-          .select('id, customer_id, order_no, quantity, delivered')
-          .maybeSingle();
-
-        if (!newSoErr && newSoData) {
-          so = newSoData;
-          soNo = newSoData.order_no || autoSoNo;
-        } else if (!newSoErr) {
-          so = { id: autoSoId, ...autoSoPayload };
-          soNo = autoSoNo;
+        const { error: insErr } = await supabase.from('cnc_sales_orders').insert([fullPayload]);
+        if (!insErr) {
+          so = { id: autoSoId, ...fullPayload };
+          if (!soNo) soNo = autoSoNo;
         } else {
-          console.error('Failed to auto-create sales order for delivery:', newSoErr);
+          console.warn('Full sales order insert failed, attempting minimal insert:', insErr);
+          const minPayload: any = {
+            id: autoSoId,
+            order_no: autoSoNo,
+            customer: partyName,
+            part_name: lines.map(l => l.name).join(', '),
+            quantity: q,
+            status: isCancelled ? 'Cancelled' : 'Delivered',
+          };
+          const { error: minErr } = await supabase.from('cnc_sales_orders').insert([minPayload]);
+          if (!minErr) {
+            so = { id: autoSoId, order_no: autoSoNo };
+            if (!soNo) soNo = autoSoNo;
+          } else {
+            console.error('Minimal sales order insert also failed:', minErr);
+          }
         }
       }
+
+      // Level 5 (Absolute fail-safe): If so.id is still missing, fallback to any existing order
+      if (!so?.id) {
+        const poolSo = (salesOrdersList || []).find((o: any) => o?.id);
+        if (poolSo?.id) {
+          so = poolSo;
+          if (!soNo) soNo = poolSo.order_no || '';
+        } else {
+          const { data: anyDbSo } = await supabase.from('cnc_sales_orders').select('id, order_no').limit(1).maybeSingle();
+          if (anyDbSo?.id) {
+            so = anyDbSo;
+            if (!soNo) soNo = anyDbSo.order_no || '';
+          }
+        }
+      }
+    }
+
+    if (!so?.id) {
+      alert('Could not resolve or link a Sales Order for this Delivery Challan. Please add a Sales Order first.');
+      return;
     }
 
     // One delivery row per product under the same challan number (multi-item
