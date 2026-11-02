@@ -4596,6 +4596,11 @@ export function SalesPipelinePage() {
       // so the card leaves the board (it stays in List View). It comes back by itself if a challan is deleted.
       if (c.type === 'finished_goods' && c.qtyTrack && c.qtyTrack.good > 0 && c.qtyTrack.fgAvailable <= 0
         && (c.qtyTrack.products ?? []).every((p) => (p.available ?? 0) <= 0)) return false;
+      // The order is achieved once what went out on challans plus what was rejected reaches the ordered quantity (a rejected piece
+      // is counted against the order, the same rule as "Remaining"). Pieces still shown as available are then only the rejected
+      // ones counted a second time inside the finished total, so there is nothing left to deliver and the card leaves the board.
+      if (c.type === 'finished_goods' && c.qtyTrack && c.qtyTrack.ordered > 0 && c.qtyTrack.delivered > 0
+        && c.qtyTrack.delivered + c.qtyTrack.rejected >= c.qtyTrack.ordered) return false;
       if (c.type !== 'inward') return true;
       if (c.qtyTrack && c.qtyTrack.ordered > 0) return c.qtyTrack.remaining > 0;
       // No linked sales order: everything received has been produced when no product has any left.
