@@ -21,7 +21,7 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.4';
+export const CURRENT_APP_VERSION = '1.0.0';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
@@ -29,15 +29,15 @@ export const CURRENT_APP_VERSION = '1.0.4';
  */
 export const VERSION_HISTORY: VersionRelease[] = [
   {
-    version: '1.0.4',
+    version: '1.0.0',
     releaseDate: 'November 3, 2026',
-    title: 'Business Intelligence System Rebranding & Multi-Format Invoicing',
+    title: 'Business Intelligence — Initial Client Release',
     isLatest: true,
     isCurrent: true,
     highlights: [
-      'Multi-Format Invoicing: Support multiple company invoice numbering patterns (e.g. LGB-001, INV-00007) with auto-increment',
-      'System Rebranding: Complete rebrand to Business Intelligence with Powered by ARGUS CNC subtext across desktop and web',
-      'Direct Background Updates: Enhanced desktop auto-updater and seamless background installation',
+      'Business Intelligence Manufacturing Suite: Full operations management powered by ARGUS CNC',
+      'Multi-Format Invoicing & Series Auto-Numbering: Configure custom invoice formats per company',
+      'Cross-Platform: Windows Desktop Application & Android Mobile Application',
     ],
     sections: [
       {
@@ -47,168 +47,24 @@ export const VERSION_HISTORY: VersionRelease[] = [
           'Invoice Series Picker: Select, register, or create custom invoice number series per company with live format preview.',
           'Sequential Auto-Numbering: Automatically increments subsequent invoice numbers according to the active company format.',
           'Inline Edit & Persistence: Edit invoice numbers directly with immediate local and database registration.',
+          'Branded Invoice Documents: Professional sales invoice generation with clean Document Type and Invoice No. presentation.',
         ],
       },
       {
-        title: 'Rebranding & UI Polish',
+        title: 'Production & Manufacturing',
+        type: 'feature',
+        items: [
+          'Complete end-to-end pipeline from Enquiry to Sales Order, Job Cards, Actual Runs, Finished Goods, DC and Invoicing.',
+          'Decoupled finished goods costing and inventory stock tracking.',
+        ],
+      },
+      {
+        title: 'Platform & Experience',
         type: 'improvement',
         items: [
-          'Business Intelligence: Complete elimination of legacy ERP naming across web, desktop, and mobile.',
-          'Powered by ARGUS CNC subtext added across navigation and auth screens.',
-          'Voice Assistant updated to speak Business Intelligence.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.0.3',
-    releaseDate: 'November 3, 2026',
-    title: 'DC Number Display in Delivery Challans & Auto-Update Polish',
-    isLatest: false,
-    isCurrent: false,
-    highlights: [
-      'Delivery Challans: Added dedicated DC No column with sorting and instant search filtering',
-      'Desktop Auto-Updater: Verified signed auto-update distribution pipeline with GitHub Releases',
-    ],
-    sections: [
-      {
-        title: 'Sales & Dispatch',
-        type: 'feature',
-        items: [
-          'Delivery Challans List: Added DC No column between DC Date and Company for quick visibility.',
-          'Sorting & Filtering: Users can sort alphabetically/numerically by DC No and search by challan number.',
-        ],
-      },
-      {
-        title: 'Desktop Application',
-        type: 'improvement',
-        items: [
-          'Background Auto-Update: Integrated GitHub Releases endpoint with cryptographic signature verification.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.0.2',
-    releaseDate: 'November 2, 2026',
-    title: 'Actual Runs Flexibility, Costing Decoupling & Delivery Challan Linking',
-    isLatest: false,
-    isCurrent: false,
-    highlights: [
-      'Actual Runs: Save runs with or without finished quantity for flexible shop floor logging',
-      'Finished Goods Costing: Decoupled physical goods movement to prevent duplicate key constraint conflicts',
-      'Delivery Challan: Multi-tier fallback resolution for sales_order_id, eliminating not-null constraint errors',
-      'Time Picker: Fixed hour/minute select box digit clipping in Add Runs modal',
-      'Finished Goods: Automated card clearance upon full delivery fulfillment',
-    ],
-    sections: [
-      {
-        title: 'Production & Shop Floor',
-        type: 'feature',
-        items: [
-          'Add Actual Runs: Operators can log machine operations without compulsory finished quantities for intermediate steps.',
-          'Responsive modal layout: Widened machine process and operator columns to prevent text truncation.',
-          'Start/End time selector display fixes: Removed inner borders to ensure full two-digit visibility.',
-        ],
-      },
-      {
-        title: 'Sales & Delivery Challans',
-        type: 'fix',
-        items: [
-          'Sales Order Auto-Resolution: Delivery Challan creation now auto-locates or creates associated sales order records to satisfy the database foreign key constraint.',
-          'Preserved delivery challan audit history while filtering cancelled challans from active kanban cards.',
-          'Automatic card status sync when total delivered quantity meets or exceeds the ordered quantity.',
-        ],
-      },
-      {
-        title: 'Costing & Finished Goods',
-        type: 'improvement',
-        items: [
-          'Costing Sheet Version Conflict Fix: Handled duplicate key constraint (cnc_costing_sheets_ver_key) gracefully by updating existing drafts or generating new version revisions.',
-          'Physical goods movement decoupled from costing draft saves to prevent blocking warehouse inventory transfers.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.0.1',
-    releaseDate: 'October 28, 2026',
-    title: 'Desktop Auto-Updater Channel & Multi-Company Document Profiles',
-    isLatest: false,
-    isCurrent: false,
-    highlights: [
-      'Tauri v2 signed auto-updater with cryptographic minisign verification',
-      'Multi-company document profiles for Quotations, Invoices, and Delivery Challans',
-      'Production tracking kanban view with live machine status integration',
-      'In-app desktop installer download with SHA/size verification',
-    ],
-    sections: [
-      {
-        title: 'Desktop Application & Updates',
-        type: 'feature',
-        items: [
-          'Background auto-updater service configured to check GitHub Releases automatically at startup and every 4 hours.',
-          'Cryptographic verification ensuring no unverified binaries can be executed.',
-          'Top navigation download affordance and profile menu integration.',
-        ],
-      },
-      {
-        title: 'Company Settings & Profiles',
-        type: 'feature',
-        items: [
-          'Custom document profiles with company logos, GSTIN, bank details, and digital signatures.',
-          'Separate profile configuration for Quotations, Tax Invoices, and Delivery Challans.',
-        ],
-      },
-      {
-        title: 'System Stability',
-        type: 'fix',
-        items: [
-          'Loopback OAuth handler for Google authentication inside native Windows desktop shell.',
-          'Enhanced file download shims directing all reports and exports directly into the Windows Downloads folder.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.0.0',
-    releaseDate: 'October 15, 2026',
-    title: 'Business Intelligence & BI Suite Initial Production Release',
-    isLatest: false,
-    isCurrent: false,
-    highlights: [
-      'Comprehensive CNC manufacturing Business Intelligence spanning Sales, Engineering, Production, Inventory, and Finance',
-      'Real-time machine scheduling and shop floor tracking',
-      'CNC Vault with CAM file uploads and drawing preview',
-      'Double-entry general ledger, trial balance, and profit & loss reports',
-      'Native Windows NSIS desktop edition with local caching',
-    ],
-    sections: [
-      {
-        title: 'Core Business Intelligence Capabilities',
-        type: 'feature',
-        items: [
-          'Sales Pipeline & Lead Management with multi-stage quotation workflow.',
-          'Engineering BOM and Process Master for CNC routing and cycle time calculations.',
-          'Shop Floor tracking with work orders, job cards, and operator logging.',
-          'Warehouse inventory with raw materials, components, stock movements, and low-stock alerts.',
-        ],
-      },
-      {
-        title: 'Finance & Accounts',
-        type: 'feature',
-        items: [
-          'Invoicing with automatic tax breakdowns (CGST/SGST/IGST).',
-          'Bank entry matching and petty cash vouchers.',
-          'Automated financial reports: Profit & Loss, Balance Sheet, and Trial Balance.',
-        ],
-      },
-      {
-        title: 'Desktop Edition',
-        type: 'feature',
-        items: [
-          'Lightweight Windows installer powered by Tauri v2 and WebView2.',
-          'Fast native window management with hardware acceleration.',
+          'Business Intelligence: Complete system branding with Powered by ARGUS CNC integration.',
+          'Voice Assistant & Copilot: Intelligent voice navigation and workflow assistance.',
+          'Auto-Updater: Built-in background updates with cryptographic signature verification.',
         ],
       },
     ],

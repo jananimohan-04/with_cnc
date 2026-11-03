@@ -4,8 +4,8 @@ import path from 'path';
 const TOKEN = process.env.GITHUB_TOKEN || '';
 const OWNER = 'jananimohan-04';
 const REPO = 'with_cnc';
-const TAG = 'v1.0.4';
-const VERSION = '1.0.4';
+const TAG = 'v1.0.0';
+const VERSION = '1.0.0';
 
 const headers = {
   'Authorization': `token ${TOKEN}`,
