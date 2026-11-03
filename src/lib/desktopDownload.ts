@@ -18,7 +18,7 @@
 // here â€” signatures are only consumed by the in-app auto-updater.
 
 /** Version shown to users; keep in sync with the desktop release version. */
-export const DESKTOP_APP_VERSION = '1.0.0';
+export const DESKTOP_APP_VERSION = '1.0.5';
 
 /** Public, same-origin URL of the Windows installer (served from public/). */
 export const DESKTOP_DOWNLOAD_URL = '/downloads/cncforge-erp-setup.exe';

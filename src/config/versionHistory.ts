@@ -21,13 +21,45 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.0';
+export const CURRENT_APP_VERSION = '1.0.5';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
  * adding entries here ensures the UI displays the exact version-wise update.
  */
 export const VERSION_HISTORY: VersionRelease[] = [
+  {
+    version: '1.0.5',
+    releaseDate: 'November 4, 2026',
+    title: 'Business Intelligence v1.0.5 — Single-Page Invoices & Finished Goods Stock',
+    isLatest: true,
+    isCurrent: true,
+    highlights: [
+      'Single-Page Sales Invoice: Compact 2-column GST footer fits invoice entirely on 1 page',
+      'Finished Goods Stock Entry: Dedicated tracking for unordered products and buffer stock',
+      'Excel Import & Export: Matched column template for seamless inventory operations',
+    ],
+    sections: [
+      {
+        title: 'Sales & Invoicing',
+        type: 'improvement',
+        items: [
+          'Compact 2-Column Footer: Terms & Conditions on the left, Bank Details & Authorised Signatory on the right.',
+          'Single-Page Guarantee: Ordinary invoices fit cleanly onto 1 single page with zero trailing signature overflow.',
+          'Combined Invoice & DC: Multi-document preview now generates exactly 2 pages (Page 1 Invoice, Page 2 DC).',
+        ],
+      },
+      {
+        title: 'Inventory & Stock Management',
+        type: 'feature',
+        items: [
+          'Add Finished Goods Stock: Quick modal to enter unordered manufactured items and opening stock.',
+          'Custom Stock Columns: Product / Material Name, Category, Warehouse / Location, Unit, Available Qty (Opened Stock), Value (₹), Stock Status, Last Movement, Actions.',
+          'Excel Support: Download Finished Goods CSV template and import directly with smart column synonyms.',
+        ],
+      },
+    ],
+  },
   {
     version: '1.0.0',
     releaseDate: 'November 3, 2026',

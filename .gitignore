@@ -27,3 +27,5 @@ dist-ssr
 .env*
 !.env.example
 scratch/
+public/downloads/business-intelligence-setup.exe*
+public/downloads/business-intelligence.apk
