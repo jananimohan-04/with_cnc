@@ -978,21 +978,21 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const taxLabel = (name: string, rate: number | null | undefined) =>
     rate != null ? `${name} @ ${rate}%` : name;
 
-  let y = 14;
+  let y = 11;
   // Title bar
   doc.setFillColor(...SHADING);
-  doc.rect(ML, y, contentW, 9, 'F');
+  doc.rect(ML, y, contentW, 7.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(...INK);
-  doc.text(String(input.title || 'Sales Invoice'), cx, y + 6.5, { align: 'center' });
-  y += 13;
+  doc.text(String(input.title || 'Sales Invoice'), cx, y + 5.2, { align: 'center' });
+  y += 9.5;
 
   // Letterhead
   let logoDrawn = false;
   if (seller?.logo) {
-    const f = fitImage(doc, seller.logo, 32, 14);
-    if (f) { try { doc.addImage(seller.logo, f.fmt, ML + 2, y + (14 - f.h) / 2, f.w, f.h); logoDrawn = true; } catch { /* default logo below */ } }
+    const f = fitImage(doc, seller.logo, 30, 13);
+    if (f) { try { doc.addImage(seller.logo, f.fmt, ML + 2, y + (13 - f.h) / 2, f.w, f.h); logoDrawn = true; } catch { /* default logo below */ } }
   }
   if (!logoDrawn) {
     try {
@@ -1005,41 +1005,40 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
           reader.onerror = () => reject(reader.error);
           reader.readAsDataURL(blob);
         });
-        doc.addImage(dataUrl, 'JPEG', ML + 2, y, 32, 14);
+        doc.addImage(dataUrl, 'JPEG', ML + 2, y, 30, 13);
       }
     } catch { /* printable without the logo */ }
   }
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(17);
-  doc.text(String(seller?.name || input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase(), cx, y + 6, { align: 'center' });
-  y += 11;
-  // address, GSTIN, phones, e-mails, website (the profile's GSTIN wins over the one stored on the company row)
+  doc.setFontSize(16);
+  doc.text(String(seller?.name || input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase(), cx, y + 5.5, { align: 'center' });
+  y += 9.5;
+  // address, GSTIN, phones, e-mails, website
   const headGstin = String(seller?.gstin || input.companyGstin || '').trim();
   const headLines = sellerLetterhead(seller, headGstin);
   if (headLines.length) {
-    // the company's own letterhead: compact, so an ordinary invoice still fits on one page with its signatures
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.8);
+    doc.setFontSize(7.5);
     doc.setTextColor(...GREY);
-    const wrapped = headLines.flatMap((l) => doc.splitTextToSize(l, contentW - 70) as string[]).slice(0, 4);
-    for (const line of wrapped) { doc.text(line, cx, y, { align: 'center' }); y += 3.3; }
+    const wrapped = headLines.flatMap((l) => doc.splitTextToSize(l, contentW - 70) as string[]).slice(0, 3);
+    for (const line of wrapped) { doc.text(line, cx, y, { align: 'center' }); y += 3.0; }
     doc.setTextColor(...INK);
-    y += 2;
+    y += 1.5;
   } else {
     if (headGstin) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(...GREY);
       doc.text(`GSTIN: ${headGstin}`, cx, y, { align: 'center' });
       doc.setTextColor(...INK);
-      y += 4;
+      y += 3.5;
     }
-    y += 7;
+    y += 4;
   }
 
   const gridOpts: any = {
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
+    styles: { fontSize: 8.5, cellPadding: 1.8, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
     margin: { left: ML, right: MR },
   };
   const labelCell = (w: number) => ({ fontStyle: 'bold' as const, cellWidth: w });
@@ -1052,7 +1051,6 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     ? 'Proforma Inv No.'
     : 'Invoice No.';
 
-  // Party / document box
   autoTable(doc, {
     startY: y,
     body: [
@@ -1062,11 +1060,11 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
       ['Company GSTIN', val(input.partyGstin), 'DC Number', val(input.dcNo)],
       ['P.O. Number', val(input.poNo), 'DC Date', challanDate(input.dcDate)],
     ],
-    columnStyles: { 0: labelCell(26), 1: {}, 2: labelCell(28), 3: {} },
+    columnStyles: { 0: labelCell(25), 1: {}, 2: labelCell(26), 3: {} },
     ...gridOpts,
   });
   y = (doc as any).lastAutoTable?.finalY ?? y + 10;
-  y += 3;
+  y += 2.5;
 
   // Item table
   autoTable(doc, {
@@ -1075,31 +1073,31 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     body: (input.items.length ? input.items : [{ description: '', hsn: '', qty: 0, unit: '', price: 0, amount: 0 }])
       .map((it, i) => [String(i + 1), it.hsn || '', productOnly(it.description || ''), it.qty ? fmt(it.qty) : '', it.unit || '', it.price ? fmt(it.price) : '', it.amount ? fmt(it.amount) : '']),
     theme: 'grid',
-    headStyles: { fillColor: SHADING, textColor: 0, fontSize: 9, fontStyle: 'bold', halign: 'center', lineColor: GRID, lineWidth: 0.3 },
-    styles: { fontSize: 9, cellPadding: 2.2, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
+    headStyles: { fillColor: SHADING, textColor: 0, fontSize: 8.5, fontStyle: 'bold', halign: 'center', lineColor: GRID, lineWidth: 0.3 },
+    styles: { fontSize: 8.5, cellPadding: 2.0, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
     columnStyles: {
       0: { cellWidth: 12, halign: 'center' },
       1: { cellWidth: 22, halign: 'center' },
-      3: { cellWidth: 16, halign: 'center' },
-      4: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 15, halign: 'center' },
+      4: { cellWidth: 15, halign: 'center' },
       5: { cellWidth: 26, halign: 'right' },
       6: { cellWidth: 28, halign: 'right' },
     },
     margin: { left: ML, right: MR },
   });
   y = (doc as any).lastAutoTable?.finalY ?? y + 10;
-  y += 3;
+  y += 2.5;
 
   const ensureSpace = (needed: number) => {
-    if (y + needed > 272) {
+    if (y + needed > 278) {
       doc.addPage();
-      y = 14;
+      y = 12;
     }
   };
 
   // Totals: amount-in-words left, tax stack right
-  const rightW = 96;
-  const leftW = contentW - rightW - 3;
+  const rightW = 92;
+  const leftW = contentW - rightW - 2;
   const discAmt = Number(input.discountAmount) || 0;
   const subtotalVal = input.subtotal != null && input.subtotal > 0 ? Number(input.subtotal) : (input.basicValue + discAmt);
   const computedGrandTotal = (input.grandTotal != null && Number(input.grandTotal) > 0)
@@ -1116,80 +1114,114 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     ['Round Off', fmt(input.roundOff)],
     ['Total', fmt(computedGrandTotal)],
   ];
-  ensureSpace(62);
+  ensureSpace(45);
   autoTable(doc, {
     startY: y,
     body: [[`Rupees (in words):\n${amountInWords(computedGrandTotal)}`]],
     tableWidth: leftW,
     margin: { left: ML },
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: INK, lineColor: GRID, lineWidth: 0.3, fontStyle: 'bold' },
+    styles: { fontSize: 8.5, cellPadding: 2, textColor: INK, lineColor: GRID, lineWidth: 0.3, fontStyle: 'bold' },
   });
   const leftEnd = (doc as any).lastAutoTable?.finalY ?? y;
   autoTable(doc, {
     startY: y,
     body: totalRows,
     tableWidth: rightW,
-    margin: { left: ML + leftW + 3 },
+    margin: { left: ML + leftW + 2 },
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2.2, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
-    columnStyles: { 0: {}, 1: { cellWidth: 30, halign: 'right' } },
+    styles: { fontSize: 8.5, cellPadding: 1.6, textColor: INK, lineColor: GRID, lineWidth: 0.3 },
+    columnStyles: { 0: {}, 1: { cellWidth: 28, halign: 'right' } },
     didParseCell: (d: any) => {
       if (d.section === 'body' && d.row.index === totalRows.length - 1) d.cell.styles.fontStyle = 'bold';
     },
   });
-  y = Math.max(leftEnd, (doc as any).lastAutoTable?.finalY ?? y) + 3;
+  y = Math.max(leftEnd, (doc as any).lastAutoTable?.finalY ?? y) + 2.5;
 
-  // Terms + bank details boxes
-  const declTitle = 'Terms';
+  // Terms + Bank Details + Signatures block (Compact 2-column layout to fit on 1 page)
+  const declTitle = 'Terms & Conditions';
   const declBody = String(input.terms || input.declaration ||
-    'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.');
-  const bankSource = seller?.bankLines?.length ? seller.bankLines : input.bankLines;   // the profile's bank details win
+    '1. Prices are ex-works unless specifically agreed in writing.\n2. Delivery lead time will be confirmed upon receipt of formal purchase order.\n3. Taxes (GST) will be charged extra as applicable.\n4. Standard manufacturing defect warranty applies.');
+  const bankSource = seller?.bankLines?.length ? seller.bankLines : input.bankLines;
   const bankBody = (bankSource && bankSource.length ? bankSource : ['—']).join('\n');
-  const declLines: string[] = doc.splitTextToSize(declBody, (contentW - 3) / 2 - 10);
-  const bankLines: string[] = doc.splitTextToSize(bankBody, (contentW - 3) / 2 - 10);
-  const boxesH = Math.max(30, 12 + Math.max(declLines.length, bankLines.length) * 4.4);
-  ensureSpace(boxesH + 4);
   const boxW = (contentW - 3) / 2;
-  const drawInfoBox = (x: number, title: string, lines: string[]) => {
-    doc.setDrawColor(...GRID);
-    doc.setLineWidth(0.3);
-    doc.rect(x, y, boxW, boxesH);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text(title, x + 4, y + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.text(lines, x + 4, y + 12);
-  };
-  drawInfoBox(ML, declTitle, declLines);
-  drawInfoBox(ML + boxW + 3, 'Bank Details', bankLines);
-  y += boxesH + 8;
+  const declLines: string[] = doc.splitTextToSize(declBody, boxW - 8);
+  const bankLines: string[] = doc.splitTextToSize(bankBody, boxW - 8);
 
-  // Signatures
-  ensureSpace(26);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...INK);
-  if (seller?.signature) {
-    const f = fitImage(doc, seller.signature, 44, 11);
-    if (f) { try { doc.addImage(seller.signature, f.fmt, pageWidth - MR - f.w, y + 11 - f.h, f.w, f.h); } catch { /* unsigned */ } }
-  }
-  doc.text('Signature of the Company', ML, y + 12);
-  doc.text('Authorised Signature', pageWidth - MR, y + 12, { align: 'right' });
-  y += 16;
+  const boxesH = Math.min(48, Math.max(38, Math.min(declLines.length * 3.2 + 9, 48)));
+  ensureSpace(boxesH + 9);
 
-  // Computer-generated note (it only needs its own 8 mm: it must not be sent to a page of its own for the last millimetre)
-  ensureSpace(9);
-  doc.setFontSize(8);
-  const note = '*** This is a computer-generated Original Document and does not require a physical signature. ***';
-  const noteW = doc.getTextWidth(note) + 10;
+  // Left Box (Terms & Conditions)
   doc.setDrawColor(...GRID);
   doc.setLineWidth(0.3);
-  doc.roundedRect(cx - noteW / 2, y, noteW, 8, 1, 1, 'D');
-  doc.text(note, cx, y + 5.5, { align: 'center' });
-  y += 12;
+  doc.rect(ML, y, boxW, boxesH);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...INK);
+  doc.text(declTitle, ML + 3, y + 4.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  const maxDeclLines = Math.floor((boxesH - 7) / 3.0);
+  doc.text(declLines.slice(0, maxDeclLines), ML + 3, y + 8.5);
+
+  // Right Box (Bank Details top, Authorised Signatory bottom)
+  const rightX = ML + boxW + 3;
+  doc.setDrawColor(...GRID);
+  doc.setLineWidth(0.3);
+  doc.rect(rightX, y, boxW, boxesH);
+
+  // Bank Details (top portion)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...INK);
+  doc.text('Bank Details', rightX + 3, y + 4.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  const maxBankLines = Math.min(bankLines.length, 5);
+  doc.text(bankLines.slice(0, maxBankLines), rightX + 3, y + 8.2);
+
+  // Divider line
+  const dividerY = y + 23;
+  doc.setDrawColor(...GRID);
+  doc.setLineWidth(0.2);
+  doc.line(rightX, dividerY, rightX + boxW, dividerY);
+
+  // Company Signature (bottom portion)
+  const compHeader = `For ${String(seller?.name || input.companyName || 'ARGUS TECHNOLOGIES').toUpperCase()}`;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...INK);
+  doc.text(compHeader, rightX + boxW - 3, dividerY + 4, { align: 'right' });
+
+  if (seller?.signature) {
+    const sigMaxW = Math.min(boxW - 10, 36);
+    const sigMaxH = Math.min(boxesH - (dividerY - y) - 8, 10);
+    const f = fitImage(doc, seller.signature, sigMaxW, sigMaxH);
+    if (f) {
+      try {
+        doc.addImage(seller.signature, f.fmt, rightX + boxW - 3 - f.w, dividerY + 4.5, f.w, f.h);
+      } catch { /* unsigned */ }
+    }
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...INK);
+  doc.text('Authorised Signatory', rightX + boxW - 3, y + boxesH - 2.5, { align: 'right' });
+
+  y += boxesH + 3;
+
+  // Computer-generated note
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(...GREY);
+  const note = '*** This is a computer-generated Original Document and does not require a physical signature. ***';
+  const noteW = doc.getTextWidth(note) + 8;
+  doc.setDrawColor(...GRID);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(cx - noteW / 2, y, noteW, 6, 1, 1, 'D');
+  doc.text(note, cx, y + 4.2, { align: 'center' });
+  y += 8;
 
   // Outer border + page numbers (only numbered past one page)
   const pages = doc.getNumberOfPages();
