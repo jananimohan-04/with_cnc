@@ -606,6 +606,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       companyName,
       companyGstin: comp.gstin,
       title: docTitle,
+      docType: docType,
       docNo: invoiceNo.trim() || 'DRAFT',
       invDate,
       partyName: customer,

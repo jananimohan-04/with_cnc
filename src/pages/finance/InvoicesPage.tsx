@@ -814,6 +814,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
       companyName: company?.company_name || 'ARGUS CNC',
       companyGstin: comp.gstin,
       title: inv.invoice_type || 'Sales Invoice',
+      docType: inv.invoice_type || 'Sales Invoice',
       docNo: inv.invoice_no,
       invDate: inv.invoice_date,
       partyName: inv.customer_name || '',

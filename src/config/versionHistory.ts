@@ -21,7 +21,7 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.3';
+export const CURRENT_APP_VERSION = '1.0.4';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
@@ -29,11 +29,43 @@ export const CURRENT_APP_VERSION = '1.0.3';
  */
 export const VERSION_HISTORY: VersionRelease[] = [
   {
+    version: '1.0.4',
+    releaseDate: 'November 3, 2026',
+    title: 'Business Intelligence System Rebranding & Multi-Format Invoicing',
+    isLatest: true,
+    isCurrent: true,
+    highlights: [
+      'Multi-Format Invoicing: Support multiple company invoice numbering patterns (e.g. LGB-001, INV-00007) with auto-increment',
+      'System Rebranding: Complete rebrand to Business Intelligence with Powered by ARGUS CNC subtext across desktop and web',
+      'Direct Background Updates: Enhanced desktop auto-updater and seamless background installation',
+    ],
+    sections: [
+      {
+        title: 'Sales & Invoicing',
+        type: 'feature',
+        items: [
+          'Invoice Series Picker: Select, register, or create custom invoice number series per company with live format preview.',
+          'Sequential Auto-Numbering: Automatically increments subsequent invoice numbers according to the active company format.',
+          'Inline Edit & Persistence: Edit invoice numbers directly with immediate local and database registration.',
+        ],
+      },
+      {
+        title: 'Rebranding & UI Polish',
+        type: 'improvement',
+        items: [
+          'Business Intelligence: Complete elimination of legacy ERP naming across web, desktop, and mobile.',
+          'Powered by ARGUS CNC subtext added across navigation and auth screens.',
+          'Voice Assistant updated to speak Business Intelligence.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.3',
     releaseDate: 'November 3, 2026',
     title: 'DC Number Display in Delivery Challans & Auto-Update Polish',
-    isLatest: true,
-    isCurrent: true,
+    isLatest: false,
+    isCurrent: false,
     highlights: [
       'Delivery Challans: Added dedicated DC No column with sorting and instant search filtering',
       'Desktop Auto-Updater: Verified signed auto-update distribution pipeline with GitHub Releases',

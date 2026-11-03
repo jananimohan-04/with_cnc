@@ -3195,8 +3195,11 @@ export function SalesPipelinePage() {
       ];
     }
     if (title === 'Invoice') {
-      const preferred = ['invoice_no', 'invoice_date', 'amount', 'taxable_value', 'cgst', 'sgst', 'igst', 'discount_amount', 'round_off', 'notes'];
+      const preferred = ['invoice_type', 'invoice_no', 'invoice_date', 'amount', 'taxable_value', 'cgst', 'sgst', 'igst', 'discount_amount', 'round_off', 'notes'];
       const map = new Map(entries);
+      if (!map.has('invoice_type')) {
+        map.set('invoice_type', 'Sales Invoice');
+      }
       if (!map.has('invoice_no')) {
         map.set('invoice_no', '');
       }
@@ -3301,11 +3304,12 @@ export function SalesPipelinePage() {
             if (title === 'Quotation' && (key === 'customer' || key === 'part_name' || key === 'salesperson')) return null;
             if (title === 'Inward' && (key === 'project_name' || key === 'sales_order_ref' || key === 'party_name' || key === 'created_at' || key === 'updated_at')) return null;
             if (title === 'Finished Goods' && (key === 'wo_no' || key === 'part_name' || key === 'customer' || key === 'sales_order' || key === 'quantity' || key === 'rejected' || key === 'due_date' || key === 'priority' || key === 'drawing_revision' || key === 'created_at')) return null;
-            if (title === 'Invoice' && (key === 'customer_name' || key === 'part_name' || key === 'quantity' || key === 'created_at' || key === 'invoice_type' || key === 'basic_value' || key === 'cancelled' || key === 'created_by' || key === 'updated_at')) return null;
+            if (title === 'Invoice' && (key === 'customer_name' || key === 'part_name' || key === 'quantity' || key === 'created_at' || key === 'basic_value' || key === 'cancelled' || key === 'created_by' || key === 'updated_at')) return null;
             if (title === 'Quotation' && (key === 'valid_till' || key === 'valid_until' || key === 'status' || key === 'created_at' || key === 'part_number' || key === 'part_no')) return null;
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             if (key === 'lead_no') formattedKey = 'Company ID';
             if (key === 'part_name') formattedKey = 'Product Name';
+            if (key === 'invoice_type') formattedKey = 'Document Type';
             if (key === 'invoice_no') formattedKey = 'Invoice No';
             const isInvoiceNo = title === 'Invoice' && key === 'invoice_no';
             const autoInvNo = isInvoiceNo ? (raw.invoice_no || value || (raw.id ? `INV-${String(raw.id).substring(0, 5).toUpperCase()}` : '')) : '';
@@ -3323,7 +3327,28 @@ export function SalesPipelinePage() {
                     </span>
                   )}
                 </div>
-                {isEditable ? (
+                {key === 'invoice_type' ? (
+                  viewEditMode ? (
+                    <select
+                      className="w-full text-sm font-medium rounded px-2 py-1 bg-white border border-brand-400 focus:outline-none"
+                      value={displayVal || 'Sales Invoice'}
+                      onChange={(e) => {
+                        handleInlineEdit('Invoice', raw.id, 'invoice_type', e.target.value);
+                      }}
+                    >
+                      <option value="Sales Invoice">Sales Invoice</option>
+                      <option value="Proforma Invoice">Proforma Invoice</option>
+                      <option value="Credit Note">Credit Note</option>
+                    </select>
+                  ) : (
+                    <input
+                      readOnly
+                      aria-label="Document Type"
+                      className="w-full text-sm font-medium rounded px-2 py-1 bg-slate-50 text-slate-700 border border-slate-300 cursor-default focus:outline-none"
+                      value={displayVal || 'Sales Invoice'}
+                    />
+                  )
+                ) : isEditable ? (
                    <input
                      type={isDateField ? 'date' : 'text'}
                      className={`w-full text-sm font-medium rounded px-2 py-1 bg-white focus:outline-none ${
@@ -3520,7 +3545,8 @@ export function SalesPipelinePage() {
       return {
         companyName: company?.company_name || 'ARGUS CNC',
         companyGstin: comp.gstin,
-        title: record.invoice_type || 'Tax Invoice',
+        title: record.invoice_type || 'Sales Invoice',
+        docType: record.invoice_type || 'Sales Invoice',
         docNo: String(record.invoice_no || record.inv_no || ''),
         invDate: record.invoice_date || record.date,
         partyName: String(record.customer_name || record.customer || ''),
@@ -5618,6 +5644,7 @@ export function SalesPipelinePage() {
           if (invItems && invItems.length) {
             aggregated.invoice = {
               ...card.raw,
+              invoice_no: aggregated.invoice.invoice_no || card.raw.invoice_no || '',
               items: invItems.map((r: any) => ({
                 partName: r.description, quantity: r.quantity, unit: r.unit,
                 unitPrice: r.rate, rate: r.rate, hsn: r.hsn, gst_rate: r.gst_rate, amount: r.amount,

@@ -867,6 +867,7 @@ export interface SalesInvoiceInput {
   companyName: string;
   companyGstin?: string;
   title?: string;
+  docType?: string;
   docNo: string;
   invDate: string | null | undefined;
   partyName: string;
@@ -1044,16 +1045,24 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const labelCell = (w: number) => ({ fontStyle: 'bold' as const, cellWidth: w });
 
   // Party / document box
+  const docTypeDisplay = String(input.docType || input.title || 'Sales Invoice').trim() || 'Sales Invoice';
+  const invNoLabel = docTypeDisplay === 'Credit Note'
+    ? 'Credit Note No.'
+    : docTypeDisplay === 'Proforma Invoice'
+    ? 'Proforma Inv No.'
+    : 'Invoice No.';
+
+  // Party / document box
   autoTable(doc, {
     startY: y,
     body: [
-      ['Company Name', val(input.partyName), 'Doc. No', val(input.docNo)],
-      ['Company Address', val(input.partyAddress), 'DC Number', val(input.dcNo)],
-      ['Company Code', val(input.partyCode), 'DC Date', challanDate(input.dcDate)],
-      ['Company GSTIN', val(input.partyGstin), 'P.O. Number', val(input.poNo)],
-      ['', '', 'Date', challanDate(input.invDate)],
+      ['Company Name', val(input.partyName), 'Document Type', val(docTypeDisplay)],
+      ['Company Address', val(input.partyAddress), invNoLabel, val(input.docNo)],
+      ['Company Code', val(input.partyCode), 'Invoice Date', challanDate(input.invDate)],
+      ['Company GSTIN', val(input.partyGstin), 'DC Number', val(input.dcNo)],
+      ['P.O. Number', val(input.poNo), 'DC Date', challanDate(input.dcDate)],
     ],
-    columnStyles: { 0: labelCell(26), 1: {}, 2: labelCell(26), 3: {} },
+    columnStyles: { 0: labelCell(26), 1: {}, 2: labelCell(28), 3: {} },
     ...gridOpts,
   });
   y = (doc as any).lastAutoTable?.finalY ?? y + 10;

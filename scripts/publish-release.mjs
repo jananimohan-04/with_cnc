@@ -4,12 +4,12 @@ import path from 'path';
 const TOKEN = process.env.GITHUB_TOKEN || '';
 const OWNER = 'jananimohan-04';
 const REPO = 'with_cnc';
-const TAG = 'v1.0.3';
-const VERSION = '1.0.3';
+const TAG = 'v1.0.4';
+const VERSION = '1.0.4';
 
 const headers = {
   'Authorization': `token ${TOKEN}`,
-  'User-Agent': 'CNCFORGE-ERP-Publisher',
+  'User-Agent': 'Business-Intelligence-Publisher',
   'Accept': 'application/vnd.github.v3+json',
 };
 
@@ -29,8 +29,8 @@ async function main() {
       body: JSON.stringify({
         tag_name: TAG,
         target_commitish: 'main',
-        name: `CNCFORGE ERP v${VERSION}`,
-        body: `## CNCFORGE ERP v${VERSION}\n\n- DC Number display in Delivery Challans table\n- Actual runs flexibility & costing decoupling\n- Background automatic update support\n- Signed Windows desktop installer`,
+        name: `Business Intelligence v${VERSION}`,
+        body: `## Business Intelligence v${VERSION}\n\n- Multi-format invoice numbering & auto-generation per company\n- Full system rebrand to Business Intelligence with Powered by ARGUS CNC subtext\n- Cryptographically signed desktop installer with instant auto-update support`,
         draft: false,
         prerelease: false,
       }),
@@ -93,8 +93,12 @@ async function main() {
   }
 
   // Read installer & signature
-  const installerPath = path.resolve('public/downloads/cncforge-erp-setup.exe');
-  const sigPath = path.resolve('public/downloads/cncforge-erp-setup.exe.sig');
+  const installerPath = fs.existsSync(path.resolve('public/downloads/business-intelligence-setup.exe'))
+    ? path.resolve('public/downloads/business-intelligence-setup.exe')
+    : path.resolve('public/downloads/cncforge-erp-setup.exe');
+  const sigPath = fs.existsSync(path.resolve('public/downloads/business-intelligence-setup.exe.sig'))
+    ? path.resolve('public/downloads/business-intelligence-setup.exe.sig')
+    : path.resolve('public/downloads/cncforge-erp-setup.exe.sig');
 
   if (!fs.existsSync(installerPath) || !fs.existsSync(sigPath)) {
     throw new Error('Installer or signature not found!');
@@ -103,20 +107,20 @@ async function main() {
   const installerBuf = fs.readFileSync(installerPath);
   const sigText = fs.readFileSync(sigPath, 'utf8').trim();
 
-  // Upload installer
-  const installerUrl = await uploadAsset('cncforge-erp-setup.exe', installerBuf, 'application/vnd.microsoft.portable-executable');
-
-  // Also upload as CNCFORGE ERP_1.0.2_x64-setup.exe for clarity
-  await uploadAsset(`CNCFORGE ERP_${VERSION}_x64-setup.exe`, installerBuf, 'application/vnd.microsoft.portable-executable');
+  // Upload installer as both filenames so older and newer links work
+  const installerUrl = await uploadAsset('business-intelligence-setup.exe', installerBuf, 'application/vnd.microsoft.portable-executable');
+  await uploadAsset('cncforge-erp-setup.exe', installerBuf, 'application/vnd.microsoft.portable-executable');
+  await uploadAsset(`Business Intelligence_${VERSION}_x64-setup.exe`, installerBuf, 'application/vnd.microsoft.portable-executable');
 
   // Upload .sig
+  await uploadAsset('business-intelligence-setup.exe.sig', Buffer.from(sigText, 'utf8'), 'text/plain');
   await uploadAsset('cncforge-erp-setup.exe.sig', Buffer.from(sigText, 'utf8'), 'text/plain');
-  await uploadAsset(`CNCFORGE ERP_${VERSION}_x64-setup.exe.sig`, Buffer.from(sigText, 'utf8'), 'text/plain');
+  await uploadAsset(`Business Intelligence_${VERSION}_x64-setup.exe.sig`, Buffer.from(sigText, 'utf8'), 'text/plain');
 
   // Generate latest.json
   const latestJson = {
     version: VERSION,
-    notes: `CNCFORGE ERP v${VERSION} update`,
+    notes: `Business Intelligence v${VERSION} update: Multi-format invoice numbering & full Business Intelligence rebranding.`,
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': {

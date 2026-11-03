@@ -2,7 +2,7 @@
 // SOURCE OF TRUTH for the public installer URL and the version it advertises.
 //
 // Releasing a new desktop version (see docs/desktop/RELEASING.md):
-//   1. Replace public/downloads/cncforge-erp-setup.exe with the new NSIS
+//   1. Replace public/downloads/business-intelligence-setup.exe with the new NSIS
 //      installer (src-tauri/target/release/bundle/nsis/*-setup.exe), keeping
 //      the stable filename. The file is copied verbatim into dist/ by Vite and
 //      served at https://with-cnc.vercel.app/downloads/cncforge-erp-setup.exe.
@@ -18,7 +18,7 @@
 // here â€” signatures are only consumed by the in-app auto-updater.
 
 /** Version shown to users; keep in sync with the desktop release version. */
-export const DESKTOP_APP_VERSION = '1.0.3';
+export const DESKTOP_APP_VERSION = '1.0.4';
 
 /** Public, same-origin URL of the Windows installer (served from public/). */
 export const DESKTOP_DOWNLOAD_URL = '/downloads/cncforge-erp-setup.exe';
