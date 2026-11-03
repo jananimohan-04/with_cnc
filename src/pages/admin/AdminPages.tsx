@@ -663,7 +663,7 @@ export function SettingsPage() {
     { id: 'quotation', label: 'Quotation Profile', hint: 'Printed on quotations', node: <DocumentProfilePage kind="quotation" embedded /> },
     { id: 'invoice', label: 'Invoice Profile', hint: 'Printed on invoices', node: <DocumentProfilePage kind="invoice" embedded /> },
     { id: 'dc', label: 'Delivery Challan Profile', hint: 'Printed on delivery challans', node: <DocumentProfilePage kind="dc" embedded /> },
-    ...(isTauri() ? [{ id: 'updates', label: 'App Updates', hint: 'Desktop app version', node: <UpdatesSettingsPage /> }] : []),
+    { id: 'updates', label: 'App Updates & Releases', hint: 'Version-wise history & updates', node: <UpdatesSettingsPage /> },
   ];
   const active = tabs.find((t) => t.id === params.get('tab')) ?? tabs[0];
   return (

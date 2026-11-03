@@ -4,6 +4,7 @@
 // emitted by lib/desktop/updater.ts (startup/periodic/manual checks) and shows:
 //   * an "Update available" card  →  Update Now  /  Remind Me Later
 //   * download progress           →  Installing… (the app restarts itself)
+//   * update ready                →  Restart & Apply Now
 //   * errors                      →  Retry / Dismiss (manual checks only)
 //
 // The updater plugin verifies the minisign signature of every downloaded
@@ -16,25 +17,21 @@ import {
   discardPendingUpdate,
   getPendingUpdate,
   getRemindUntil,
+  installPendingUpdateAndRestart,
   runUpdateCheck,
   setRemindLater,
+  type UpdateEventDetail,
   type UpdateSummary,
 } from '@/lib/desktop/updater';
 
 type ViewState =
   | { kind: 'hidden' }
   | { kind: 'available'; summary: UpdateSummary }
-  | { kind: 'downloading'; received: number; total?: number }
+  | { kind: 'downloading'; received: number; total?: number; version?: string }
+  | { kind: 'ready'; version: string }
   | { kind: 'installing' }
   | { kind: 'error'; message: string }
   | { kind: 'uptodate' };
-
-interface StateEventDetail {
-  kind: 'available' | 'none' | 'error';
-  summary?: UpdateSummary;
-  origin?: string;
-  message?: string;
-}
 
 function formatBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
@@ -48,7 +45,7 @@ export function UpdateCenter() {
 
   useEffect(() => {
     const onState = (event: Event) => {
-      const detail = (event as CustomEvent<StateEventDetail>).detail;
+      const detail = (event as CustomEvent<UpdateEventDetail>).detail;
       if (!detail) return;
       if (detail.kind === 'available' && detail.summary) {
         const summary = detail.summary;
@@ -56,9 +53,16 @@ export function UpdateCenter() {
         // Automatic checks honour "Remind Me Later"; manual checks always show.
         if (summary.origin !== 'manual' && getRemindUntil() > Date.now()) return;
         setView({ kind: 'available', summary });
+      } else if (detail.kind === 'downloading') {
+        setView({ kind: 'downloading', received: detail.received, total: detail.total, version: detail.version });
+      } else if (detail.kind === 'ready') {
+        setView({ kind: 'ready', version: detail.version });
+      } else if (detail.kind === 'installing') {
+        setView({ kind: 'installing' });
       } else if (detail.kind === 'error') {
-        // Only manual checks surface errors (offline startup stays silent).
-        if (detail.origin === 'manual') setView({ kind: 'error', message: detail.message || 'Update check failed.' });
+        if (detail.origin === 'manual') {
+          setView({ kind: 'error', message: detail.message || 'Update check failed.' });
+        }
       } else if (detail.kind === 'none' && detail.origin === 'manual') {
         setView({ kind: 'uptodate' });
         window.setTimeout(() => {
@@ -78,46 +82,20 @@ export function UpdateCenter() {
   const remindLater = useCallback(() => {
     setRemindLater();
     setView({ kind: 'hidden' });
-    // Discard this candidate; a later check re-detects it after the snooze ends.
     if (getPendingUpdate()) discardPendingUpdate();
   }, []);
 
   const startInstall = useCallback(async () => {
-    const update = getPendingUpdate();
-    if (!update) {
-      setView({ kind: 'error', message: 'Update information expired. Please check again.' });
-      return;
-    }
-    // A fresh check clears any "remind later" snooze once the user commits.
     clearRemindLater();
-    let received = 0;
-    let total: number | undefined;
-    setView({ kind: 'downloading', received: 0, total: undefined });
     try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          total = event.data.contentLength;
-          setView({ kind: 'downloading', received, total });
-        } else if (event.event === 'Progress') {
-          received += event.data.chunkLength;
-          setView({ kind: 'downloading', received, total });
-        } else if (event.event === 'Finished') {
-          setView({ kind: 'installing' });
-        }
-      });
-      // On Windows the process normally exits inside install() and the NSIS
-      // updater restarts the app (restartAfterInstall defaults to true). If we
-      // ever get here, restart explicitly so the user is never left stale.
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await relaunch();
+      await installPendingUpdateAndRestart();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // The installer taking the process down mid-flight is expected on Windows.
       if (/exit|closed|destroyed|shutdown/i.test(message)) {
         setView({ kind: 'installing' });
         return;
       }
-      console.error('[updater] install failed:', err);
+      console.error('[UpdateCenter] install failed:', err);
       setView({ kind: 'error', message });
     }
   }, []);
@@ -130,14 +108,14 @@ export function UpdateCenter() {
   if (view.kind === 'hidden' || view.kind === 'uptodate') return null;
 
   const cardBase =
-    'fixed bottom-4 right-4 z-[2147483500] w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/25 overflow-hidden';
+    'fixed bottom-4 right-4 z-[2147483500] w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/25 overflow-hidden animate-fade-in';
   const titleBar =
-    'flex items-center gap-2 bg-navy-950 text-white px-4 py-3'; // matches BI chrome
+    'flex items-center gap-2 bg-navy-950 text-white px-4 py-3';
   const actions = 'flex items-center justify-end gap-2 px-4 py-3 bg-slate-50 border-t border-slate-200';
   const btnPrimary =
-    'px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold transition-colors disabled:opacity-60';
+    'px-3.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-colors disabled:opacity-60 cursor-pointer shadow-sm';
   const btnGhost =
-    'px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-100 transition-colors';
+    'px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer';
 
   if (view.kind === 'available') {
     const { summary } = view;
@@ -160,7 +138,7 @@ export function UpdateCenter() {
           )}
           {!summary.notes && (
             <p className="text-xs text-slate-500">
-              A new version of CNCFORGE BI is ready to install. Your data is preserved.
+              A new version of CNCFORGE ERP is ready to install. Your data is preserved.
             </p>
           )}
         </div>
@@ -169,7 +147,7 @@ export function UpdateCenter() {
             Remind Me Later
           </button>
           <button type="button" className={btnPrimary} onClick={() => void startInstall()}>
-            Update Now
+            Update & Restart Now
           </button>
         </div>
       </div>
@@ -184,18 +162,47 @@ export function UpdateCenter() {
         <div className={titleBar}>
           <span className="text-base">⬇</span>
           <p className="text-sm font-semibold flex-1">Downloading update…</p>
-          <span className="text-xs text-slate-300">{pct !== null ? `${pct}%` : formatBytes(view.received)}</span>
+          <span className="text-xs text-slate-300 tabular-nums">{pct !== null ? `${pct}%` : formatBytes(view.received)}</span>
         </div>
         <div className="px-4 py-4">
           <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
             <div
-              className="h-full bg-brand-500 transition-[width] duration-200"
+              className="h-full bg-orange-500 transition-[width] duration-200"
               style={{ width: pct !== null ? `${pct}%` : '35%' }}
             />
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            The update is signature-verified before installation.
+            Cryptographically verified before installation.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (view.kind === 'ready') {
+    return (
+      <div className={cardBase} role="alertdialog" aria-label="Update ready to install">
+        <div className={`${titleBar} !bg-emerald-900`}>
+          <span className="text-base text-emerald-400">✓</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold leading-tight">Update Downloaded</p>
+            <p className="text-xs text-emerald-200 leading-tight mt-0.5">
+              Ready to install v{view.version}
+            </p>
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-xs text-slate-700 font-medium">
+            The new version has been verified and prepared. Click below to restart and apply updates immediately.
+          </p>
+        </div>
+        <div className={actions}>
+          <button type="button" className={btnGhost} onClick={dismiss}>
+            Restart Later
+          </button>
+          <button type="button" className={`${btnPrimary} !bg-emerald-600 hover:!bg-emerald-500`} onClick={() => void startInstall()}>
+            Restart & Apply Now
+          </button>
         </div>
       </div>
     );
@@ -210,7 +217,7 @@ export function UpdateCenter() {
         </div>
         <div className="px-4 py-4">
           <p className="text-xs text-slate-600">
-            CNCFORGE BI will restart automatically. Please do not shut down the app.
+            CNCFORGE ERP will restart automatically. Please do not shut down the app.
           </p>
         </div>
       </div>
@@ -222,7 +229,7 @@ export function UpdateCenter() {
     <div className={cardBase} role="alertdialog" aria-label="Update error">
       <div className={`${titleBar} !bg-rose-950`}>
         <span className="text-base">⚠</span>
-        <p className="text-sm font-semibold flex-1">Update failed</p>
+        <p className="text-sm font-semibold flex-1">Update check failed</p>
       </div>
       <div className="px-4 py-3">
         <p className="text-xs text-slate-600 break-words max-h-28 overflow-y-auto">{view.message}</p>

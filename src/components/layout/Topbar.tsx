@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarDays,
   PanelsTopLeft,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -16,6 +17,7 @@ import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
 import { MenuPositionSelector } from './MenuPositionSelector';
+import { DesktopUpdateNavButton } from '../desktop/DesktopUpdateNavButton';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -166,6 +168,9 @@ export function Topbar({
           </div>
         )}
 
+        {/* Desktop App & Updates Navigation Button */}
+        <DesktopUpdateNavButton onNavigate={onNavigate} />
+
         {/* Date + profile box */}
         <div className="relative shrink-0" ref={profileRef}>
         <button
@@ -230,6 +235,7 @@ export function Topbar({
               )}
             </div>
             <div className="p-2">
+              <button onClick={() => { setShowProfile(false); onNavigate('/updates'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Sparkles size={15} className="text-orange-500" /> App Updates & Versions</button>
               <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>
               <button onClick={() => { setShowProfile(false); setShowDateFilter(false); setShowMenuPosition(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><PanelsTopLeft size={15} className="text-slate-400" /> Menu Position</button>
               <button onClick={() => { setShowProfile(false); onNavigate('/help'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><HelpCircle size={15} className="text-slate-400" /> Help & Support</button>

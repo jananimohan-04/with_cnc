@@ -211,6 +211,7 @@ export const pageTitles: Record<string, string> = {
   'admin/roles': 'Roles',
   'admin/permissions': 'Permissions',
   'admin/settings': 'Company Settings',
+  'updates': 'App Updates & Version History',
   'admin/audit-logs': 'Audit Logs',
   'support/center': 'Support Center',
   'support/technical': 'Technical Support',

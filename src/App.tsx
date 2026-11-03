@@ -105,6 +105,7 @@ import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
 import { UpdateCenter } from './components/desktop/UpdateCenter';
+import { UpdatesSettingsPage } from './components/desktop/UpdatesSettingsPage';
 import { DesktopToasts } from './lib/desktop/toast';
 // @ts-ignore
 import { RetailApp } from './retail/app';
@@ -152,7 +153,7 @@ function MainLayout() {
 
 
   const handleNavigate = (page: string) => {
-    navigate(`/${page}`);
+    navigate(page.startsWith('/') ? page : `/${page}`);
   };
 
   const { signOut, company, refreshPermissions } = useAuth();
@@ -316,6 +317,7 @@ function MainLayout() {
             <Route path="/admin/roles" element={<Navigate to="/admin/access" replace />} />
             <Route path="/admin/permissions" element={<Navigate to="/admin/access" replace />} />
             <Route path="/admin/settings" element={<SettingsPage />} />
+            <Route path="/updates" element={<UpdatesSettingsPage />} />
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
             <Route path="/support/center" element={<SupportCenterPage />} />
             <Route path="/support/technical" element={<SupportCenterPage defaultType="technical" />} />
