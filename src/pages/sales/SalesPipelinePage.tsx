@@ -1,3 +1,4 @@
+import { parseInvoiceNumber, getInvoiceSeriesState, registerInvoiceSeries } from '@/lib/invoiceNumberFormats';
 import { DcOptionSelect } from '@/components/DcOptionSelect';
 import { sameProduct } from '@/lib/productMatch';
 import { defaultTermsText } from '@/lib/termsLibrary';
@@ -3317,8 +3318,8 @@ export function SalesPipelinePage() {
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="block text-[10px] font-bold text-slate-500 uppercase">{formattedKey}</span>
                   {isInvoiceNo && (
-                    <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                      Editable
+                    <span className="text-[9px] font-semibold text-orange-700 bg-orange-50 px-1.5 py-0.2 rounded border border-orange-200" title="Invoice series format">
+                      Series: {parseInvoiceNumber(displayVal)?.prefix || 'INV-'} · Auto/Editable
                     </span>
                   )}
                 </div>
@@ -3343,6 +3344,9 @@ export function SalesPipelinePage() {
                        if (isDateField && !next) return;   // a cleared date picker keeps the saved date
                        if (next !== before) {
                          handleInlineEdit(title, raw.id, key, next);
+                         if (isInvoiceNo && next) {
+                           registerInvoiceSeries(next, raw.customer_name || raw.customer);
+                         }
                        }
                      }}
                    />
@@ -5602,9 +5606,12 @@ export function SalesPipelinePage() {
       } else if (card.type === 'invoice') {
         aggregated.invoice = { ...card.raw };
         if (!aggregated.invoice.invoice_no && card.raw?.id) {
-          const autoNo = `INV-${String(card.raw.id).substring(0, 5).toUpperCase()}`;
+          const compName = card.raw?.customer_name || card.raw?.customer || '';
+          const seriesState = await getInvoiceSeriesState(compName);
+          const autoNo = seriesState.suggestedNumber || `INV-${String(card.raw.id).substring(0, 5).toUpperCase()}`;
           aggregated.invoice.invoice_no = autoNo;
           void supabase.from('cnc_invoices').update({ invoice_no: autoNo }).eq('id', card.raw.id);
+          registerInvoiceSeries(autoNo, compName);
         }
         try {
           const { data: invItems } = await supabase.from('cnc_invoice_items').select('description,quantity,unit,rate,hsn,gst_rate,amount').eq('invoice_id', card.raw.id).order('line_no');

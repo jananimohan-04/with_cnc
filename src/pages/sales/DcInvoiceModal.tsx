@@ -23,6 +23,8 @@ import { printHtml } from '@/lib/reportExport';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { CheckCheck, Download, Eye, Pencil, Printer, X, ExternalLink, RefreshCw } from 'lucide-react';
+import { InvoiceSeriesPicker } from '@/components/sales/InvoiceSeriesPicker';
+import { registerInvoiceSeries } from '@/lib/invoiceNumberFormats';
 
 interface InvLine {
   key: string;
@@ -582,6 +584,10 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
           console.error('Invoice print preview error:', printErr);
         }
       }
+      const finalInvoiceNo = res?.invoice_no || invoiceNo.trim();
+      if (finalInvoiceNo) {
+        registerInvoiceSeries(finalInvoiceNo, customer);
+      }
       onMoved();
       onClose();
       void res;
@@ -778,14 +784,12 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <input type="date" value={invDate} disabled={!editing} onChange={(e) => setInvDate(e.target.value)} className={inputClass} />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Number</p>
-                <input
-                  type="text"
-                  placeholder="Auto-generated if blank"
+                <InvoiceSeriesPicker
                   value={invoiceNo}
-                  onChange={(e) => setInvoiceNo(e.target.value)}
-                  className={`${inputClass} font-semibold`}
-                  data-testid="inv-docno"
+                  onChange={setInvoiceNo}
+                  customerName={customer}
+                  inputClassName={inputClass}
+                  disabled={saving}
                 />
               </div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-semibold" data-testid="inv-dcno">{dcNo || '—'}</p></div>
