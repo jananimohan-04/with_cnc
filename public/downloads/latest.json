@@ -1,11 +1,11 @@
-﻿{
-    "platforms":  {
-                      "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2MzZyNmJrOWhOUVBCRnVBc1VuQnhsUHZ5QmhoTzJPRnBDWnRUMGxsU3FPTHBjeWQ3bER0WFN2UG1aZnhZdjBkaXpvMzJHOGZldWpVMStpTWR4MGk1M0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzAyMjIyCWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMC4zX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjAuMwpzMkZXRzU5UlpDdHFCRStXSlh1ODVSaVRLOFhrdU1ReDlORXdPOEY4NzhFdDQxZ3BWTkdTczllcjM3Q2R3ZFE5TCswN1RycnBRWnRNL2lBQ0V2QkpCUT09Cg==",
-                                             "url":  "https://with-cnc.vercel.app/downloads/business-intelligence-setup.exe"
-                                         }
-                  },
-    "pub_date":  "2026-11-03T10:37:45.657Z",
-    "version":  "1.0.3",
-    "notes":  "Business Intelligence v1.0.3 update: Multi-format invoice numbering \u0026 full Business Intelligence rebranding."
+{
+  "version": "1.0.4",
+  "notes": "Business Intelligence v1.0.4 update: Multi-format invoice numbering & full Business Intelligence rebranding.",
+  "pub_date": "2026-11-03T11:15:31.369Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2MzZUYzl6WXV5OVpWbThwekpLdUFMVzk5RnBOWTVPNUJsMGdRWGlXN0hVd1ptanBmVTltbVpocVNEQkh3R1pJYUtqOTh5cnRmN3JjYVBDQUpiVG1DdlFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA0NDA3CWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMC40X3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjAuNApJYS95cjR4RmlwemJzMStRVjBFRnlCQXJqUWhpeU5JYldiYXlWSGRiNE5tQkhiVW1xaGpWcGViN3d1TldOUmFTK05GMno2NGRFSlRaeU4rVHFIOE9Ddz09Cg==",
+      "url": "https://github.com/jananimohan-04/with_cnc/releases/download/v1.0.4/business-intelligence-setup.exe"
+    }
+  }
 }
