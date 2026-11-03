@@ -127,6 +127,7 @@ export function InventoryPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [masterOpen, setMasterOpen] = useState(false);
+  const [addingFg, setAddingFg] = useState(false);
   const [fgKey, setFgKey] = useState(0);
   const fg = useFinishedGoods(fgKey);
   const fgStockCount = fg.rows?.length ?? 0;
@@ -644,6 +645,34 @@ export function InventoryPage() {
       if (all.length === 0 && items?.rows && items.rows.length > 0) {
         all.push(...items.rows);
       }
+      if (fgTab) {
+        exportCsv(`Finished_Goods_Stock_${todayISO()}`, [
+          ['#', 'Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Available Qty (Opened Stock)', 'Value (INR)', 'Stock Status', 'Last Movement'],
+          ...all.map((r, i) => [
+            i + 1,
+            r.name,
+            r.category_name ?? 'Finished Goods',
+            [r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—',
+            r.unit ?? 'Nos',
+            r.current_stock,
+            r.value ?? (Number(r.current_stock || 0) * Number(r.rate || 0)).toFixed(2),
+            r.status ?? 'In Stock',
+            lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : '—',
+          ]),
+          ...(fgVisible.map((r, j) => [
+            all.length + j + 1,
+            r.product,
+            'Finished Goods',
+            fg.warehouseOf(r)?.name || '—',
+            'Nos',
+            r.available,
+            '—',
+            'In Stock',
+            '—',
+          ])),
+        ]);
+        return;
+      }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
         ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
@@ -735,9 +764,15 @@ export function InventoryPage() {
         >
           {exporting ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Export
         </button>
-        <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
-          <Plus size={13} /> Add Product
-        </button>
+        {fgTab ? (
+          <button type="button" onClick={() => setAddingFg(true)} disabled={!filters} className={topbarPrimaryBtn}>
+            <Plus size={13} /> Add Finished Goods Stock
+          </button>
+        ) : (
+          <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
+            <Plus size={13} /> Add Product
+          </button>
+        )}
       </div>
     );
 
@@ -823,7 +858,15 @@ export function InventoryPage() {
           <button onClick={() => void handleExport()} disabled={exporting || !ready} className={outlineBtn} title="Export CSV">
             {exporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Export
           </button>
-          <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}><Plus size={16} /> Add Product</button>
+          {fgTab ? (
+            <button onClick={() => setAddingFg(true)} disabled={!filters} className={primaryBtn}>
+              <Plus size={16} /> Add Finished Goods Stock
+            </button>
+          ) : (
+            <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}>
+              <Plus size={16} /> Add Product
+            </button>
+          )}
         </div>
       </div>
 
@@ -936,9 +979,9 @@ export function InventoryPage() {
                   <th className="px-3 py-3 text-left">Category</th>
                   <th className="px-3 py-3 text-left">Warehouse / Location</th>
                   <th className="px-3 py-3 text-left">Unit</th>
-                  <th className="px-3 py-3 text-right">Available Qty</th>
+                  <th className="px-3 py-3 text-right">{fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'}</th>
                   <th className="px-3 py-3 text-right">Value (₹)</th>
-                  <th className="px-3 py-3 text-right">Reorder Level</th>
+                  {!fgTab && <th className="px-3 py-3 text-right">Reorder Level</th>}
                   <th className="px-3 py-3 text-left">Stock Status</th>
                   <th className="px-3 py-3 text-left">Last Movement</th>
                   <th className="px-3 py-3 text-center">Actions</th>
@@ -953,7 +996,30 @@ export function InventoryPage() {
                   </tr>
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && fgVisible.length === 0 && (
-                  <tr><td colSpan={11} className="px-3 py-12 text-center text-slate-500">{fg.rows === null ? 'Loading…' : 'No inventory products found.'}</td></tr>
+                  <tr>
+                    <td colSpan={fgTab ? 10 : 11} className="px-3 py-12 text-center text-slate-500">
+                      {fgTab ? (
+                        <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                          <Archive size={32} className="text-indigo-400" />
+                          <p className="font-semibold text-slate-800">No Finished Goods Stock Found</p>
+                          <p className="text-xs text-slate-500">
+                            Add unordered finished goods, buffer products, or opening stock in your inventory to track stock and values.
+                          </p>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => setAddingFg(true)}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition"
+                            >
+                              <Plus size={14} /> Add Finished Goods Stock
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        fg.rows === null ? 'Loading…' : 'No inventory products found.'
+                      )}
+                    </td>
+                  </tr>
                 )}
                 {!itemsLoading && items && items.rows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -1060,8 +1126,9 @@ export function InventoryPage() {
                     {/* Value */}
                     <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
 
-                    {/* Reorder Level (inline editable) */}
-                    <td className="px-3 py-2 text-right">
+                    {/* Reorder Level (hidden on Finished Goods tab) */}
+                    {!fgTab && (
+                      <td className="px-3 py-2 text-right">
                       {canManage ? (
                         <input
                           type="number"
@@ -1087,6 +1154,7 @@ export function InventoryPage() {
                         <span className="tabular-nums text-red-600">{formatQty(r.min_stock)}</span>
                       )}
                     </td>
+                    )}
                     <td className="px-3 py-2.5"><StatusPill status={r.status} /></td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                       {lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : <span className="text-slate-300">—</span>}
@@ -1131,10 +1199,14 @@ export function InventoryPage() {
                       <td className="px-3 py-2.5 text-slate-600">pcs</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800" title={`Finished ${r.finished} · Delivered ${r.delivered}`}>{formatQty(String(r.available))}</td>
                       <td className="px-3 py-2.5 text-right text-slate-300">—</td>
-                      <td className="px-3 py-2.5 text-right text-slate-300">—</td>
+                      {!fgTab && <td className="px-3 py-2.5 text-right text-slate-300">—</td>}
                       <td className="px-3 py-2.5"><StatusPill status="In Stock" /></td>
                       <td className="px-3 py-2.5 text-slate-300">—</td>
-                      <td className="px-3 py-2.5" />
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          From Work Order
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}
@@ -1424,6 +1496,228 @@ function DetailGrid({ fields }: { fields: [string, ReactNode][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+function AddFinishedGoodsModal({
+  categories,
+  warehouses,
+  locationsFor,
+  onClose,
+  onSaved,
+}: {
+  categories: InventoryFilters['categories'];
+  warehouses: InventoryFilters['warehouses'];
+  locationsFor: (warehouseId: string) => InventoryFilters['locations'];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const fgCat = categories.find(c => String(c.code ?? '').toUpperCase() === 'FG' || /finished/i.test(c.name)) || categories[0];
+  const [name, setName] = useState('');
+  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id || '');
+  const [locationId, setLocationId] = useState('');
+  const [unit, setUnit] = useState('Nos');
+  const [availableQty, setAvailableQty] = useState('');
+  const [rate, setRate] = useState('');
+  const [totalValue, setTotalValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const locs = useMemo(() => (warehouseId ? locationsFor(warehouseId) : []), [warehouseId, locationsFor]);
+
+  const handleQtyChange = (val: string) => {
+    setAvailableQty(val);
+    const q = parseFloat(val);
+    const r = parseFloat(rate);
+    if (!isNaN(q) && !isNaN(r) && q > 0) {
+      setTotalValue((q * r).toFixed(2));
+    } else if (isNaN(q) || q <= 0) {
+      setTotalValue('');
+    }
+  };
+
+  const handleRateChange = (val: string) => {
+    setRate(val);
+    const q = parseFloat(availableQty);
+    const r = parseFloat(val);
+    if (!isNaN(q) && !isNaN(r) && q > 0) {
+      setTotalValue((q * r).toFixed(2));
+    } else {
+      setTotalValue('');
+    }
+  };
+
+  const handleTotalValueChange = (val: string) => {
+    setTotalValue(val);
+    const q = parseFloat(availableQty);
+    const tv = parseFloat(val);
+    if (!isNaN(q) && !isNaN(tv) && q > 0) {
+      setRate((tv / q).toFixed(2));
+    }
+  };
+
+  const save = async () => {
+    if (!name.trim()) {
+      setError('Please enter the Product / Material Name.');
+      return;
+    }
+    const q = parseFloat(availableQty);
+    if (isNaN(q) || q < 0) {
+      setError('Please enter a valid Available Quantity (Opened Stock).');
+      return;
+    }
+    if (!fgCat?.id) {
+      setError('Finished Goods category not found in system.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const cleanName = name.trim();
+      const codeSuffix = cleanName.toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 28) || String(Date.now());
+      const generatedCode = `FG-${codeSuffix}`;
+
+      await inventoryApi.saveItem({
+        id: null,
+        kind: 'PART',
+        code: generatedCode,
+        name: cleanName,
+        category_id: fgCat.id,
+        specification: '',
+        unit: unit.trim() || 'Nos',
+        min_stock: '0',
+        reorder_qty: '0',
+        rate: rate.trim() || '0',
+        supplier_id: null,
+        location_id: locationId || (locs.length > 0 ? locs[0].id : null),
+        image_url: null,
+        status: 'Active',
+        opening_qty: String(q),
+        opening_date: todayISO(),
+      });
+
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to add finished goods stock.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Add Finished Goods Stock"
+      subtitle="Add unordered products, opening stock, or buffer finished goods into inventory"
+      footer={
+        <>
+          <button onClick={onClose} className={cancelBtn}>Cancel</button>
+          <button onClick={save} disabled={saving} className={saveBtn}>
+            {saving && <Loader2 size={14} className="animate-spin" />} Save Finished Goods Stock
+          </button>
+        </>
+      }
+    >
+      <ModalError message={error} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <FormField label="Product / Material Name" required hint="Name of the finished good or manufactured product">
+            <input
+              className={inputClass}
+              placeholder="e.g. Precision Drive Shaft 120mm, Flange 50mm..."
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+            />
+          </FormField>
+        </div>
+
+        <FormField label="Category">
+          <div className={`${inputClass} bg-slate-50 flex items-center justify-between text-slate-700 font-medium`}>
+            <span>{fgCat?.name || 'Finished Goods'}</span>
+            <span className="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+              Manufactured Stock
+            </span>
+          </div>
+        </FormField>
+
+        <FormField label="Unit">
+          <select className={inputClass} value={unit} onChange={e => setUnit(e.target.value)}>
+            {['Nos', 'Pcs', 'Kg', 'Mtr', 'Set', 'Box', 'Roll', 'Pair'].map(u => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </FormField>
+
+        <FormField label="Warehouse">
+          <select
+            className={inputClass}
+            value={warehouseId}
+            onChange={e => {
+              setWarehouseId(e.target.value);
+              const nextLocs = locationsFor(e.target.value);
+              setLocationId(nextLocs.length > 0 ? nextLocs[0].id : '');
+            }}
+          >
+            {warehouses.map(w => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
+        </FormField>
+
+        <FormField label="Location / Bin (Optional)">
+          <select
+            className={inputClass}
+            value={locationId}
+            onChange={e => setLocationId(e.target.value)}
+          >
+            <option value="">— General / Not set —</option>
+            {locs.map(l => (
+              <option key={l.id} value={l.id}>{l.name || l.code}</option>
+            ))}
+          </select>
+        </FormField>
+
+        <FormField label="Available Qty (Opened Stock)" required hint="Initial quantity available in stock right now">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            className={inputClass}
+            placeholder="e.g. 50"
+            value={availableQty}
+            onChange={e => handleQtyChange(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Unit Rate (₹)" hint="Cost or rate per unit">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            className={inputClass}
+            placeholder="e.g. 850"
+            value={rate}
+            onChange={e => handleRateChange(e.target.value)}
+          />
+        </FormField>
+
+        <div className="sm:col-span-2">
+          <FormField label="Total Stock Value (₹)" hint="Calculated as Available Qty × Unit Rate">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              className={`${inputClass} bg-amber-50/50 font-semibold text-slate-800`}
+              placeholder="0.00"
+              value={totalValue}
+              onChange={e => handleTotalValueChange(e.target.value)}
+            />
+          </FormField>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -2228,16 +2522,16 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       // Column mapping with intelligent synonyms
       const COLUMN_SYNONYMS: Record<keyof ImportRow, string[]> = {
         code: ['code', 'product_code', 'item_code', 'part_no', 'part_number', 'material_code', 'sku', 'item_no', 'item#', 'prod_code'],
-        name: ['name', 'product_name', 'item_name', 'part_name', 'material_name', 'title', 'product_title', 'description_name'],
+        name: ['product_material_name', 'product_material', 'product_name', 'material_name', 'item_name', 'part_name', 'name', 'title', 'product_title', 'description_name', 'product'],
         category: ['category', 'category_name', 'cat', 'item_group', 'group', 'product_category', 'classification', 'type'],
         specification: ['specification', 'spec', 'specs', 'description', 'desc', 'details', 'item_description', 'notes'],
         unit: ['unit', 'uom', 'unit_of_measure', 'measurement_unit', 'units'],
         min_stock: ['min_stock', 'reorder_level', 'min_order_qty', 'minimum_stock', 'safety_stock', 'min_qty', 'min_quantity'],
         reorder_qty: ['reorder_qty', 'reorder_quantity', 'order_qty', 'reorder_amount', 'batch_size'],
-        rate: ['rate', 'price', 'unit_price', 'standard_cost', 'cost', 'unit_rate', 'mrp', 'sales_price'],
+        rate: ['value', 'value_inr', 'value_rs', 'stock_value', 'total_value', 'rate', 'price', 'unit_price', 'standard_cost', 'cost', 'unit_rate', 'mrp', 'sales_price'],
         supplier: ['supplier', 'supplier_name', 'vendor', 'vendor_name', 'preferred_supplier'],
-        location: ['location', 'location_code', 'location_name', 'warehouse_location', 'rack', 'bin', 'shelf'],
-        opening_qty: ['opening_qty', 'opening_stock', 'stock', 'qty', 'quantity', 'initial_stock', 'on_hand', 'current_stock'],
+        location: ['warehouse_location', 'warehouse', 'warehouse_name', 'location', 'location_code', 'location_name', 'store', 'rack', 'bin', 'shelf'],
+        opening_qty: ['available_qty', 'opened_stock', 'available_stock', 'available_quantity', 'opening_qty', 'opening_stock', 'stock', 'qty', 'quantity', 'initial_stock', 'on_hand', 'current_stock'],
       };
 
       const firstRow = nonEmptyGrid[0].map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
@@ -2368,9 +2662,24 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
             <li>Quantities and rate are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry.</li>
             <li>Invalid or duplicate rows are skipped and listed; valid rows are saved.</li>
           </ul>
-          <button onClick={downloadTemplate} className={`${outlineBtn} mt-3 h-9`}>
-            <Download size={15} /> Download template with sample data
-          </button>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button onClick={() => {
+              const sampleRows = [
+                ['Precision Drive Shaft 120mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '50', '850'],
+                ['Aluminium CNC Flange 50mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '120', '340'],
+                ['Hydraulic Valve Block VB-2', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '35', '1200'],
+              ];
+              exportCsv('finished-goods-stock-template', [
+                ['Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Available Qty', 'Value (₹)'],
+                ...sampleRows,
+              ]);
+            }} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition">
+              <Download size={14} /> Download Finished Goods Template (.csv)
+            </button>
+            <button onClick={downloadTemplate} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
+              <Download size={14} /> Download Full Inventory Template (.csv)
+            </button>
+          </div>
           <div className="mt-3 p-2.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
             <span className="font-semibold">Available Categories: </span>
             {categories && categories.length > 0 ? categories.map(c => c.name).join(', ') : 'Raw Materials, Bought-Out Components, Consumables, Tools'}

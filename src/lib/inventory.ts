@@ -192,7 +192,10 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
     const r = rows[i];
     const n = i + 1;
     if (!r.code?.trim() && r.name?.trim()) {
-      r.code = r.name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 36) || `ITEM-${n}`;
+      const isFg = /finish/i.test(r.category || '') || (categories.length > 0 && /finish/i.test(categories[0].name));
+      const prefix = isFg ? 'FG-' : 'ITEM-';
+      const cleanName = r.name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 30);
+      r.code = cleanName ? `${prefix}${cleanName}` : `${prefix}${n}`;
     }
     if (!r.unit?.trim()) {
       r.unit = 'Nos';
@@ -223,12 +226,24 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
       if (sup) supplierId = sup.id;
     }
 
-    // Match location
+    // Match location or warehouse
     let locationId: string | null = null;
     if (r.location?.trim()) {
-      const loc = locations.find(l => l.name.toLowerCase() === r.location.trim().toLowerCase() || l.code.toLowerCase() === r.location.trim().toLowerCase());
-      if (loc) locationId = loc.id;
+      const locStr = r.location.trim().toLowerCase();
+      const loc = locations.find(l => l.name.toLowerCase() === locStr || l.code.toLowerCase() === locStr);
+      if (loc) {
+        locationId = loc.id;
+      } else {
+        const wh = warehouses.find(w => w.name.toLowerCase() === locStr || w.code.toLowerCase() === locStr);
+        if (wh) {
+          const whLoc = locations.find(l => l.warehouse_id === wh.id);
+          if (whLoc) locationId = whLoc.id;
+        }
+      }
     }
+
+    const cleanRate = String(r.rate || '0').replace(/[^0-9.]/g, '') || '0';
+    const cleanOpening = String(r.opening_qty || '0').replace(/[^0-9.]/g, '') || '0';
 
     const itemKind: ItemKind = cat.kind === 'MANUFACTURED' ? 'PART' : 'RAW';
     const payload: SaveItemInput = {
@@ -241,12 +256,12 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
       unit: (r.unit || 'Nos').trim(),
       min_stock: r.min_stock || '0',
       reorder_qty: r.reorder_qty || '0',
-      rate: r.rate || '0',
+      rate: cleanRate,
       supplier_id: supplierId,
       location_id: locationId,
       image_url: null,
       status: 'Active',
-      opening_qty: r.opening_qty || '0',
+      opening_qty: cleanOpening,
     };
 
     try {
