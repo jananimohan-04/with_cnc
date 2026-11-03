@@ -789,6 +789,7 @@ export function InventoryPage() {
     ready,
     exportOpen,
     filters,
+    fgTab,
     setHeader,
     setHeaderCenter,
     setTabActions,
@@ -946,6 +947,28 @@ export function InventoryPage() {
             </select>
             <button onClick={handleSearch} className={primaryBtn}>Search</button>
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
+            {canManage && (
+              fgTab ? (
+                <button
+                  type="button"
+                  onClick={() => setAddingFg(true)}
+                  disabled={!filters}
+                  className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm whitespace-nowrap transition cursor-pointer"
+                  title="Add finished goods, opening stock, or buffer products"
+                >
+                  <Plus size={14} /> Add Finished Goods Stock
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditing('new')}
+                  disabled={!filters}
+                  className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm whitespace-nowrap transition cursor-pointer"
+                >
+                  <Plus size={14} /> Add Product
+                </button>
+              )
+            )}
           </div>
 
           {/* Corrupted Import Cleanup Banner */}
@@ -1325,7 +1348,39 @@ export function InventoryPage() {
         </Modal>
       )}
 
-      {editing && filters && (
+      {/* Add Finished Goods Modal */}
+      {(addingFg || (editing === 'new' && fgTab)) && filters && (
+        <AddFinishedGoodsModal
+          categories={categories}
+          warehouses={filters.warehouses}
+          locationsFor={locationsFor}
+          onClose={() => {
+            setAddingFg(false);
+            if (editing === 'new') setEditing(null);
+          }}
+          onSaved={() => {
+            setAddingFg(false);
+            if (editing === 'new') setEditing(null);
+            refreshAll();
+          }}
+        />
+      )}
+
+      {editing && editing !== 'new' && filters && (
+        <ItemFormModal
+          item={editing}
+          filters={filters}
+          categories={categories}
+          defaultCategoryId={applied.categoryId}
+          companyId={company.id}
+          imageUrl={editing.image_url ? imageUrls[editing.image_url] ?? null : null}
+          locationsFor={locationsFor}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); refreshAll(); }}
+          onAdjustStock={canManage ? (row) => setAdjusting(row) : undefined}
+        />
+      )}
+      {editing === 'new' && !fgTab && filters && (
         <ItemFormModal
           item={editing === 'new' ? null : editing}
           filters={filters}
