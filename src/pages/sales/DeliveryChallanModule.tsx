@@ -63,7 +63,8 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
 
   const { from: globalFrom, to: globalTo, inRange: inDateRange } = useGlobalDateFilter();
   const filteredRecords = records.filter(r => {
-    const matchesSearch = (r.delivery_no || '').toLowerCase().includes(search.toLowerCase()) ||
+    const dcNoStr = String(r.delivery_no || r.dc_no || '');
+    const matchesSearch = dcNoStr.toLowerCase().includes(search.toLowerCase()) ||
       (r.customer_name || '').toLowerCase().includes(search.toLowerCase()) ||
       (r.part_name || '').toLowerCase().includes(search.toLowerCase());
     const matchesCompany = !companyFilter || companyFilter === 'All Companies' ||
@@ -86,7 +87,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
   const sort = useSort<any>({
     ts: (r) => lastEditedAt(r, 'delivery_date'),
     date: (r) => String(r.delivery_date || r.created_at || ''),
-    dc_no: (r) => String(r.delivery_no || ''),
+    dc_no: (r) => String(r.delivery_no || r.dc_no || ''),
     company: (r) => String(r.customer_name || '').toLowerCase(),
     product: (r) => String(r.part_name || '').toLowerCase(),
     quantity: (r) => Number(r.dispatch_qty ?? r.quantity) || 0,
@@ -141,6 +142,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                 <th className="p-3 font-semibold w-8">#</th>
                 <th className="p-3 font-semibold" title="When this challan was last edited"><SortLabel label="Timestamp" col="ts" sort={sort} /></th>
                 <th className="p-3 font-semibold"><SortLabel label="DC Date" col="date" sort={sort} /></th>
+                <th className="p-3 font-semibold"><SortLabel label="DC No" col="dc_no" sort={sort} /></th>
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
@@ -186,6 +188,11 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                   <td className="p-3 text-xs text-slate-400 font-mono">{pager.start + idx + 1}</td>
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(lastEditedAt(record, 'delivery_date'))}</td>
                   <td className="p-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(String(record.delivery_date || record.created_at || '').slice(0, 10)) || '—'}</td>
+                  <td className="p-3 text-sm font-bold text-slate-900 whitespace-nowrap font-mono">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                      {record.delivery_no || record.dc_no || '—'}
+                    </span>
+                  </td>
                   <td className="p-3 text-sm font-semibold text-brand-700">{record.customer_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.part_name || '-'}</td>
                   <td className="p-3 text-sm text-slate-700">{record.dispatch_qty ?? record.quantity ?? '-'}</td>
@@ -204,7 +211,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                 </tr>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-8 text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-slate-500">No records found.</td></tr>
               )}
             </tbody>
           </table>
