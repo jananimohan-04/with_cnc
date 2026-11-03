@@ -1,4 +1,4 @@
-// Version-wise release history and update manifest for CNCFORGE ERP.
+// Version-wise release history and update manifest for Business Intelligence.
 // Tracks application updates, feature rollouts, bug fixes, and changelogs.
 // Dynamically synchronized with GitHub Releases when online.
 
@@ -21,7 +21,7 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.2';
+export const CURRENT_APP_VERSION = '1.0.3';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
@@ -29,11 +29,39 @@ export const CURRENT_APP_VERSION = '1.0.2';
  */
 export const VERSION_HISTORY: VersionRelease[] = [
   {
+    version: '1.0.3',
+    releaseDate: 'November 3, 2026',
+    title: 'DC Number Display in Delivery Challans & Auto-Update Polish',
+    isLatest: true,
+    isCurrent: true,
+    highlights: [
+      'Delivery Challans: Added dedicated DC No column with sorting and instant search filtering',
+      'Desktop Auto-Updater: Verified signed auto-update distribution pipeline with GitHub Releases',
+    ],
+    sections: [
+      {
+        title: 'Sales & Dispatch',
+        type: 'feature',
+        items: [
+          'Delivery Challans List: Added DC No column between DC Date and Company for quick visibility.',
+          'Sorting & Filtering: Users can sort alphabetically/numerically by DC No and search by challan number.',
+        ],
+      },
+      {
+        title: 'Desktop Application',
+        type: 'improvement',
+        items: [
+          'Background Auto-Update: Integrated GitHub Releases endpoint with cryptographic signature verification.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.2',
     releaseDate: 'November 2, 2026',
     title: 'Actual Runs Flexibility, Costing Decoupling & Delivery Challan Linking',
-    isLatest: true,
-    isCurrent: true,
+    isLatest: false,
+    isCurrent: false,
     highlights: [
       'Actual Runs: Save runs with or without finished quantity for flexible shop floor logging',
       'Finished Goods Costing: Decoupled physical goods movement to prevent duplicate key constraint conflicts',
@@ -113,11 +141,11 @@ export const VERSION_HISTORY: VersionRelease[] = [
   {
     version: '1.0.0',
     releaseDate: 'October 15, 2026',
-    title: 'CNCFORGE ERP & BI Suite Initial Production Release',
+    title: 'Business Intelligence & BI Suite Initial Production Release',
     isLatest: false,
     isCurrent: false,
     highlights: [
-      'Comprehensive CNC manufacturing ERP spanning Sales, Engineering, Production, Inventory, and Finance',
+      'Comprehensive CNC manufacturing Business Intelligence spanning Sales, Engineering, Production, Inventory, and Finance',
       'Real-time machine scheduling and shop floor tracking',
       'CNC Vault with CAM file uploads and drawing preview',
       'Double-entry general ledger, trial balance, and profit & loss reports',
@@ -125,7 +153,7 @@ export const VERSION_HISTORY: VersionRelease[] = [
     ],
     sections: [
       {
-        title: 'Core ERP Capabilities',
+        title: 'Core Business Intelligence Capabilities',
         type: 'feature',
         items: [
           'Sales Pipeline & Lead Management with multi-stage quotation workflow.',

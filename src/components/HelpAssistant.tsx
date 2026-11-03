@@ -311,7 +311,10 @@ export const voiceBusy = () => voiceActive || Date.now() < quietUntil;
 
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
 export function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
-  const t = text.replace(/[*#_`]/g, '').trim();
+  const sanitized = text
+    .replace(/\bERP\b/gi, 'Business Intelligence')
+    .replace(/இ\.?ஆர்\.?பி/gi, 'Business Intelligence');
+  const t = sanitized.replace(/[*#_`]/g, '').trim();
   if (!t) { onEnd(); return; }
   stopSpeaking();   // cancel any prior speech
   voiceActive = true;

@@ -61,7 +61,7 @@ export function LoginScreen() {
               </span>
             </h2>
             <p className="text-navy-300 text-sm leading-relaxed mb-8">
-              The complete enterprise resource planning platform for CNC machining operations. 
+              The complete Business Intelligence platform for CNC machining operations. 
               From enquiry to dispatch — manage your entire shop floor with precision.
             </p>
 
@@ -176,6 +176,11 @@ export function LoginScreen() {
             <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
               <Shield size={12} />
               <span>Access is limited to accounts registered by your administrator</span>
+            </div>
+            <div className="mt-3 text-center">
+              <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+                Powered by ARGUS CNC™
+              </span>
             </div>
           </div>
         </div>

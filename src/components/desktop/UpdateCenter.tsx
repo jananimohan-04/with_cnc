@@ -138,7 +138,7 @@ export function UpdateCenter() {
           )}
           {!summary.notes && (
             <p className="text-xs text-slate-500">
-              A new version of CNCFORGE ERP is ready to install. Your data is preserved.
+              A new version of Business Intelligence is ready to install. Your data is preserved.
             </p>
           )}
         </div>
@@ -217,7 +217,7 @@ export function UpdateCenter() {
         </div>
         <div className="px-4 py-4">
           <p className="text-xs text-slate-600">
-            CNCFORGE ERP will restart automatically. Please do not shut down the app.
+            Business Intelligence will restart automatically. Please do not shut down the app.
           </p>
         </div>
       </div>

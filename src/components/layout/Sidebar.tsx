@@ -215,6 +215,13 @@ export function Sidebar({
           </button>
         </div>
       )}
+
+      {/* Brand signature footer */}
+      <div className="py-1.5 px-3 border-t border-navy-900 bg-navy-950 text-center flex-shrink-0 relative z-10">
+        <span className="text-[10px] font-semibold tracking-wider text-navy-400 uppercase">
+          Powered by ARGUS CNC™
+        </span>
+      </div>
     </aside>
       </div>
     </>

@@ -1,4 +1,4 @@
-//! CNCFORGE ERP desktop shell (Tauri v2).
+//! Business Intelligence desktop shell (Tauri v2).
 //!
 //! Scope of this crate (deliberately minimal):
 //!   * window/bundle identity and the updater (see tauri.conf.json)
@@ -85,7 +85,7 @@ pub fn run() {
                             next_popup_label(),
                             WebviewUrl::External("about:blank".parse().expect("static url")),
                         )
-                        .title("CNCFORGE ERP")
+                        .title("Business Intelligence")
                         .center();
                         if let Some(size) = features.size() {
                             builder = builder.inner_size(size.width, size.height);
@@ -138,5 +138,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running CNCFORGE ERP");
+        .expect("error while running Business Intelligence");
 }

@@ -255,7 +255,7 @@ export function UpdatesSettingsPage() {
           <div className="space-y-3 max-w-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 text-[11px] font-bold">
-                CNCFORGE ERP SUITE
+                BUSINESS INTELLIGENCE SUITE
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[11px] font-semibold">
                 Build: v{appVersion}
@@ -272,7 +272,7 @@ export function UpdatesSettingsPage() {
               {status.kind === 'uptodate' && 'Your Application is Up to Date'}
               {status.kind === 'checking' && 'Checking for Updates…'}
               {status.kind === 'error' && 'Update Check Encountered an Error'}
-              {status.kind === 'idle' && `Running CNCFORGE ERP v${appVersion}`}
+              {status.kind === 'idle' && `Running Business Intelligence v${appVersion}`}
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
@@ -553,7 +553,7 @@ export function UpdatesSettingsPage() {
                       type="button"
                       onClick={() =>
                         copyToClipboard(
-                          `CNCFORGE ERP v${release.version}\n${release.title}\n\nHighlights:\n${release.highlights
+                          `Business Intelligence v${release.version}\n${release.title}\n\nHighlights:\n${release.highlights
                             .map((h) => `- ${h}`)
                             .join('\n')}`,
                           release.version,
@@ -662,7 +662,7 @@ export function UpdatesSettingsPage() {
           </span>
         </div>
         <span className="text-slate-400 font-mono text-[11px] shrink-0">
-          Identifier: com.cncforge.erp
+          Package: Business Intelligence
         </span>
       </footer>
     </div>

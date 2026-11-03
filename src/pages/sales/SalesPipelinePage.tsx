@@ -3186,12 +3186,26 @@ export function SalesPipelinePage() {
 
   // Inward history reads Product Name → Part Name → Category first.
   const orderDetailEntries = (title: string, entries: [string, any][]) => {
-    if (title !== 'Inward') return entries;
-    const first = ['product_name', 'part_name', 'category'];
-    return [
-      ...entries.filter(([k]) => first.includes(k)).sort((a, b) => first.indexOf(a[0]) - first.indexOf(b[0])),
-      ...entries.filter(([k]) => !first.includes(k)),
-    ];
+    if (title === 'Inward') {
+      const first = ['product_name', 'part_name', 'category'];
+      return [
+        ...entries.filter(([k]) => first.includes(k)).sort((a, b) => first.indexOf(a[0]) - first.indexOf(b[0])),
+        ...entries.filter(([k]) => !first.includes(k)),
+      ];
+    }
+    if (title === 'Invoice') {
+      const preferred = ['invoice_no', 'invoice_date', 'amount', 'taxable_value', 'cgst', 'sgst', 'igst', 'discount_amount', 'round_off', 'notes'];
+      const map = new Map(entries);
+      if (!map.has('invoice_no')) {
+        map.set('invoice_no', '');
+      }
+      const all = Array.from(map.entries());
+      return [
+        ...all.filter(([k]) => preferred.includes(k)).sort((a, b) => preferred.indexOf(a[0]) - preferred.indexOf(b[0])),
+        ...all.filter(([k]) => !preferred.includes(k)),
+      ];
+    }
+    return entries;
   };
 
   // Inward history cell (row-aware so grouped multi-line inwards stay editable).
@@ -3280,7 +3294,7 @@ export function SalesPipelinePage() {
             </div>
           </>) : (
           orderDetailEntries(title, Object.entries(raw)).map(([key, value]) => {
-            if (key === 'id' || key.startsWith('_') || key.endsWith('_id') || ((value === null || value === '') && !(title === 'Inward' && (key === 'product_name' || key === 'part_name' || key === 'category'))) || key === 'items' || key === 'contacts' || key === 'attachments' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'delivery_no' || key === 'dc_no' || key === 'invoice_no' || key === 'sales_order_no' || key === 'sales_order_ref' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || key === 'status' || key === 'delivered' || key === 'contact_person' || key === 'phone' || key === 'email' || key === 'part_no' || key === 'part_number' || key === 'partNo' || key === 'partNumber') return null;
+            if (key === 'id' || key.startsWith('_') || key.endsWith('_id') || ((value === null || value === '') && !(title === 'Inward' && (key === 'product_name' || key === 'part_name' || key === 'category')) && !(title === 'Invoice' && key === 'invoice_no')) || key === 'items' || key === 'contacts' || key === 'attachments' || key === 'quote_no' || key === 'order_no' || key === 'inward_no' || key === 'enquiry_no' || key === 'delivery_no' || key === 'dc_no' || (key === 'invoice_no' && title !== 'Invoice') || key === 'sales_order_no' || key === 'sales_order_ref' || key === 'image_url' || key === 'drawing_url' || key === 'enquiring_for' || key === 'description' || key === 'status' || key === 'delivered' || key === 'contact_person' || key === 'phone' || key === 'email' || key === 'part_no' || key === 'part_number' || key === 'partNo' || key === 'partNumber') return null;
             if (title === 'Enquiry' && (key === 'status' || key === 'estimated_value' || key === 'received_date' || key === 'pipeline_stage' || key === 'expected_date' || key === 'source' || key === 'created_at' || key === 'lead_no')) return null;
             if (title === 'Sales Order' && (key === 'part_name' || key === 'quantity' || key === 'lead_no' || key === 'value' || key === 'customer' || key === 'created_at' || key === 'payment_terms' || key === 'total_value' || key === 'delivery_date')) return null;
             if (title === 'Quotation' && (key === 'customer' || key === 'part_name' || key === 'salesperson')) return null;
@@ -3291,20 +3305,41 @@ export function SalesPipelinePage() {
             let formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             if (key === 'lead_no') formattedKey = 'Company ID';
             if (key === 'part_name') formattedKey = 'Product Name';
-            const displayVal = (key === 'part_name' && title !== 'Inward') ? formatLeadProductDisplay(raw) : value;
+            if (key === 'invoice_no') formattedKey = 'Invoice No';
+            const isInvoiceNo = title === 'Invoice' && key === 'invoice_no';
+            const autoInvNo = isInvoiceNo ? (raw.invoice_no || value || (raw.id ? `INV-${String(raw.id).substring(0, 5).toUpperCase()}` : '')) : '';
+            const displayVal = isInvoiceNo ? autoInvNo : (key === 'part_name' && title !== 'Inward') ? formatLeadProductDisplay(raw) : value;
             // A date field (invoice_date, due_date, delivery_date ...) is picked from a calendar, so it can never be saved misspelt.
             const isDateField = /(^|_)date$/.test(key) && /^\d{4}-\d{2}-\d{2}/.test(String(displayVal ?? ''));
+            const isEditable = (viewEditMode && key !== 'created_at' && key !== 'updated_at') || isInvoiceNo;
             return (
               <div key={key}>
-                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{formattedKey}</span>
-                {viewEditMode && key !== 'created_at' && key !== 'updated_at' ? (
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="block text-[10px] font-bold text-slate-500 uppercase">{formattedKey}</span>
+                  {isInvoiceNo && (
+                    <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      Editable
+                    </span>
+                  )}
+                </div>
+                {isEditable ? (
                    <input
                      type={isDateField ? 'date' : 'text'}
-                     className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
+                     className={`w-full text-sm font-medium rounded px-2 py-1 bg-white focus:outline-none ${
+                       isInvoiceNo
+                         ? 'text-brand-900 border border-brand-300 font-semibold focus:border-brand-600 focus:ring-1 focus:ring-brand-500 shadow-sm'
+                         : 'text-slate-800 border border-slate-300 focus:border-brand-500'
+                     }`}
                      defaultValue={isDateField ? String(displayVal ?? '').slice(0, 10) : (displayVal ?? '')}
+                     placeholder={isInvoiceNo ? 'Auto-generated (e.g. INV-0001)' : ''}
+                     onKeyDown={(e) => {
+                       if (e.key === 'Enter') {
+                         (e.target as HTMLInputElement).blur();
+                       }
+                     }}
                      onBlur={(e) => {
-                       const next = e.target.value;
-                       const before = isDateField ? String(displayVal ?? '').slice(0, 10) : String(displayVal ?? '');
+                       const next = e.target.value.trim();
+                       const before = isDateField ? String(displayVal ?? '').slice(0, 10) : String(displayVal ?? '').trim();
                        if (isDateField && !next) return;   // a cleared date picker keeps the saved date
                        if (next !== before) {
                          handleInlineEdit(title, raw.id, key, next);
@@ -5565,7 +5600,12 @@ export function SalesPipelinePage() {
            if (ord) aggregated.order = ord;
         }
       } else if (card.type === 'invoice') {
-        aggregated.invoice = card.raw;
+        aggregated.invoice = { ...card.raw };
+        if (!aggregated.invoice.invoice_no && card.raw?.id) {
+          const autoNo = `INV-${String(card.raw.id).substring(0, 5).toUpperCase()}`;
+          aggregated.invoice.invoice_no = autoNo;
+          void supabase.from('cnc_invoices').update({ invoice_no: autoNo }).eq('id', card.raw.id);
+        }
         try {
           const { data: invItems } = await supabase.from('cnc_invoice_items').select('description,quantity,unit,rate,hsn,gst_rate,amount').eq('invoice_id', card.raw.id).order('line_no');
           if (invItems && invItems.length) {

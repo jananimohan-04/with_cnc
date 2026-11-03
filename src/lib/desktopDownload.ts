@@ -18,13 +18,13 @@
 // here â€” signatures are only consumed by the in-app auto-updater.
 
 /** Version shown to users; keep in sync with the desktop release version. */
-export const DESKTOP_APP_VERSION = '1.0.2';
+export const DESKTOP_APP_VERSION = '1.0.3';
 
 /** Public, same-origin URL of the Windows installer (served from public/). */
 export const DESKTOP_DOWNLOAD_URL = '/downloads/cncforge-erp-setup.exe';
 
 /** Meaningful filename the browser suggests for the downloaded file. */
-export const DESKTOP_DOWNLOAD_FILENAME = `CNCFORGE-ERP-Setup-${DESKTOP_APP_VERSION}.exe`;
+export const DESKTOP_DOWNLOAD_FILENAME = `Business-Intelligence-Setup-${DESKTOP_APP_VERSION}.exe`;
 
 /** Below this size (bytes) a served installer is considered truncated. */
 const MIN_EXPECTED_SIZE = 1_000_000;

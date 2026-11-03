@@ -98,6 +98,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
 
   const [customer, setCustomer] = useState(card?.customer ?? '');
   const [invDate, setInvDate] = useState(todayISO());
+  const [invoiceNo, setInvoiceNo] = useState('');
   const [, setQuoteNo] = useState('');
   // Types the finance module supports. Only a Sales Invoice bills the DC and counts as the invoice for it:
   // a Proforma never blocks the real invoice, and a Credit Note is a negative document.
@@ -551,7 +552,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       const gstRate = (c !== null || s !== null || ig !== null) ? (c ?? 0) + (s ?? 0) + (ig ?? 0) : null;
       const refs = Array.from(new Set(lines.map((l) => l.sheetRef).filter(Boolean))).join(', ');
       const res = await financeApi.saveInvoice({
-        invoice_no: null,
+        invoice_no: invoiceNo.trim() || null,
         invoice_type: docType,
         customer_name: customer.trim(),
         customer_id: raw.customer_id || null,
@@ -599,7 +600,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
       companyName,
       companyGstin: comp.gstin,
       title: docTitle,
-      docNo: 'DRAFT',
+      docNo: invoiceNo.trim() || 'DRAFT',
       invDate,
       partyName: customer,
       partyAddress: String(d0.billing_address || d0.customer_address || ''),
@@ -776,7 +777,17 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Date</p>
                 <input type="date" value={invDate} disabled={!editing} onChange={(e) => setInvDate(e.target.value)} className={inputClass} />
               </div>
-              <div><p className="text-[10px] uppercase tracking-wider text-slate-400">Document Number</p><p className="font-semibold" data-testid="inv-docno">Auto-generated on approval</p></div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Invoice Number</p>
+                <input
+                  type="text"
+                  placeholder="Auto-generated if blank"
+                  value={invoiceNo}
+                  onChange={(e) => setInvoiceNo(e.target.value)}
+                  className={`${inputClass} font-semibold`}
+                  data-testid="inv-docno"
+                />
+              </div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Number</p><p className="font-semibold" data-testid="inv-dcno">{dcNo || '—'}</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">DC Date</p><p className="font-semibold" data-testid="inv-dcdate">{headerDcDate ? String(headerDcDate).slice(0, 10).split('-').reverse().join('-') : '—'}</p></div>
               <div><p className="text-[10px] uppercase tracking-wider text-slate-400">PO Number</p><p className="font-semibold" data-testid="inv-po">{headerPo || '—'}</p></div>

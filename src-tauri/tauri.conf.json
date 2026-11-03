@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CNCFORGE ERP",
-  "version": "1.0.2",
+  "productName": "Business Intelligence",
+  "version": "1.0.3",
   "identifier": "com.cncforge.erp",
   "build": {
     "beforeDevCommand": "npm run dev -- --port 5176 --strictPort",
@@ -14,7 +14,7 @@
       {
         "label": "main",
         "create": false,
-        "title": "CNCFORGE ERP",
+        "title": "Business Intelligence",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -46,8 +46,8 @@
     ],
     "publisher": "CNCFORGE",
     "copyright": "Copyright \u00c2\u00a9 2026 CNCFORGE",
-    "shortDescription": "CNCFORGE ERP desktop application",
-    "longDescription": "CNCFORGE ERP \u00e2\u20ac\u201d enterprise resource planning for CNC machining operations. Windows desktop edition with signed automatic updates.",
+    "shortDescription": "Business Intelligence desktop application",
+    "longDescription": "Business Intelligence \u00e2\u20ac\u201d enterprise resource planning for CNC machining operations. Windows desktop edition with signed automatic updates.",
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",

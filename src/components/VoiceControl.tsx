@@ -49,11 +49,14 @@ export function VoiceControl() {
   }, []);
 
   const say = useCallback((text: string, spoken = true) => {
-    setNote(text);
+    const sanitized = text
+      .replace(/\bERP\b/gi, 'Business Intelligence')
+      .replace(/இ\.?ஆர்\.?பி/gi, 'Business Intelligence');
+    setNote(sanitized);
     if (!spoken || !repliesRef.current || !('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
+      const u = new SpeechSynthesisUtterance(sanitized);
       u.lang = 'en-IN';
       u.rate = 1.05;
       speakingRef.current = true;
