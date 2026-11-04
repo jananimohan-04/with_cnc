@@ -7,6 +7,7 @@ import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { supabase } from '@/lib/supabase';
 import { machineCostTotal, quoteNameKey, spanMinutes, valueOperations } from '@/lib/projectCosting';
+import { calcJobCardHours } from '@/lib/costingEngine';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 
@@ -401,35 +402,89 @@ export function ProjectCostingPage() {
         operations: [],
       };
 
-      // 1. Fetch purchase inwards (goods -> material, service -> machine & labour)
-      const { data: inwardRows } = await supabase
-        .from('cnc_inwards')
-        .select('*');
-
-      const purchaseInwards = (inwardRows || []).filter((inv: any) =>
-        isPurchaseCategory(inv.category)
-      );
-
-      // Build match keys
-      const workOrders = baseReport.work_orders || [];
-      const matchingSo = new Set<string>();
-      const matchingWo = new Set<string>();
-      matchingSo.add(p.project_name.toLowerCase());
-      matchingWo.add(p.project_name.toLowerCase());
-      workOrders.forEach((w: any) => {
-        if (w.sales_order) matchingSo.add(w.sales_order.toLowerCase());
-        if (w.wo_no) matchingWo.add(w.wo_no.toLowerCase());
-      });
-
-      const currParty = (p.party_name || '').trim().toLowerCase();
-      const currPart = (p.part_name || '').trim().toLowerCase();
+      // 1. Fetch all work orders from cnc_work_orders to find all matching / linked production orders
+      const { data: woData } = await supabase.from('cnc_work_orders').select('*');
+      const allDbWos = (woData || []) as any[];
 
       const lc = (v: any) => String(v ?? '').trim().toLowerCase();
+      const pProj = lc(p.project_name);
+      const pPart = lc(p.part_name);
+      const pParty = lc(p.party_name);
+      const pPartKey = quoteNameKey(p.part_name);
+
+      const matchedDbWos = allDbWos.filter((w: any) => {
+        const wNo = lc(w.wo_no);
+        const wSo = lc(w.sales_order);
+        const wPart = lc(w.part_name);
+        const wCust = lc(w.customer);
+        const wPartKey = quoteNameKey(w.part_name);
+
+        if (wNo && wNo === pProj) return true;
+        if (wSo && (wSo === pProj || wSo === pPart)) return true;
+        if (pParty && wCust === pParty && (wPart === pPart || (pPartKey && wPartKey === pPartKey))) return true;
+        if (wPart && wPart === pPart) return true;
+        if (pPartKey && wPartKey && wPartKey === pPartKey) return true;
+        return false;
+      });
+
+      const seenWos = new Set<string>();
+      const allWorkOrders = [
+        ...(baseReport.work_orders || []),
+        ...matchedDbWos.map((w: any) => ({
+          id: w.id,
+          wo_no: w.wo_no,
+          sales_order: w.sales_order || '',
+          customer: w.customer || '',
+          part_name: w.part_name || '',
+          part_no: w.part_no || '',
+          quantity: String(w.quantity ?? 0),
+          completed: String(w.completed ?? 0),
+          rejected: String(w.rejected ?? 0),
+          status: w.status || 'Planned',
+          due_date: w.due_date || '',
+        })),
+      ].filter((w) => !seenWos.has(w.wo_no) && !seenWos.has(w.id) && !!seenWos.add(w.wo_no) && !!seenWos.add(w.id));
+
+      // 2. Fetch purchase inwards (goods -> material, service -> machine & labour)
+      const { data: inwardRows } = await supabase.from('cnc_inwards').select('*');
+      const purchaseInwards = (inwardRows || []).filter((inv: any) => isPurchaseCategory(inv.category));
+
+      // Build match keys for inwards and operations
+      const matchingSo = new Set<string>();
+      const matchingWo = new Set<string>();
+      const allWoNos = new Set<string>();
+      const allWoIds = new Set<string>();
+      const candidatePartNames = new Set<string>();
+
+      if (p.project_name) {
+        matchingSo.add(pProj);
+        matchingWo.add(pProj);
+        allWoNos.add(p.project_name);
+      }
+      if (p.part_name) candidatePartNames.add(p.part_name);
+
+      const isUuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v ?? ''));
+
+      allWorkOrders.forEach((w: any) => {
+        if (w.sales_order) {
+          matchingSo.add(lc(w.sales_order));
+        }
+        if (w.wo_no) {
+          matchingWo.add(lc(w.wo_no));
+          allWoNos.add(w.wo_no);
+        }
+        if (w.id && isUuid(w.id)) allWoIds.add(String(w.id));
+        if (w.part_name) candidatePartNames.add(w.part_name);
+      });
+
+      const currParty = pParty;
+      const currPart = pPart;
+
       setExpenseRows((inwardRows || []).filter((inv: any) => {
         if (String(inv.category || '').trim().toUpperCase() !== 'EXPENSES' || inv.status === 'Deleted') return false;
         const names = [inv.project_name, inv.product_name].map(lc).filter(Boolean);
         if (lc(inv.sales_order_ref) && matchingSo.has(lc(inv.sales_order_ref))) return true;
-        if (names.some(n => n === lc(p.project_name) || n === currPart || matchingSo.has(n) || matchingWo.has(n))) return true;
+        if (names.some(n => n === pProj || n === currPart || matchingSo.has(n) || matchingWo.has(n))) return true;
         return !!lc(inv.party_name) && lc(inv.party_name) === currParty && lc(inv.part_name) === currPart;
       }));
 
@@ -478,6 +533,232 @@ export function ProjectCostingPage() {
       const inwardAmount = inwardMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
       const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 
+      // 3. Fetch Job Cards, Operation Plans, Work Order Operations, Costing Sheets, and Part Routing
+      const targetWoList = Array.from(allWoNos);
+      const targetPartList = Array.from(candidatePartNames);
+      const targetWoIds = Array.from(allWoIds);
+
+      const [jcByWoRes, jcByPartRes, jcRecentRes, plansByWoRes, plansRecentRes, woOpsRes, routingRes, sheetRes] = await Promise.all([
+        targetWoList.length > 0
+          ? supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').in('work_order', targetWoList)
+          : Promise.resolve({ data: [] }),
+        targetPartList.length > 0
+          ? supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').in('part_name', targetPartList)
+          : Promise.resolve({ data: [] }),
+        supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').order('created_at', { ascending: false }).limit(200),
+        targetWoIds.length > 0
+          ? supabase.from('cnc_operation_plans').select('*').in('work_order_id', targetWoIds).order('operation_sequence')
+          : Promise.resolve({ data: [] }),
+        supabase.from('cnc_operation_plans').select('*').order('created_at', { ascending: false }).limit(200),
+        targetWoIds.length > 0
+          ? supabase.from('cnc_work_order_operations').select('*').in('work_order_id', targetWoIds).order('operation_sequence')
+          : Promise.resolve({ data: [] }),
+        supabase.from('cnc_part_routings').select('id, product_name, product_code, cnc_part_routing_steps(*)').or(`product_name.ilike.%${p.part_name}%,product_code.ilike.%${p.part_name}%`).eq('status', 'Active').limit(1),
+        (targetWoList.length > 0 || matchingSo.size > 0)
+          ? supabase.from('cnc_costing_sheets').select('*').order('version', { ascending: false }).limit(20)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const jcMap = new Map<string, any>();
+      const addJobCard = (j: any) => {
+        if (!j || !j.id) return;
+        if (jcMap.has(String(j.id))) return;
+        jcMap.set(String(j.id), j);
+      };
+      (jcByWoRes.data || []).forEach(addJobCard);
+      (jcByPartRes.data || []).forEach(addJobCard);
+
+      (jcRecentRes.data || []).forEach((j: any) => {
+        const jPartKey = quoteNameKey(j.part_name);
+        if (pPartKey && jPartKey && jPartKey === pPartKey) addJobCard(j);
+        if (j.work_order && (allWoNos.has(j.work_order) || matchingSo.has(lc(j.work_order)))) addJobCard(j);
+      });
+
+      const planList: any[] = (plansByWoRes.data || []) as any[];
+      const seenPlanIds = new Set<string>(planList.map((x: any) => String(x.id)));
+      (plansRecentRes.data || []).forEach((pl: any) => {
+        if (seenPlanIds.has(String(pl.id))) return;
+        if (allWoIds.has(String(pl.work_order_id))) {
+          seenPlanIds.add(String(pl.id));
+          planList.push(pl);
+        }
+      });
+
+      const woOps: any[] = (woOpsRes.data || []) as any[];
+      const routingSteps: any[] = (routingRes.data?.[0]?.cnc_part_routing_steps || []) as any[];
+
+      // Match costing sheets if any belong to these work orders or sales orders
+      let sheetOps: any[] = [];
+      const matchingSheets = (sheetRes.data || []).filter((s: any) => {
+        const sWo = s.work_order_no;
+        const sSo = lc(s.sales_order_no);
+        return (sWo && allWoNos.has(sWo)) || (sSo && matchingSo.has(sSo));
+      });
+      if (matchingSheets.length > 0 && matchingSheets[0]?.workings?.processes) {
+        sheetOps = matchingSheets[0].workings.processes;
+      }
+
+      // Build merged operations
+      const jcList = Array.from(jcMap.values());
+      const mergedOps: any[] = [];
+      const seenOpKey = new Set<string>();
+
+      // 1. Add Job Cards
+      jcList.forEach((j: any) => {
+        const opName = String(j.operation || 'Machining').trim();
+        const mach = String(j.machine || '').trim();
+        const hrs = calcJobCardHours(j);
+        mergedOps.push({
+          id: j.id,
+          job_no: j.job_no,
+          operation: opName,
+          machine: mach,
+          operator: j.operator || '',
+          qty_planned: String(j.qty_planned ?? 0),
+          qty_completed: String(j.qty_completed ?? 0),
+          qty_rejected: String(j.qty_rejected ?? 0),
+          cycle_time: String(j.cycle_time ?? 0),
+          setup_time: String(j.setup_time ?? 0),
+          actual_minutes: String(Math.round(hrs * 60)),
+          hours: hrs,
+          status: j.status || 'Completed',
+          start_time: j.start_time,
+          end_time: j.end_time,
+          actual_start: j.actual_start,
+          actual_end: j.actual_end,
+          completed_at: j.completed_at,
+          created_at: j.created_at,
+        });
+        seenOpKey.add(`${opName.toLowerCase()}|${mach.toLowerCase()}`);
+      });
+
+      // 2. Add Work Order Operations if not represented by a job card
+      woOps.forEach((o: any) => {
+        const opName = String(o.process_name || o.process_code || 'Machining').trim();
+        const mach = String(o.machine || '').trim();
+        const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
+        if (!seenOpKey.has(k)) {
+          const hrs = calcJobCardHours({
+            ...o,
+            actual_start: o.actual_start || o.planned_start,
+            actual_end: o.actual_finish || o.planned_finish,
+            qty_planned: o.planned_qty,
+            qty_completed: o.completed_qty,
+            cycle_time: o.est_cycle_time,
+          });
+          mergedOps.push({
+            id: o.id,
+            job_no: null,
+            operation: opName,
+            machine: mach,
+            operator: o.operator || '',
+            qty_planned: String(o.planned_qty ?? 0),
+            qty_completed: String(o.completed_qty ?? 0),
+            qty_rejected: '0',
+            cycle_time: String(o.est_cycle_time ?? 0),
+            setup_time: String(o.setup_time ?? 0),
+            actual_minutes: String(Math.round(hrs * 60)),
+            hours: hrs,
+            status: o.status || 'Pending',
+          });
+          seenOpKey.add(k);
+        }
+      });
+
+      // 3. Add Operation Plans if not represented
+      planList.forEach((pl: any) => {
+        const opName = String(pl.process_name || 'Machining').trim();
+        const mach = String(pl.machine || '').trim();
+        const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
+        if (!seenOpKey.has(k)) {
+          const hrs = calcJobCardHours(pl);
+          mergedOps.push({
+            id: pl.id,
+            job_no: null,
+            operation: opName,
+            machine: mach,
+            operator: pl.operator || '',
+            qty_planned: String(pl.quantity ?? 0),
+            qty_completed: '0',
+            qty_rejected: '0',
+            cycle_time: '0',
+            setup_time: '0',
+            actual_minutes: String(Math.round(hrs * 60)),
+            hours: hrs,
+            status: 'Scheduled',
+          });
+          seenOpKey.add(k);
+        }
+      });
+
+      // 4. Add Costing Sheet Operations (fallback if mergedOps is empty)
+      if (mergedOps.length === 0 && sheetOps.length > 0) {
+        sheetOps.forEach((s: any, idx: number) => {
+          const opName = String(s.process_name || s.process_code || 'Machining').trim();
+          const hrs = Number(s.machine_hours) || Number(s.hours) || 1;
+          mergedOps.push({
+            id: s.key || `sheet-${idx}`,
+            job_no: null,
+            operation: opName,
+            machine: s.machine || '',
+            operator: s.operator || '',
+            qty_planned: String(s.qty ?? 1),
+            qty_completed: String(s.qty ?? 1),
+            qty_rejected: '0',
+            cycle_time: String(s.cycle_time ?? 0),
+            setup_time: String(s.setup_time ?? 0),
+            actual_minutes: String(Math.round(hrs * 60)),
+            hours: hrs,
+            status: 'Completed',
+          });
+        });
+      }
+
+      // 5. Add Part Routing Steps (fallback if mergedOps is empty)
+      if (mergedOps.length === 0 && routingSteps.length > 0) {
+        routingSteps.forEach((rs: any, idx: number) => {
+          const opName = String(rs.process_name || rs.process_code || 'Machining').trim();
+          const cycle = Number(rs.cycle_time) || 0;
+          const setup = Number(rs.setup_time) || 0;
+          const hrs = Math.max(1, (setup + 1 * cycle) / 60);
+          mergedOps.push({
+            id: rs.id || `routing-${idx}`,
+            job_no: null,
+            operation: opName,
+            machine: rs.machine || '',
+            operator: '',
+            qty_planned: '1',
+            qty_completed: '0',
+            qty_rejected: '0',
+            cycle_time: String(cycle),
+            setup_time: String(setup),
+            actual_minutes: String(Math.round(hrs * 60)),
+            hours: hrs,
+            status: 'Routing Planned',
+          });
+        });
+      }
+
+      // 6. Keep any operations from baseReport if not covered
+      (baseReport.operations || []).forEach((bo: any) => {
+        const opName = String(bo.operation || 'Machining').trim();
+        const mach = String(bo.machine || '').trim();
+        const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
+        if (!seenOpKey.has(k)) {
+          const hrs = calcJobCardHours(bo);
+          mergedOps.push({
+            ...bo,
+            actual_minutes: String(Math.round(hrs * 60)),
+            hours: hrs,
+          });
+          seenOpKey.add(k);
+        }
+      });
+
+      // Calculate total machine cost
+      const valuedOps = valueOperations(mergedOps, procRates);
+      const totalMachineCost = machineCostTotal(valuedOps);
+
       // Update categories breakdown (used by export/print)
       let updatedCategories = [...(baseReport.categories || [])];
       const matCatIdx = updatedCategories.findIndex((c) => /material/i.test(c.category));
@@ -508,11 +789,25 @@ export function ProjectCostingPage() {
           });
         }
       }
+      if (totalMachineCost > 0) {
+        const machCatIdx = updatedCategories.findIndex((c) => /machine|in-house|labour/i.test(c.category));
+        if (machCatIdx >= 0) {
+          updatedCategories[machCatIdx] = {
+            ...updatedCategories[machCatIdx],
+            amount: totalMachineCost.toFixed(2),
+          };
+        } else {
+          updatedCategories.push({
+            category: 'Machine Cost',
+            amount: totalMachineCost.toFixed(2),
+          });
+        }
+      }
 
-      // Compute combined actual cost and margin
+      // Compute combined actual cost and margin including machine cost
       const baseActual = Number(baseReport.project?.actual_cost) || 0;
       const purchaseAmount = inwardAmount + serviceAmount;
-      const combinedActual = (baseActual > 0 ? baseActual + purchaseAmount : totalMaterialCost + serviceAmount) || null;
+      const combinedActual = (totalMaterialCost + serviceAmount + totalMachineCost) || (baseActual > 0 ? baseActual + purchaseAmount : null);
       const salesVal = Number(baseReport.project?.sales_value || p.sales_value) || null;
       const profit =
         salesVal !== null && combinedActual !== null ? (salesVal - combinedActual).toFixed(2) : null;
@@ -524,94 +819,27 @@ export function ProjectCostingPage() {
       const purchaseKinds = [
         ...(inwardAmount > 0 ? ['goods purchase'] : []),
         ...(serviceAmount > 0 ? ['service purchase'] : []),
+        ...(totalMachineCost > 0 ? ['machine cost'] : []),
       ];
       const costSource = baseReport.project?.cost_source
         ? purchaseKinds.length > 0
           ? `${baseReport.project.cost_source} + ${purchaseKinds.join(' + ')}`
           : baseReport.project.cost_source
         : purchaseKinds.length > 0
-        ? `${purchaseKinds.join(' + ')} inward`
+        ? `${purchaseKinds.join(' + ')}`
         : null;
-
-      // Operations scheduled / logged on the work order (Production, Scheduling, Machine Log) live in
-      // cnc_work_order_operations, while the report RPC only reads job cards. Add them so machine time
-      // is costed too; an operation that already has a job card is not counted twice.
-      let mergedOps: any[] = baseReport.operations || [];
-      // Real machine time: a job card records when it started and when it was completed (the report
-      // function doesn't return those), so attach the elapsed minutes to each job card operation.
-      const woNos = (baseReport.work_orders || []).map((w: any) => w.wo_no).filter(Boolean);
-      const matchWoList = Array.from(new Set([...woNos, p.project_name].filter(Boolean)));
-      if (matchWoList.length) {
-        const { data: jCards, error: spanErr } = await supabase
-          .from('cnc_job_cards')
-          .select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time')
-          .in('work_order', matchWoList);
-        if (spanErr) console.error('Project costing: job cards unavailable', spanErr);
-        const minutesById = new Map<string, number>();
-        const jcList = (jCards ?? []) as any[];
-        for (const j of jcList) {
-          const st = j.actual_start ? new Date(j.actual_start).getTime() : NaN;
-          const en = new Date(j.actual_end || j.completed_at || '').getTime();
-          let m: number | null = null;
-          if (Number(j.actual_minutes) > 0) m = Math.round(Number(j.actual_minutes));
-          else if (Number.isFinite(st) && Number.isFinite(en) && en > st) m = Math.round((en - st) / 60000);
-          else if (Number.isFinite(st) && ['Running', 'In Progress'].includes(String(j.status))) m = Math.round((Date.now() - st) / 60000);
-          if (m != null) minutesById.set(String(j.id), m);
-        }
-        mergedOps = mergedOps.map((o: any) => (minutesById.has(String(o.id)) ? { ...o, actual_minutes: String(minutesById.get(String(o.id))) } : o));
-
-        // If mergedOps is missing runs recorded in Scheduling, append them directly
-        const existingJobIds = new Set(mergedOps.map((o: any) => String(o.id)));
-        for (const j of jcList) {
-          if (!existingJobIds.has(String(j.id))) {
-            const m = minutesById.get(String(j.id)) || Number(j.actual_minutes) || 0;
-            mergedOps.push({
-              id: j.id,
-              job_no: j.job_no,
-              operation: j.operation || 'Machining',
-              machine: j.machine || '',
-              operator: j.operator || '',
-              qty_planned: String(j.qty_planned ?? 0),
-              qty_completed: String(j.qty_completed ?? 0),
-              qty_rejected: String(j.qty_rejected ?? 0),
-              cycle_time: String(j.cycle_time ?? 0),
-              setup_time: String(j.setup_time ?? 0),
-              actual_minutes: String(m),
-              status: j.status,
-            });
-            existingJobIds.add(String(j.id));
-          }
-        }
-      }
-      // work_order_id is a uuid column; a non-uuid id would make the database reject the whole request.
-      const isUuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v ?? ''));
-      const woIds = (baseReport.work_orders || []).map((w: any) => w.id).filter(isUuid);
-      if (woIds.length) {
-        const { data: woOps, error: woOpsErr } = await supabase
-          .from('cnc_work_order_operations').select('*').in('work_order_id', woIds).order('operation_sequence');
-        if (woOpsErr) console.error('Project costing: work order operations unavailable', woOpsErr);
-        const haveJob = new Set(mergedOps.map((o: any) => String(o.operation ?? '').trim().toLowerCase()));
-        const extra = (woOps ?? [])
-          .filter((o: any) => !haveJob.has(String(o.process_name ?? '').trim().toLowerCase()))
-          .map((o: any) => ({
-            id: o.id, job_no: null, operation: o.process_name || o.process_code, machine: o.machine, operator: o.operator,
-            qty_planned: String(o.planned_qty ?? 0), qty_completed: String(o.completed_qty ?? 0), qty_rejected: '0',
-            cycle_time: String(o.est_cycle_time ?? 0), setup_time: String(o.setup_time ?? 0),
-            actual_minutes: String(o.actual_minutes ?? 0), status: o.status,
-          }));
-        mergedOps = [...mergedOps, ...extra];
-      }
 
       let plannedCost = baseReport.project?.planned_cost ?? null;
       if (!(Number(plannedCost) > 0)) {
         const quoted = (await loadQuoteLookup())(
-          [p.project_name, ...workOrders.map((w: any) => w.sales_order)], p.party_name, p.part_name,
+          [p.project_name, ...allWorkOrders.map((w: any) => w.sales_order)], p.party_name, p.part_name,
         );
         if (quoted) plannedCost = quoted.toFixed(2);
       }
 
       const finalDetail: CostingDetail = {
         ...baseReport,
+        work_orders: allWorkOrders,
         operations: mergedOps,
         materials: allMaterials,
         services: [...(baseReport.services || []), ...serviceRows],
@@ -687,6 +915,17 @@ export function ProjectCostingPage() {
         x.unit,
         x.rate,
         x.amount,
+      ]),
+      [],
+      ['Machine Cost Operations'],
+      ['Process / Operation', 'Machine / Operator', 'Hours', 'Rate / Hour', 'Cost', 'Status'],
+      ...processOps.map((x: any) => [
+        x.operation || '',
+        `${x.machine || ''} / ${x.operator || ''}`,
+        `${x.hours} h`,
+        x.matched ? String(x.rate) : '—',
+        x.matched ? String(x.cost) : '—',
+        x.status || '—',
       ]),
     ]);
   };
