@@ -24,6 +24,7 @@ export function DesktopUpdateNavButton({
   onNavigate: (page: string) => void;
 }) {
   const desktop = isTauri();
+  if (!desktop) return null;
   const [version, setVersion] = useState<string>(CURRENT_APP_VERSION);
   const [status, setStatus] = useState<NavUpdateStatus>('idle');
   const [targetVersion, setTargetVersion] = useState<string | null>(null);
