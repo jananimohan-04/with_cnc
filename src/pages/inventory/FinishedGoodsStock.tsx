@@ -32,9 +32,7 @@ export function WarehouseMasterModal({ onClose, onChanged }: { onClose: () => vo
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [type, setType] = useState('Finished Goods');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,27 +43,29 @@ export function WarehouseMasterModal({ onClose, onChanged }: { onClose: () => vo
   useEffect(() => { void load(); }, [load]);
 
   const add = async () => {
-    if (!code.trim() || !name.trim()) return setError('Enter the warehouse code and name.');
-    if (rows.some(w => w.code.trim().toLowerCase() === code.trim().toLowerCase())) return setError('That code is already used in this company.');
+    if (!name.trim()) return setError('Enter the warehouse name.');
+    if (rows.some(w => w.name.trim().toLowerCase() === name.trim().toLowerCase())) return setError('A warehouse with that name already exists.');
     setBusy(true); setError('');
     try {
       const uid = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `wh-${Date.now()}`;
+      const baseCode = name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'WH';
+      let uniqueCode = baseCode;
+      let counter = 1;
+      while (rows.some(w => (w.code || '').trim().toLowerCase() === uniqueCode.toLowerCase())) {
+        counter++;
+        uniqueCode = `${baseCode}-${counter}`;
+      }
       const payload: Record<string, unknown> = {
         id: uid,
-        code: code.trim(),
+        code: uniqueCode,
         name: name.trim(),
-        type,
+        type: 'General',
         status: 'Active',
       };
       if (hasDefault && !rows.some(w => w.is_default)) payload.is_default = true; // the first warehouse becomes the default
       const r = await supabase.from('cnc_warehouses').insert([payload]);
-      if (r.error) {
-        if (/cnc_warehouses_code_key|duplicate key/i.test(r.error.message)) {
-          throw new Error(`Warehouse code "${code.trim()}" is already in use in the database. Please try a unique prefix like "WH-${code.trim()}" or apply migration 20261029010000_fix_cnc_warehouses_unique_code.sql in Supabase.`);
-        }
-        throw r.error;
-      }
-      setCode(''); setName(''); await load(); onChanged();
+      if (r.error) throw r.error;
+      setName(''); await load(); onChanged();
     } catch (e) { setError(errText(e)); }
     finally { setBusy(false); }
   };
@@ -93,47 +93,29 @@ export function WarehouseMasterModal({ onClose, onChanged }: { onClose: () => vo
   };
 
   return (
-    <Modal open onClose={onClose} title="Warehouse Master" subtitle="Create warehouses and choose the default for finished goods" size="lg" width={760}
+    <Modal open onClose={onClose} title="Warehouse Master" subtitle="Create warehouses and choose the default location" size="lg" width={680}
       footer={<button className={outlineBtn} onClick={onClose}>Close</button>}>
       <div className="space-y-4">
         {error && (
-          <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={15} className="mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-            {/already in use|duplicate key/i.test(error) && (
-              <button
-                type="button"
-                onClick={() => {
-                  const next = `WH-${code.trim() || '02'}`;
-                  setCode(next);
-                  setError('');
-                }}
-                className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100 whitespace-nowrap self-start sm:self-auto cursor-pointer"
-              >
-                Use code &quot;WH-{code.trim() || '02'}&quot;
-              </button>
-            )}
+          <div role="alert" className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <AlertCircle size={15} className="shrink-0" />
+            <span>{error}</span>
           </div>
         )}
-        <div className="grid grid-cols-2 md:grid-cols-[8rem_minmax(0,1fr)_10rem_auto] gap-2 items-end">
-          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Code<input aria-label="Warehouse code" className={`${field} mt-1 normal-case font-normal`} placeholder="WH-001" value={code} onChange={e => setCode(e.target.value)} /></label>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Name<input aria-label="Warehouse name" className={`${field} mt-1 normal-case font-normal`} placeholder="Main Plant Warehouse" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void add(); }} /></label>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Type
-            <select aria-label="Warehouse type" className={`${field} mt-1 normal-case font-normal`} value={type} onChange={e => setType(e.target.value)}>
-              {['Finished Goods', 'General', 'Raw Material', 'Quarantine'].map(t => <option key={t}>{t}</option>)}</select></label>
-          <button className={`${outlineBtn} !bg-blue-600 !text-white !border-blue-600 hover:!bg-blue-700`} disabled={busy} onClick={() => void add()}><Plus size={15} />Add</button>
+        <div className="flex gap-2 items-end">
+          <label className="flex-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+            Warehouse Name
+            <input aria-label="Warehouse name" className={`${field} mt-1 normal-case font-normal`} placeholder="e.g. Main Plant Warehouse" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void add(); }} />
+          </label>
+          <button className={`${outlineBtn} !bg-blue-600 !text-white !border-blue-600 hover:!bg-blue-700 shrink-0`} disabled={busy} onClick={() => void add()}><Plus size={15} />Add</button>
         </div>
         <div className="border border-slate-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50"><tr className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-600"><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Default</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
+            <thead className="bg-slate-50"><tr className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-600"><th className="px-3 py-2">Warehouse Name</th><th className="px-3 py-2">Default</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
             <tbody>
               {rows.map(w => (
                 <tr key={w.id} data-testid="wh-row" className="border-t border-slate-100">
-                  <td className="px-3 py-2 font-mono text-slate-600">{w.code}</td>
                   <td className="px-3 py-2 font-medium text-slate-800">{w.name}{w.status !== 'Active' && <span className="ml-2 text-[11px] text-slate-400">(inactive)</span>}</td>
-                  <td className="px-3 py-2 text-slate-600">{w.type}</td>
                   <td className="px-3 py-2">{w.is_default ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200"><Star size={11} className="fill-current" />Default</span> : ''}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {!w.is_default && w.status === 'Active' && <button className="text-xs font-semibold text-blue-600 hover:underline mr-3 disabled:opacity-50" disabled={busy} onClick={() => void makeDefault(w)}>Set as default</button>}
@@ -141,8 +123,8 @@ export function WarehouseMasterModal({ onClose, onChanged }: { onClose: () => vo
                   </td>
                 </tr>
               ))}
-              {!loading && rows.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">No warehouses yet. Add the first one above; it becomes the default.</td></tr>}
-              {loading && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400"><Loader2 size={16} className="inline animate-spin mr-1" />Loading…</td></tr>}
+              {!loading && rows.length === 0 && <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">No warehouses yet. Add the first one above; it becomes the default.</td></tr>}
+              {loading && <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400"><Loader2 size={16} className="inline animate-spin mr-1" />Loading…</td></tr>}
             </tbody>
           </table>
         </div>
