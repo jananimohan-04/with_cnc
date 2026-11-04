@@ -2372,7 +2372,13 @@ export function SalesPipelinePage() {
       if (stage === 'Qty Tracking') return activeView === 'tracking_list';
       return false;
     };
-    setKpis(kpiStats.filter(s => canView(STAGE_MODULE[s.stage] ?? s.stage)).map(s => {
+    const canViewStage = (stage: string) => {
+      if (stage === 'Qty Tracking') {
+        return canView('sales-orders') || canView('sales-pipeline') || canView('reports');
+      }
+      return canView(STAGE_MODULE[stage] ?? stage) || canView('sales-pipeline');
+    };
+    setKpis(kpiStats.filter(s => canViewStage(s.stage)).map(s => {
       const theme = MODULE_THEMES[s.stage] ?? MODULE_THEMES.Enquiry;
       return {
         key: s.key,

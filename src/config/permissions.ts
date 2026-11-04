@@ -113,7 +113,7 @@ export const STAGE_MODULE: Record<string, string> = {
   DC: 'delivery',
   Invoice: 'invoices',
   Rejected: 'rejected',
-  'Qty Tracking': 'reports',
+  'Qty Tracking': 'sales-orders',
   'Pipeline Report': 'reports',
 };
 
