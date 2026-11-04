@@ -118,7 +118,7 @@ export default function Quotes() {
             cols={[
               { key: 'id', label: 'RFQ', render: (x) => (<><b>{x.id}</b><div className="hint">{x.date}</div></>) },
               { key: 'co', label: 'Company', render: (x) => x.companyName2 || x.companyId },
-              { key: 'p', label: 'Product', render: (x) => (<><b>{x.productName || x.pid}</b><div className="hint">{x.sku || ''} • {x.companyName || ''}</div><div className="hint">Tech: {x.techReq || '—'}</div></>) },
+              { key: 'p', label: 'Product', render: (x) => (<><b>{x.productName || x.pid}</b><div className="hint">{x.companyName || ''}</div><div className="hint">Tech: {x.techReq || '—'}</div></>) },
               { key: 'qty', label: 'Qty', render: (x) => x.qty },
               { key: 'by', label: 'Requested by', render: (x) => (<>{x.requestedBy}<div className="hint">{x.mobile || ''}</div></>) },
               { key: 'q', label: 'Quote', render: (x) => (<>{x.quotePrice != null ? <b>{fmt(x.quotePrice)}</b> : '—'}<div className="hint">{x.adminNote || ''}</div></>) },

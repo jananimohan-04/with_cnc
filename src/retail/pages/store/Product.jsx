@@ -33,7 +33,6 @@ export default function Product() {
   const [qty, setQty] = useState(1);
   const [rfq, setRfq] = useState(null);
   const [activeTab, setActiveTab] = useState('specs'); // 'specs' | 'docs' | 'videos' | 'overview'
-  const [copiedSku, setCopiedSku] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => { window.scrollTo(0, 0); }, [id]);
@@ -98,12 +97,6 @@ export default function Product() {
 
   const activeMedia = allVisualMedia[activeMediaIndex] || allVisualMedia[0] || null;
   const specs = Object.entries(p.specs || {}).filter(([k]) => String(k).trim());
-
-  const copySku = () => {
-    navigator.clipboard.writeText(p.sku || p.id);
-    setCopiedSku(true);
-    setTimeout(() => setCopiedSku(false), 2000);
-  };
 
   const buyBox = p.price == null
     ? (
@@ -183,9 +176,6 @@ export default function Product() {
             <Share2 className="w-3.5 h-3.5 text-[#8F2A0E]" />
             <span>Share Product</span>
           </button>
-          <span className="text-xs text-slate-400 hidden sm:inline">
-            Catalog SKU: <code className="font-mono text-slate-700 font-bold">{p.sku || p.id}</code>
-          </span>
         </div>
       </div>
 
@@ -308,17 +298,8 @@ export default function Product() {
                 {p.name}
               </h1>
 
-              {/* SKU, MPN, Brand Row */}
+              {/* MPN, Brand Row */}
               <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 mt-1">
-                <button
-                  type="button"
-                  onClick={copySku}
-                  className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded cursor-pointer transition-colors"
-                  title="Click to copy SKU"
-                >
-                  <span>SKU: {p.sku || p.id}</span>
-                  {copiedSku ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
-                </button>
                 {p.brand && (
                   <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded">
                     Brand: <b className="text-slate-800">{p.brand}</b>

@@ -107,8 +107,8 @@ export default function Listing() {
   return (
     <>
       <PageHero
-        title={`Industrial Catalog (${ps.length} SKUs)`}
-        subtitle="Search SKU, MPN, industrial brand, technical compatibility, and inventory status."
+        title={`Industrial Catalog (${ps.length} Products)`}
+        subtitle="Search products, MPN, industrial brand, technical compatibility, and inventory status."
         icon={ShoppingBag}
         badgeText="Industrial Storefront"
         badgeColor="orange"
@@ -182,7 +182,7 @@ export default function Listing() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'pdf')}
                 className="btn btn-sm bg-[#2E1508] hover:bg-[#432311] text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Download selected SKUs as catalog PDF"
+                title="Download selected products as catalog PDF"
               >
                 <FileDown className="w-3.5 h-3.5" />
                 Download PDF ({selectedCount})
@@ -191,7 +191,7 @@ export default function Listing() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'whatsapp')}
                 className="btn btn-sm bg-emerald-700 hover:bg-emerald-800 text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Share selected SKUs via WhatsApp"
+                title="Share selected products via WhatsApp"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 Send WhatsApp ({selectedCount})
@@ -200,7 +200,7 @@ export default function Listing() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'email')}
                 className="btn btn-sm bg-sky-800 hover:bg-sky-900 text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Share selected SKUs via Email quotation"
+                title="Share selected products via Email quotation"
               >
                 <Mail className="w-3.5 h-3.5" />
                 Send Email ({selectedCount})
@@ -229,8 +229,8 @@ export default function Listing() {
           : (
             <div className="empty">
               <div className="big">🔩</div>
-              <b>No matching SKUs</b>
-              <p>Try a different SKU, brand or category.</p>
+              <b>No matching products</b>
+              <p>Try a different name, brand or category.</p>
               <button className="btn btn-ghost btn-sm" onClick={clearF}>Clear filters</button>
             </div>
           )}

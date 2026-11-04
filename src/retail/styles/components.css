@@ -165,7 +165,7 @@ tbody tr:hover td{background:#F8FAFC}
 .s-accepted{background:#D1FAE5;color:#065F46} .s-rejected{background:#FEE2E2;color:#991B1B}
 .badge{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:6px;color:#fff;letter-spacing:.02em;display:inline-block}
 .badge.in{background:var(--emerald)} .badge.low{background:var(--amber)} .badge.out{background:#64748B} .badge.rfq{background:var(--navy)}
-.sku{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--brand-dark)}
+.sku{display:none!important}
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
 
 /* ---------- toolbar / filters ---------- */

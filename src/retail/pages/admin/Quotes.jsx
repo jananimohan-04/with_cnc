@@ -213,9 +213,6 @@ export default function Quotes() {
 
                   <td className="py-3.5">
                     <div className="font-bold text-slate-900">{q.productName || q.pid}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      SKU: <span className="font-mono">{q.sku || '—'}</span>
-                    </div>
                     {q.techReq && (
                       <div className="text-[11px] text-slate-600 bg-slate-50 px-2 py-0.5 rounded mt-1 border border-slate-100 max-w-xs truncate">
                         Tech: {q.techReq}

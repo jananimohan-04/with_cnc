@@ -89,7 +89,7 @@ export default function Categories() {
     <div className="space-y-6">
       <PageHero
         title={`Catalog Taxonomies (${cats.length})`}
-        subtitle="Custom category classifications and SKU distributions for your enterprise catalog."
+        subtitle="Custom category classifications and product distributions for your enterprise catalog."
         icon={FolderTree}
         badgeText="Taxonomy"
         badgeColor="amber"
@@ -129,7 +129,7 @@ export default function Categories() {
               <tr className="border-b border-slate-100 text-slate-400 uppercase tracking-wider text-[10px]">
                 <th className="pb-3 font-bold">Category Name</th>
                 <th className="pb-3 font-bold">Description</th>
-                <th className="pb-3 font-bold text-center">Active SKUs</th>
+                <th className="pb-3 font-bold text-center">Active Products</th>
                 <th className="pb-3 font-bold text-right">Action</th>
               </tr>
             </thead>

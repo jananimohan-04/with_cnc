@@ -111,13 +111,12 @@ export function formatProductsWhatsApp(products, companyName = 'ARGUS CNC') {
   const count = products.length;
 
   let msg = `*${companyName} — Industrial Product Catalog*\n`;
-  msg += `_Selected SKUs (${count}) • Generated: ${dateStr}_\n`;
+  msg += `_Selected Products (${count}) • Generated: ${dateStr}_\n`;
   msg += `─────────────────────────\n\n`;
 
   products.forEach((p, idx) => {
     const { images, docs, youtube } = getProductMedia(p);
     msg += `*${idx + 1}. ${p.name || 'Industrial Product'}*\n`;
-    msg += `• *SKU:* \`${p.sku || p.id || 'N/A'}\`\n`;
     if (p.brand) msg += `• *Brand:* ${p.brand}\n`;
     if (p.mpn) msg += `• *MPN:* ${p.mpn}\n`;
     if (p.category) msg += `• *Category:* ${p.category}\n`;
@@ -187,16 +186,15 @@ export function formatProductsEmail(products, companyName = 'ARGUS CNC') {
   if (!products || !products.length) return { subject: '', body: '' };
 
   const count = products.length;
-  const skuList = products.map(p => p.sku || p.name).slice(0, 3).join(', ') + (count > 3 ? ` +${count - 3} more` : '');
-  const subject = `Industrial Product Catalog & Datasheets (${count} SKU${count > 1 ? 's' : ''}: ${skuList}) - ${companyName}`;
+  const prodList = products.map(p => p.name).slice(0, 3).join(', ') + (count > 3 ? ` +${count - 3} more` : '');
+  const subject = `Industrial Product Catalog & Datasheets (${count} Product${count > 1 ? 's' : ''}: ${prodList}) - ${companyName}`;
 
   let body = `Dear Customer,\n\nPlease find the technical specifications, pricing, attached documents, and photo(s) for the selected industrial product(s) from ${companyName}:\n\n`;
   body += `============================================================\n`;
 
   products.forEach((p, idx) => {
     const { images, docs, youtube } = getProductMedia(p);
-    body += `[${idx + 1}] ${p.name || 'Industrial SKU'}\n`;
-    body += `SKU: ${p.sku || p.id || 'N/A'}\n`;
+    body += `[${idx + 1}] ${p.name || 'Industrial Product'}\n`;
     if (p.brand) body += `Brand: ${p.brand}\n`;
     if (p.mpn) body += `MPN: ${p.mpn}\n`;
     if (p.category) body += `Category: ${p.category}\n`;
@@ -338,9 +336,8 @@ export function generateCatalogHtml(products, companyInfo = {}) {
         <div class="card-header">
           <div class="badge-idx">#${idx + 1}</div>
           <div class="header-main">
-            <h2 class="prod-title">${escapeHtml(p.name || 'Industrial SKU')}</h2>
+            <h2 class="prod-title">${escapeHtml(p.name || 'Industrial Product')}</h2>
             <div class="meta-tags">
-              <span class="tag tag-sku">SKU: <b>${escapeHtml(p.sku || p.id || 'N/A')}</b></span>
               ${p.brand ? `<span class="tag tag-brand">Brand: <b>${escapeHtml(p.brand)}</b></span>` : ''}
               ${p.mpn ? `<span class="tag tag-mpn">MPN: <b>${escapeHtml(p.mpn)}</b></span>` : ''}
               ${p.category ? `<span class="tag tag-cat">${escapeHtml(p.category)}</span>` : ''}
@@ -773,7 +770,7 @@ export function generateCatalogHtml(products, companyInfo = {}) {
 <body>
   <div class="no-print-bar">
     <div>
-      <strong>ARGUS Industrial Catalog Viewer</strong> &mdash; ${products.length} Selected SKU${products.length > 1 ? 's' : ''} Ready to Export
+      <strong>ARGUS Industrial Catalog Viewer</strong> &mdash; ${products.length} Selected Product${products.length > 1 ? 's' : ''} Ready to Export
     </div>
     <div style="display: flex; gap: 10px;">
       <button onclick="window.print()">
@@ -794,7 +791,7 @@ export function generateCatalogHtml(products, companyInfo = {}) {
       </div>
       <div class="doc-meta">
         <div>Date: <b>${dateStr}</b></div>
-        <div>Total Items: <b>${products.length} SKU${products.length > 1 ? 's' : ''}</b></div>
+        <div>Total Items: <b>${products.length} Product${products.length > 1 ? 's' : ''}</b></div>
         <div>Contact: <b>${escapeHtml(companyEmail)}</b></div>
       </div>
     </div>

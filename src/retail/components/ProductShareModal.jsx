@@ -186,12 +186,12 @@ export default function ProductShareModal({
       return;
     }
     exportProductsPdf(products, { name: companyName, email: companyEmail });
-    toast(`Generating catalog PDF for ${products.length} SKU(s)…`, '📄');
+    toast(`Generating catalog PDF for ${products.length} product(s)…`, '📄');
   };
 
   return (
     <Modal
-      title={`Share & Export Products (${products.length} SKU${products.length > 1 ? 's' : ''})`}
+      title={`Share & Export Products (${products.length} product${products.length > 1 ? 's' : ''})`}
       wide
       onClose={onClose}
     >
@@ -272,11 +272,10 @@ export default function ProductShareModal({
                           }}
                         />
                         <div className="min-w-0">
-                          <div className="font-bold text-[#2E1508] text-sm truncate">{p.name || 'Industrial SKU'}</div>
+                          <div className="font-bold text-[#2E1508] text-sm truncate">{p.name || 'Industrial Product'}</div>
                           <div className="text-[11px] text-[#6B503E] mt-0.5 flex items-center gap-1.5 flex-wrap">
-                            <span>SKU: <b className="font-mono text-[#8F2A0E]">{p.sku || p.id}</b></span>
-                            {p.brand && <span>• Brand: <b>{p.brand}</b></span>}
-                            {p.category && <span>• <b>{p.category}</b></span>}
+                            {p.brand && <span>Brand: <b>{p.brand}</b></span>}
+                            {p.category && <span>{p.brand ? '• ' : ''}<b>{p.category}</b></span>}
                           </div>
                           <div className="text-xs font-bold text-[#2E1508] mt-0.5">
                             {p.price != null && p.price !== ''

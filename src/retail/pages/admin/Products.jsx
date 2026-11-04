@@ -117,7 +117,7 @@ export default function Products() {
       return;
     }
     exportProductsPdf(list, { name: companyName, email: companyEmail });
-    toast(`Generating catalog PDF for ${list.length} SKU(s)…`, '📄');
+    toast(`Generating catalog PDF for ${list.length} product(s)…`, '📄');
   };
 
   if (!data) return <Skeleton h={220} />;
@@ -126,7 +126,7 @@ export default function Products() {
   return (
     <>
       <PageHero
-        title={'Stock Library (' + data.total + ' SKUs)'}
+        title={'Stock Library (' + data.total + ' Products)'}
         subtitle="Catalog inventory, pricing, stock levels, and visibility status."
         icon={Boxes}
         badgeText="Inventory Management"
@@ -140,7 +140,7 @@ export default function Products() {
         }
       />
       <div className="card"><div className="card-pad">
-        <div className="toolbar"><input placeholder="Search name, SKU, brand, MPN…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="toolbar"><input placeholder="Search name, brand, MPN…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
 
         {/* Multi-Select Floating / Sticky Batch Actions Toolbar */}
         {selectedCount > 0 && (
@@ -163,7 +163,7 @@ export default function Products() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'pdf')}
                 className="btn btn-sm bg-[#2E1508] hover:bg-[#432311] text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Download selected SKUs as catalog PDF"
+                title="Download selected products as catalog PDF"
               >
                 <FileDown className="w-3.5 h-3.5" />
                 Download PDF ({selectedCount})
@@ -172,7 +172,7 @@ export default function Products() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'whatsapp')}
                 className="btn btn-sm bg-emerald-700 hover:bg-emerald-800 text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Share selected SKUs via WhatsApp"
+                title="Share selected products via WhatsApp"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 Send WhatsApp ({selectedCount})
@@ -181,7 +181,7 @@ export default function Products() {
                 type="button"
                 onClick={() => openShareModal(selectedProducts, 'email')}
                 className="btn btn-sm bg-sky-800 hover:bg-sky-900 text-white border-none shadow-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Send selected SKUs via Email"
+                title="Send selected products via Email"
               >
                 <Mail className="w-3.5 h-3.5" />
                 Send Email ({selectedCount})
@@ -191,7 +191,7 @@ export default function Products() {
         )}
 
         {data.total === 0 && !deb
-          ? <div className="empty" style={{ padding: 32, textAlign: 'center' }}><div className="big">📦</div><h3>No products in catalog</h3><p className="hint">Your company catalog is empty. Click "+ Add product" above to create your first SKU.</p></div>
+          ? <div className="empty" style={{ padding: 32, textAlign: 'center' }}><div className="big">📦</div><h3>No products in catalog</h3><p className="hint">Your company catalog is empty. Click "+ Add product" above to create your first product.</p></div>
           : <>
             <DataTable
               empty="No products match your search."
@@ -218,7 +218,7 @@ export default function Products() {
                         checked={!!selectedMap[p.id]}
                         onChange={() => toggleSelect(p)}
                         className="w-4 h-4 rounded cursor-pointer accent-[#2E1508]"
-                        title={selectedMap[p.id] ? "Deselect SKU" : "Select SKU"}
+                        title={selectedMap[p.id] ? "Deselect product" : "Select product"}
                       />
                     </div>
                   )
@@ -228,10 +228,10 @@ export default function Products() {
                     const { images, docs } = getProductMedia(p);
                     return (
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <img className="thumb" src={images[0] || ''} alt="" onError={(e) => { e.currentTarget.src = imgFallback(p.sku || p.id, 100, 100); }} />
+                        <img className="thumb" src={images[0] || ''} alt="" onError={(e) => { e.currentTarget.src = imgFallback(p.id, 100, 100); }} />
                         <div>
                           <b>{p.name}</b>
-                          <div className="hint">{p.sku || p.id}{p.mpn ? ' • MPN ' + p.mpn : ''}</div>
+                          <div className="hint">{p.brand ? p.brand : ''}{p.mpn ? (p.brand ? ' • ' : '') + 'MPN ' + p.mpn : ''}</div>
                           {/* Attached Media Chips */}
                           <div style={{ display: 'flex', gap: 4, marginTop: 3 }}>
                             {docs.length > 0 && (
@@ -276,7 +276,7 @@ export default function Products() {
                       <button
                         className="btn btn-ghost btn-sm text-[#2E1508] hover:bg-[#DECDBE] border border-[#BAA794]/60 font-semibold flex items-center gap-1 cursor-pointer"
                         onClick={() => openShareModal([p], 'pdf')}
-                        title="Share or Export this SKU (PDF / WhatsApp / Email)"
+                        title="Share or Export this product (PDF / WhatsApp / Email)"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         Share
@@ -297,7 +297,7 @@ export default function Products() {
       {delTarget && (
         <Confirm
           title="Delete Product"
-          body={`Are you sure you want to permanently delete SKU <b>${delTarget.sku || delTarget.id}</b> (${delTarget.name})? This cannot be undone.`}
+          body={`Are you sure you want to permanently delete <b>${delTarget.name || delTarget.id}</b>? This cannot be undone.`}
           okLabel="Delete Permanently"
           danger
           busy={delBusy}

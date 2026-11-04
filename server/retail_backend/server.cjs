@@ -1287,19 +1287,20 @@ app.post('/api/products', scopeCompany, (req, res) => {
   if (req.body.price === '') req.body.price = null;
   if (req.body.price != null) req.body.price = Number(req.body.price);
   if (req.body.stock != null && req.body.stock !== '') req.body.stock = Number(req.body.stock);
-  const { name, price, stock, sku } = req.body;
+  const { name, price, stock } = req.body;
+  const sku = (req.body.sku && String(req.body.sku).trim()) || ('PRD-' + Date.now().toString(36).slice(-4).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
   const co = req.companyId || req.body.companyId;
   if (!co) return res.status(400).json({ error: 'companyId required' });
   if (!companyById(co)) return res.status(400).json({ error: 'unknown company' });
-  if (!name || !sku) return res.status(400).json({ error: 'name and SKU required' });
+  if (!name) return res.status(400).json({ error: 'name required' });
   if (price != null && !(price > 0)) return res.status(400).json({ error: 'price must be > 0 or empty (quotation-only)' });
   if (stock == null || stock === '' || !(stock >= 0)) return res.status(400).json({ error: 'stock >= 0 required' });
-  if (db.products.some(p => p.sku === sku && p.companyId === co)) return res.status(400).json({ error: `SKU "${sku}" already exists in this company - use a different SKU or edit the existing product` });
+  if (sku && db.products.some(p => p.sku === sku && p.companyId === co)) return res.status(400).json({ error: `Product already exists in this company` });
   if (req.body.category && !db.categories.some(c => c.id === req.body.category)) return res.status(400).json({ error: 'unknown category' });
   delete req.body.id;
-  const p = { id: uid('P-', db.products), sold: 0, featured: false, visible: true, active: true, archived: false, uom: 'Pc', moq: 1, created: new Date().toISOString().slice(0, 10), ...req.body, companyId: co };
+  const p = { id: uid('P-', db.products), sold: 0, featured: false, visible: true, active: true, archived: false, uom: 'Pc', moq: 1, created: new Date().toISOString().slice(0, 10), ...req.body, sku, companyId: co };
   db.products.unshift(p); save();
-  audit(req, 'product.create', 'product', p.id, co, `Created SKU ${sku} in ${co}`);
+  audit(req, 'product.create', 'product', p.id, co, `Created product ${name} in ${co}`);
   ok(res, p);
 });
 app.put('/api/products/:id', scopeCompany, (req, res) => {

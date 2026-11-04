@@ -396,7 +396,7 @@ function CompaniesTab({ q, setQ, status, setStatus, ind, setInd, city, setCity, 
           { key: 'industry', label: 'Industry', render: (c) => c.industry || '—' },
           { key: 'admin', label: 'Admin', render: (c) => c.admin || '-' },
           { key: 'users', label: 'Users', render: (c) => c.userCount ?? '' },
-          { key: 'skus', label: 'SKUs', render: (c) => c.productCount ?? '' },
+          { key: 'skus', label: 'Products', render: (c) => c.productCount ?? '' },
           { key: 'orders', label: 'Orders', render: (c) => c.orderCount ?? '' },
           { key: 'status', label: 'Status', render: (c) => statusBadge((c.storeStatus || c.status) === 'active' ? 'Delivered' : 'Cancelled') },
           { key: 'created', label: 'Created', render: (c) => <span className="hint">{c.createdAt || '—'}</span> },
@@ -576,7 +576,7 @@ function CompanyDetails({ id, onClose, onEdit, onManage }) {
       {d.description && <p style={{ fontSize: 13 }}>{d.description}</p>}
       <div className="mgmt-cards" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         <div className="ind-stat"><b>{d.userCount || 0}</b><p>Users</p></div>
-        <div className="ind-stat"><b>{d.productCount || 0}</b><p>SKUs</p></div>
+        <div className="ind-stat"><b>{d.productCount || 0}</b><p>Products</p></div>
         <div className="ind-stat"><b>{d.orderCount || 0}</b><p>Orders</p></div>
         <div className="ind-stat"><b>₹{(d.revenue || 0).toLocaleString('en-IN')}</b><p>Revenue</p></div>
       </div>

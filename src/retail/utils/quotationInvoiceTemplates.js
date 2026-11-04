@@ -176,7 +176,7 @@ export async function generateQuotationHtml({
         <td style="text-align:center;font-weight:600">${idx + 1}</td>
         <td>
           <div style="font-weight:700;color:#1A0A03;font-size:12px">${escapeHtml(it.name || 'Industrial Component')}</div>
-          <div style="font-size:10.5px;color:#64748B;font-family:monospace">SKU: ${escapeHtml(it.sku || it.pid || 'N/A')}${it.brand ? ` &bull; Brand: ${escapeHtml(it.brand)}` : ''}</div>
+          ${it.brand ? `<div style="font-size:10.5px;color:#64748B;">Brand: ${escapeHtml(it.brand)}</div>` : ''}
           ${it.desc ? `<div style="font-size:10px;color:#475569;margin-top:2px">${escapeHtml(it.desc)}</div>` : ''}
         </td>
         <td style="text-align:center;font-family:monospace;font-size:11px">${escapeHtml(hsn)}</td>
@@ -438,7 +438,7 @@ export async function generateTaxInvoiceHtml({
         <td style="text-align:center;font-weight:600">${idx + 1}</td>
         <td>
           <div style="font-weight:700;color:#0F172A;font-size:12px">${escapeHtml(it.name || 'Industrial Component')}</div>
-          <div style="font-size:10.5px;color:#64748B;font-family:monospace">SKU: ${escapeHtml(it.sku || it.pid || 'N/A')}${it.brand ? ` &bull; Brand: ${escapeHtml(it.brand)}` : ''}</div>
+          ${it.brand ? `<div style="font-size:10.5px;color:#64748B;">Brand: ${escapeHtml(it.brand)}</div>` : ''}
           ${it.desc ? `<div style="font-size:10px;color:#475569;margin-top:2px">${escapeHtml(it.desc)}</div>` : ''}
         </td>
         <td style="text-align:center;font-family:monospace;font-size:11px">${escapeHtml(hsn)}</td>

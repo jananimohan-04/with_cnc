@@ -99,11 +99,11 @@ export default function ProductForm({ edit }) {
   const vidSrc = vidFile ? vidPreview : vidUrl;
 
   async function save() {
-    const name = (f.name || '').trim(), sku = (f.sku || '').trim();
+    const name = (f.name || '').trim();
+    const effectiveSku = (f.sku || '').trim() || (editId ? '' : ('PRD-' + Date.now().toString(36).slice(-4).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()));
     const price = (f.price === '' || f.price == null) ? null : Number(f.price);
     const stock = Number(f.stock || '');
     if (!name) { toast('Product name required', '⚠️'); return; }
-    if (!sku) { toast('SKU required', '⚠️'); return; }
     if (price != null && !(price > 0)) { toast('Price must be > 0 or empty (quotation-only)', '⚠️'); return; }
     if (!(stock >= 0)) { toast('Valid stock required', '⚠️'); return; }
     setSaving(true);
@@ -116,7 +116,7 @@ export default function ProductForm({ edit }) {
       let video = vidUrl || '';
       if (vidFile) { const v = await uploadFiles([vidFile]); video = v[0] || ''; }
       const data = {
-        name, sku, brand: f.brand || '', mpn: f.mpn || '', short: f.short || '', price,
+        name, sku: effectiveSku, brand: f.brand || '', mpn: f.mpn || '', short: f.short || '', price,
         uom: f.uom || 'Pc', moq: Number(f.moq || 1), leadTime: f.leadTime || '', warehouse: f.warehouse || '',
         stock, category: f.category || 'cutting-tools', visible: !!f.visible, featured: !!f.featured,
         desc: f.desc || name, specs: specPrev, images, video
@@ -126,7 +126,7 @@ export default function ProductForm({ edit }) {
         if (!targetCompany) throw new Error('No company context — open this form from a company workspace');
         await api.post('/api/products', { ...data, companyId: targetCompany });
       }
-      toast(editId ? 'SKU updated' : 'SKU published', '✅');
+      toast(editId ? 'Product updated' : 'Product published', '✅');
       nav('/admin/products');
     } catch (e) {
       setErr(e.message || 'Save failed');
@@ -138,13 +138,12 @@ export default function ProductForm({ edit }) {
   return (
     <>
       <PageHead
-        title={editId ? 'Edit SKU — ' + (f.sku || f.name || id) : 'Add industrial product'}
+        title={editId ? 'Edit Product — ' + (f.name || id) : 'Add industrial product'}
         actions={<Link className="btn btn-ghost btn-sm" to="/admin/products">← Catalog</Link>}
       />
       <div className="card"><div className="card-pad">
         <div className="form-grid">
           <Field label="Product name *"><input value={f.name} onChange={S('name')} placeholder="e.g. Carbide Turning Insert CNMG 120408" /></Field>
-          <Field label="SKU / Item code *"><input value={f.sku} onChange={S('sku')} placeholder="e.g. TOOL-CNMG-01" /></Field>
           <Field label="Brand / Manufacturer"><input value={f.brand} onChange={S('brand')} placeholder="e.g. CarbiMax" /></Field>
           <Field label="Manufacturer part number (MPN)"><input value={f.mpn} onChange={S('mpn')} placeholder="e.g. CM-CNMG120408-MP" /></Field>
           <Field label="Category *"><select value={f.category} onChange={S('category')}>{cats.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}</select></Field>
@@ -193,7 +192,7 @@ export default function ProductForm({ edit }) {
           <button className="btn btn-primary" disabled={saving} onClick={save}>💾 {saving ? 'Saving…' : (editId ? 'Save changes' : 'Publish product')}</button>
           <Link className="btn btn-ghost" to="/admin/products">Cancel</Link>
         </div>
-        <p className="hint">Reuses the BI product record: SKU unique per company • stock mirrors inventory balances • media goes to Storage buckets.</p>
+        <p className="hint">Reuses the BI product record: unique per company • stock mirrors inventory balances • media goes to Storage buckets.</p>
       </div></div>
     </>
   );

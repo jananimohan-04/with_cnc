@@ -29,7 +29,7 @@ export function addToCart(p, qty = 1, opts = {}) {
   if (cur + qty > p.stock) { toast(`Only ${p.stock} ${p.uom || ''} in stock`, '⚠️'); return false; }
   if (ex) ex.qty += qty; else cart.push({ pid: p.id, qty });
   setCart(cart);
-  if (!opts.silent) toast(`${p.sku || p.name} × ${qty} added`, '🧾');
+  if (!opts.silent) toast(`${p.name} × ${qty} added`, '🧾');
   return true;
 }
 
@@ -57,7 +57,7 @@ export function RfqModal({ p, me, onClose, onDone }) {
     }
   };
   return (
-    <Modal title={`📝 Request Quotation — ${p.sku || p.id}`} onClose={onClose}>
+    <Modal title={`📝 Request Quotation — ${p.name}`} onClose={onClose}>
       <b>{p.name}</b>
       <p className="hint">{p.brand || ''}{p.mpn ? ' • MPN ' + p.mpn : ''} • {p.stock} {p.uom || ''} in {p.warehouse || 'stock'}</p>
       <div className="form-grid">
@@ -95,18 +95,17 @@ export function ProdCard({ p, catName, onAdd, onRfq, selected, onToggleSelect, o
               ? 'bg-[#2E1508] text-white border-[#2E1508] ring-2 ring-white/90 scale-105'
               : 'bg-white hover:bg-[#FAF6F1] border-[#8C7A6B] text-transparent hover:border-[#2E1508]'
           }`}
-          title={selected ? 'Deselect SKU' : 'Select SKU to share / export'}
-          aria-label={selected ? 'Deselect SKU' : 'Select SKU'}
+          title={selected ? 'Deselect product' : 'Select product to share / export'}
+          aria-label={selected ? 'Deselect product' : 'Select product'}
         >
           <Check className={`w-4 h-4 stroke-[3] transition-opacity ${selected ? 'text-white opacity-100' : 'opacity-0'}`} />
         </button>
       )}
       <Link className="prod-img" to={`/store/product/${p.id}`}>
-        <img loading="lazy" src={(p.images || [])[0] || ''} alt={p.name} onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${p.sku || p.id}/700/525`; }} />
+        <img loading="lazy" src={(p.images || [])[0] || ''} alt={p.name} onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${p.id}/700/525`; }} />
         {availBadge(p, onToggleSelect ? { left: 44 } : undefined)}<span className="badge cat">{catName(p.category)}</span>
       </Link>
       <div className="prod-body">
-        <span className="sku">SKU: {p.sku || p.id}</span>
         <div className="prod-name">{p.name}</div>
         <div className="prod-desc">{p.short || ''}</div>
         <div className="prod-meta">{p.brand || ''}{p.mpn ? ' • MPN ' + p.mpn : ''}{p.uom ? ' • per ' + p.uom : ''}</div>
@@ -122,7 +121,7 @@ export function ProdCard({ p, catName, onAdd, onRfq, selected, onToggleSelect, o
                 e.stopPropagation();
                 onShare(p);
               }}
-              title="Share or Export this SKU (PDF / WhatsApp / Email)"
+              title="Share or Export this product (PDF / WhatsApp / Email)"
             >
               <Share2 className="w-3.5 h-3.5" />
               Share
@@ -178,7 +177,7 @@ export default function Home() {
             <Link className="btn btn-ghost" style={{ background: 'rgba(255,255,255,.1)', borderColor: 'rgba(255,255,255,.3)', color: '#fff' }} to="/store/listing?cat=cutting-tools">Browse Categories</Link>
           </div>
           <div className="ind-strip" style={{ margin: '20px 0 0' }}>
-            <div className="ind-stat"><b>{ps.length}</b><p>Live SKUs</p></div>
+            <div className="ind-stat"><b>{ps.length}</b><p>Live Products</p></div>
             <div className="ind-stat"><b>{cats.length}</b><p>Categories</p></div>
             <div className="ind-stat"><b>{ps.filter((p) => p.stock > 0).length}</b><p>In stock</p></div>
             <div className="ind-stat"><b>{ps.filter((p) => p.price == null).length}</b><p>On quotation</p></div>

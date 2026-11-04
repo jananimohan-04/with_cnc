@@ -120,7 +120,7 @@ export default function Dashboard() {
               { key: 'ind', label: 'Industry', render: (c) => c.industry || '—' },
               { key: 'st', label: 'Status', render: (c) => statusBadge(c.status === 'active' ? 'Delivered' : 'Cancelled') },
               { key: 'u', label: 'Users', render: (c) => c.users },
-              { key: 'p', label: 'SKUs', render: (c) => c.products },
+              { key: 'p', label: 'Products', render: (c) => c.products },
               {
                 key: 'o', label: 'Orders',
                 render: (c) => <>{c.orders}{c.pending ? <span className="status s-pending"> {c.pending} pend</span> : null}</>

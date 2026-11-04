@@ -340,7 +340,7 @@ export default function Invoices() {
 
                   <div className="md:col-span-2 space-y-1">
                     <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Invoice Line Items ({itemCount} units across {(inv.items || []).length} SKU{inv.items?.length !== 1 ? 's' : ''})
+                      Invoice Line Items ({itemCount} units across {(inv.items || []).length} product{inv.items?.length !== 1 ? 's' : ''})
                     </div>
                     <div className="flex flex-wrap gap-2 pt-0.5">
                       {(inv.items || []).slice(0, 4).map((it, idx) => (

@@ -82,7 +82,7 @@ export default function Media() {
                 <div className="p-3 flex-1 flex flex-col justify-between">
                   <div>
                     <h4 className="font-bold text-slate-900 text-xs truncate">{p.name}</h4>
-                    <span className="text-[11px] text-slate-500 font-mono mt-0.5 block">{p.sku || p.id}</span>
+                    {p.brand && <span className="text-[11px] text-slate-500 mt-0.5 block">{p.brand}</span>}
                   </div>
 
                   <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">

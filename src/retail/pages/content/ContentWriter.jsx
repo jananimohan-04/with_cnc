@@ -190,7 +190,7 @@ function ContentQueue() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                        <div className="text-[11px] text-slate-500 font-mono truncate">{p.sku || p.id}{p.brand ? ' · ' + p.brand : ''}</div>
+                        {p.brand && <div className="text-[11px] text-slate-500 truncate">{p.brand}</div>}
                       </div>
                     </div>
                   </td>
@@ -871,7 +871,6 @@ function ContentEditor({ id }) {
               )}
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 text-xs pr-1">
-              <Fact k="SKU" v={p.sku || p.id} mono />
               <Fact k="Brand" v={p.brand || '—'} />
               <Fact k="MPN" v={p.mpn || '—'} mono />
               <Fact k="Category" v={p.categoryName || p.category || '—'} />
@@ -1076,9 +1075,6 @@ function ListingPreview({ p, images, docs, videos, yts, staged, mediaEdits = {},
                 </div>
                 <h2 className="text-lg font-black text-slate-900 tracking-tight leading-snug">{p.name}</h2>
                 <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
-                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                    SKU: {p.sku || p.id}
-                  </span>
                   {p.brand && (
                     <span className="bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded">
                       Brand: <b className="text-slate-800">{p.brand}</b>

@@ -96,7 +96,7 @@ export default function Cart() {
                 <img src={(p.images || [])[0] || ''} onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${p.sku || p.id}/200/200`; }} style={{ width: 80, height: 80, borderRadius: 8, objectFit: 'cover' }} alt={p.name} />
                 <div>
                   <b>{p.name}</b>
-                  <div className="hint">{p.sku || ''} • {fmt(p.price)} / {p.uom || 'Pc'} • {p.stock} in {p.warehouse || 'stock'}</div>
+                  <div className="hint">{fmt(p.price)} / {p.uom || 'Pc'} • {p.stock} in {p.warehouse || 'stock'}</div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
                     <span className="qty"><button onClick={() => chQty(p.id, -1)}>−</button><span>{c.qty}</span><button onClick={() => chQty(p.id, 1)}>+</button></span>
                     <button className="btn btn-ghost btn-sm" onClick={() => rm(p.id)}>Remove</button>

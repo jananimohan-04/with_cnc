@@ -51,7 +51,7 @@ export default function Catalog() {
                 Active Tenant Scope: <span className="text-amber-700 font-extrabold">{activeCompanyObj.name}</span> <span className="font-mono text-slate-500">({activeCompanyObj.code || activeCompanyObj.id})</span>
               </div>
               <div className="text-[11px] text-slate-500">
-                Catalog SKUs and industrial inventory are filtered to this company
+                Catalog products and industrial inventory are filtered to this company
               </div>
             </div>
           </div>
@@ -69,13 +69,13 @@ export default function Catalog() {
           <>
             <DataTable
               rowKey={(r) => r.id}
-              empty="No SKUs match."
+              empty="No products match."
               cols={[
                 {
                   key: 'p', label: 'Product', render: (p) => (
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <img className="thumb" src={(p.images || [])[0] || ''} onError={(e) => { e.target.src = imgFallback(p.sku || p.id, 100, 100); }} alt="" />
-                      <div><b>{p.name}</b><div className="hint">{p.sku || p.id}{p.mpn ? ' • MPN ' + p.mpn : ''}{p.archived ? ' • ARCHIVED' : ''}</div></div>
+                      <img className="thumb" src={(p.images || [])[0] || ''} onError={(e) => { e.target.src = imgFallback(p.id, 100, 100); }} alt="" />
+                      <div><b>{p.name}</b><div className="hint">{p.brand ? p.brand : ''}{p.mpn ? (p.brand ? ' • ' : '') + 'MPN ' + p.mpn : ''}{p.archived ? ' • ARCHIVED' : ''}</div></div>
                     </div>
                   )
                 },

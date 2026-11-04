@@ -136,7 +136,7 @@ function FinanceQueue() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                        <div className="text-[11px] text-slate-500 font-mono truncate">{p.sku || p.id}</div>
+                        {p.brand && <div className="text-[11px] text-slate-500 truncate">{p.brand}</div>}
                       </div>
                     </div>
                   </td>
@@ -468,7 +468,6 @@ function FinanceDetail({ id }) {
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5">
             <h3 className="font-extrabold text-slate-900 text-sm mb-3">BI facts</h3>
             <dl className="space-y-2 text-xs">
-              <Row k="SKU" v={p.sku || p.id} mono />
               <Row k="Brand" v={p.brand || '—'} />
               <Row k="MPN" v={p.mpn || '—'} mono />
               <Row k="Category" v={p.categoryName || p.category || '—'} />

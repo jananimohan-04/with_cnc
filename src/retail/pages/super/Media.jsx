@@ -130,7 +130,7 @@ export default function Media() {
           </select>
           <select value={productId} onChange={(e) => reset(setProductId)(e.target.value)}>
             <option value="all">All products</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.sku || p.id} — {p.name}</option>)}
+            {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <select value={type} onChange={(e) => reset(setType)(e.target.value)}>
             <option value="all">All types</option>
@@ -149,7 +149,7 @@ export default function Media() {
                       : <img src={m.url} onError={(e) => { e.target.src = imgFallback('media', 400, 300); }} alt="" />}
                   </div>
                   <div className="prod-body">
-                    <b style={{ fontSize: 12 }}>{m.sku || m.productId}{m.primary ? ' • primary' : ''}</b>
+                    <b style={{ fontSize: 12 }}>{m.productName || 'Media'}{m.primary ? ' • primary' : ''}</b>
                     <span className="hint">{m.productName || ''}</span>
                     <span className="hint">{m.companyName || m.companyId} • {m.type}{m.visible === false ? ' • hidden' : ''}</span>
                     <div className="prod-actions" style={{ flexWrap: 'wrap' }}>
@@ -198,11 +198,11 @@ export default function Media() {
       )}
       {replacing && <ReplaceModal m={replacing} onClose={() => setReplacing(null)} onSaved={() => { setReplacing(null); load(); }} />}
       {del && (
-        <Confirm title="Delete media" body={`Delete this ${del.type} (${del.sku || del.productId})? The product record is updated too.`}
+        <Confirm title="Delete media" body={`Delete this ${del.type} (${del.productName || del.productId})? The product record is updated too.`}
           okLabel="Delete" danger onCancel={() => setDel(null)} onOk={() => remove(del)} />
       )}
       {preview && (
-        <Modal title={`🖼️ ${preview.sku || preview.productId} — Full View`} onClose={() => setPreview(null)} wide>
+        <Modal title={`🖼️ ${preview.productName || 'Full View'}`} onClose={() => setPreview(null)} wide>
           <div className="flex flex-col items-center gap-4">
             <div className="w-full max-h-[65vh] flex items-center justify-center bg-slate-950 rounded-2xl overflow-hidden p-2">
               {preview.type === 'video' ? (
@@ -213,7 +213,7 @@ export default function Media() {
             </div>
             <div className="w-full flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 flex-wrap">
               <div>
-                <h4 className="font-bold text-slate-900 m-0 text-sm">{preview.productName || preview.sku || preview.productId}</h4>
+                <h4 className="font-bold text-slate-900 m-0 text-sm">{preview.productName || 'Product'}</h4>
                 <p className="text-xs text-slate-500 m-0 mt-0.5">{preview.companyName || preview.companyId} • {preview.type} • {preview.primary ? 'Primary Image' : 'Gallery Asset'}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -245,7 +245,7 @@ function ReplaceModal({ m, onClose, onSaved }) {
   }
   return (
     <Modal title="Replace media" onClose={onClose}>
-      <p className="hint" style={{ marginTop: 0 }}>{m.sku || m.productId} • current: {m.url}</p>
+      <p className="hint" style={{ marginTop: 0 }}>{m.productName || 'Media'} • current: {m.url}</p>
       <Field label="Replacement file" req><input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files[0] || null)} /></Field>
       {err && <div className="hint" style={{ color: '#DC2626' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>

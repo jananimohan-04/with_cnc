@@ -100,7 +100,7 @@ export default function OrderDetail() {
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-600" /> Line Items ({totalUnits} total units)
               </h2>
-              <span className="text-xs text-slate-400 font-medium">{items.length} unique SKU(s)</span>
+              <span className="text-xs text-slate-400 font-medium">{items.length} unique item(s)</span>
             </div>
 
             <div className="divide-y divide-slate-100">
@@ -114,9 +114,11 @@ export default function OrderDetail() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-slate-900 text-sm truncate">{i.p.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      SKU: <span className="font-mono text-slate-700 font-semibold">{i.p.sku || i.pid}</span>
-                    </div>
+                    {i.p.brand && (
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        Brand: <span className="text-slate-700 font-semibold">{i.p.brand}</span>
+                      </div>
+                    )}
                     <div className="text-xs text-slate-600 mt-1">
                       Qty: <b className="text-slate-900">{i.qty} {i.p.uom || 'Pc'}</b> × {fmt(i.price)}
                     </div>

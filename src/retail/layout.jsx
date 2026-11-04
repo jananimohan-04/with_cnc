@@ -812,7 +812,7 @@ export function HelpSupportModal({ isOpen, onClose }) {
               <span>⌨️</span> Keyboard Shortcuts
             </div>
             <div className="text-[11px] text-[#A89080]">
-              Press <kbd className="px-1.5 py-0.5 bg-[#26140B] text-amber-300 font-mono rounded text-[10px] border border-[#36180C]">/</kbd> anywhere to focus global SKU &amp; part number search.
+              Press <kbd className="px-1.5 py-0.5 bg-[#26140B] text-amber-300 font-mono rounded text-[10px] border border-[#36180C]">/</kbd> anywhere to focus global product search.
             </div>
           </div>
 
@@ -963,7 +963,7 @@ export const Topbar = forwardRef(function Topbar(
               id="headerSearchInput"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search SKU, part number, brand, industrial tooling..."
+              placeholder="Search products, brand, industrial tooling..."
               className="w-full pl-9 pr-10 py-1.5 text-xs bg-[#150A05] border border-[#2C160B] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600 transition-all text-stone-100 placeholder-[#9E8676]"
             />
             <kbd className="absolute right-3 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[#A89080] bg-[#241007] border border-[#36180C] rounded-md pointer-events-none shadow-xs">/</kbd>

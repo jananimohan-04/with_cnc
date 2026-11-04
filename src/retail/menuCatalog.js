@@ -98,7 +98,7 @@ export const MENU_CATALOG = [
   {
     id: 'global_catalog',
     label: 'Global Catalog',
-    description: 'Global master SKUs, universal categories, and media',
+    description: 'Global master products, universal categories, and media',
     color: 'amber',
     dotClass: 'bg-amber-500 shadow-amber-500/50',
     badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',

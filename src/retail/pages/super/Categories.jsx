@@ -55,7 +55,7 @@ export default function Categories() {
     <>
       <PageHero
         title={`Master Categories (${cats.length})`}
-        subtitle="Global taxonomy classifications, SKU aggregations, and multi-tenant catalog assignments."
+        subtitle="Global taxonomy classifications, product aggregations, and multi-tenant catalog assignments."
         icon={FolderTree}
         badgeText="Catalog Taxonomy"
         badgeColor="amber"
@@ -95,7 +95,7 @@ export default function Categories() {
             cols={[
               { key: 'c', label: 'Category', render: (c) => <>{c.icon} <b>{c.name}</b><div className="hint">{c.id} • {c.scope || 'global'}</div></> },
               { key: 'd', label: 'Description', render: (c) => <span className="hint">{c.desc || ''}</span> },
-              { key: 'n', label: 'SKUs', render: (c) => c.productCount ?? 0 },
+              { key: 'n', label: 'Products', render: (c) => c.productCount ?? 0 },
               { key: 's', label: 'Sort', render: (c) => c.sortOrder ?? 0 },
               { key: 'a', label: 'Active', render: (c) => statusBadge(c.active !== false ? 'Delivered' : 'Cancelled') },
               {
@@ -188,7 +188,7 @@ function CategoryEditModal({ c, onClose, onSaved }) {
       {err && <div className="hint" style={{ color: '#DC2626' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-        {orphan > 0 && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => save(true)}>Force deactivate ({orphan} live SKUs)</button>}
+        {orphan > 0 && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => save(true)}>Force deactivate ({orphan} live products)</button>}
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => save(false)}>{busy ? 'Saving…' : 'Save changes'}</button>
       </div>
     </Modal>

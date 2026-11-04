@@ -64,7 +64,7 @@ function OverviewTab({ id, d }) {
   useEffect(() => {
     api.get('/api/audit?companyId=' + id + '&limit=6').then((r) => setRecent(asRows(r).rows.slice(0, 6))).catch(() => {});
   }, [id]);
-  const cards = [['Users', d.userCount || 0], ['SKUs', d.productCount || 0], ['Categories', d.categoryCount || 0], ['Orders', d.orderCount || 0],
+  const cards = [['Users', d.userCount || 0], ['Products', d.productCount || 0], ['Categories', d.categoryCount || 0], ['Orders', d.orderCount || 0],
     ['Pending', d.pendingOrders || 0], ['Revenue', fmt(d.revenue || 0)], ['RFQs', d.quoteCount || 0], ['Visible', d.visibleCount || 0]];
   return (
     <>
@@ -149,7 +149,7 @@ function CatalogTab({ id }) {
     catch (e) { toast(e.message, '⚠️'); }
   }
   async function archive(p) {
-    try { await api.patch('/api/products/' + p.id + '/archive', { archived: !p.archived }); toast(p.archived ? 'SKU unarchived' : 'SKU archived', '📦'); load(); }
+    try { await api.patch('/api/products/' + p.id + '/archive', { archived: !p.archived }); toast(p.archived ? 'Product unarchived' : 'Product archived', '📦'); load(); }
     catch (e) { toast(e.message, '⚠️'); }
   }
 
@@ -157,7 +157,7 @@ function CatalogTab({ id }) {
   return (
     <>
       <div className="section-head" style={{ marginTop: 0 }}>
-        <h2 style={{ fontSize: 16 }}>Catalog ({rows.length} SKUs)</h2>
+        <h2 style={{ fontSize: 16 }}>Catalog ({rows.length} Products)</h2>
         <Link className="btn btn-primary btn-sm" to={'/admin/products/new?companyId=' + id}>+ Add product</Link>
       </div>
       <DataTable
@@ -167,8 +167,8 @@ function CatalogTab({ id }) {
           {
             key: 'p', label: 'Product', render: (p) => (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <img className="thumb" src={(p.images || [])[0] || ''} onError={(e) => { e.target.src = imgFallback(p.sku || p.id, 100, 100); }} alt="" />
-                <div><b>{p.name}</b><div className="hint">{p.sku || p.id}{p.mpn ? ' • ' + p.mpn : ''}{p.archived ? ' • ARCHIVED' : ''}</div></div>
+                <img className="thumb" src={(p.images || [])[0] || ''} onError={(e) => { e.target.src = imgFallback(p.id, 100, 100); }} alt="" />
+                <div><b>{p.name}</b><div className="hint">{p.brand ? p.brand : ''}{p.mpn ? (p.brand ? ' • ' : '') + 'MPN ' + p.mpn : ''}{p.archived ? ' • ARCHIVED' : ''}</div></div>
               </div>
             )
           },
@@ -251,7 +251,7 @@ function CategoriesTab({ id }) {
         empty="No global categories."
         cols={[
           { key: 'c', label: 'Category', render: (c) => <>{c.icon} <b>{c.name}</b></> },
-          { key: 'n', label: 'SKUs here', render: (c) => count(c.id) },
+          { key: 'n', label: 'Products here', render: (c) => count(c.id) },
           {
             key: 'a', label: 'Action', render: (c) => (
               (c.assignedTo || []).includes(id)
@@ -268,7 +268,7 @@ function CategoriesTab({ id }) {
         empty="No company-specific categories."
         cols={[
           { key: 'c', label: 'Category', render: (c) => <>{c.icon} <b>{c.name}</b><div className="hint">{c.desc || ''}</div></> },
-          { key: 'n', label: 'SKUs', render: (c) => count(c.id) },
+          { key: 'n', label: 'Products', render: (c) => count(c.id) },
           { key: 's', label: 'Active', render: (c) => statusBadge(c.active !== false ? 'Delivered' : 'Cancelled') },
           {
             key: 'a', label: 'Action', render: (c) => (
@@ -337,8 +337,8 @@ function MediaTab({ id }) {
 
   if (err) return <Empty title={'⚠️ ' + err} />;
   const gallery = rows.length
-    ? rows.map((m) => ({ url: m.url, type: m.type, label: (m.sku || '') + (m.primary ? ' • primary' : ''), id: m.id, vis: m.visible }))
-    : products.flatMap((p) => (p.images || []).map((u, i) => ({ url: u, type: 'image', label: (p.sku || '') + (i === 0 ? ' • primary' : ''), id: null, vis: true })));
+    ? rows.map((m) => ({ url: m.url, type: m.type, label: (m.primary ? 'Primary' : 'Media'), id: m.id, vis: m.visible }))
+    : products.flatMap((p) => (p.images || []).map((u, i) => ({ url: u, type: 'image', label: (i === 0 ? 'Primary' : 'Media'), id: null, vis: true })));
   return (
     <>
       <div className="section-head" style={{ marginTop: 0 }}>
@@ -369,7 +369,7 @@ function MediaTab({ id }) {
       </div>
       {uploading && <MediaUploadModal companyId={id} products={products} onClose={() => setUploading(false)} onSaved={() => { setUploading(false); load(); }} />}
       {del && (
-        <Confirm title="Delete media" body={`Delete this ${del.type} (${del.sku || del.productId})? The product record is updated too.`}
+        <Confirm title="Delete media" body={`Delete this ${del.type} (${del.productId})? The product record is updated too.`}
           okLabel="Delete" danger onCancel={() => setDel(null)} onOk={() => remove(del)} />
       )}
     </>
@@ -401,7 +401,7 @@ export function MediaUploadModal({ companyId, products, presetProduct, onClose, 
       <Field label="Product" req>
         <select value={productId} onChange={(e) => setProductId(e.target.value)}>
           <option value="">— Select product —</option>
-          {products.map((p) => <option key={p.id} value={p.id}>{p.sku || p.id} — {p.name}</option>)}
+          {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </Field>
       <Field label="Files" req hint="Images / video (max 50MB each). First image becomes primary when none exists.">
