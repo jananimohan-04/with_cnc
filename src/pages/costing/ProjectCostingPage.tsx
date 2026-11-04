@@ -1062,6 +1062,8 @@ export function ProjectCostingPage() {
         { data: woOpsRows },
         { data: routingRows },
         { data: sheetRows },
+        { data: procData },
+        { data: bomRows },
         quoteLookup,
       ] = await Promise.all([
         supabase.from('cnc_inwards').select('*'),
@@ -1070,9 +1072,14 @@ export function ProjectCostingPage() {
         supabase.from('cnc_operation_plans').select('*').order('created_at', { ascending: false }).limit(500),
         supabase.from('cnc_work_order_operations').select('*').order('operation_sequence'),
         supabase.from('cnc_part_routings').select('id, product_name, product_code, cnc_part_routing_steps(*)').eq('status', 'Active'),
-        supabase.from('cnc_costing_sheets').select('*').order('version', { ascending: false }).limit(50),
+        supabase.from('cnc_costing_sheets').select('*').order('version', { ascending: false }).limit(100),
+        supabase.from('cnc_processes').select('*').order('process_code'),
+        supabase.from('cnc_bom').select('*'),
         loadQuoteLookup(),
       ]);
+
+      const loadedProcRates = procData || [];
+      setProcRates(loadedProcRates);
 
       const shared: SharedCostingData = {
         inwardRows: inwardRows || [],
