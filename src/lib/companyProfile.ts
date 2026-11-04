@@ -25,6 +25,7 @@ export interface OrgProfile {
   /** PNG / JPEG data URLs (already downscaled). */
   logo: string;
   signature: string;
+  qrCode?: string;
 }
 
 export interface SubCompany { id: string; name: string; gstin: string; address: string; phone: string; email: string }
@@ -35,6 +36,7 @@ export interface QuoteSeller {
   name: string; gstin: string; address: string; website: string;
   phones: string[]; emails: string[];
   bankLines: string[]; logo: string; signature: string;
+  qrCode?: string;
 }
 
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -48,7 +50,7 @@ const key = (companyId: string | null | undefined, kind: ProfileKind = 'quotatio
 const kindArgs = (kind: ProfileKind): Record<string, unknown> => (kind === 'quotation' ? {} : { p_kind: kind });
 
 export const emptyProfile = (orgName = '', email = ''): OrgProfile => ({
-  orgName, gstin: '', website: '', address: '', phones: [''], emails: [email], bankName: '', accountNo: '', branch: '', ifsc: '', upi: '', logo: '', signature: '',
+  orgName, gstin: '', website: '', address: '', phones: [''], emails: [email], bankName: '', accountNo: '', branch: '', ifsc: '', upi: '', logo: '', signature: '', qrCode: '',
 });
 
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -65,7 +67,7 @@ export function normaliseStore(v: any, defaults: { orgName: string; email: strin
       orgName: s(p.orgName) || base.orgName, gstin: s(p.gstin), website: s(p.website), address: s(p.address),
       phones: phones.length ? phones : [''], emails: emails.length ? emails : [''],
       bankName: s(p.bankName), accountNo: s(p.accountNo), branch: s(p.branch), ifsc: s(p.ifsc), upi: s(p.upi),
-      logo: s(p.logo), signature: s(p.signature),
+      logo: s(p.logo), signature: s(p.signature), qrCode: s(p.qrCode),
     },
     subs: Array.isArray(v?.subs) ? v.subs.filter((x: SubCompany) => x && typeof x.id === 'string' && typeof x.name === 'string').map((x: SubCompany) => ({ id: x.id, name: x.name, gstin: s(x.gstin), address: s(x.address), phone: s(x.phone), email: s(x.email) })) : [],
   };
@@ -80,7 +82,7 @@ export function loadProfileStore(companyId: string | null | undefined, defaults:
 
 export const hasContent = (v: any): boolean => {
   const p = v?.profile ?? {};
-  return !!(p.address || p.gstin || p.website || p.bankName || p.accountNo || p.branch || p.ifsc || p.upi || p.logo || p.signature
+  return !!(p.address || p.gstin || p.website || p.bankName || p.accountNo || p.branch || p.ifsc || p.upi || p.logo || p.signature || p.qrCode
     || (Array.isArray(p.phones) && p.phones.some(Boolean)) || (Array.isArray(v?.subs) && v.subs.length));
 };
 
@@ -153,7 +155,7 @@ export function cleanProfile(p: OrgProfile): OrgProfile {
   return {
     ...p, orgName: p.orgName.trim(), gstin: p.gstin.trim().toUpperCase(), website: normaliseWebsite(p.website), address: p.address.trim(),
     phones: keep(p.phones), emails: keep(p.emails), bankName: p.bankName.trim(), accountNo: p.accountNo.trim(), branch: p.branch.trim(),
-    ifsc: p.ifsc.trim().toUpperCase(), upi: p.upi.trim(),
+    ifsc: p.ifsc.trim().toUpperCase(), upi: p.upi.trim(), qrCode: p.qrCode || '',
   };
 }
 
@@ -177,9 +179,9 @@ export function resolveSeller(st: ProfileStore, ref: string | undefined): QuoteS
   ].filter(Boolean) as string[];
   const sub = ref ? st.subs.find(s => s.id === ref) : undefined;
   if (sub) {
-    return { name: sub.name, gstin: sub.gstin, address: sub.address, website: p.website, phones: sub.phone ? [sub.phone] : [], emails: sub.email ? [sub.email] : [], bankLines, logo: p.logo, signature: p.signature };
+    return { name: sub.name, gstin: sub.gstin, address: sub.address, website: p.website, phones: sub.phone ? [sub.phone] : [], emails: sub.email ? [sub.email] : [], bankLines, logo: p.logo, signature: p.signature, qrCode: p.qrCode };
   }
-  return { name: p.orgName, gstin: p.gstin, address: p.address, website: p.website, phones: p.phones.filter(Boolean), emails: p.emails.filter(Boolean), bankLines, logo: p.logo, signature: p.signature };
+  return { name: p.orgName, gstin: p.gstin, address: p.address, website: p.website, phones: p.phones.filter(Boolean), emails: p.emails.filter(Boolean), bankLines, logo: p.logo, signature: p.signature, qrCode: p.qrCode };
 }
 
 /** Reads an image file, checks type / size, and downscales it (keeping transparency for PNG) so storage stays small. */

@@ -765,6 +765,7 @@ export async function buildDeliveryChallanDocument(input: DeliveryChallanInput, 
   const drawSigBox = (
     x: number, title: string, roleLabel: string, nameLabel: string, nameValue: string,
     sig: string | null | undefined,
+    qr?: string | null,
   ) => {
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(...LINE);
@@ -774,31 +775,51 @@ export async function buildDeliveryChallanDocument(input: DeliveryChallanInput, 
     doc.setFontSize(9);
     doc.setTextColor(...NAVY);
     doc.text(title, x + sigBoxW / 2, y + 6, { align: 'center' });
+
+    if (qr) {
+      try {
+        const qrf = fitImage(doc, qr, 18, 18);
+        if (qrf) {
+          const qrX = x + 5;
+          const qrY = y + 10;
+          doc.addImage(qr, qrf.fmt, qrX, qrY, qrf.w, qrf.h);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6.5);
+          doc.setTextColor(...GREY);
+          doc.text('Official QR', qrX + qrf.w / 2, qrY + qrf.h + 2.8, { align: 'center' });
+        }
+      } catch { /* unreadable qr */ }
+    }
+
+    const sigAreaX = qr ? x + 26 : x;
+    const sigAreaW = qr ? sigBoxW - 28 : sigBoxW;
+
     let drawn = false;
     if (sig) {
       try {
-        const maxW = Math.min(sigBoxW - 24, 58);
+        const maxW = Math.min(sigAreaW - 12, 54);
         const f = fitImage(doc, sig, maxW, 14);
-        if (f) doc.addImage(sig, f.fmt, x + (sigBoxW - f.w) / 2, y + 9.5 + (14 - f.h) / 2, f.w, f.h);
-        else doc.addImage(sig, 'PNG', x + (sigBoxW - maxW) / 2, y + 9.5, maxW, maxW / 4);
+        const sigX = sigAreaX + (sigAreaW - (f ? f.w : maxW)) / 2;
+        if (f) doc.addImage(sig, f.fmt, sigX, y + 9.5 + (14 - f.h) / 2, f.w, f.h);
+        else doc.addImage(sig, 'PNG', sigX, y + 9.5, maxW, maxW / 4);
         drawn = true;
       } catch { /* blank area below */ }
     }
     if (!drawn) {
       doc.setDrawColor(...LINE);
       doc.setLineWidth(0.25);
-      doc.line(x + 14, y + 25, x + sigBoxW - 14, y + 25);
+      doc.line(sigAreaX + 10, y + 25, sigAreaX + sigAreaW - 10, y + 25);
     }
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...GREY);
-    doc.text(roleLabel, x + sigBoxW / 2, y + 30, { align: 'center' });
+    doc.text(roleLabel, sigAreaX + sigAreaW / 2, y + 30, { align: 'center' });
     doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text(`${nameLabel}: ${nameValue || '__________________'}`, x + sigBoxW / 2, y + 36, { align: 'center' });
+    doc.text(`${nameLabel}: ${nameValue || '__________________'}`, sigAreaX + sigAreaW / 2, y + 36, { align: 'center' });
   };
   drawSigBox(ML, 'RECEIVED BY CUSTOMER', 'Customer Signature', 'Receiver Name', String(input.receiverName || ''), input.customerSignature);
-  drawSigBox(ML + sigBoxW + 5, `FOR ${compName}`, 'Authorized Signatory', 'Authorized Name', String(input.senderName || ''), input.authorizedSignature || seller?.signature);
+  drawSigBox(ML + sigBoxW + 5, `FOR ${compName}`, 'Authorized Signatory', 'Authorized Name', String(input.senderName || ''), input.authorizedSignature || seller?.signature, seller?.qrCode);
   y += sigBoxH + 6;
 
   // ---- Subtle footer on every page ----
@@ -1146,7 +1167,8 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const bankBody = (bankSource && bankSource.length ? bankSource : ['—']).join('\n');
   const boxW = (contentW - 3) / 2;
   const declLines: string[] = doc.splitTextToSize(declBody, boxW - 8);
-  const bankLines: string[] = doc.splitTextToSize(bankBody, boxW - 8);
+  const maxBankW = seller?.qrCode ? boxW - 24 : boxW - 8;
+  const bankLines: string[] = doc.splitTextToSize(bankBody, maxBankW);
 
   const boxesH = Math.min(48, Math.max(38, Math.min(declLines.length * 3.2 + 9, 48)));
   ensureSpace(boxesH + 9);
@@ -1179,6 +1201,22 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   doc.setFontSize(7.2);
   const maxBankLines = Math.min(bankLines.length, 5);
   doc.text(bankLines.slice(0, maxBankLines), rightX + 3, y + 8.2);
+
+  // Payment QR Code (top right of Bank Details box)
+  if (seller?.qrCode) {
+    const qrf = fitImage(doc, seller.qrCode, 16, 16);
+    if (qrf) {
+      try {
+        const qrX = rightX + boxW - qrf.w - 3.5;
+        const qrY = y + 2.2;
+        doc.addImage(seller.qrCode, qrf.fmt, qrX, qrY, qrf.w, qrf.h);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.2);
+        doc.setTextColor(...GREY);
+        doc.text('Scan to Pay', qrX + qrf.w / 2, qrY + qrf.h + 2.5, { align: 'center' });
+      } catch { /* unreadable qr */ }
+    }
+  }
 
   // Divider line
   const dividerY = y + 23;

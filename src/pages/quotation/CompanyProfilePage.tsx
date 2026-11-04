@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Plus, Check, Trash2, Pencil, X, UploadCloud } from 'lucide-react';
+import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Plus, Check, Trash2, Pencil, X, UploadCloud, QrCode } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import {
@@ -9,7 +9,7 @@ import {
 import { clearDocumentSellerCache } from '@/lib/documentProfile';
 
 // One screen for the three profiles. What changes with the document: its name in the texts, and (quotations only) the
-// sub-companies, because only a quotation can be issued in the name of a sub-company; the challan has no bank section.
+// sub-companies, because only a quotation can be issued in the name of a sub-company; each profile has its own branding, bank particulars, and payment QR code.
 const DOC: Record<ProfileKind, { title: string; name: string; plural: string }> = {
   quotation: { title: 'Company Profile & Business Details', name: 'quotation', plural: 'quotations' },
   invoice: { title: 'Invoice Profile & Business Details', name: 'invoice', plural: 'invoices' },
@@ -45,6 +45,7 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
   const [subDelete, setSubDelete] = useState<SubCompany | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const sigRef = useRef<HTMLInputElement>(null);
+  const qrRef = useRef<HTMLInputElement>(null);
 
   const errors = validateProfile(p);
   const dirty = JSON.stringify(p) !== JSON.stringify(store.profile);
@@ -88,9 +89,9 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
     setNotice({ kind: 'ok', text: 'Copied from the Quotation profile. Check it, then click Save Organisation Settings.' });
   };
 
-  const pickImage = async (file: File | undefined, kind: 'logo' | 'signature') => {
+  const pickImage = async (file: File | undefined, kind: 'logo' | 'signature' | 'qrCode') => {
     if (!file) return;
-    try { set(kind, await prepareImage(file, kind === 'logo' ? 600 : 500)); setNotice({ kind: 'ok', text: `${kind === 'logo' ? 'Logo' : 'Signature'} loaded. Click Save Organisation Settings to keep it.` }); }
+    try { set(kind, await prepareImage(file, kind === 'logo' ? 600 : 500)); setNotice({ kind: 'ok', text: `${kind === 'logo' ? 'Logo' : kind === 'signature' ? 'Signature' : 'Payment QR Code'} loaded. Click Save Organisation Settings to keep it.` }); }
     catch (e) { setNotice({ kind: 'err', text: (e as Error).message }); }
   };
 
@@ -196,7 +197,7 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
           ))}
         </section>
 
-        {kind !== 'dc' && <section className={card}>
+        <section className={card}>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><Landmark size={16} className="text-orange-500" /> Bank &amp; Payment Details</h2>
           <p className="text-xs text-slate-500 mb-4">These banking particulars will appear in the payment instructions of your generated {doc.plural}.</p>
           <div className="grid sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
@@ -206,7 +207,23 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
             <div><label className={lbl} htmlFor="bank-ifsc">IFSC Code</label><input id="bank-ifsc" maxLength={11} className={`${inputCls} font-mono uppercase ${border(touched ? errors.ifsc : undefined)}`} placeholder="E.G. SBIN0001234" value={p.ifsc} onChange={e => set('ifsc', e.target.value.toUpperCase())} /><Err text={touched ? errors.ifsc : undefined} /></div>
             <div className="sm:col-span-2"><label className={lbl} htmlFor="bank-upi">UPI ID / UPI Number (Optional)</label><input id="bank-upi" className={`${inputCls} ${border(touched ? errors.upi : undefined)}`} placeholder="e.g. companyname@okhdfcbank or 9876543210@upi" value={p.upi} onChange={e => set('upi', e.target.value)} /><Err text={touched ? errors.upi : undefined} /></div>
           </div>
-        </section>}
+        </section>
+
+        <section className={card}>
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><QrCode size={16} className="text-orange-500" /> Payment &amp; UPI QR Code</h2>
+          <p className="text-xs text-slate-500 mb-4">Upload your UPI or payment QR code (GPay, PhonePe, Paytm, BHIM UPI) to automatically print on your {doc.plural}.</p>
+          <div className="flex flex-wrap items-center gap-5 border-t border-slate-100 pt-4">
+            {imageBox(p.qrCode || '', 'NO QR CODE', QrCode, 'w-32')}
+            <div>
+              <input ref={qrRef} type="file" accept="image/png,image/jpeg" aria-label="QR Code file" className="hidden" onChange={e => { pickImage(e.target.files?.[0], 'qrCode'); e.target.value = ''; }} />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => qrRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition-colors"><Upload size={15} /> {p.qrCode ? 'Change QR Code' : 'Choose QR Code'}</button>
+                {p.qrCode && <button type="button" onClick={() => set('qrCode', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">Remove</button>}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">Recommended: Clean square PNG/JPG of your UPI or payment QR code (Max 2MB).</p>
+            </div>
+          </div>
+        </section>
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={save} className="flex items-center gap-2 h-12 px-6 text-sm font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 shadow-sm"><Check size={16} /> Save Organisation Settings</button>

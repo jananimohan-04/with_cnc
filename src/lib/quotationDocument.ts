@@ -139,7 +139,29 @@ export async function buildQuotePdf(doc: QuoteDoc, withWorkings: boolean, themeI
   }
   block('Terms & Conditions', doc.terms);
   block('Notes', doc.notes);
-  if (seller?.bankLines.length) block('Bank & Payment Details', seller.bankLines.join('\n'));
+  if (seller?.bankLines?.length || seller?.qrCode) {
+    const bankBody = seller?.bankLines?.length ? seller.bankLines.join('\n') : '';
+    const hasQr = !!seller?.qrCode;
+    const textW = hasQr ? W - 28 - 34 : W - 28;
+    const wrapped = bankBody ? (pdf.splitTextToSize(bankBody, textW) as string[]) : [];
+    const blockH = Math.max(wrapped.length * 4.4 + 4, hasQr ? 30 : 0);
+    if (yy + 6 + blockH > 285) { pdf.addPage(); yy = 16; }
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.setTextColor(30);
+    pdf.text('Bank & Payment Details', 14, yy); yy += 5;
+    const startBankY = yy;
+    if (wrapped.length) {
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(50);
+      pdf.text(wrapped, 14, yy);
+    }
+    if (hasQr) {
+      const qrW = 24;
+      const qrX = W - 14 - qrW;
+      addImage(seller!.qrCode!, qrX + qrW, startBankY, qrW, qrW, 'right');
+      pdf.setFontSize(7); pdf.setTextColor(110);
+      pdf.text('Scan to Pay via UPI', qrX + qrW / 2, startBankY + qrW + 3.2, { align: 'center' });
+    }
+    yy += blockH;
+  }
   if (seller) {
     const need = seller.signature ? 34 : 18;
     if (yy + need > 285) { pdf.addPage(); yy = 16; }
