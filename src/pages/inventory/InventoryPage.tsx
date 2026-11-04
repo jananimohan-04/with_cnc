@@ -21,6 +21,7 @@ import { xlsxToGrid } from '@/lib/xlsxRead';
 import { useFinishedGoods, WarehouseMasterModal } from './FinishedGoodsStock';
 import { retailSyncApi } from '@/lib/retailSync';
 import { RetailSyncModal } from './RetailSyncModal';
+import { SortLabel, type SortDir, type SortState } from '@/components/ui/SortHeader';
 
 // ---------------------------------------------------------------------------------------
 // Inventory. Stock, rates, values and statuses all come from the database
@@ -308,6 +309,82 @@ export function InventoryPage() {
     }
     return map;
   }, [recentAll]);
+
+  // ---- Sorting (mirroring Kanban board / PipelineListView click-to-sort) -------------------
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const toggleSort = (col: string) => {
+    if (sortKey === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(col); setSortDir('asc'); }
+  };
+
+  const setSort = (k: string | null, d: SortDir = 'asc') => {
+    setSortKey(k);
+    setSortDir(d);
+  };
+
+  const sortState: SortState<any> = useMemo(() => ({
+    key: sortKey,
+    dir: sortDir,
+    toggle: toggleSort,
+    set: setSort,
+    apply: (rows: any[]) => rows,
+  }), [sortKey, sortDir]);
+
+  const sortedItemsRows = useMemo(() => {
+    if (!items?.rows) return [];
+    if (!sortKey) return items.rows;
+    if (sortKey === 'idx') return sortDir === 'asc' ? items.rows : [...items.rows].reverse();
+    const getVal = (r: InventoryItemRow): string | number => {
+      switch (sortKey) {
+        case 'name': return (r.name || '').toLowerCase();
+        case 'category': return (r.category_name || '').toLowerCase();
+        case 'warehouse': return (r.warehouse_name || r.location_name || '').toLowerCase();
+        case 'unit': return (r.unit || '').toLowerCase();
+        case 'qty': return Number(r.current_stock || 0);
+        case 'value': return Number(r.value ?? (Number(r.current_stock || 0) * Number(r.rate || 0)));
+        case 'min_stock': return Number(r.min_stock || 0);
+        case 'status': return (r.status || '').toLowerCase();
+        case 'movement': return lastMovement[rowKey(r)] || '';
+        default: return '';
+      }
+    };
+    return [...items.rows].sort((a, b) => {
+      const av = getVal(a);
+      const bv = getVal(b);
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      const c = String(av).localeCompare(String(bv), undefined, { numeric: true });
+      return sortDir === 'asc' ? c : -c;
+    });
+  }, [items?.rows, sortKey, sortDir, lastMovement]);
+
+  const sortedFgVisible = useMemo(() => {
+    if (!fgVisible.length) return [];
+    if (!sortKey) return fgVisible;
+    if (sortKey === 'idx') return sortDir === 'asc' ? fgVisible : [...fgVisible].reverse();
+    const getVal = (r: any): string | number => {
+      switch (sortKey) {
+        case 'name': return (r.product || '').toLowerCase();
+        case 'category': return 'finished goods';
+        case 'warehouse': return (fg.warehouseOf(r)?.name || '').toLowerCase();
+        case 'unit': return 'nos';
+        case 'qty': return Number(r.available || 0);
+        case 'value': return 0;
+        case 'min_stock': return 0;
+        case 'status': return 'in stock';
+        case 'movement': return '';
+        default: return '';
+      }
+    };
+    return [...fgVisible].sort((a, b) => {
+      const av = getVal(a);
+      const bv = getVal(b);
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      const c = String(av).localeCompare(String(bv), undefined, { numeric: true });
+      return sortDir === 'asc' ? c : -c;
+    });
+  }, [fgVisible, sortKey, sortDir, fg]);
 
   // ---- Open work orders (WIP proxy — real count, never hardcoded) ---------------------------
   useEffect(() => {
@@ -975,6 +1052,38 @@ export function InventoryPage() {
             </select>
             <button onClick={handleSearch} className={primaryBtn}>Search</button>
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
+
+            {/* Sort by dropdown mirroring Kanban board lists */}
+            <select
+              aria-label="Sort inventory"
+              title="Sort inventory"
+              value={sortKey ? `${sortKey}:${sortDir}` : ''}
+              onChange={e => {
+                const v = e.target.value;
+                if (!v) {
+                  setSortKey(null);
+                  setSortDir('asc');
+                } else {
+                  const [k, d] = v.split(':');
+                  setSortKey(k);
+                  setSortDir((d as SortDir) || 'asc');
+                }
+              }}
+              className={`${selectCls} max-w-[160px] text-slate-700 font-medium`}
+            >
+              <option value="">Sort: Default</option>
+              <option value="name:asc">Name (A → Z)</option>
+              <option value="name:desc">Name (Z → A)</option>
+              <option value="qty:desc">Stock (High → Low)</option>
+              <option value="qty:asc">Stock (Low → High)</option>
+              <option value="value:desc">Value (High → Low)</option>
+              <option value="value:asc">Value (Low → High)</option>
+              <option value="category:asc">Category (A → Z)</option>
+              <option value="warehouse:asc">Warehouse (A → Z)</option>
+              <option value="status:asc">Status (A → Z)</option>
+              <option value="movement:desc">Movement (Recent)</option>
+              <option value="movement:asc">Movement (Oldest)</option>
+            </select>
             {canManage && (
               fgTab ? (
                 <button
@@ -1024,17 +1133,100 @@ export function InventoryPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1320px] text-[13px]">
               <thead>
-                <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200">
-                  <th className="px-3 py-3 text-left w-10">#</th>
-                  <th className="px-3 py-3 text-left">Product / Material Name</th>
-                  <th className="px-3 py-3 text-left">Category</th>
-                  <th className="px-3 py-3 text-left">Warehouse / Location</th>
-                  <th className="px-3 py-3 text-left">Unit</th>
-                  <th className="px-3 py-3 text-right">{fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'}</th>
-                  <th className="px-3 py-3 text-right">Value (₹)</th>
-                  {!fgTab && <th className="px-3 py-3 text-right">Reorder Level</th>}
-                  <th className="px-3 py-3 text-left">Stock Status</th>
-                  <th className="px-3 py-3 text-left">Last Movement</th>
+                <tr className="bg-slate-50 text-slate-700 text-xs font-semibold border-b border-slate-200">
+                  <th className="px-3 py-3 text-left w-12">
+                    <SortLabel label="#" col="idx" sort={sortState} light />
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <SortLabel label="Product / Material Name" col="name" sort={sortState} light />
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="flex items-center gap-1.5 flex-nowrap">
+                      <SortLabel label="Category" col="category" sort={sortState} light />
+                      <select
+                        aria-label="Filter by Category"
+                        title="Filter by Category"
+                        value={applied.categoryId}
+                        onChange={e => {
+                          const id = e.target.value;
+                          setDraft(d => ({ ...d, categoryId: id }));
+                          applyFilters({ ...applied, categoryId: id });
+                        }}
+                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[120px] truncate shadow-xs"
+                      >
+                        <option value="">All</option>
+                        {categories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="flex items-center gap-1.5 flex-nowrap">
+                      <SortLabel label="Warehouse / Location" col="warehouse" sort={sortState} light />
+                      <select
+                        aria-label="Filter by Warehouse"
+                        title="Filter by Warehouse"
+                        value={applied.warehouseId}
+                        onChange={e => {
+                          const wid = e.target.value;
+                          setDraft(d => ({ ...d, warehouseId: wid }));
+                          applyFilters({ ...applied, warehouseId: wid });
+                        }}
+                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[120px] truncate shadow-xs"
+                      >
+                        <option value="">All</option>
+                        {(filters?.warehouses ?? []).map(w => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <SortLabel label="Unit" col="unit" sort={sortState} light />
+                  </th>
+                  <th className="px-3 py-3 text-right">
+                    <div className="flex items-center justify-end">
+                      <SortLabel label={fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'} col="qty" sort={sortState} light />
+                    </div>
+                  </th>
+                  <th className="px-3 py-3 text-right">
+                    <div className="flex items-center justify-end">
+                      <SortLabel label="Value (₹)" col="value" sort={sortState} light />
+                    </div>
+                  </th>
+                  {!fgTab && (
+                    <th className="px-3 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <SortLabel label="Reorder Level" col="min_stock" sort={sortState} light />
+                      </div>
+                    </th>
+                  )}
+                  <th className="px-3 py-3 text-left">
+                    <div className="flex items-center gap-1.5 flex-nowrap">
+                      <SortLabel label="Stock Status" col="status" sort={sortState} light />
+                      <select
+                        aria-label="Filter by Stock Status"
+                        title="Filter by Stock Status"
+                        value={applied.status}
+                        onChange={e => {
+                          const st = e.target.value as FilterState['status'];
+                          setDraft(d => ({ ...d, status: st }));
+                          applyFilters({ ...applied, status: st });
+                        }}
+                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[100px] truncate shadow-xs"
+                      >
+                        <option value="">All</option>
+                        <option value="In Stock">In Stock</option>
+                        <option value="Low Stock">Low Stock</option>
+                        <option value="Out of Stock">Out of Stock</option>
+                        <option value="Reorder">Needs Reorder</option>
+                      </select>
+                    </div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <SortLabel label="Last Movement" col="movement" sort={sortState} light />
+                  </th>
                   <th className="px-3 py-3 text-center">Actions</th>
                 </tr>
               </thead>
@@ -1072,7 +1264,7 @@ export function InventoryPage() {
                     </td>
                   </tr>
                 )}
-                {!itemsLoading && items && items.rows.map((r, i) => (
+                {!itemsLoading && items && sortedItemsRows.map((r, i) => (
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
                     <td className="px-3 py-2.5 text-slate-500">{firstShown + i}</td>
                     <td className="px-3 py-2.5">
@@ -1230,11 +1422,11 @@ export function InventoryPage() {
                     </td>
                   </tr>
                 ))}
-                {!itemsLoading && items && fgVisible.map((r, j) => {
+                {!itemsLoading && items && sortedFgVisible.map((r, j) => {
                   const wh = fg.warehouseOf(r);
                   return (
                     <tr key={`fg:${r.key}`} data-testid="fg-row" className="border-b border-slate-100 hover:bg-slate-50/70">
-                      <td className="px-3 py-2.5 text-slate-500">{firstShown + items.rows.length + j}</td>
+                      <td className="px-3 py-2.5 text-slate-500">{firstShown + sortedItemsRows.length + j}</td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0"><Archive size={16} /></div>
