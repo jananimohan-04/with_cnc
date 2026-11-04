@@ -110,14 +110,6 @@ export type CostingDetail = {
 const money = (v: string | number | null | undefined) =>
   v == null || v === '' ? '—' : formatINR(v, { decimals: 'auto' });
 
-const tabs = [
-  'Goods Purchase',
-  'Service Purchase',
-  'Machine Cost',
-  'Expenses',
-  'All Costings',
-];
-
 const isGoodsPurchaseCategory = (cat: string | null | undefined) => {
   if (!cat) return false;
   const s = String(cat).trim().toUpperCase();
@@ -551,34 +543,23 @@ function computeProjectDetail(
   };
 }
 
-// Sub-component: Individual Project Costing Box
+// Sub-component: Individual Compact Project Costing Box
 function ProjectCostingBox({
   project,
   detail,
   loading,
-  globalTab,
 }: {
   project: ProjectRow;
   detail?: CostingDetail;
   loading?: boolean;
-  globalTab?: string;
 }) {
-  const [localTab, setLocalTab] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
-
-  const activeTab = localTab || globalTab || 'Goods Purchase';
 
   const pData = detail?.project || project;
   const jobs = detail?.work_orders || [];
-  const completed = jobs.reduce((n, w) => n + Number(w.completed || 0), 0);
-  const rejected = jobs.reduce((n, w) => n + Number(w.rejected || 0), 0);
-  const quantity = jobs.reduce((n, w) => n + Number(w.quantity || 0), 0);
-  const progress = quantity ? Math.min(100, (completed / quantity) * 100) : 0;
-
   const totalActual = pData.actual_cost ?? null;
   const profit = pData.profit ?? null;
   const profitPct = pData.profit_pct ?? null;
-  const machineCost = detail?.processOpsTotal && detail.processOpsTotal > 0 ? detail.processOpsTotal : null;
 
   const materials = detail?.materials || [];
   const services = detail?.services || [];
@@ -586,443 +567,266 @@ function ProjectCostingBox({
   const processOps = detail?.processOps || [];
   const expenses = detail?.expenses || [];
 
-  const totalMaterialsAmount = useMemo(() => materials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0), [materials]);
-  const totalServiceAmount = useMemo(() => services.reduce((sum, m) => sum + (Number(m.amount) || 0), 0), [services]);
-  const totalExpensesAmount = useMemo(() => expenses.reduce((n, x) => n + (Number(x.total_amount) || 0), 0), [expenses]);
+  const totalMaterialsAmount = useMemo(
+    () => materials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0),
+    [materials]
+  );
+  const totalServiceAmount = useMemo(
+    () =>
+      services.reduce((sum, m) => sum + (Number(m.amount) || 0), 0) +
+      processes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+    [services, processes]
+  );
+  const totalExpensesAmount = useMemo(
+    () => expenses.reduce((n, x) => n + (Number(x.total_amount) || 0), 0),
+    [expenses]
+  );
   const processOpsTotal = detail?.processOpsTotal || 0;
 
+  // Merged services (outside processes + service inwards)
+  const allServices = useMemo(() => {
+    return [
+      ...services.map((s) => ({
+        id: s.id,
+        name: s.item || 'Service',
+        sub: s.reference ? `Ref: ${s.reference}` : '',
+        qty: `${s.quantity} ${s.unit || 'pcs'}`,
+        rate: s.rate,
+        amount: s.amount,
+      })),
+      ...processes.map((p) => ({
+        id: `proc-${p.id}`,
+        name: p.process || 'Process',
+        sub: p.supplier ? `Supplier: ${p.supplier}` : '',
+        qty: p.quantity || p.duration || '—',
+        rate: p.rate,
+        amount: p.amount,
+      })),
+    ];
+  }, [services, processes]);
+
   return (
-    <Card className="overflow-hidden border border-slate-200/90 shadow-xs rounded-2xl bg-white transition-all">
+    <Card className="flex flex-col border border-slate-200/90 shadow-2xs rounded-2xl bg-white overflow-hidden hover:shadow-md transition-shadow">
       {/* Box Header */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50/50 via-white to-slate-50/60">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="p-3 sm:p-3.5 border-b border-slate-100 bg-gradient-to-r from-amber-50/40 via-white to-slate-50/50">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
-                Project / Work Order
-              </span>
-              <span className="font-mono text-xs font-black text-amber-900 bg-amber-100/70 border border-amber-300 px-2.5 py-0.5 rounded-md shadow-2xs">
+            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-100/80 border border-amber-300 px-1.5 py-0.2 rounded">
                 {project.project_name}
               </span>
               {jobs.map((w) => (
-                <Badge key={w.id} variant={statusToVariant(w.status)} className="text-[10px] font-bold">
-                  {w.part_name || 'Production order'} · {w.status}
+                <Badge key={w.id} variant={statusToVariant(w.status)} className="text-[9px] font-bold px-1.5 py-0.2">
+                  {w.status}
                 </Badge>
               ))}
             </div>
-
-            <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-snug truncate">
-              {project.part_name} <span className="text-slate-400 font-normal">·</span> {project.party_name}
-            </h2>
+            <h3 className="text-sm font-extrabold text-slate-900 truncate leading-snug" title={project.part_name}>
+              {project.part_name}
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium truncate" title={project.party_name}>
+              {project.party_name}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setExpanded(!expanded)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-2xs cursor-pointer"
-              title={expanded ? 'Collapse costing details' : 'Expand costing details'}
-            >
-              {expanded ? (
-                <>
-                  <ChevronUp size={14} /> Collapse
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={14} /> View Costings
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Financial KPI Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-3.5 pt-3.5 border-t border-slate-100">
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Sales Order Value</div>
-            <div className="text-sm font-extrabold text-slate-900 font-mono mt-0.5">{money(pData.sales_value)}</div>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80" title={pData.planned_cost ? 'From planned workings or quotation' : 'No recorded estimate'}>
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Planned Cost</div>
-            <div className="text-sm font-extrabold text-blue-900 font-mono mt-0.5">{money(pData.planned_cost)}</div>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80" title="Machine & labour operations valued with Process Master rates">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Machine Cost</div>
-            <div className="text-sm font-extrabold text-purple-900 font-mono mt-0.5">{machineCost ? money(machineCost) : '—'}</div>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80" title={pData.cost_source || 'Recorded actual costs'}>
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Recorded Actual Cost</div>
-            <div className="text-sm font-extrabold text-amber-950 font-mono mt-0.5">{money(totalActual)}</div>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Sales Value</div>
-            <div className="text-sm font-extrabold text-slate-900 font-mono mt-0.5">{money(pData.sales_value)}</div>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80" title={profitPct ? `${profitPct}% margin` : 'Margin'}>
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Margin on Cost</div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className={`text-sm font-extrabold font-mono ${Number(profit) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {money(profit)}
-              </span>
-              {profitPct && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${Number(profitPct) >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                  {profitPct}%
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Production Progress Bar */}
-        <div className="mt-3 pt-2.5 border-t border-slate-100/90 flex flex-wrap items-center gap-2">
-          <b className="text-[11px] font-bold text-slate-700 whitespace-nowrap">Production Progress:</b>
-          <div className="flex-1 min-w-[140px] h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner">
-            <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
-          </div>
-          <span className="text-[11px] text-slate-600 whitespace-nowrap font-medium">
-            {quantity
-              ? `${completed} completed · ${Math.max(0, quantity - completed - rejected)} pending · ${rejected} rejected`
-              : 'No work order quantities'}
-          </span>
-          <span className="text-[11px] font-black text-slate-800 font-mono bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-            {progress.toFixed(1)}%
-          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+            title={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
         </div>
       </div>
 
-      {/* Box Body: Costing Details */}
+      {/* Box Body: Costings */}
       {expanded && (
-        <div className="p-4 sm:p-5 bg-slate-50/50 space-y-4">
-          {/* Sub-Tabs Selector inside this Box */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200/90">
-            {tabs.map((t) => {
-              const isActive = activeTab === t;
-              let badgeVal = '';
-              if (t === 'Goods Purchase' && materials.length) badgeVal = `${materials.length}`;
-              if (t === 'Service Purchase' && (services.length || processes.length)) badgeVal = `${services.length + processes.length}`;
-              if (t === 'Machine Cost' && processOps.length) badgeVal = `${processOps.length}`;
-              if (t === 'Expenses' && expenses.length) badgeVal = `${expenses.length}`;
-
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setLocalTab(t)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    isActive
-                      ? 'bg-amber-600 text-white shadow-xs shadow-amber-600/30'
-                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                  }`}
-                >
-                  <span>{t}</span>
-                  {badgeVal && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-extrabold ${isActive ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                      {badgeVal}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
+        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between bg-white text-xs">
           {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500 font-medium">Loading costing records...</div>
+            <div className="p-6 text-center text-xs text-slate-400 font-medium">Loading costings...</div>
           ) : (
-            <div className="space-y-4">
-              {/* GOODS PURCHASE */}
-              {(activeTab === 'Goods Purchase' || activeTab === 'All Costings') && (
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                  <div className="p-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-xs sm:text-sm text-slate-900">Goods Purchase</h3>
-                      <p className="text-[10px] text-slate-500">
-                        Source: Goods Purchase inward entries (and material issued from stock) linked to this project or work order.
-                      </p>
-                    </div>
-                    {materials.length > 0 && (
-                      <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                        Total Goods Purchase: {money(totalMaterialsAmount.toFixed(2))}
-                      </Badge>
-                    )}
+            <div className="space-y-2">
+              {/* 1. MACHINE COST */}
+              {processOps.length > 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      ⚙️ Machine
+                    </span>
+                    <span className="font-mono text-xs font-bold text-slate-900">
+                      {money(processOpsTotal)}
+                    </span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px] text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/70 text-slate-500 border-b border-slate-100">
-                          <th className="p-2.5 text-left font-bold">DATE</th>
-                          <th className="p-2.5 text-left font-bold">ITEM / MATERIAL</th>
-                          <th className="p-2.5 text-left font-bold">SOURCE</th>
-                          <th className="p-2.5 text-left font-bold">INWARD / REQUEST REF</th>
-                          <th className="p-2.5 text-right font-bold">QUANTITY</th>
-                          <th className="p-2.5 text-center font-bold">UNIT</th>
-                          <th className="p-2.5 text-right font-bold">RATE</th>
-                          <th className="p-2.5 text-right font-bold">AMOUNT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {materials.map((x) => (
-                          <tr key={x.id} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
-                            <td className="p-2.5 text-slate-600">{formatDate(x.date)}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{x.item}</td>
-                            <td className="p-2.5">
-                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                x.type === 'Goods Purchase' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                              }`}>
-                                {x.type || 'Material'}
-                              </span>
-                            </td>
-                            <td className="p-2.5 font-mono text-[11px] text-slate-600">{x.reference || x.request_no}</td>
-                            <td className="p-2.5 text-right font-semibold font-mono text-slate-800">{x.quantity}</td>
-                            <td className="p-2.5 text-center text-slate-500">{x.unit || 'pcs'}</td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">{money(x.rate)}</td>
-                            <td className="p-2.5 text-right font-bold font-mono text-slate-900">{money(x.amount)}</td>
-                          </tr>
-                        ))}
-                        {!materials.length && (
-                          <tr>
-                            <td colSpan={8} className="p-6 text-center text-slate-500 text-xs">
-                              No linked goods purchase inward records.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                      {materials.length > 0 && (
-                        <tfoot>
-                          <tr className="bg-slate-50/90 font-bold border-t border-slate-200">
-                            <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Goods Purchase</td>
-                            <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(totalMaterialsAmount.toFixed(2))}</td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
+                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+                    {processOps.map((op: any) => (
+                      <div
+                        key={`op-${op.id}`}
+                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold text-slate-800 truncate text-[11px]">
+                            {op.operation || 'Operation'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {op.machine || '—'} · {Number(op.hours).toFixed(2).replace(/\.00$/, '')}h @ {op.matched ? money(op.rate) : '—'}/h
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
+                          {money(op.cost)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
+                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+                    ⚙️ Machine
+                  </span>
+                  <span className="font-mono text-slate-400">—</span>
                 </div>
               )}
 
-              {/* SERVICE PURCHASE */}
-              {(activeTab === 'Service Purchase' || activeTab === 'All Costings') && (
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                  <div className="p-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-xs sm:text-sm text-slate-900">Service Purchase</h3>
-                      <p className="text-[10px] text-slate-500">
-                        Outside process work and Service Purchase inwards recorded for this project.
-                      </p>
-                    </div>
-                    {services.length > 0 && (
-                      <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                        Total Service Purchase: {money(totalServiceAmount.toFixed(2))}
-                      </Badge>
-                    )}
+              {/* 2. GOODS PURCHASE */}
+              {materials.length > 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      📦 Goods Purchase
+                    </span>
+                    <span className="font-mono text-xs font-bold text-slate-900">
+                      {money(totalMaterialsAmount)}
+                    </span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px] text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/70 text-slate-500 border-b border-slate-100">
-                          <th className="p-2.5 text-left font-bold">DATE</th>
-                          <th className="p-2.5 text-left font-bold">ITEM / SERVICE</th>
-                          <th className="p-2.5 text-left font-bold">SOURCE</th>
-                          <th className="p-2.5 text-left font-bold">INWARD / REQUEST REF</th>
-                          <th className="p-2.5 text-right font-bold">QUANTITY</th>
-                          <th className="p-2.5 text-center font-bold">UNIT</th>
-                          <th className="p-2.5 text-right font-bold">RATE</th>
-                          <th className="p-2.5 text-right font-bold">AMOUNT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {services.map((x) => (
-                          <tr key={x.id} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
-                            <td className="p-2.5 text-slate-600">{formatDate(x.date)}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{x.item}</td>
-                            <td className="p-2.5">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                                Service Purchase
-                              </span>
-                            </td>
-                            <td className="p-2.5 font-mono text-[11px] text-slate-600">{x.reference || x.request_no}</td>
-                            <td className="p-2.5 text-right font-semibold font-mono text-slate-800">{x.quantity}</td>
-                            <td className="p-2.5 text-center text-slate-500">{x.unit || 'pcs'}</td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">{money(x.rate)}</td>
-                            <td className="p-2.5 text-right font-bold font-mono text-slate-900">{money(x.amount)}</td>
-                          </tr>
-                        ))}
-                        {processes.map((x) => (
-                          <tr key={`proc-${x.id}`} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
-                            <td className="p-2.5 text-slate-600">{formatDate(x.created_at)}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{x.process}</td>
-                            <td className="p-2.5">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                                Outside Process
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-slate-600">{x.supplier || '—'}</td>
-                            <td className="p-2.5 text-right font-semibold font-mono text-slate-800">{x.quantity || x.duration || '—'}</td>
-                            <td className="p-2.5 text-center text-slate-500">pcs</td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">{money(x.rate)}</td>
-                            <td className="p-2.5 text-right font-bold font-mono text-slate-900">{money(x.amount)}</td>
-                          </tr>
-                        ))}
-                        {!services.length && !processes.length && (
-                          <tr>
-                            <td colSpan={8} className="p-6 text-center text-slate-500 text-xs">
-                              No linked service purchase records.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                      {services.length > 0 && (
-                        <tfoot>
-                          <tr className="bg-slate-50/90 font-bold border-t border-slate-200">
-                            <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Service Purchase</td>
-                            <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(totalServiceAmount.toFixed(2))}</td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
+                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+                    {materials.map((m: any) => (
+                      <div
+                        key={`mat-${m.id}`}
+                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold text-slate-800 truncate text-[11px]">{m.item}</div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {m.quantity} {m.unit || 'pcs'} @ {money(m.rate)} {m.reference ? `· ${m.reference}` : ''}
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
+                          {money(m.amount)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
+                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+                    📦 Goods Purchase
+                  </span>
+                  <span className="font-mono text-slate-400">—</span>
                 </div>
               )}
 
-              {/* MACHINE COST */}
-              {(activeTab === 'Machine Cost' || activeTab === 'All Costings') && (
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                  <div className="p-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-xs sm:text-sm text-slate-900">Machine Cost</h3>
-                      <p className="text-[10px] text-slate-500">
-                        In-house operations valued with machine &amp; process master rates.
-                      </p>
-                    </div>
-                    {processOpsTotal > 0 && (
-                      <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                        Total Machine Cost: {money(processOpsTotal.toFixed(2))}
-                      </Badge>
-                    )}
+              {/* 3. SERVICE PURCHASE */}
+              {allServices.length > 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      🛠️ Service Purchase
+                    </span>
+                    <span className="font-mono text-xs font-bold text-slate-900">
+                      {money(totalServiceAmount)}
+                    </span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px] text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/70 text-slate-500 border-b border-slate-100">
-                          <th className="p-2.5 text-left font-bold">PROCESS / OPERATION</th>
-                          <th className="p-2.5 text-left font-bold">MACHINE / OPERATOR</th>
-                          <th className="p-2.5 text-right font-bold">HOURS</th>
-                          <th className="p-2.5 text-right font-bold">RATE / HOUR</th>
-                          <th className="p-2.5 text-right font-bold">COST</th>
-                          <th className="p-2.5 text-left font-bold">STATUS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {processOps.map((x: any) => (
-                          <tr key={`o-${x.id}`} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
-                            <td className="p-2.5">
-                              <div className="font-bold text-slate-900">{x.operation || '—'}</div>
-                              {x.op_no != null && <div className="text-[10px] text-slate-400 font-mono">Seq OP {x.op_no}</div>}
-                              {!x.matched && (
-                                <span className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Operation not matched to Process Master rate">
-                                  Not in Process Master
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-2.5 text-slate-700">{x.machine || '—'} / {x.operator || '—'}</td>
-                            <td className="p-2.5 text-right">
-                              <div className="font-bold text-slate-800 font-mono">{Number(x.hours).toFixed(2).replace(/\.00$/, '')} h</div>
-                              {(() => {
-                                const totalM = Math.round(Number(x.hours || 0) * 60);
-                                const h = Math.floor(totalM / 60);
-                                const m = totalM % 60;
-                                return m > 0 ? <div className="text-[10px] text-slate-400 font-mono">{h}h {m}m</div> : null;
-                              })()}
-                            </td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">{x.matched ? money(x.rate) : '—'}</td>
-                            <td className="p-2.5 text-right font-bold font-mono text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
-                            <td className="p-2.5">
-                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                                {x.status || '—'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {!processOps.length && (
-                          <tr>
-                            <td colSpan={6} className="p-6 text-center text-slate-500 text-xs">
-                              No in-house operations recorded for this project yet.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                      {processOps.length > 0 && (
-                        <tfoot>
-                          <tr className="bg-slate-50/90 font-bold border-t border-slate-200">
-                            <td colSpan={2} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Machine Cost</td>
-                            <td className="p-2.5 text-right font-mono text-slate-700 text-xs font-bold">
-                              {processOps.reduce((sum, x) => sum + (Number(x.hours) || 0), 0).toFixed(2).replace(/\.00$/, '')} h
-                            </td>
-                            <td />
-                            <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(processOpsTotal.toFixed(2))}</td>
-                            <td />
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
+                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+                    {allServices.map((s: any) => (
+                      <div
+                        key={`srv-${s.id}`}
+                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold text-slate-800 truncate text-[11px]">{s.name}</div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {s.qty} @ {money(s.rate)} {s.sub ? `· ${s.sub}` : ''}
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
+                          {money(s.amount)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
+                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+                    🛠️ Service Purchase
+                  </span>
+                  <span className="font-mono text-slate-400">—</span>
                 </div>
               )}
 
-              {/* EXPENSES */}
-              {(activeTab === 'Expenses' || activeTab === 'All Costings') && (
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                  <div className="p-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-xs sm:text-sm text-slate-900">Expenses</h3>
-                      <p className="text-[10px] text-slate-500">Expense inward entries made for this project.</p>
-                    </div>
-                    {expenses.length > 0 && (
-                      <Badge variant="success" className="font-mono text-xs font-semibold px-2 py-0.5">
-                        Total Expenses: {money(totalExpensesAmount.toFixed(2))}
-                      </Badge>
-                    )}
+              {/* 4. EXPENSES */}
+              {expenses.length > 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      📋 Expenses
+                    </span>
+                    <span className="font-mono text-xs font-bold text-slate-900">
+                      {money(totalExpensesAmount)}
+                    </span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px] text-xs">
-                      <thead>
-                        <tr className="bg-slate-50/70 text-slate-500 border-b border-slate-100">
-                          <th className="p-2.5 text-left font-bold">DATE</th>
-                          <th className="p-2.5 text-left font-bold">REFERENCE</th>
-                          <th className="p-2.5 text-left font-bold">EXPENSE</th>
-                          <th className="p-2.5 text-left font-bold">COMPANY</th>
-                          <th className="p-2.5 text-left font-bold">REMARKS</th>
-                          <th className="p-2.5 text-right font-bold">QTY</th>
-                          <th className="p-2.5 text-right font-bold">RATE</th>
-                          <th className="p-2.5 text-right font-bold">AMOUNT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expenses.map((x) => (
-                          <tr key={x.id} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
-                            <td className="p-2.5 text-slate-600">{formatDate(x.inward_date || x.created_at)}</td>
-                            <td className="p-2.5 font-mono text-[11px] text-slate-700">{x.inward_no}{x.reference_no ? ` (${x.reference_no})` : ''}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{x.part_name || x.product_name || '—'}</td>
-                            <td className="p-2.5 text-slate-600">{x.party_name || '—'}</td>
-                            <td className="p-2.5 text-slate-600">{x.remarks || '—'}</td>
-                            <td className="p-2.5 text-right font-semibold font-mono text-slate-800">{x.quantity}</td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">{money(x.price)}</td>
-                            <td className="p-2.5 text-right font-bold font-mono text-slate-900">{money(x.total_amount)}</td>
-                          </tr>
-                        ))}
-                        {!expenses.length && (
-                          <tr>
-                            <td colSpan={8} className="p-6 text-center text-slate-500 text-xs">
-                              No expenses recorded for this project.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+                    {expenses.map((e: any) => (
+                      <div
+                        key={`exp-${e.id}`}
+                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold text-slate-800 truncate text-[11px]">
+                            {e.part_name || e.product_name || 'Expense'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {e.party_name || e.inward_no}
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
+                          {money(e.total_amount)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
+                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+                    📋 Expenses
+                  </span>
+                  <span className="font-mono text-slate-400">—</span>
                 </div>
               )}
             </div>
           )}
+
+          {/* Box Footer Summary */}
+          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Total Cost</span>
+              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">{money(totalActual)}</span>
+            </div>
+            <div className="text-center">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Sales Value</span>
+              <span className="font-mono font-bold text-slate-700 text-xs sm:text-sm">{money(pData.sales_value)}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Margin</span>
+              <span className={`font-mono font-black text-xs sm:text-sm ${Number(profit) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {money(profit)}
+                {profitPct && <span className="text-[9px] font-bold ml-1">({profitPct}%)</span>}
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </Card>
@@ -1038,7 +842,6 @@ export function ProjectCostingPage() {
 
   const [search, setSearch] = useState('');
   const [selectedProjectKey, setSelectedProjectKey] = useState<string>('all');
-  const [globalTab, setGlobalTab] = useState<string>('Goods Purchase');
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -1323,22 +1126,6 @@ export function ProjectCostingPage() {
 
           {/* Right: Global Tab Shortcut & Page Size */}
           <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100 justify-between lg:justify-end">
-            {/* Global View Mode */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-              {['Goods Purchase', 'Service Purchase', 'Machine Cost', 'Expenses', 'All Costings'].map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setGlobalTab(t)}
-                  className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                    globalTab === t ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {t === 'Goods Purchase' ? 'Goods' : t === 'Service Purchase' ? 'Service' : t === 'Machine Cost' ? 'Machine' : t === 'Expenses' ? 'Expenses' : 'All'}
-                </button>
-              ))}
-            </div>
-
             {/* Page Size & Pagination */}
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <label className="flex items-center gap-1">
@@ -1384,8 +1171,8 @@ export function ProjectCostingPage() {
         </div>
       </Card>
 
-      {/* PROJECT-WISE COSTING BOXES LIST */}
-      <div className="space-y-4">
+      {/* PROJECT-WISE COMPACT BOXES GRID */}
+      <div>
         {loading ? (
           <Card className="p-16 text-center text-sm font-medium text-slate-500">
             <div className="animate-spin text-2xl mb-2">⚙️</div>
@@ -1397,19 +1184,20 @@ export function ProjectCostingPage() {
             No projects match the selected criteria.
           </Card>
         ) : (
-          filteredProjects.map((p) => {
-            const k = projectKey(p);
-            const detail = detailsMap[k];
-            return (
-              <ProjectCostingBox
-                key={k}
-                project={p}
-                detail={detail}
-                loading={detailsLoading && !detail}
-                globalTab={globalTab}
-              />
-            );
-          })
+          <div className={filteredProjects.length === 1 ? 'max-w-xl mx-auto' : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5'}>
+            {filteredProjects.map((p) => {
+              const k = projectKey(p);
+              const detail = detailsMap[k];
+              return (
+                <ProjectCostingBox
+                  key={k}
+                  project={p}
+                  detail={detail}
+                  loading={detailsLoading && !detail}
+                />
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
