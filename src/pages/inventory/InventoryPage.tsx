@@ -1387,57 +1387,6 @@ export function InventoryPage() {
           </div>
         </div>
 
-        {/* Summary panels: at the end of the page */}
-        <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start" data-testid="inventory-panels">
-          <CategoryDonut summary={summary} failed={!!summaryError} />
-          <StockStatusCard summary={summary} failed={!!summaryError} />
-          <Card title="Recent Transactions" action={<button onClick={() => navigate('/inventory/movements')} className="text-xs font-semibold text-blue-600 hover:underline">View All</button>}>
-            {recent === null && !recentError && <div className="space-y-3">{[0, 1, 2, 3].map(i => <div key={i} className="h-9 rounded bg-slate-100 animate-pulse" />)}</div>}
-            {recentError && <p className="text-xs text-slate-400">Not available.</p>}
-            {recent && recent.length === 0 && <p className="text-sm text-slate-500 py-2">No transactions found.</p>}
-            {recent && recent.length > 0 && (
-              <ul className="divide-y divide-slate-100 -mx-1">
-                {recent.map(t => (
-                  <li key={t.id}>
-                    <button onClick={() => setTxn(t)} className="w-full text-left px-1 py-2 flex items-center gap-2.5 hover:bg-slate-50 rounded">
-                      <DirectionBadge direction={t.direction} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-800 truncate">{t.item_code}</p>
-                        <p className="text-[11px] text-slate-500">{formatDate(t.txn_date)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs"><SignedQty qty={t.qty} unit={t.unit} /></p>
-                        <p className="text-[11px] text-slate-500 truncate max-w-[110px]">{t.type}</p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-          <Card title="Alerts" action={<button onClick={() => filterByStatus('Low Stock')} className="text-xs font-semibold text-blue-600 hover:underline">View All</button>}>
-            {!summary && !summaryError && <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-5 rounded bg-slate-100 animate-pulse" />)}</div>}
-            {summaryError && <p className="text-xs text-slate-400">Not available.</p>}
-            {summary && (summary.out_of_stock === 0 && summary.low_stock === 0 && summary.to_reorder === 0
-              ? <p className="text-sm text-slate-500">No alerts.</p>
-              : (
-                <ul className="space-y-1">
-                  {summary.out_of_stock > 0 && (
-                    <li><button onClick={() => filterByStatus('Out of Stock')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <XCircle size={16} className="text-red-500 flex-shrink-0" /> {formatQty(summary.out_of_stock)} products are out of stock</button></li>
-                  )}
-                  {summary.low_stock > 0 && (
-                    <li><button onClick={() => filterByStatus('Low Stock')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" /> {formatQty(summary.low_stock)} products are below minimum stock</button></li>
-                  )}
-                  {summary.to_reorder > 0 && (
-                    <li><button onClick={() => filterByStatus('Reorder')} className="w-full text-left flex items-center gap-2 text-sm text-slate-700 hover:bg-slate-50 rounded px-1 py-1.5">
-                      <Info size={16} className="text-blue-500 flex-shrink-0" /> {formatQty(summary.to_reorder)} products need reordering</button></li>
-                  )}
-                </ul>
-              ))}
-          </Card>
-        </div>
       </div>
 
       {/* Row "More" menu (fixed so the table's scroll container doesn't clip it) */}
