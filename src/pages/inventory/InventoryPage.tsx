@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, Package,
   Pencil, MoreVertical, Eye, History, SlidersHorizontal, ChevronLeft, ChevronRight, Building2, Loader2,
   ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search, Store, Trash2, Check,
+  Filter, ArrowUp, ArrowDown, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -80,6 +82,137 @@ function pageList(current: number, totalPages: number): (number | 'gap')[] {
   if (current <= 4) return [1, 2, 3, 4, 5, 'gap', totalPages];
   if (current >= totalPages - 3) return [1, 'gap', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
   return [1, 'gap', current - 1, current, current + 1, 'gap', totalPages];
+}
+
+interface ColumnHeaderFilterProps {
+  label: string;
+  col: string;
+  align?: 'left' | 'right' | 'center';
+  isFiltered?: boolean;
+  filterSummary?: string | null;
+  onClearFilter?: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  sortKey: string | null;
+  sortDir: SortDir;
+  showFilterIcon?: boolean;
+}
+
+function ColumnHeaderFilter({
+  label,
+  col,
+  align = 'left',
+  isFiltered = false,
+  filterSummary,
+  onClearFilter,
+  onClick,
+  sortKey,
+  sortDir,
+  showFilterIcon = true,
+}: ColumnHeaderFilterProps) {
+  const isSorted = sortKey === col;
+  return (
+    <div className={`inline-flex items-center gap-1.5 flex-nowrap ${align === 'right' ? 'justify-end' : ''}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`group inline-flex items-center gap-1 text-xs font-semibold tracking-tight transition-all cursor-pointer rounded px-1.5 py-0.5 -mx-1.5 ${
+          isFiltered
+            ? 'text-blue-700 bg-blue-50 hover:bg-blue-100/80 border border-blue-200'
+            : isSorted
+              ? 'text-blue-600 bg-slate-100 hover:bg-slate-200/70'
+              : 'text-slate-700 hover:text-blue-600 hover:bg-slate-100'
+        }`}
+        title={`Filter & sort by ${label}`}
+      >
+        <span className="whitespace-nowrap">{label}</span>
+        {isSorted && (
+          sortDir === 'asc'
+            ? <ArrowUp size={12} className="text-blue-600 shrink-0 font-bold" />
+            : <ArrowDown size={12} className="text-blue-600 shrink-0 font-bold" />
+        )}
+        {showFilterIcon && (
+          <Filter
+            size={11}
+            className={`shrink-0 transition-colors ${
+              isFiltered
+                ? 'text-blue-600 fill-blue-600'
+                : 'text-slate-400 group-hover:text-blue-600'
+            }`}
+          />
+        )}
+      </button>
+      {isFiltered && filterSummary && (
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+          title={`Active filter: ${filterSummary}`}
+        >
+          <span className="max-w-[80px] truncate">{filterSummary}</span>
+          {onClearFilter && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onClearFilter(); }}
+              className="text-blue-500 hover:text-blue-800 hover:bg-blue-100 rounded-full p-0.5"
+              title="Clear filter"
+            >
+              <X size={10} />
+            </button>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function HeaderFilterMenuPopover({
+  target,
+  onClose,
+  children,
+}: {
+  target: DOMRect;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onScroll = (e: Event) => {
+      if (popoverRef.current && e.target instanceof Node && popoverRef.current.contains(e.target)) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [onClose]);
+
+  const estW = 240;
+  const left = Math.min(Math.max(12, target.left), window.innerWidth - estW - 16);
+  const top = target.bottom + 4;
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      style={{ top: `${top}px`, left: `${left}px` }}
+      className="fixed z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-2 min-w-[220px] max-w-[280px] text-xs animate-in fade-in zoom-in-95 duration-100"
+    >
+      {children}
+    </div>,
+    document.body
+  );
 }
 
 function Card({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -314,6 +447,23 @@ export function InventoryPage() {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+  // ---- In-header column filter states --------------------------------------------------------
+  const [unitFilter, setUnitFilter] = useState<string>('All');
+  const [qtyFilter, setQtyFilter] = useState<'All' | 'in_stock' | 'out_of_stock' | 'low_stock'>('All');
+  const [activeColMenu, setActiveColMenu] = useState<{
+    col: string;
+    label: string;
+    rect: DOMRect;
+  } | null>(null);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
+
+  const distinctUnits = useMemo(() => {
+    const set = new Set<string>();
+    (items?.rows ?? []).forEach(r => { if (r.unit) set.add(r.unit); });
+    ['Nos', 'Mtr', 'Kg', 'Set', 'Pcs'].forEach(u => set.add(u));
+    return Array.from(set);
+  }, [items?.rows]);
+
   const toggleSort = (col: string) => {
     if (sortKey === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(col); setSortDir('asc'); }
@@ -334,8 +484,19 @@ export function InventoryPage() {
 
   const sortedItemsRows = useMemo(() => {
     if (!items?.rows) return [];
-    if (!sortKey) return items.rows;
-    if (sortKey === 'idx') return sortDir === 'asc' ? items.rows : [...items.rows].reverse();
+    let list = items.rows;
+    if (unitFilter !== 'All') {
+      list = list.filter(r => (r.unit || 'Nos').toLowerCase() === unitFilter.toLowerCase());
+    }
+    if (qtyFilter === 'in_stock') {
+      list = list.filter(r => Number(r.current_stock || 0) > 0);
+    } else if (qtyFilter === 'out_of_stock') {
+      list = list.filter(r => Number(r.current_stock || 0) <= 0);
+    } else if (qtyFilter === 'low_stock') {
+      list = list.filter(r => Number(r.current_stock || 0) > 0 && Number(r.current_stock || 0) <= Number(r.min_stock || 0));
+    }
+    if (!sortKey) return list;
+    if (sortKey === 'idx') return sortDir === 'asc' ? list : [...list].reverse();
     const getVal = (r: InventoryItemRow): string | number => {
       switch (sortKey) {
         case 'name': return (r.name || '').toLowerCase();
@@ -350,19 +511,28 @@ export function InventoryPage() {
         default: return '';
       }
     };
-    return [...items.rows].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const av = getVal(a);
       const bv = getVal(b);
       if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
       const c = String(av).localeCompare(String(bv), undefined, { numeric: true });
       return sortDir === 'asc' ? c : -c;
     });
-  }, [items?.rows, sortKey, sortDir, lastMovement]);
+  }, [items?.rows, sortKey, sortDir, lastMovement, unitFilter, qtyFilter]);
 
   const sortedFgVisible = useMemo(() => {
     if (!fgVisible.length) return [];
-    if (!sortKey) return fgVisible;
-    if (sortKey === 'idx') return sortDir === 'asc' ? fgVisible : [...fgVisible].reverse();
+    let list = fgVisible;
+    if (unitFilter !== 'All') {
+      list = list.filter(() => 'nos' === unitFilter.toLowerCase());
+    }
+    if (qtyFilter === 'in_stock') {
+      list = list.filter(r => Number(r.available || 0) > 0);
+    } else if (qtyFilter === 'out_of_stock') {
+      list = list.filter(r => Number(r.available || 0) <= 0);
+    }
+    if (!sortKey) return list;
+    if (sortKey === 'idx') return sortDir === 'asc' ? list : [...list].reverse();
     const getVal = (r: any): string | number => {
       switch (sortKey) {
         case 'name': return (r.product || '').toLowerCase();
@@ -377,14 +547,14 @@ export function InventoryPage() {
         default: return '';
       }
     };
-    return [...fgVisible].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const av = getVal(a);
       const bv = getVal(b);
       if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
       const c = String(av).localeCompare(String(bv), undefined, { numeric: true });
       return sortDir === 'asc' ? c : -c;
     });
-  }, [fgVisible, sortKey, sortDir, fg]);
+  }, [fgVisible, sortKey, sortDir, fg, unitFilter, qtyFilter]);
 
   // ---- Open work orders (WIP proxy — real count, never hardcoded) ---------------------------
   useEffect(() => {
@@ -451,6 +621,8 @@ export function InventoryPage() {
     const next = { ...EMPTY_FILTERS, categoryId: applied.categoryId };
     setDraft(next);
     applyFilters(next);
+    setUnitFilter('All');
+    setQtyFilter('All');
     if (q !== null) setParams(prev => { const p = new URLSearchParams(prev); p.delete('q'); return p; }, { replace: true });
   };
   const handleTab = (categoryId: string) => {
@@ -1089,42 +1261,130 @@ export function InventoryPage() {
               <thead>
                 <tr className="bg-slate-50 text-slate-700 text-xs font-semibold border-b border-slate-200">
                   <th className="px-3 py-3 text-left w-12">
-                    <SortLabel label="#" col="idx" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="#"
+                      col="idx"
+                      showFilterIcon={false}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort('idx')}
+                    />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Product / Material Name" col="name" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Product / Material Name"
+                      col="name"
+                      isFiltered={Boolean(applied.search)}
+                      filterSummary={applied.search || null}
+                      onClearFilter={() => {
+                        setDraft(d => ({ ...d, search: '' }));
+                        applyFilters({ ...applied, search: '' });
+                      }}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'name', label: 'Product / Material Name', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Category" col="category" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Category"
+                      col="category"
+                      isFiltered={Boolean(applied.categoryId)}
+                      filterSummary={categories.find(c => c.id === applied.categoryId)?.name || null}
+                      onClearFilter={() => handleTab('')}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'category', label: 'Category', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Warehouse / Location" col="warehouse" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Warehouse / Location"
+                      col="warehouse"
+                      isFiltered={Boolean(applied.warehouseId)}
+                      filterSummary={filters?.warehouses.find(w => w.id === applied.warehouseId)?.name || null}
+                      onClearFilter={() => {
+                        setDraft(d => ({ ...d, warehouseId: '' }));
+                        applyFilters({ ...applied, warehouseId: '' });
+                      }}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'warehouse', label: 'Warehouse / Location', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Unit" col="unit" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Unit"
+                      col="unit"
+                      isFiltered={unitFilter !== 'All'}
+                      filterSummary={unitFilter !== 'All' ? unitFilter : null}
+                      onClearFilter={() => setUnitFilter('All')}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'unit', label: 'Unit', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-right">
-                    <div className="flex items-center justify-end">
-                      <SortLabel label={fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'} col="qty" sort={sortState} light />
-                    </div>
+                    <ColumnHeaderFilter
+                      label={fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'}
+                      col="qty"
+                      align="right"
+                      isFiltered={qtyFilter !== 'All'}
+                      filterSummary={qtyFilter !== 'All' ? (qtyFilter === 'in_stock' ? '> 0' : qtyFilter === 'out_of_stock' ? '= 0' : 'Low') : null}
+                      onClearFilter={() => setQtyFilter('All')}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'qty', label: 'Available Qty', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-right">
-                    <div className="flex items-center justify-end">
-                      <SortLabel label="Value (₹)" col="value" sort={sortState} light />
-                    </div>
+                    <ColumnHeaderFilter
+                      label="Value (₹)"
+                      col="value"
+                      align="right"
+                      showFilterIcon={false}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort('value')}
+                    />
                   </th>
                   {!fgTab && (
                     <th className="px-3 py-3 text-right">
-                      <div className="flex items-center justify-end">
-                        <SortLabel label="Reorder Level" col="min_stock" sort={sortState} light />
-                      </div>
+                      <ColumnHeaderFilter
+                        label="Reorder Level"
+                        col="min_stock"
+                        align="right"
+                        showFilterIcon={false}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onClick={() => toggleSort('min_stock')}
+                      />
                     </th>
                   )}
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Stock Status" col="status" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Stock Status"
+                      col="status"
+                      isFiltered={Boolean(applied.status)}
+                      filterSummary={applied.status || null}
+                      onClearFilter={() => {
+                        setDraft(d => ({ ...d, status: '' }));
+                        applyFilters({ ...applied, status: '' });
+                      }}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={(e) => setActiveColMenu({ col: 'status', label: 'Stock Status', rect: e.currentTarget.getBoundingClientRect() })}
+                    />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <SortLabel label="Last Movement" col="movement" sort={sortState} light />
+                    <ColumnHeaderFilter
+                      label="Last Movement"
+                      col="movement"
+                      showFilterIcon={false}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort('movement')}
+                    />
                   </th>
                   <th className="px-3 py-3 text-center">Actions</th>
                 </tr>
@@ -1388,6 +1648,317 @@ export function InventoryPage() {
         </div>
 
       </div>
+
+      {/* Column Header Filter & Sort Popover */}
+      {activeColMenu && (
+        <HeaderFilterMenuPopover target={activeColMenu.rect} onClose={() => setActiveColMenu(null)}>
+          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+            <span>{activeColMenu.label}</span>
+            <button
+              type="button"
+              onClick={() => setActiveColMenu(null)}
+              className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+            >
+              <X size={12} />
+            </button>
+          </div>
+
+          {/* Product Name Search */}
+          {activeColMenu.col === 'name' && (
+            <div className="py-1 space-y-2">
+              <input
+                type="text"
+                autoFocus
+                value={draft.search}
+                onChange={e => setDraft(d => ({ ...d, search: e.target.value }))}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    applyFilters(draft);
+                    setActiveColMenu(null);
+                  }
+                }}
+                placeholder="Search name or code..."
+                className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <div className="flex items-center justify-between pt-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(d => ({ ...d, search: '' }));
+                    applyFilters({ ...applied, search: '' });
+                    setActiveColMenu(null);
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 px-2 py-1"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyFilters(draft);
+                    setActiveColMenu(null);
+                  }}
+                  className="text-xs font-semibold bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Category Filter */}
+          {activeColMenu.col === 'category' && (
+            <div className="py-1">
+              {categories.length > 5 && (
+                <div className="mb-1.5 px-0.5">
+                  <input
+                    type="text"
+                    value={menuSearchQuery}
+                    onChange={e => setMenuSearchQuery(e.target.value)}
+                    placeholder="Search categories..."
+                    className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+              <div className="max-h-56 overflow-y-auto space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleTab('');
+                    setActiveColMenu(null);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                    !applied.categoryId ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                  }`}
+                >
+                  <span>All Categories</span>
+                  {!applied.categoryId && <Check size={12} className="text-blue-600 shrink-0" />}
+                </button>
+                {categories
+                  .filter(c => !menuSearchQuery || c.name.toLowerCase().includes(menuSearchQuery.toLowerCase()))
+                  .map(c => {
+                    const isSel = applied.categoryId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          handleTab(c.id);
+                          setActiveColMenu(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                          isSel ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                        }`}
+                      >
+                        <span className="truncate">{c.name}</span>
+                        {isSel && <Check size={12} className="text-blue-600 shrink-0 ml-2" />}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Warehouse Filter */}
+          {activeColMenu.col === 'warehouse' && (
+            <div className="py-1">
+              {(filters?.warehouses ?? []).length > 5 && (
+                <div className="mb-1.5 px-0.5">
+                  <input
+                    type="text"
+                    value={menuSearchQuery}
+                    onChange={e => setMenuSearchQuery(e.target.value)}
+                    placeholder="Search warehouses..."
+                    className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+              <div className="max-h-56 overflow-y-auto space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(d => ({ ...d, warehouseId: '' }));
+                    applyFilters({ ...applied, warehouseId: '' });
+                    setActiveColMenu(null);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                    !applied.warehouseId ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                  }`}
+                >
+                  <span>All Warehouses</span>
+                  {!applied.warehouseId && <Check size={12} className="text-blue-600 shrink-0" />}
+                </button>
+                {(filters?.warehouses ?? [])
+                  .filter(w => !menuSearchQuery || w.name.toLowerCase().includes(menuSearchQuery.toLowerCase()))
+                  .map(w => {
+                    const isSel = applied.warehouseId === w.id;
+                    return (
+                      <button
+                        key={w.id}
+                        type="button"
+                        onClick={() => {
+                          setDraft(d => ({ ...d, warehouseId: w.id }));
+                          applyFilters({ ...applied, warehouseId: w.id });
+                          setActiveColMenu(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                          isSel ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                        }`}
+                      >
+                        <span className="truncate">{w.name}</span>
+                        {isSel && <Check size={12} className="text-blue-600 shrink-0 ml-2" />}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Unit Filter */}
+          {activeColMenu.col === 'unit' && (
+            <div className="py-1 max-h-56 overflow-y-auto space-y-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setUnitFilter('All');
+                  setActiveColMenu(null);
+                }}
+                className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                  unitFilter === 'All' ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                }`}
+              >
+                <span>All Units</span>
+                {unitFilter === 'All' && <Check size={12} className="text-blue-600 shrink-0" />}
+              </button>
+              {distinctUnits.map(u => {
+                const isSel = unitFilter.toLowerCase() === u.toLowerCase();
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => {
+                      setUnitFilter(u);
+                      setActiveColMenu(null);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                      isSel ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>{u}</span>
+                    {isSel && <Check size={12} className="text-blue-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Stock Status Filter */}
+          {activeColMenu.col === 'status' && (
+            <div className="py-1 space-y-0.5">
+              {[
+                { id: '', label: 'All Statuses' },
+                { id: 'In Stock', label: 'In Stock' },
+                { id: 'Low Stock', label: 'Low Stock' },
+                { id: 'Out of Stock', label: 'Out of Stock' },
+              ].map(s => {
+                const isSel = (applied.status || '') === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      setDraft(d => ({ ...d, status: s.id as any }));
+                      applyFilters({ ...applied, status: s.id as any });
+                      setActiveColMenu(null);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                      isSel ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>{s.label}</span>
+                    {isSel && <Check size={12} className="text-blue-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Quantity Filter */}
+          {activeColMenu.col === 'qty' && (
+            <div className="py-1 space-y-0.5">
+              {[
+                { id: 'All', label: 'All Quantities' },
+                { id: 'in_stock', label: 'In Stock (> 0)' },
+                { id: 'low_stock', label: 'Low Stock (< Reorder)' },
+                { id: 'out_of_stock', label: 'Out of Stock (= 0)' },
+              ].map(q => {
+                const isSel = qtyFilter === q.id;
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      setQtyFilter(q.id as any);
+                      setActiveColMenu(null);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                      isSel ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>{q.label}</span>
+                    {isSel && <Check size={12} className="text-blue-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Sort Section */}
+          <div className="pt-1 mt-1 border-t border-slate-100 space-y-0.5">
+            <div className="px-2 py-0.5 font-bold text-[10px] text-slate-400 uppercase tracking-wider">Sort</div>
+            <button
+              type="button"
+              onClick={() => {
+                setSort(activeColMenu.col, 'asc');
+                setActiveColMenu(null);
+              }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center gap-2 hover:bg-slate-50 transition-colors ${
+                sortKey === activeColMenu.col && sortDir === 'asc' ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+              }`}
+            >
+              <ArrowUp size={12} className="text-slate-400 shrink-0" />
+              <span>{activeColMenu.col === 'qty' || activeColMenu.col === 'value' || activeColMenu.col === 'min_stock' ? 'Low → High' : activeColMenu.col === 'movement' ? 'Oldest First' : 'A → Z (Ascending)'}</span>
+              {sortKey === activeColMenu.col && sortDir === 'asc' && <Check size={12} className="text-blue-600 ml-auto shrink-0" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSort(activeColMenu.col, 'desc');
+                setActiveColMenu(null);
+              }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center gap-2 hover:bg-slate-50 transition-colors ${
+                sortKey === activeColMenu.col && sortDir === 'desc' ? 'font-bold text-blue-600 bg-blue-50/70' : 'text-slate-700'
+              }`}
+            >
+              <ArrowDown size={12} className="text-slate-400 shrink-0" />
+              <span>{activeColMenu.col === 'qty' || activeColMenu.col === 'value' || activeColMenu.col === 'min_stock' ? 'High → Low' : activeColMenu.col === 'movement' ? 'Recent First' : 'Z → A (Descending)'}</span>
+              {sortKey === activeColMenu.col && sortDir === 'desc' && <Check size={12} className="text-blue-600 ml-auto shrink-0" />}
+            </button>
+            {sortKey === activeColMenu.col && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSort(null, 'asc');
+                  setActiveColMenu(null);
+                }}
+                className="w-full text-left px-2.5 py-1 text-[11px] text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                Reset Sort
+              </button>
+            )}
+          </div>
+        </HeaderFilterMenuPopover>
+      )}
 
       {/* Row "More" menu (fixed so the table's scroll container doesn't clip it) */}
       {menu && (
