@@ -424,6 +424,27 @@ export function InventoryPage() {
     return locId;
   };
 
+  const getWarehouseSelectValue = (r: InventoryItemRow): string => {
+    if (r.location_id) {
+      const loc = (filters?.locations ?? []).find(l => l.id === r.location_id);
+      const wid = loc?.warehouse_id || r.warehouse_id;
+      if (wid) {
+        const rawLocs = locationsFor(wid);
+        const distinct = rawLocs.filter(l =>
+          l.name &&
+          l.name.trim().toLowerCase() !== (loc?.warehouse_name || '').trim().toLowerCase() &&
+          l.name.trim().toLowerCase() !== 'general' &&
+          l.name.trim().toLowerCase() !== 'main store'
+        );
+        if (distinct.length === 0) {
+          return `wh:${wid}`;
+        }
+      }
+      return r.location_id;
+    }
+    return r.warehouse_id ? `wh:${r.warehouse_id}` : '';
+  };
+
   const handleInlineWarehouseChange = async (r: InventoryItemRow, value: string) => {
     setRowBusyId(r.id);
     try {
@@ -1092,13 +1113,19 @@ export function InventoryPage() {
                         <select
                           aria-label={`Warehouse / Location for ${r.name}`}
                           className="h-8 w-full max-w-[210px] px-2 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 truncate"
-                          value={r.location_id ? r.location_id : (r.warehouse_id ? `wh:${r.warehouse_id}` : '')}
+                          value={getWarehouseSelectValue(r)}
                           disabled={rowBusyId === r.id}
                           onChange={e => void handleInlineWarehouseChange(r, e.target.value)}
                         >
                           <option value="">— Not set —</option>
                           {(filters?.warehouses ?? []).map(w => {
-                            const locs = locationsFor(w.id);
+                            const rawLocs = locationsFor(w.id);
+                            const locs = rawLocs.filter(l =>
+                              l.name &&
+                              l.name.trim().toLowerCase() !== w.name.trim().toLowerCase() &&
+                              l.name.trim().toLowerCase() !== 'general' &&
+                              l.name.trim().toLowerCase() !== 'main store'
+                            );
                             if (locs.length === 0) {
                               return <option key={`wh:${w.id}`} value={`wh:${w.id}`}>{w.name}</option>;
                             }
@@ -1107,7 +1134,7 @@ export function InventoryPage() {
                                 <option value={`wh:${w.id}`}>{w.name} (General)</option>
                                 {locs.map(l => (
                                   <option key={l.id} value={l.id}>
-                                    {w.name} · {l.name || l.code}
+                                    {l.name || l.code}
                                   </option>
                                 ))}
                               </optgroup>
