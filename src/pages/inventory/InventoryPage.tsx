@@ -1039,13 +1039,6 @@ export function InventoryPage() {
               <option value="">All Suppliers</option>
               {(filters?.suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <select aria-label="Stock status" value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as FilterState['status'] })} className={selectCls}>
-              <option value="">All Status</option>
-              <option value="In Stock">In Stock</option>
-              <option value="Low Stock">Low Stock</option>
-              <option value="Out of Stock">Out of Stock</option>
-              <option value="Reorder">Needs Reorder</option>
-            </select>
             <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -1141,46 +1134,10 @@ export function InventoryPage() {
                     <SortLabel label="Product / Material Name" col="name" sort={sortState} light />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1.5 flex-nowrap">
-                      <SortLabel label="Category" col="category" sort={sortState} light />
-                      <select
-                        aria-label="Filter by Category"
-                        title="Filter by Category"
-                        value={applied.categoryId}
-                        onChange={e => {
-                          const id = e.target.value;
-                          setDraft(d => ({ ...d, categoryId: id }));
-                          applyFilters({ ...applied, categoryId: id });
-                        }}
-                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[120px] truncate shadow-xs"
-                      >
-                        <option value="">All</option>
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <SortLabel label="Category" col="category" sort={sortState} light />
                   </th>
                   <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1.5 flex-nowrap">
-                      <SortLabel label="Warehouse / Location" col="warehouse" sort={sortState} light />
-                      <select
-                        aria-label="Filter by Warehouse"
-                        title="Filter by Warehouse"
-                        value={applied.warehouseId}
-                        onChange={e => {
-                          const wid = e.target.value;
-                          setDraft(d => ({ ...d, warehouseId: wid }));
-                          applyFilters({ ...applied, warehouseId: wid });
-                        }}
-                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[120px] truncate shadow-xs"
-                      >
-                        <option value="">All</option>
-                        {(filters?.warehouses ?? []).map(w => (
-                          <option key={w.id} value={w.id}>{w.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <SortLabel label="Warehouse / Location" col="warehouse" sort={sortState} light />
                   </th>
                   <th className="px-3 py-3 text-left">
                     <SortLabel label="Unit" col="unit" sort={sortState} light />
@@ -1203,26 +1160,7 @@ export function InventoryPage() {
                     </th>
                   )}
                   <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1.5 flex-nowrap">
-                      <SortLabel label="Stock Status" col="status" sort={sortState} light />
-                      <select
-                        aria-label="Filter by Stock Status"
-                        title="Filter by Stock Status"
-                        value={applied.status}
-                        onChange={e => {
-                          const st = e.target.value as FilterState['status'];
-                          setDraft(d => ({ ...d, status: st }));
-                          applyFilters({ ...applied, status: st });
-                        }}
-                        className="text-[11px] font-semibold text-slate-700 bg-white border border-slate-300 rounded px-1.5 py-0.5 normal-case focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[100px] truncate shadow-xs"
-                      >
-                        <option value="">All</option>
-                        <option value="In Stock">In Stock</option>
-                        <option value="Low Stock">Low Stock</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                        <option value="Reorder">Needs Reorder</option>
-                      </select>
-                    </div>
+                    <SortLabel label="Stock Status" col="status" sort={sortState} light />
                   </th>
                   <th className="px-3 py-3 text-left">
                     <SortLabel label="Last Movement" col="movement" sort={sortState} light />
