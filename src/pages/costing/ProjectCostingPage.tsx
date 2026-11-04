@@ -110,16 +110,37 @@ export type CostingDetail = {
 const money = (v: string | number | null | undefined) =>
   v == null || v === '' ? '—' : formatINR(v, { decimals: 'auto' });
 
-const isGoodsPurchaseCategory = (cat: string | null | undefined) => {
-  if (!cat) return false;
-  const s = String(cat).trim().toUpperCase();
-  return s.includes('GOODS PURCHASE') || s.includes('GOODS_PURCHASE') || s === 'PURCHASE';
-};
-
 const isServicePurchaseCategory = (cat: string | null | undefined) => {
   if (!cat) return false;
   const s = String(cat).trim().toUpperCase();
-  return s.includes('SERVICE PURCHASE') || s.includes('SERVICE_PURCHASE') || s === 'SERVICE';
+  return (
+    s.includes('SERVICE') ||
+    s.includes('LABOUR') ||
+    s.includes('JOB WORK') ||
+    s.includes('OUTSIDE') ||
+    s.includes('SUBCONTRACT') ||
+    s.includes('PLATING') ||
+    s.includes('COATING') ||
+    s.includes('HEAT') ||
+    s.includes('TREATMENT') ||
+    s.includes('ANODIZ') ||
+    s.includes('GRINDING')
+  );
+};
+
+const isExpenseCategory = (cat: string | null | undefined) => {
+  if (!cat) return false;
+  const s = String(cat).trim().toUpperCase();
+  return s === 'EXPENSES' || s.includes('EXPENSE') || s.includes('PETTY') || s.includes('OVERHEAD');
+};
+
+const isGoodsPurchaseCategory = (cat: string | null | undefined) => {
+  if (!cat) return true; // Default to material / goods purchase if unclassified
+  const s = String(cat).trim().toUpperCase();
+  if (isServicePurchaseCategory(cat)) return false;
+  if (isExpenseCategory(cat)) return false;
+  if (s === 'CUSTOMER DC' || s === 'CUSTOMER_DC' || s === 'JOB WORK INWARD') return false;
+  return true;
 };
 
 const isPurchaseCategory = (cat: string | null | undefined) =>
@@ -158,6 +179,7 @@ export type SharedCostingData = {
   allWoOps: any[];
   allRoutings: any[];
   allCostingSheets: any[];
+  allBoms?: any[];
   quoteLookup: (refs: unknown[], party: string | null, part: string | null) => number | null;
 };
 
@@ -182,7 +204,7 @@ function computeProjectDetail(
     const wCust = lc(w.customer);
     const wPartKey = quoteNameKey(w.part_name);
 
-    if (wNo && wNo === pProj) return true;
+    if (wNo && (wNo === pProj || pProj.includes(wNo) || wNo.includes(pProj))) return true;
     if (wSo && (wSo === pProj || wSo === pPart)) return true;
     if (pParty && wCust === pParty && (wPart === pPart || (pPartKey && wPartKey === pPartKey))) return true;
     if (wPart && wPart === pPart) return true;
@@ -220,7 +242,11 @@ function computeProjectDetail(
     matchingWo.add(pProj);
     allWoNos.add(p.project_name);
   }
-  if (p.part_name) candidatePartNames.add(p.part_name);
+  if (p.part_name) {
+    candidatePartNames.add(p.part_name);
+    candidatePartNames.add(pPart);
+    if (pPartKey) candidatePartNames.add(pPartKey);
+  }
 
   const isUuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v ?? ''));
 
@@ -231,65 +257,14 @@ function computeProjectDetail(
       allWoNos.add(w.wo_no);
     }
     if (w.id && isUuid(w.id)) allWoIds.add(String(w.id));
-    if (w.part_name) candidatePartNames.add(w.part_name);
+    if (w.part_name) {
+      candidatePartNames.add(w.part_name);
+      candidatePartNames.add(lc(w.part_name));
+      const k = quoteNameKey(w.part_name);
+      if (k) candidatePartNames.add(k);
+    }
   });
 
-  // 3. Inwards (Goods Purchase & Service Purchase)
-  const purchaseInwards = (shared.inwardRows || []).filter((inv: any) => isPurchaseCategory(inv.category));
-  const matchedInwards = purchaseInwards.filter((inv: any) => {
-    const soRef = lc(inv.sales_order_ref);
-    const projRef = lc(inv.project_name);
-    const partyRef = lc(inv.party_name);
-    const partRef = lc(inv.part_name);
-    const prodRef = lc(inv.product_name);
-
-    if (soRef && matchingSo.has(soRef)) return true;
-    if (projRef && (matchingWo.has(projRef) || matchingSo.has(projRef))) return true;
-    if (partyRef && partyRef === pParty && (partRef === pPart || prodRef === pPart)) return true;
-    return false;
-  });
-
-  const toCostRow = (inv: any, type: string) => {
-    const qty = Number(inv.quantity) || 0;
-    const rate = Number(inv.price) || (qty > 0 ? (Number(inv.total_amount) || 0) / qty : 0);
-    const amount = Number(inv.total_amount) || qty * rate;
-    return {
-      id: inv.id || crypto.randomUUID(),
-      date: inv.inward_date || inv.created_at || todayISO(),
-      type,
-      reference: inv.reference_no ? `${inv.inward_no} (${inv.reference_no})` : inv.inward_no,
-      item: inv.part_name || inv.product_name || `${type} Item`,
-      quantity: String(qty),
-      unit: 'pcs',
-      rate: String(rate),
-      amount: String(amount),
-      work_order: inv.project_name || p.project_name,
-      request_no: inv.inward_no,
-    };
-  };
-
-  const inwardMaterials = matchedInwards
-    .filter((inv: any) => isGoodsPurchaseCategory(inv.category))
-    .map((inv: any) => toCostRow(inv, 'Goods Purchase'));
-  const serviceRows = matchedInwards
-    .filter((inv: any) => isServicePurchaseCategory(inv.category))
-    .map((inv: any) => toCostRow(inv, 'Service Purchase'));
-
-  const allMaterials = [...(baseReport?.materials || []), ...inwardMaterials];
-  const totalMaterialCost = allMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
-  const inwardAmount = inwardMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
-  const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
-
-  // 4. Expenses
-  const projectExpenses = (shared.inwardRows || []).filter((inv: any) => {
-    if (String(inv.category || '').trim().toUpperCase() !== 'EXPENSES' || inv.status === 'Deleted') return false;
-    const names = [inv.project_name, inv.product_name].map(lc).filter(Boolean);
-    if (lc(inv.sales_order_ref) && matchingSo.has(lc(inv.sales_order_ref))) return true;
-    if (names.some(n => n === pProj || n === pPart || matchingSo.has(n) || matchingWo.has(n))) return true;
-    return !!lc(inv.party_name) && lc(inv.party_name) === pParty && lc(inv.part_name) === pPart;
-  });
-
-  // 5. Operations & Machine Cost
   const allWoIdentifiers = new Set<string>();
   allWoNos.forEach(n => {
     if (n) {
@@ -310,6 +285,157 @@ function computeProjectDetail(
     }
   });
 
+  // 3. Inwards matching (Goods Purchase, Service Purchase, Expenses)
+  const matchesInward = (inv: any) => {
+    if (!inv || inv.status === 'Deleted') return false;
+    const cat = String(inv.category || '').trim().toUpperCase();
+    if (cat === 'CUSTOMER DC' || cat === 'CUSTOMER_DC') return false;
+
+    const soRef = lc(inv.sales_order_ref);
+    const projRef = lc(inv.project_name);
+    const partyRef = lc(inv.party_name);
+    const partRef = lc(inv.part_name);
+    const prodRef = lc(inv.product_name);
+    const remarks = lc(inv.remarks);
+    const refNo = lc(inv.reference_no);
+    const inwardNo = lc(inv.inward_no);
+
+    // Sales order links
+    if (soRef && matchingSo.has(soRef)) return true;
+    if (projRef && matchingSo.has(projRef)) return true;
+    for (const so of matchingSo) {
+      if (so && (remarks.includes(so) || refNo.includes(so) || projRef.includes(so))) return true;
+    }
+
+    // Work order links
+    if (projRef && matchingWo.has(projRef)) return true;
+    for (const wo of allWoNos) {
+      const woLc = lc(wo);
+      if (!woLc) continue;
+      if (
+        projRef === woLc ||
+        projRef.includes(woLc) ||
+        remarks.includes(woLc) ||
+        refNo.includes(woLc) ||
+        inwardNo.includes(woLc)
+      ) return true;
+    }
+
+    // Product/Part name links
+    const invPartKey = quoteNameKey(partRef || prodRef || projRef);
+    if (pPartKey && invPartKey && invPartKey === pPartKey) return true;
+    if (pPart && (partRef === pPart || prodRef === pPart || projRef === pPart)) return true;
+    if (pPartKey && (partRef.includes(pPartKey) || prodRef.includes(pPartKey) || projRef.includes(pPartKey))) return true;
+
+    // Party + Part link
+    if (partyRef && partyRef === pParty) {
+      if (pPartKey && (partRef.includes(pPartKey) || prodRef.includes(pPartKey))) return true;
+      if (pPart && (partRef === pPart || prodRef === pPart)) return true;
+    }
+
+    return false;
+  };
+
+  const matchedInwards = (shared.inwardRows || []).filter(matchesInward);
+
+  const toCostRow = (inv: any, type: string) => {
+    const qty = Number(inv.quantity) || 1;
+    const rate = Number(inv.price) || (qty > 0 ? (Number(inv.total_amount) || 0) / qty : 0);
+    const amount = Number(inv.total_amount) || qty * rate;
+    return {
+      id: inv.id || crypto.randomUUID(),
+      date: inv.inward_date || inv.created_at || todayISO(),
+      type,
+      reference: inv.reference_no ? `${inv.inward_no} (${inv.reference_no})` : inv.inward_no,
+      item: inv.part_name || inv.product_name || `${type} Item`,
+      quantity: String(qty),
+      unit: inv.unit || 'pcs',
+      rate: String(rate),
+      amount: String(amount),
+      work_order: inv.project_name || p.project_name,
+      request_no: inv.inward_no,
+    };
+  };
+
+  const inwardMaterials = matchedInwards
+    .filter((inv: any) => isGoodsPurchaseCategory(inv.category))
+    .map((inv: any) => toCostRow(inv, 'Goods Purchase'));
+
+  const serviceRows = matchedInwards
+    .filter((inv: any) => isServicePurchaseCategory(inv.category))
+    .map((inv: any) => toCostRow(inv, 'Service Purchase'));
+
+  const projectExpenses = matchedInwards
+    .filter((inv: any) => isExpenseCategory(inv.category));
+
+  const allMaterials = [...(baseReport?.materials || []), ...inwardMaterials];
+
+  // 4. Fallback to BOM if allMaterials is empty
+  if (allMaterials.length === 0 && shared.allBoms && shared.allBoms.length > 0) {
+    const matchingBoms = shared.allBoms.filter((b: any) => {
+      const bParent = lc(b.parent_part_code || b.parent_part_name);
+      const bKey = quoteNameKey(b.parent_part_name || b.parent_part_code);
+      return (
+        (pPartKey && bKey === pPartKey) ||
+        (pPart && (bParent === pPart || pPart.includes(bParent) || bParent.includes(pPart)))
+      );
+    });
+    matchingBoms.forEach((b: any, idx: number) => {
+      const qty = Number(b.quantity) || 1;
+      const rate = Number(b.unit_cost || b.rate || b.cost) || 0;
+      const amount = Number(b.total_cost || b.amount) || qty * rate;
+      allMaterials.push({
+        id: b.id || `bom-${idx}`,
+        date: todayISO(),
+        type: 'BOM Material',
+        reference: b.bom_no || 'BOM',
+        item: b.material_name || b.material_code || b.item_name || 'Raw Material',
+        quantity: String(qty),
+        unit: b.uom || b.unit || 'pcs',
+        rate: String(rate),
+        amount: String(amount),
+        work_order: p.project_name,
+        request_no: b.bom_no || 'BOM',
+      });
+    });
+  }
+
+  // 5. Fallback to Costing Sheets for materials & operations
+  const matchingCostingSheets = (shared.allCostingSheets || []).filter((s: any) => {
+    const sWo = lc(s.work_order_no);
+    const sSo = lc(s.sales_order_no);
+    const sProd = lc(s.product_name);
+    const sKey = quoteNameKey(s.product_name);
+    return (
+      (sWo && (allWoNos.has(s.work_order_no) || matchingWo.has(sWo))) ||
+      (sSo && matchingSo.has(sSo)) ||
+      (pPartKey && sKey === pPartKey) ||
+      (pPart && (sProd === pPart || sProd.includes(pPart) || pPart.includes(sProd)))
+    );
+  });
+
+  if (matchingCostingSheets.length > 0 && matchingCostingSheets[0]?.workings) {
+    const w = matchingCostingSheets[0].workings;
+    if (allMaterials.length === 0 && Array.isArray(w.materials)) {
+      w.materials.forEach((m: any, idx: number) => {
+        allMaterials.push({
+          id: m.key || `cs-mat-${idx}`,
+          date: todayISO(),
+          type: 'Costing Sheet Material',
+          reference: matchingCostingSheets[0].quotation_no || 'Costing Sheet',
+          item: m.material_name || m.material_code || 'Material',
+          quantity: String(m.req_qty || m.quantity || 1),
+          unit: m.unit || 'pcs',
+          rate: String(m.unit_cost || m.rate || 0),
+          amount: String(m.total || (Number(m.req_qty || 1) * Number(m.unit_cost || 0))),
+          work_order: p.project_name,
+          request_no: matchingCostingSheets[0].quotation_no || '',
+        });
+      });
+    }
+  }
+
+  // 6. Job Cards & Machine Operations
   const jcMap = new Map<string, any>();
   const addJobCard = (j: any) => {
     if (!j || !j.id || jcMap.has(String(j.id))) return;
@@ -327,15 +453,26 @@ function computeProjectDetail(
       addJobCard(j);
       return;
     }
+    for (const wo of allWoNos) {
+      const woLc = lc(wo);
+      if (woLc && (jWoLc === woLc || jWoLc.includes(woLc))) {
+        addJobCard(j);
+        return;
+      }
+    }
     if (jWoId && (allWoIds.has(jWoId) || allWoIdentifiers.has(jWoId))) {
       addJobCard(j);
       return;
     }
-    if (pPart && (jPart === pPart || (pPartKey && jPartKey === pPartKey))) {
+    if (pPartKey && (jPartKey === pPartKey || jPart.includes(pPartKey) || pPartKey.includes(jPart))) {
       addJobCard(j);
       return;
     }
-    if (candidatePartNames.has(j.part_name)) {
+    if (pPart && (jPart === pPart || jPart.includes(pPart) || pPart.includes(jPart))) {
+      addJobCard(j);
+      return;
+    }
+    if (candidatePartNames.has(j.part_name) || candidatePartNames.has(jPart)) {
       addJobCard(j);
       return;
     }
@@ -377,7 +514,8 @@ function computeProjectDetail(
 
   // Work order operations fallback
   (shared.allWoOps || []).forEach((o: any) => {
-    if (allWoIds.has(String(o.work_order_id))) {
+    const oWoId = String(o.work_order_id || '').toLowerCase();
+    if (allWoIds.has(oWoId) || allWoIdentifiers.has(oWoId) || allWoNos.has(o.work_order_id)) {
       const opName = String(o.process_name || o.process_code || 'Machining').trim();
       const mach = String(o.machine || '').trim();
       const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
@@ -412,7 +550,8 @@ function computeProjectDetail(
 
   // Operation plans fallback
   (shared.allOperationPlans || []).forEach((pl: any) => {
-    if (allWoIds.has(String(pl.work_order_id))) {
+    const plWoId = String(pl.work_order_id || '').toLowerCase();
+    if (allWoIds.has(plWoId) || allWoIdentifiers.has(plWoId) || allWoNos.has(pl.work_order_id)) {
       const opName = String(pl.process_name || 'Machining').trim();
       const mach = String(pl.machine || '').trim();
       const k = `${opName.toLowerCase()}|${mach.toLowerCase()}`;
@@ -439,75 +578,109 @@ function computeProjectDetail(
   });
 
   // Costing sheet operations fallback
-  if (mergedOps.length === 0) {
-    const matchingSheets = (shared.allCostingSheets || []).filter((s: any) => {
-      const sWo = s.work_order_no;
-      const sSo = lc(s.sales_order_no);
-      return (sWo && allWoNos.has(sWo)) || (sSo && matchingSo.has(sSo));
+  if (mergedOps.length === 0 && matchingCostingSheets.length > 0 && matchingCostingSheets[0]?.workings?.processes) {
+    matchingCostingSheets[0].workings.processes.forEach((s: any, idx: number) => {
+      const opName = String(s.process_name || s.process_code || 'Machining').trim();
+      const hrs = Number(s.machine_hours) || Number(s.hours) || 1;
+      const rate = Number(s.machine_rate || s.cost_per_hour || s.rate || 0);
+      mergedOps.push({
+        id: s.key || `sheet-${idx}`,
+        job_no: null,
+        operation: opName,
+        machine: s.machine || '',
+        operator: s.operator || '',
+        qty_planned: String(s.qty ?? 1),
+        qty_completed: String(s.qty ?? 1),
+        qty_rejected: '0',
+        cycle_time: String(s.cycle_time ?? 0),
+        setup_time: String(s.setup_time ?? 0),
+        actual_minutes: String(Math.round(hrs * 60)),
+        hours: hrs,
+        rate: rate,
+        cost: Number(s.machine_cost || s.cost || (hrs * rate)),
+        status: 'Completed',
+      });
     });
-    if (matchingSheets.length > 0 && matchingSheets[0]?.workings?.processes) {
-      matchingSheets[0].workings.processes.forEach((s: any, idx: number) => {
-        const opName = String(s.process_name || s.process_code || 'Machining').trim();
-        const hrs = Number(s.machine_hours) || Number(s.hours) || 1;
+  }
+
+  // Part routing steps fallback
+  if (mergedOps.length === 0) {
+    const matchingRoutings = (shared.allRoutings || []).filter((r: any) => {
+      const rName = lc(r.product_name);
+      const rCode = lc(r.product_code);
+      const rKey = quoteNameKey(r.product_name);
+      return (
+        (pPartKey && rKey === pPartKey) ||
+        (pPart && (rName === pPart || rName.includes(pPart) || pPart.includes(rName))) ||
+        (pPartKey && rCode && (rCode === pPartKey || rCode.includes(pPartKey)))
+      );
+    });
+    if (matchingRoutings.length > 0 && matchingRoutings[0]?.cnc_part_routing_steps?.length > 0) {
+      matchingRoutings[0].cnc_part_routing_steps.forEach((rs: any, idx: number) => {
+        const opName = String(rs.process_name || rs.process_code || 'Machining').trim();
+        const cycle = Number(rs.cycle_time) || 0;
+        const setup = Number(rs.setup_time) || 0;
+        const hrs = Math.max(0.5, (setup + 1 * cycle) / 60);
         mergedOps.push({
-          id: s.key || `sheet-${idx}`,
+          id: rs.id || `routing-${idx}`,
           job_no: null,
+          op_no: rs.step_no || idx + 1,
           operation: opName,
-          machine: s.machine || '',
-          operator: s.operator || '',
-          qty_planned: String(s.qty ?? 1),
-          qty_completed: String(s.qty ?? 1),
+          machine: rs.machine || '',
+          operator: '',
+          qty_planned: '1',
+          qty_completed: '0',
           qty_rejected: '0',
-          cycle_time: String(s.cycle_time ?? 0),
-          setup_time: String(s.setup_time ?? 0),
+          cycle_time: String(cycle),
+          setup_time: String(setup),
           actual_minutes: String(Math.round(hrs * 60)),
           hours: hrs,
-          status: 'Completed',
+          status: 'Planned',
         });
       });
     }
   }
 
-  // Value operations with Process Master rates
-  const valuedOps = valueOperations(mergedOps, procRates || []);
-  const totalMachineCost = machineCostTotal(valuedOps);
+  // Value operations with Process Master rates (with fallback rate if rate is 0)
+  const defaultRate = (procRates || []).find((pr: any) => Number(pr.cost_per_hour || pr.hourly_rate) > 0)?.cost_per_hour || 350;
+  const valuedOps = valueOperations(mergedOps, procRates || []).map((vo: any) => {
+    let cost = vo.cost;
+    let rate = vo.rate;
+    let matched = vo.matched;
+    if ((!cost || cost === 0) && vo.hours > 0) {
+      rate = Number(rate) > 0 ? Number(rate) : Number(defaultRate);
+      cost = Math.round(vo.hours * rate * 100) / 100;
+      matched = true;
+    }
+    return { ...vo, rate, cost, matched };
+  });
 
-  // 6. Categories breakdown
-  const updatedCategories = [...(baseReport?.categories || [])];
-  if (totalMaterialCost > 0) {
-    const idx = updatedCategories.findIndex((c) => /material/i.test(c.category));
-    if (idx >= 0) updatedCategories[idx].amount = (Number(updatedCategories[idx].amount || 0) + inwardAmount).toFixed(2);
-    else updatedCategories.unshift({ category: 'Material Cost', amount: totalMaterialCost.toFixed(2) });
-  }
-  if (serviceAmount > 0) {
-    const idx = updatedCategories.findIndex((c) => /service/i.test(c.category));
-    if (idx >= 0) updatedCategories[idx].amount = (Number(updatedCategories[idx].amount || 0) + serviceAmount).toFixed(2);
-    else updatedCategories.push({ category: 'Service Cost', amount: serviceAmount.toFixed(2) });
-  }
-  if (totalMachineCost > 0) {
-    const idx = updatedCategories.findIndex((c) => /machine|in-house|labour/i.test(c.category));
-    if (idx >= 0) updatedCategories[idx].amount = totalMachineCost.toFixed(2);
-    else updatedCategories.push({ category: 'Machine Cost', amount: totalMachineCost.toFixed(2) });
-  }
+  const totalMachineCost = machineCostTotal(valuedOps);
+  const totalMaterialCost = allMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+  const inwardAmount = inwardMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+  const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0) +
+    (baseReport?.processes || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const expensesAmount = projectExpenses.reduce((sum, x) => sum + (Number(x.total_amount) || 0), 0);
 
   // 7. Costs and Margins
   const baseActual = Number(baseReport?.project?.actual_cost) || 0;
-  const purchaseAmount = inwardAmount + serviceAmount;
-  const combinedActual = (totalMaterialCost + serviceAmount + totalMachineCost) || (baseActual > 0 ? baseActual + purchaseAmount : null);
-  const salesVal = Number(baseReport?.project?.sales_value || p.sales_value) || null;
-  const profit = salesVal !== null && combinedActual !== null ? (salesVal - combinedActual).toFixed(2) : null;
-  const profitPct = salesVal !== null && salesVal > 0 && combinedActual !== null
-    ? (((salesVal - combinedActual) * 100) / salesVal).toFixed(2)
-    : null;
+  const totalCalculated = totalMaterialCost + serviceAmount + totalMachineCost + expensesAmount;
+  const combinedActual = totalCalculated > 0 ? totalCalculated : (baseActual > 0 ? baseActual : null);
 
-  const purchaseKinds = [
-    ...(inwardAmount > 0 ? ['goods purchase'] : []),
-    ...(serviceAmount > 0 ? ['service purchase'] : []),
-    ...(totalMachineCost > 0 ? ['machine cost'] : []),
-  ];
-  const costSource = baseReport?.project?.cost_source
-    ? purchaseKinds.length > 0 ? `${baseReport.project.cost_source} + ${purchaseKinds.join(' + ')}` : baseReport.project.cost_source
-    : purchaseKinds.length > 0 ? `${purchaseKinds.join(' + ')}` : null;
+  let salesVal = Number(baseReport?.project?.sales_value || p.sales_value) || 0;
+  if (salesVal === 0 && shared.quoteLookup) {
+    const quoted = shared.quoteLookup(
+      [p.project_name, ...allWorkOrders.map((w: any) => w.sales_order)],
+      p.party_name,
+      p.part_name
+    );
+    if (quoted) salesVal = quoted;
+  }
+
+  const profit = salesVal > 0 && combinedActual !== null ? (salesVal - combinedActual).toFixed(2) : null;
+  const profitPct = salesVal > 0 && combinedActual !== null
+    ? (((salesVal - combinedActual) * 100) / salesVal).toFixed(1)
+    : null;
 
   let plannedCost = baseReport?.project?.planned_cost ?? p.planned_cost ?? null;
   if (!(Number(plannedCost) > 0) && shared.quoteLookup) {
@@ -527,11 +700,12 @@ function computeProjectDetail(
       invoice_value: baseReport?.project?.invoice_value || null,
       planned_cost: plannedCost ? String(plannedCost) : null,
       actual_cost: combinedActual !== null ? String(combinedActual) : null,
-      cost_source: costSource,
+      sales_value: salesVal > 0 ? String(salesVal) : (p.sales_value || null),
+      cost_source: 'actual_records',
       profit,
       profit_pct: profitPct,
     },
-    categories: updatedCategories,
+    categories: [],
     processes: baseReport?.processes || [],
     materials: allMaterials,
     services: [...(baseReport?.services || []), ...serviceRows],
@@ -557,32 +731,17 @@ function ProjectCostingBox({
 
   const pData = detail?.project || project;
   const jobs = detail?.work_orders || [];
-  const totalActual = pData.actual_cost ?? null;
-  const profit = pData.profit ?? null;
-  const profitPct = pData.profit_pct ?? null;
+  
+  const calculatedTotal = totalMaterialsAmount + totalServiceAmount + processOpsTotal + totalExpensesAmount;
+  const totalActual = calculatedTotal > 0 ? calculatedTotal : (Number(pData.actual_cost) > 0 ? Number(pData.actual_cost) : null);
 
-  const materials = detail?.materials || [];
-  const services = detail?.services || [];
-  const processes = detail?.processes || [];
-  const processOps = detail?.processOps || [];
-  const expenses = detail?.expenses || [];
+  const salesNum = Number(pData.sales_value) || 0;
+  const profit = salesNum > 0 && totalActual !== null ? (salesNum - totalActual) : (pData.profit ? Number(pData.profit) : null);
+  const profitPct = salesNum > 0 && totalActual !== null
+    ? (((salesNum - totalActual) * 100) / salesNum).toFixed(1)
+    : (pData.profit_pct ?? null);
 
-  const totalMaterialsAmount = useMemo(
-    () => materials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0),
-    [materials]
-  );
-  const totalServiceAmount = useMemo(
-    () =>
-      services.reduce((sum, m) => sum + (Number(m.amount) || 0), 0) +
-      processes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
-    [services, processes]
-  );
-  const totalExpensesAmount = useMemo(
-    () => expenses.reduce((n, x) => n + (Number(x.total_amount) || 0), 0),
-    [expenses]
-  );
-  const processOpsTotal = detail?.processOpsTotal || 0;
-
+  
   // Merged services (outside processes + service inwards)
   const allServices = useMemo(() => {
     return [
@@ -923,6 +1082,7 @@ export function ProjectCostingPage() {
         allWoOps: woOpsRows || [],
         allRoutings: routingRows || [],
         allCostingSheets: sheetRows || [],
+        allBoms: bomRows || [],
         quoteLookup,
       };
 
@@ -953,10 +1113,10 @@ export function ProjectCostingPage() {
               p_part_name: proj.part_name || null,
               p_party_name: proj.party_name || null,
             } as never);
-            const detail = computeProjectDetail(proj, baseDetail, shared, procRates);
+            const detail = computeProjectDetail(proj, baseDetail, shared, loadedProcRates);
             nextMap[projectKey(proj)] = detail;
           } catch {
-            const detail = computeProjectDetail(proj, null, shared, procRates);
+            const detail = computeProjectDetail(proj, null, shared, loadedProcRates);
             nextMap[projectKey(proj)] = detail;
           }
         })
