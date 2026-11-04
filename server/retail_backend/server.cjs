@@ -278,6 +278,26 @@ function getEffectivePermissionsForUser(uOrCtx) {
     }
   }
 
+  // 2.5 Company-Specific Menu Access (Tenant company restrictions)
+  const userCo = (u && u.companyId) || (uOrCtx && uOrCtx.companyId);
+  if (userCo && roleId !== 'super_admin') {
+    const coObj = companyById(userCo);
+    if (coObj) {
+      if (Array.isArray(coObj.disabledMenus) && coObj.disabledMenus.length > 0) {
+        for (const p of coObj.disabledMenus) {
+          effective.delete(p);
+        }
+      }
+      if (Array.isArray(coObj.menuPermissions) && coObj.menuPermissions.length > 0) {
+        for (const p of Array.from(effective)) {
+          if (!coObj.menuPermissions.includes(p)) {
+            effective.delete(p);
+          }
+        }
+      }
+    }
+  }
+
   // 3. Global Disabled Menus - HIGHEST PRECEDENCE (Global Disabled > User Overrides > Role Defaults)
   const globalDisabled = Array.isArray(db.globalDisabledMenus) ? db.globalDisabledMenus : [];
   for (const pageId of globalDisabled) {
@@ -692,7 +712,7 @@ app.get('/api/companies/:id', (req, res) => {
 });
 app.post('/api/companies', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
-  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan } = req.body;
+  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan, menuPermissions, disabledMenus } = req.body;
   if (!name || !city) return res.status(400).json({ error: 'name and city required' });
   const finalCode = (code || ('C-' + name.slice(0, 1).toUpperCase() + Math.floor(Math.random() * 90 + 10))).trim();
   if (db.companies.some(x => x.id === finalCode || x.code === finalCode)) return res.status(400).json({ error: 'company code already exists' });
@@ -700,7 +720,14 @@ app.post('/api/companies', (req, res) => {
   if (adminName && !cleanAdmin) return res.status(400).json({ error: 'admin email required to provision Company Admin' });
   if (cleanAdmin && db.users.some(u => (u.email || '').toLowerCase().trim() === cleanAdmin)) return res.status(400).json({ error: 'admin email already registered' });
   const today = new Date().toISOString().slice(0, 10);
-  const c = { id: finalCode, code: finalCode, name, logo: '🏭', industry: industry || 'CNC Manufacturing', email: email || '', phone: phone || '', address: address || '', city, state: state || '', pin: pin || '', description: description || '', status: 'active', storeStatus: 'active', plan: plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today };
+  const c = {
+    id: finalCode, code: finalCode, name, logo: '🏭', industry: industry || 'CNC Manufacturing',
+    email: email || '', phone: phone || '', address: address || '', city, state: state || '',
+    pin: pin || '', description: description || '', status: 'active', storeStatus: 'active',
+    plan: plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today,
+    menuPermissions: Array.isArray(menuPermissions) ? menuPermissions : [],
+    disabledMenus: Array.isArray(disabledMenus) ? disabledMenus : []
+  };
   db.companies.unshift(c);
   // an admin email alone is enough — before, no admin was created unless a name was typed too
   if (cleanAdmin) db.users.unshift({ id: uid('U-', db.users), name: (adminName || cleanAdmin.split('@')[0]).trim(), role: 'company_admin', companyId: finalCode, email: cleanAdmin, active: true, createdAt: today });
@@ -712,7 +739,7 @@ app.put('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
   const c = companyById(req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);
@@ -722,12 +749,16 @@ app.put('/api/companies/:id', (req, res) => {
 });
 app.patch('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
-  const c = db.companies.find(x => x.id === req.params.id);
+  let c = db.companies.find(x => x.id === req.params.id || x.code === req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);
+  save();
+  audit(req, 'company.update', 'company', c.id, c.id, `Updated ${c.name}: ${Object.keys(req.body).join(', ')}`);
+  ok(res, c);
+});
   save();
   audit(req, 'company.update', 'company', c.id, c.id, `Updated ${c.name}: ${Object.keys(req.body).join(', ')}`);
   ok(res, c);

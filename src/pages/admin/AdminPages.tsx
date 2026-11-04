@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Edit2, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload, Power, Briefcase } from 'lucide-react';
+import { Eye, Edit, Edit2, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload, Power, Briefcase, Store, CheckSquare, Square, Check, X, Layers, SlidersHorizontal, CheckCircle2, AlertCircle } from 'lucide-react';
 import { fetchJobDescriptions, createJobDescription, EMPTY_JD, type JobDescription } from '@/lib/jdBuild';
 import { fetchUserJdMap, saveUserJd, getUserJdId } from '@/lib/userJd';
 import { JobDescriptionModal, JobDescriptionViewModal, JobDescriptionFormFields, toDraft, fromDraft, type JdDraft } from '@/components/admin/JobDescriptionModal';
@@ -22,6 +22,8 @@ import {
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
   type PermAction, type PermMatrix,
 } from '@/config/permissions';
+import { MENU_CATALOG } from '@/retail/menuCatalog';
+import { api as retailApi } from '@/retail/api';
 
 // ---------------------------------------------------------------------------------------
 // Users and companies are read through RLS and written ONLY through the erp_save_user /
@@ -746,7 +748,7 @@ const emptyCompanyForm = { id: null as string | null, company_name: '', code: ''
 
 export function CompaniesPage() {
   const navigate = useNavigate();
-  const { refresh } = useAuth();
+  const { refresh, profile } = useAuth();
   const { companies, reload } = useCompanies();
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
   const [form, setForm] = useState(emptyCompanyForm);
@@ -758,6 +760,142 @@ export function CompaniesPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Menu Access Configuration State (BI + Retail)
+  const [accessTab, setAccessTab] = useState<'bi' | 'retail'>('bi');
+  const [accessSearch, setAccessSearch] = useState('');
+  const [loadingAccess, setLoadingAccess] = useState(false);
+  const [globalDisabledBi, setGlobalDisabledBi] = useState<Set<string>>(new Set());
+  const [globalDisabledRetail, setGlobalDisabledRetail] = useState<Set<string>>(new Set());
+  const [selectedBi, setSelectedBi] = useState<Set<string>>(new Set());
+  const [selectedRetail, setSelectedRetail] = useState<Set<string>>(new Set());
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+
+  const RETAIL_COMPANY_CATEGORY_IDS = useMemo(() => ['overview', 'operations', 'commerce', 'publishing', 'storefront', 'browse_categories'], []);
+
+  // Filter out any retail items that are globally disabled or platform-exclusive super admin items
+  const availableRetailCategories = useMemo(() => {
+    return (MENU_CATALOG as any[])
+      .filter((cat) => RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id))
+      .map((cat) => {
+        const items = (cat.items || []).filter((item: any) =>
+          !item.id.startsWith('super_') && !globalDisabledRetail.has(item.id)
+        );
+        return { id: cat.id, label: cat.label, items };
+      })
+      .filter((cat) => cat.items.length > 0);
+  }, [globalDisabledRetail, RETAIL_COMPANY_CATEGORY_IDS]);
+
+  const availableRetailItems = useMemo(() => {
+    return availableRetailCategories.flatMap((cat) => cat.items);
+  }, [availableRetailCategories]);
+
+  // Filter out any BI modules that are globally disabled
+  const availableBiCategories = useMemo(() => {
+    return PERM_CATEGORIES.map((cat) => {
+      const modules = VISIBLE_MODULES.filter(
+        (m) => m.category === cat && !globalDisabledBi.has(m.key)
+      );
+      return { category: cat, modules };
+    }).filter((group) => group.modules.length > 0);
+  }, [globalDisabledBi]);
+
+  const availableBiModules = useMemo(() => {
+    return availableBiCategories.flatMap((group) => group.modules);
+  }, [availableBiCategories]);
+
+  // Filtered by in-modal search
+  const filteredBiCategories = useMemo(() => {
+    const q = accessSearch.trim().toLowerCase();
+    if (!q) return availableBiCategories;
+    return availableBiCategories.map((group) => ({
+      ...group,
+      modules: group.modules.filter((m) =>
+        m.label.toLowerCase().includes(q) ||
+        m.key.toLowerCase().includes(q) ||
+        group.category.toLowerCase().includes(q)
+      ),
+    })).filter((group) => group.modules.length > 0);
+  }, [availableBiCategories, accessSearch]);
+
+  const filteredRetailCategories = useMemo(() => {
+    const q = accessSearch.trim().toLowerCase();
+    if (!q) return availableRetailCategories;
+    return availableRetailCategories.map((group) => ({
+      ...group,
+      items: group.items.filter((item: any) =>
+        item.label.toLowerCase().includes(q) ||
+        item.id.toLowerCase().includes(q) ||
+        (item.path && item.path.toLowerCase().includes(q)) ||
+        group.label.toLowerCase().includes(q)
+      ),
+    })).filter((group) => group.items.length > 0);
+  }, [availableRetailCategories, accessSearch]);
+
+  const toggleCollapseCat = (id: string) => {
+    setCollapsedCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSingleBi = (key: string) => {
+    setSelectedBi((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleCatBi = (keys: string[], check: boolean) => {
+    setSelectedBi((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => {
+        if (check) next.add(k);
+        else next.delete(k);
+      });
+      return next;
+    });
+  };
+
+  const toggleSingleRetail = (id: string) => {
+    setSelectedRetail((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCatRetail = (ids: string[], check: boolean) => {
+    setSelectedRetail((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => {
+        if (check) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  };
+
+  const handleSelectAllTab = () => {
+    if (accessTab === 'bi') {
+      setSelectedBi(new Set(availableBiModules.map((m) => m.key)));
+    } else {
+      setSelectedRetail(new Set(availableRetailItems.map((i: any) => i.id)));
+    }
+  };
+
+  const handleClearAllTab = () => {
+    if (accessTab === 'bi') {
+      setSelectedBi(new Set());
+    } else {
+      setSelectedRetail(new Set());
+    }
+  };
+
   useEffect(() => {
     supabase.from('company_users').select('company_id').then(({ data, error }) => {
       if (error) console.error('Failed to count users:', error);
@@ -767,22 +905,206 @@ export function CompaniesPage() {
     });
   }, [companies]);
 
-  const save = async (next: typeof emptyCompanyForm) => {
-    setSaving(true);
+  const openCreate = async () => {
+    setForm(emptyCompanyForm);
     setFormError(null);
-    const { error } = await supabase.rpc('erp_save_company', {
-      p_id: next.id, p_company_name: next.company_name, p_code: next.code, p_status: next.status,
-    });
-    setSaving(false);
-    if (error) { setFormError(error.message); return error.message; }
-    await reload();
-    await refresh(); // keep the top-bar company switcher in sync
-    return null;
+    setAccessTab('bi');
+    setAccessSearch('');
+    setLoadingAccess(true);
+    setShowForm(true);
+
+    try {
+      const { data: globalBiRows } = await supabase
+        .from('cnc_disabled_modules')
+        .select('module_key')
+        .eq('is_global', true);
+      const gBi = new Set<string>((globalBiRows || []).map((r: any) => r.module_key));
+      setGlobalDisabledBi(gBi);
+
+      let gRetail = new Set<string>();
+      try {
+        const res = await retailApi.get('/api/permissions/global-disabled');
+        if (res && Array.isArray(res.disabled)) {
+          gRetail = new Set(res.disabled);
+        }
+      } catch {}
+      setGlobalDisabledRetail(gRetail);
+
+      // Default: select all non-globally-disabled modules for both BI & Retail
+      const biAvail = VISIBLE_MODULES.filter((m) => !gBi.has(m.key)).map((m) => m.key);
+      setSelectedBi(new Set(biAvail));
+
+      const retailAvail: string[] = [];
+      (MENU_CATALOG as any[]).forEach((cat) => {
+        if (RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id)) {
+          (cat.items || []).forEach((item: any) => {
+            if (!item.id.startsWith('super_') && !gRetail.has(item.id)) {
+              retailAvail.push(item.id);
+            }
+          });
+        }
+      });
+      setSelectedRetail(new Set(retailAvail));
+    } catch (err) {
+      console.error('Failed to init company permissions:', err);
+    } finally {
+      setLoadingAccess(false);
+    }
+  };
+
+  const openEdit = async (r: CompanyRow) => {
+    setForm({ id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status });
+    setFormError(null);
+    setAccessTab('bi');
+    setAccessSearch('');
+    setLoadingAccess(true);
+    setShowForm(true);
+
+    try {
+      const [globalBiRes, compOffBi] = await Promise.all([
+        supabase.from('cnc_disabled_modules').select('module_key').eq('is_global', true),
+        fetchDisabledModules(r.id),
+      ]);
+      const gBi = new Set<string>((globalBiRes.data || []).map((row: any) => row.module_key));
+      setGlobalDisabledBi(gBi);
+
+      const compOffBiSet = new Set(compOffBi || []);
+      const biSelected = VISIBLE_MODULES
+        .filter((m) => !gBi.has(m.key) && !compOffBiSet.has(m.key))
+        .map((m) => m.key);
+      setSelectedBi(new Set(biSelected));
+
+      let gRetail = new Set<string>();
+      try {
+        const res = await retailApi.get('/api/permissions/global-disabled');
+        if (res && Array.isArray(res.disabled)) {
+          gRetail = new Set(res.disabled);
+        }
+      } catch {}
+      setGlobalDisabledRetail(gRetail);
+
+      let retailPerms: string[] | null = null;
+      try {
+        const coCode = r.code || r.id;
+        const coRes = await retailApi.get('/api/companies/' + encodeURIComponent(coCode));
+        if (coRes && Array.isArray(coRes.menuPermissions)) {
+          retailPerms = coRes.menuPermissions;
+        }
+      } catch {}
+
+      const retailAvail: string[] = [];
+      (MENU_CATALOG as any[]).forEach((cat) => {
+        if (RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id)) {
+          (cat.items || []).forEach((item: any) => {
+            if (!item.id.startsWith('super_') && !gRetail.has(item.id)) {
+              retailAvail.push(item.id);
+            }
+          });
+        }
+      });
+
+      if (retailPerms && retailPerms.length > 0) {
+        setSelectedRetail(new Set(retailPerms.filter((id) => !gRetail.has(id))));
+      } else {
+        setSelectedRetail(new Set(retailAvail));
+      }
+    } catch (err) {
+      console.error('Failed loading company permissions:', err);
+    } finally {
+      setLoadingAccess(false);
+    }
   };
 
   const handleSubmit = async () => {
     if (!form.company_name.trim()) { setFormError('Company name is required'); return; }
-    if ((await save(form)) === null) setShowForm(false);
+    setSaving(true);
+    setFormError(null);
+
+    // 1. Save company in Supabase
+    const { data: savedCompany, error } = await supabase.rpc('erp_save_company', {
+      p_id: form.id, p_company_name: form.company_name, p_code: form.code, p_status: form.status,
+    });
+    if (error) {
+      setSaving(false);
+      setFormError(error.message);
+      return;
+    }
+
+    const targetCompanyId = (savedCompany as any)?.id || form.id;
+
+    // 2. Save BI module access for this company
+    const biAvail = VISIBLE_MODULES.filter((m) => !globalDisabledBi.has(m.key));
+    const unselectedBi = biAvail
+      .filter((m) => !selectedBi.has(m.key))
+      .map((m) => m.key);
+
+    try {
+      const { error: rpcErr } = await supabase.rpc('erp_set_company_disabled_modules', {
+        p_company_id: targetCompanyId,
+        p_disabled_modules: unselectedBi,
+      });
+      if (rpcErr) {
+        // Fallback: direct table update
+        await supabase.from('cnc_disabled_modules').delete().eq('company_id', targetCompanyId).eq('is_global', false);
+        if (unselectedBi.length > 0) {
+          const rows = unselectedBi.map((k) => ({
+            company_id: targetCompanyId,
+            module_key: k,
+            disabled_by: profile?.full_name || 'Admin',
+            is_global: false,
+          }));
+          await supabase.from('cnc_disabled_modules').insert(rows);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed saving BI company module access:', err);
+    }
+
+    // 3. Save Retail menu access for this company
+    const retailAvailItems: string[] = [];
+    (MENU_CATALOG as any[]).forEach((cat) => {
+      if (RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id)) {
+        (cat.items || []).forEach((item: any) => {
+          if (!item.id.startsWith('super_') && !globalDisabledRetail.has(item.id)) {
+            retailAvailItems.push(item.id);
+          }
+        });
+      }
+    });
+    const selectedRetailList = Array.from(selectedRetail);
+    const unselectedRetailList = retailAvailItems.filter((id) => !selectedRetail.has(id));
+
+    try {
+      const coCode = form.code || targetCompanyId;
+      const retailPayload = {
+        name: form.company_name,
+        code: form.code,
+        city: 'Default',
+        status: form.status.toLowerCase(),
+        menuPermissions: selectedRetailList,
+        disabledMenus: unselectedRetailList,
+      };
+      try {
+        const patchRes = await retailApi.patch('/api/companies/' + encodeURIComponent(coCode), retailPayload);
+        if (!patchRes) {
+          await retailApi.post('/api/companies', retailPayload);
+        }
+      } catch {
+        await retailApi.post('/api/companies', retailPayload).catch(() => {});
+      }
+
+      await supabase.rpc('erp_set_company_retail_menus', {
+        p_company_id: targetCompanyId,
+        p_retail_menus: selectedRetailList,
+      }).catch(() => {});
+    } catch (err) {
+      console.warn('Failed syncing to retail backend:', err);
+    }
+
+    setSaving(false);
+    setShowForm(false);
+    await reload();
+    await refresh();
   };
 
   // Permanent: erp_delete_company removes the company, ALL its data and its users, atomically.
@@ -830,8 +1152,8 @@ export function CompaniesPage() {
 
   const handleExportRef = useRef(handleExport);
   handleExportRef.current = handleExport;
-  const openCreateRef = useRef(() => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); });
-  openCreateRef.current = () => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); };
+  const openCreateRef = useRef(() => { openCreate(); });
+  openCreateRef.current = () => { openCreate(); };
 
   const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
 
@@ -909,7 +1231,7 @@ export function CompaniesPage() {
         <div className="flex items-center justify-center gap-1">
           <button title="View users" onClick={() => navigate(`/admin/users?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><UsersIcon size={15} /></button>
           <button title="Manage access" aria-label={`Manage access for ${r.company_name}`} onClick={() => navigate(`/admin/access?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><KeyRound size={15} /></button>
-          <button title="Edit" onClick={() => { setForm({ id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status }); setFormError(null); setShowForm(true); }} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
+          <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
           <button title="Delete company" aria-label={`Delete company ${r.company_name}`} onClick={() => { setDeleteError(null); setConfirmText(''); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
         </div>
       )
@@ -930,37 +1252,305 @@ export function CompaniesPage() {
         data={searchedRows}
         columns={columns}
         searchKeys={['company_name', 'code']}
-        onAdd={() => { setForm(emptyCompanyForm); setFormError(null); setShowForm(true); }}
+        onAdd={() => openCreate()}
         addLabel="Create Company"
         hideToolbar
       />
 
       <Modal
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => !saving && setShowForm(false)}
         title={form.id ? 'Edit Company' : 'Create Company'}
-        subtitle="After creating a company, add its Company Admin in User Management."
-        size="sm"
+        subtitle="Configure company details and assign menu access for both BI and Retail platforms."
+        size="xl"
+        tall
         footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={saving}>{saving ? 'Saving…' : form.id ? 'Save Changes' : 'Create Company'}</Button>
+          <div className="flex items-center justify-between w-full">
+            <div className="text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">{selectedBi.size}</span> BI modules · <span className="font-semibold text-slate-700">{selectedRetail.size}</span> Retail menus granted
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? 'Saving…' : form.id ? 'Save Changes' : 'Create Company'}
+              </Button>
+            </div>
           </div>
         }
       >
-        <div className="grid grid-cols-1 gap-4">
-          <FormField label="Company Name" required>
-            <input className={inputClass} value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
-          </FormField>
-          <FormField label="Code">
-            <input className={inputClass} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. ARGUS" />
-          </FormField>
-          <FormField label="Status" required>
-            <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'Active' | 'Inactive' })}>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-          </FormField>
+        <div className="space-y-4">
+          {/* Top Form Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
+            <FormField label="Company Name" required>
+              <input
+                className={inputClass}
+                value={form.company_name}
+                onChange={(e) => setForm({ ...form, company_name: e.target.value })}
+                placeholder="e.g. Argus Technology"
+              />
+            </FormField>
+            <FormField label="Code">
+              <input
+                className={inputClass}
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                placeholder="e.g. ARGUS"
+              />
+            </FormField>
+            <FormField label="Status" required>
+              <select
+                className={inputClass}
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as 'Active' | 'Inactive' })}
+              >
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </FormField>
+          </div>
+
+          {/* Menu Access Header & Controls */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white">
+            {/* Platform Tab Headers */}
+            <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-50/60 px-3 pt-2 gap-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAccessTab('bi')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-t-lg transition-all border-b-2 ${
+                    accessTab === 'bi'
+                      ? 'border-brand-600 text-brand-700 bg-white shadow-2xs'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+                  }`}
+                >
+                  <Building2 size={13} className="text-brand-500" />
+                  <span>This BI Menus</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    accessTab === 'bi' ? 'bg-brand-100 text-brand-800' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {selectedBi.size}/{availableBiModules.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccessTab('retail')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-t-lg transition-all border-b-2 ${
+                    accessTab === 'retail'
+                      ? 'border-emerald-600 text-emerald-700 bg-white shadow-2xs'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+                  }`}
+                >
+                  <Store size={13} className="text-emerald-600" />
+                  <span>The Retail Menus</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    accessTab === 'retail' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {selectedRetail.size}/{availableRetailItems.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Quick Actions Toolbar */}
+              <div className="flex items-center gap-2 pb-2">
+                <div className="relative">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    value={accessSearch}
+                    onChange={(e) => setAccessSearch(e.target.value)}
+                    placeholder="Search menus…"
+                    className="h-6 w-36 pl-6 pr-2 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSelectAllTab}
+                  className="px-2 py-0.5 text-[11px] font-semibold rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllTab}
+                  className="px-2 py-0.5 text-[11px] font-semibold rounded border border-slate-200 bg-white text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50/50 shadow-2xs"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            {/* Note banner: project-wide disabled excluded */}
+            <div className="flex items-center justify-between px-3 py-1 bg-amber-50/60 border-b border-amber-100 text-[11px] text-amber-800">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck size={12} className="text-amber-600 shrink-0" />
+                <span>
+                  {accessTab === 'bi'
+                    ? `${globalDisabledBi.size} module(s) turned off for the entire project are automatically omitted.`
+                    : `${globalDisabledRetail.size} retail menu(s) turned off globally are automatically omitted.`}
+                </span>
+              </span>
+              <span className="text-[10px] text-amber-600/90 font-medium">
+                Only active platform options shown
+              </span>
+            </div>
+
+            {/* Scrollable list of categories and items */}
+            <div className="max-h-[380px] overflow-y-auto p-3 space-y-3">
+              {loadingAccess ? (
+                <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  <span>Loading platform menu permissions…</span>
+                </div>
+              ) : accessTab === 'bi' ? (
+                /* BI Categories */
+                filteredBiCategories.length === 0 ? (
+                  <p className="text-center text-xs text-slate-400 py-8">No BI modules match your search.</p>
+                ) : (
+                  filteredBiCategories.map((catGroup) => {
+                    const isCollapsed = collapsedCats.has(catGroup.category);
+                    const catModKeys = catGroup.modules.map((m) => m.key);
+                    const enabledCount = catModKeys.filter((k) => selectedBi.has(k)).length;
+                    const allCatOn = catModKeys.length > 0 && enabledCount === catModKeys.length;
+
+                    return (
+                      <div key={catGroup.category} className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50/90 border-b border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => toggleCollapseCat(catGroup.category)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-slate-800 hover:text-brand-600 transition-colors"
+                          >
+                            {isCollapsed ? <ChevronRight size={13} className="text-slate-400" /> : <ChevronDown size={13} className="text-slate-400" />}
+                            <span className="uppercase tracking-wider text-[11px]">{catGroup.category}</span>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-600 ml-1">
+                              {enabledCount}/{catModKeys.length}
+                            </span>
+                          </button>
+                          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={allCatOn}
+                              onChange={(e) => toggleCatBi(catModKeys, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500/40"
+                            />
+                            <span>Select category</span>
+                          </label>
+                        </div>
+                        {!isCollapsed && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-2 bg-slate-50/30">
+                            {catGroup.modules.map((m) => {
+                              const checked = selectedBi.has(m.key);
+                              return (
+                                <div
+                                  key={m.key}
+                                  onClick={() => toggleSingleBi(m.key)}
+                                  className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer select-none transition-all ${
+                                    checked
+                                      ? 'border-brand-200 bg-brand-50/40 hover:bg-brand-50/70'
+                                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {}}
+                                    className="mt-0.5 w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500/40 pointer-events-none shrink-0"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className={`text-xs font-semibold truncate ${checked ? 'text-slate-800' : 'text-slate-500'}`}>
+                                        {m.label}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 line-clamp-1">
+                                      {m.pages?.[0] ? `/${m.pages[0]}` : m.category}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )
+              ) : (
+                /* Retail Categories */
+                filteredRetailCategories.length === 0 ? (
+                  <p className="text-center text-xs text-slate-400 py-8">No Retail menus match your search.</p>
+                ) : (
+                  filteredRetailCategories.map((catGroup) => {
+                    const isCollapsed = collapsedCats.has(catGroup.id);
+                    const itemIds = catGroup.items.map((i: any) => i.id);
+                    const enabledCount = itemIds.filter((id: string) => selectedRetail.has(id)).length;
+                    const allCatOn = itemIds.length > 0 && enabledCount === itemIds.length;
+
+                    return (
+                      <div key={catGroup.id} className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50/90 border-b border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => toggleCollapseCat(catGroup.id)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-slate-800 hover:text-emerald-600 transition-colors"
+                          >
+                            {isCollapsed ? <ChevronRight size={13} className="text-slate-400" /> : <ChevronDown size={13} className="text-slate-400" />}
+                            <span className="uppercase tracking-wider text-[11px]">{catGroup.label}</span>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-600 ml-1">
+                              {enabledCount}/{itemIds.length}
+                            </span>
+                          </button>
+                          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={allCatOn}
+                              onChange={(e) => toggleCatRetail(itemIds, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500/40"
+                            />
+                            <span>Select category</span>
+                          </label>
+                        </div>
+                        {!isCollapsed && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-2 bg-slate-50/30">
+                            {catGroup.items.map((item: any) => {
+                              const checked = selectedRetail.has(item.id);
+                              return (
+                                <div
+                                  key={item.id}
+                                  onClick={() => toggleSingleRetail(item.id)}
+                                  className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer select-none transition-all ${
+                                    checked
+                                      ? 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50/70'
+                                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {}}
+                                    className="mt-0.5 w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500/40 pointer-events-none shrink-0"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className={`text-xs font-semibold truncate ${checked ? 'text-slate-800' : 'text-slate-500'}`}>
+                                        {item.label}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 line-clamp-1">
+                                      {item.path || item.id}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )
+              )}
+            </div>
+          </div>
         </div>
         {formError && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{formError}</p>}
       </Modal>

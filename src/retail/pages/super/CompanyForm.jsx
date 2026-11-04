@@ -16,7 +16,8 @@ export const emptyCompany = () => ({
   name: '', code: '', industry: 'CNC Manufacturing', email: '', logo: '🏭',
   phone: '', city: '', state: '', pin: '', address: '',
   description: '', plan: 'Starter', storeStatus: 'active',
-  adminName: '', adminEmail: ''
+  adminName: '', adminEmail: '',
+  menuPermissions: [], disabledMenus: []
 });
 
 export function companyFromDetail(c) {
@@ -26,6 +27,8 @@ export function companyFromDetail(c) {
   v.code = c.code || c.id || '';
   v.storeStatus = c.storeStatus || c.status || 'active';
   v.plan = c.plan || 'Starter';
+  if (Array.isArray(c.menuPermissions)) v.menuPermissions = c.menuPermissions;
+  if (Array.isArray(c.disabledMenus)) v.disabledMenus = c.disabledMenus;
   return v;
 }
 
@@ -55,7 +58,9 @@ export function companyPayload(v, isNew) {
     address: (v.address || '').trim(),
     description: (v.description || '').trim(),
     plan: v.plan || 'Starter',
-    storeStatus: v.storeStatus || 'active'
+    storeStatus: v.storeStatus || 'active',
+    menuPermissions: Array.isArray(v.menuPermissions) ? v.menuPermissions : [],
+    disabledMenus: Array.isArray(v.disabledMenus) ? v.disabledMenus : []
   };
   if (isNew) {
     if ((v.adminName || '').trim()) p.adminName = (v.adminName || '').trim();
