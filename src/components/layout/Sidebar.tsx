@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { navSections } from '@/config/navigation';
-import { useVisibleNavSections, isNavItemActive, isSectionActive } from '@/lib/useVisibleNavSections';
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useVisibleNavSections, isNavItemActive } from '@/lib/useVisibleNavSections';
 
 export function Sidebar({
   collapsed: pinnedClosed,
@@ -35,108 +34,57 @@ export function Sidebar({
 
   const isItemActive = (itemPage: string) => isNavItemActive(currentPage, itemPage);
 
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
-    const initial = new Set<string>();
-    navSections.forEach((s) => {
-      if (!s.label.startsWith('Retail') && !s.label.startsWith('Store')) {
-        initial.add(s.label);
-      }
-    });
-    return initial;
-  });
-
-  useEffect(() => {
-    const activeSection = visibleSections.find((s) => isSectionActive(s, currentPage));
-    if (activeSection) {
-      setExpandedSections((prev) => {
-        if (!prev.has(activeSection.label)) {
-          const next = new Set(prev);
-          next.add(activeSection.label);
-          return next;
-        }
-        return prev;
-      });
-    }
-  }, [currentPage, visibleSections]);
-
-  const toggleSection = (label: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  };
-
-  // Two columns of about the same height, so neither is crowded while the other is half empty (a collapsed section counts as its title only).
-  // The split keeps the menu order (left column first, then the right one) unless a different split saves more than one row.
-  const sectionHeight = (sec: (typeof visibleSections)[number]) => 1 + (expandedSections.has(sec.label) ? sec.items.length : 0) + 0.5;
+  // Two columns of about the same height without section headings.
+  // The split keeps the menu order (left column first, then the right one).
+  const sectionHeight = (sec: (typeof visibleSections)[number]) => Math.max(1, sec.items.length);
   const balancedColumns = (() => {
     const secs = visibleSections;
     const hs = secs.map(sectionHeight);
     const total = hs.reduce((x, y) => x + y, 0);
     const maxOf = (mask: number) => { let l = 0; hs.forEach((h, i) => { if (mask & (1 << i)) l += h; }); return Math.max(l, total - l); };
-    // the best split that keeps the order
     let ordered = (1 << secs.length) - 1, orderedMax = Infinity;
     for (let k = 1; k <= secs.length; k++) { const m = (1 << k) - 1; if (maxOf(m) < orderedMax - 0.01) { orderedMax = maxOf(m); ordered = m; } }
-    // the best split of any kind (a few sections only, so every combination can be tried)
     let any = ordered, anyMax = orderedMax;
     if (secs.length <= 12) for (let m = 1; m < (1 << secs.length); m++) if (maxOf(m) < anyMax - 0.01) { anyMax = maxOf(m); any = m; }
     const pick = orderedMax - anyMax > 1 ? any : ordered;
     return [secs.filter((_, i) => pick & (1 << i)), secs.filter((_, i) => !(pick & (1 << i)))];
   })();
+
   const renderSection = (section: (typeof visibleSections)[number]) => {
-            const isExpanded = expandedSections.has(section.label);
-            const hasActive = isSectionActive(section, currentPage);
+    if (!section.items.length) return null;
+    return (
+      <div key={section.label} className="min-w-0">
+        <div className="flex flex-col gap-px">
+          {section.items.map((item) => {
+            const active = isItemActive(item.page);
             return (
-              <div key={section.label} className="min-w-0">
+              <button
+                key={item.page}
+                onClick={() => {
+                  onNavigate(item.page);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                title={collapsed ? item.label : undefined}
+                className={`w-full flex items-center px-2 py-0.5 rounded text-xs transition-all duration-150 group relative ${
+                  active
+                    ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/25 ring-1 ring-white/20'
+                    : 'text-navy-300 hover:bg-navy-900 hover:text-white'
+                }`}
+              >
+                {active && (
+                  <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1 h-3.5 bg-white shadow-sm`} />
+                )}
                 {!collapsed && (
-                  <button
-                    onClick={() => toggleSection(section.label)}
-                    className={`w-full flex items-center justify-between px-2 py-0.5 mb-0.5 rounded bg-navy-900/70 text-[11px] font-bold uppercase tracking-wider transition-colors ${
-                      hasActive ? 'text-brand-400 font-extrabold' : 'text-navy-400 hover:text-navy-200'
-                    }`}
-                  >
-                    <span className="leading-tight text-left">{section.label}</span>
-                    <ChevronDown size={11} className={`transition-transform duration-200 flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
-                  </button>
+                  <span className="text-[13px] leading-tight text-left py-0.5 font-medium truncate">
+                    {item.label}
+                  </span>
                 )}
-                {collapsed && (
-                  <div className="h-px bg-navy-800/60 my-1 mx-1" />
-                )}
-                {(isExpanded || collapsed) && (
-                  <div className="flex flex-col gap-px">
-                    {section.items.map((item) => {
-                      const active = isItemActive(item.page);
-                      return (
-                        <button
-                          key={item.page}
-                          onClick={() => {
-                            onNavigate(item.page);
-                            if (onCloseMobile) onCloseMobile();
-                          }}
-                          title={collapsed ? item.label : undefined}
-                          className={`w-full flex items-center px-2 py-0.5 rounded text-xs transition-all duration-150 group relative ${
-                            active
-                              ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/25 ring-1 ring-white/20'
-                              : 'text-navy-300 hover:bg-navy-900 hover:text-white'
-                          }`}
-                        >
-                          {active && (
-                            <div className={`absolute ${isRight ? 'right-0 rounded-l-full' : 'left-0 rounded-r-full'} top-1/2 -translate-y-1/2 w-1 h-3.5 bg-white shadow-sm`} />
-                          )}
-                          {!collapsed && (
-                            <span className="text-[13px] leading-tight text-left py-0.5 font-medium truncate">
-                              {item.label}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              </button>
             );
+          })}
+        </div>
+      </div>
+    );
   };
 
   // Slide-in when the menu position changes to left/right (skipped while pinned
