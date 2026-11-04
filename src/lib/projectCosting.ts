@@ -92,16 +92,32 @@ export function valueOperations(ops: Record<string, unknown>[], procRates: Proce
     const p = matchProcessRate(procRates, x.operation, x.machine);
     const qty = Number(x.qty_completed) > 0 ? Number(x.qty_completed) : Number(x.qty_planned) || Number(x.quantity) || 0;
 
-    // 1. Direct hours if already calculated
-    let hours = Number(x.hours) > 0 ? Number(x.hours) : (Number(x.machine_hours) > 0 ? Number(x.machine_hours) : 0);
+    // 1. Authoritative real run span (actual_start to actual_end, matching Scheduling / ActualListView exactly)
+    const st = x.actual_start ? new Date(String(x.actual_start)).getTime() : NaN;
+    const en = (x.actual_end || x.completed_at || x.actual_finish)
+      ? new Date(String(x.actual_end || x.completed_at || x.actual_finish)).getTime()
+      : NaN;
 
-    // 2. If hours not set, check actual_minutes
+    let hours = 0;
+    if (Number.isFinite(st) && Number.isFinite(en) && en > st + 30000) {
+      hours = (en - st) / 3600000;
+    } else if (Number.isFinite(st) && (['Running', 'In Progress'].includes(String(x.status)) || !x.actual_end)) {
+      const now = Date.now();
+      if (now > st + 30000) hours = (now - st) / 3600000;
+    }
+
+    // 2. Direct hours if already calculated
+    if (hours <= 0) {
+      hours = Number(x.hours) > 0 ? Number(x.hours) : (Number(x.machine_hours) > 0 ? Number(x.machine_hours) : 0);
+    }
+
+    // 3. If hours not set, check actual_minutes
     const logged = Number(x.actual_minutes) || 0;
     if (hours <= 0 && logged > 0) {
       hours = logged / 60;
     }
 
-    // 3. Check start_time and end_time ('HH:mm')
+    // 4. Check start_time and end_time ('HH:mm')
     if (hours <= 0 && x.start_time && x.end_time) {
       const [sh, sm] = String(x.start_time).split(':').map(Number);
       const [eh, em] = String(x.end_time).split(':').map(Number);
@@ -109,22 +125,11 @@ export function valueOperations(ops: Record<string, unknown>[], procRates: Proce
       if (diff > 0) hours = diff / 60;
     }
 
-    // 4. Check real timestamps actual_start to actual_end / completed_at / actual_finish
-    if (hours <= 0) {
-      const st = x.actual_start ? new Date(String(x.actual_start)).getTime() : NaN;
-      const en = (x.actual_end || x.completed_at || x.actual_finish)
-        ? new Date(String(x.actual_end || x.completed_at || x.actual_finish)).getTime()
-        : NaN;
-
-      if (Number.isFinite(st) && Number.isFinite(en) && en > st + 30000) {
-        hours = (en - st) / 3600000;
-      } else if (Number.isFinite(st) && ['Running', 'In Progress'].includes(String(x.status))) {
-        hours = Math.max(0, (Date.now() - st) / 3600000);
-      } else if (Number.isFinite(en)) {
-        const cr = x.created_at ? new Date(String(x.created_at)).getTime() : NaN;
-        if (Number.isFinite(cr) && en > cr + 60000 && (en - cr) < 72 * 3600000) {
-          hours = (en - cr) / 3600000;
-        }
+    // 5. Fallback from created_at vs completed_at
+    if (hours <= 0 && Number.isFinite(en)) {
+      const cr = x.created_at ? new Date(String(x.created_at)).getTime() : NaN;
+      if (Number.isFinite(cr) && en > cr + 60000 && (en - cr) < 72 * 3600000) {
+        hours = (en - cr) / 3600000;
       }
     }
 

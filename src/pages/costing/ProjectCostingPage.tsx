@@ -534,18 +534,42 @@ export function ProjectCostingPage() {
       const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 
       // 3. Fetch Job Cards, Operation Plans, Work Order Operations, Costing Sheets, and Part Routing
-      const targetWoList = Array.from(allWoNos);
+      const allWoIdentifiers = new Set<string>();
+      allWoNos.forEach(n => {
+        if (n) {
+          allWoIdentifiers.add(String(n).trim());
+          allWoIdentifiers.add(String(n).trim().toLowerCase());
+          allWoIdentifiers.add(String(n).trim().toUpperCase());
+        }
+      });
+      allWoIds.forEach(id => {
+        if (id) {
+          allWoIdentifiers.add(String(id).trim());
+          allWoIdentifiers.add(String(id).trim().toLowerCase());
+        }
+      });
+      matchingWo.forEach(m => {
+        if (m) {
+          allWoIdentifiers.add(String(m).trim());
+          allWoIdentifiers.add(String(m).trim().toLowerCase());
+        }
+      });
+
+      const targetWoList = Array.from(allWoIdentifiers);
       const targetPartList = Array.from(candidatePartNames);
       const targetWoIds = Array.from(allWoIds);
 
-      const [jcByWoRes, jcByPartRes, jcRecentRes, plansByWoRes, plansRecentRes, woOpsRes, routingRes, sheetRes] = await Promise.all([
+      const [jcByWoRes, jcByWoIdRes, jcByPartRes, jcAllRes, plansByWoRes, plansRecentRes, woOpsRes, routingRes, sheetRes] = await Promise.all([
         targetWoList.length > 0
-          ? supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').in('work_order', targetWoList)
+          ? supabase.from('cnc_job_cards').select('*').in('work_order', targetWoList)
+          : Promise.resolve({ data: [] }),
+        targetWoIds.length > 0
+          ? supabase.from('cnc_job_cards').select('*').in('work_order_id', targetWoIds)
           : Promise.resolve({ data: [] }),
         targetPartList.length > 0
-          ? supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').in('part_name', targetPartList)
+          ? supabase.from('cnc_job_cards').select('*').in('part_name', targetPartList)
           : Promise.resolve({ data: [] }),
-        supabase.from('cnc_job_cards').select('id, job_no, work_order, part_name, operation, machine, operator, actual_start, actual_end, completed_at, actual_minutes, status, qty_completed, qty_planned, cycle_time, setup_time, created_at').order('created_at', { ascending: false }).limit(200),
+        supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(1000),
         targetWoIds.length > 0
           ? supabase.from('cnc_operation_plans').select('*').in('work_order_id', targetWoIds).order('operation_sequence')
           : Promise.resolve({ data: [] }),
@@ -566,12 +590,32 @@ export function ProjectCostingPage() {
         jcMap.set(String(j.id), j);
       };
       (jcByWoRes.data || []).forEach(addJobCard);
+      (jcByWoIdRes.data || []).forEach(addJobCard);
       (jcByPartRes.data || []).forEach(addJobCard);
 
-      (jcRecentRes.data || []).forEach((j: any) => {
+      (jcAllRes.data || []).forEach((j: any) => {
+        const jWo = String(j.work_order || '').trim();
+        const jWoLc = jWo.toLowerCase();
+        const jWoId = String(j.work_order_id || '').trim().toLowerCase();
+        const jPart = String(j.part_name || '').trim().toLowerCase();
         const jPartKey = quoteNameKey(j.part_name);
-        if (pPartKey && jPartKey && jPartKey === pPartKey) addJobCard(j);
-        if (j.work_order && (allWoNos.has(j.work_order) || matchingSo.has(lc(j.work_order)))) addJobCard(j);
+
+        if (jWo && (allWoIdentifiers.has(jWo) || allWoIdentifiers.has(jWoLc) || matchingSo.has(jWoLc) || matchingWo.has(jWoLc))) {
+          addJobCard(j);
+          return;
+        }
+        if (jWoId && (allWoIds.has(jWoId) || allWoIdentifiers.has(jWoId))) {
+          addJobCard(j);
+          return;
+        }
+        if (pPart && (jPart === pPart || (pPartKey && jPartKey === pPartKey))) {
+          addJobCard(j);
+          return;
+        }
+        if (candidatePartNames.has(j.part_name)) {
+          addJobCard(j);
+          return;
+        }
       });
 
       const planList: any[] = (plansByWoRes.data || []) as any[];
@@ -600,6 +644,14 @@ export function ProjectCostingPage() {
 
       // Build merged operations
       const jcList = Array.from(jcMap.values());
+      // Sort job cards by sequence (op_no) or start time
+      jcList.sort((a, b) => {
+        if (a.op_no != null && b.op_no != null && a.op_no !== b.op_no) return a.op_no - b.op_no;
+        const aT = new Date(a.actual_start || a.created_at || 0).getTime();
+        const bT = new Date(b.actual_start || b.created_at || 0).getTime();
+        return aT - bT;
+      });
+
       const mergedOps: any[] = [];
       const seenOpKey = new Set<string>();
 
@@ -611,6 +663,7 @@ export function ProjectCostingPage() {
         mergedOps.push({
           id: j.id,
           job_no: j.job_no,
+          op_no: j.op_no,
           operation: opName,
           machine: mach,
           operator: j.operator || '',
@@ -1499,16 +1552,30 @@ export function ProjectCostingPage() {
                             {processOps.map((x: any) => (
                               <tr key={`o-${x.id}`} className="border-t hover:bg-slate-50/70">
                                 <td className="p-2 font-medium text-slate-800">
-                                  {x.operation || '—'}
+                                  <div className="font-semibold text-slate-900">{x.operation || '—'}</div>
+                                  {x.op_no != null && <div className="text-[10px] text-slate-400 font-mono">Seq OP {x.op_no}</div>}
                                   {!x.matched && (
-                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                    <span className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
                                       title="Machine cost needs an operation name that matches a process in Process Master with a cost per hour">
                                       {x.operation ? 'Not in Process Master' : 'No operation name'}
                                     </span>
                                   )}
                                 </td>
                                 <td className="p-2">{x.machine || '—'} / {x.operator || '—'}</td>
-                                <td className="p-2 text-right">{x.hours} h</td>
+                                <td className="p-2 text-right">
+                                  <div className="font-semibold text-slate-800 tabular-nums">
+                                    {Number(x.hours).toFixed(2).replace(/\.00$/, '')} h
+                                  </div>
+                                  {(() => {
+                                    const totalM = Math.round(Number(x.hours || 0) * 60);
+                                    const h = Math.floor(totalM / 60);
+                                    const m = totalM % 60;
+                                    if (m > 0) {
+                                      return <div className="text-[10px] text-slate-400 tabular-nums">{h}h {m}m</div>;
+                                    }
+                                    return null;
+                                  })()}
+                                </td>
                                 <td className="p-2 text-right">{x.matched ? money(x.rate) : '—'}</td>
                                 <td className="p-2 text-right font-semibold text-slate-900">{x.matched ? money(x.cost) : '—'}</td>
                                 <td className="p-2">{x.status || '—'}</td>
@@ -1526,7 +1593,11 @@ export function ProjectCostingPage() {
                           {processOps.length > 0 && (
                             <tfoot>
                               <tr className="border-t bg-slate-50/90 font-bold">
-                                <td colSpan={4} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Machine Cost</td>
+                                <td colSpan={2} className="p-2.5 text-right text-slate-700 uppercase tracking-wide text-[11px]">Total Machine Cost</td>
+                                <td className="p-2.5 text-right font-mono text-slate-700 text-xs font-bold tabular-nums">
+                                  {processOps.reduce((sum, x) => sum + (Number(x.hours) || 0), 0).toFixed(2).replace(/\.00$/, '')} h
+                                </td>
+                                <td />
                                 <td className="p-2.5 text-right font-mono text-emerald-700 text-sm">{money(processOpsTotal.toFixed(2))}</td>
                                 <td />
                               </tr>

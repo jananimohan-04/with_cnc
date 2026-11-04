@@ -147,15 +147,35 @@ export function matchProcess(processes: any[], nameOrCode: string, machine?: str
 /** Compute elapsed run time of a job card or operation plan in hours. */
 export function calcJobCardHours(c: any): number {
   if (!c) return 0;
-  // 1. Direct hours if already present
+
+  // 1. Authoritative real run span (actual_start to actual_end, matching Scheduling / ActualListView exactly)
+  const st = c.actual_start ? new Date(c.actual_start).getTime() : NaN;
+  const enRaw = c.actual_end
+    ? new Date(c.actual_end).getTime()
+    : c.completed_at || c.actual_finish
+      ? new Date(c.completed_at || c.actual_finish).getTime()
+      : NaN;
+
+  if (Number.isFinite(st)) {
+    if (Number.isFinite(enRaw) && enRaw > st + 30000) {
+      return (enRaw - st) / 3600000;
+    }
+    if (['Running', 'In Progress'].includes(String(c.status)) || !c.actual_end) {
+      const now = Date.now();
+      if (now > st + 30000) return (now - st) / 3600000;
+    }
+  }
+
+  // 2. Direct hours if already present
   if (costNum(c.hours) > 0) return costNum(c.hours);
   if (costNum(c.machine_hours) > 0) return costNum(c.machine_hours);
 
-  // 2. Direct actual_minutes recorded
+  // 3. Direct actual_minutes recorded
   if (costNum(c.actual_minutes) > 0) {
     return costNum(c.actual_minutes) / 60;
   }
-  // 3. Operation plan start_time / end_time ('HH:mm')
+
+  // 4. Operation plan start_time / end_time ('HH:mm')
   if (c.start_time && c.end_time) {
     const toMin = (t: string) => {
       const [h, m] = String(t).split(':').map(Number);
@@ -164,30 +184,21 @@ export function calcJobCardHours(c: any): number {
     const diff = toMin(c.end_time) - toMin(c.start_time);
     if (diff > 0) return diff / 60;
   }
-  // 4. Real timestamps (actual_start to actual_end / completed_at / actual_finish)
-  const st = c.actual_start ? new Date(c.actual_start).getTime() : NaN;
-  const en = new Date(c.actual_end || c.completed_at || c.actual_finish || '').getTime();
-  if (Number.isFinite(st) && Number.isFinite(en) && en > st + 30000) {
-    return (en - st) / 3600000;
-  }
-  // 5. In-progress / running right now in scheduling
-  if (Number.isFinite(st) && (['Running', 'In Progress'].includes(String(c.status)) || !c.actual_end)) {
-    const now = Date.now();
-    if (now > st) return (now - st) / 3600000;
-  }
-  // 6. Check created_at vs completed_at if actual timestamps were instant
-  if (Number.isFinite(en)) {
+
+  // 5. Check created_at vs completed_at if actual timestamps were instant
+  if (Number.isFinite(enRaw)) {
     const cr = c.created_at ? new Date(c.created_at).getTime() : NaN;
-    if (Number.isFinite(cr) && en > cr + 60000 && (en - cr) < 72 * 3600000) {
-      return (en - cr) / 3600000;
+    if (Number.isFinite(cr) && enRaw > cr + 60000 && (enRaw - cr) < 72 * 3600000) {
+      return (enRaw - cr) / 3600000;
     }
   }
-  // 7. Fallback planned hours from cycle / setup
+
+  // 6. Fallback planned hours from cycle / setup
   const qty = costNum(c.qty_completed) > 0 ? costNum(c.qty_completed) : costNum(c.qty_planned);
   const planned = hoursOf(costNum(c.setup_time), qty > 0 ? qty : 1, costNum(c.cycle_time || c.est_cycle_time));
   if (planned > 0) return planned;
 
-  // 8. If operation is Completed or has completed quantity, default to standard run slot (minimum 1 hr)
+  // 7. If operation is Completed or has completed quantity, default to standard run slot (minimum 1 hr)
   const isCompleted = ['Completed', 'Dispatched', 'Done'].includes(String(c.status)) || costNum(c.qty_completed) > 0;
   if (isCompleted) {
     return Math.max(1, (qty > 0 ? qty : 1) * 0.5);
