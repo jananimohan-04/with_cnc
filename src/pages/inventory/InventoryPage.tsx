@@ -1046,37 +1046,6 @@ export function InventoryPage() {
             <button onClick={handleSearch} className={primaryBtn}>Search</button>
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
 
-            {/* Sort by dropdown mirroring Kanban board lists */}
-            <select
-              aria-label="Sort inventory"
-              title="Sort inventory"
-              value={sortKey ? `${sortKey}:${sortDir}` : ''}
-              onChange={e => {
-                const v = e.target.value;
-                if (!v) {
-                  setSortKey(null);
-                  setSortDir('asc');
-                } else {
-                  const [k, d] = v.split(':');
-                  setSortKey(k);
-                  setSortDir((d as SortDir) || 'asc');
-                }
-              }}
-              className={`${selectCls} max-w-[160px] text-slate-700 font-medium`}
-            >
-              <option value="">Sort: Default</option>
-              <option value="name:asc">Name (A → Z)</option>
-              <option value="name:desc">Name (Z → A)</option>
-              <option value="qty:desc">Stock (High → Low)</option>
-              <option value="qty:asc">Stock (Low → High)</option>
-              <option value="value:desc">Value (High → Low)</option>
-              <option value="value:asc">Value (Low → High)</option>
-              <option value="category:asc">Category (A → Z)</option>
-              <option value="warehouse:asc">Warehouse (A → Z)</option>
-              <option value="status:asc">Status (A → Z)</option>
-              <option value="movement:desc">Movement (Recent)</option>
-              <option value="movement:asc">Movement (Oldest)</option>
-            </select>
             {canManage && (
               fgTab ? (
                 <button
