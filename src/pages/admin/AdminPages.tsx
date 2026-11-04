@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, Edit, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload, Power } from 'lucide-react';
+import { Eye, Edit, Edit2, Trash2, Users as UsersIcon, Building2, ShieldCheck, Settings as SettingsIcon, FileText, ChevronDown, ChevronRight, Search, Lock, KeyRound, Plus, Download, Upload, Power, Briefcase } from 'lucide-react';
+import { fetchJobDescriptions, createJobDescription, EMPTY_JD, type JobDescription } from '@/lib/jdBuild';
+import { fetchUserJdMap, saveUserJd, getUserJdId } from '@/lib/userJd';
+import { JobDescriptionModal, JobDescriptionViewModal, JobDescriptionFormFields, toDraft, fromDraft, type JdDraft } from '@/components/admin/JobDescriptionModal';
 import { NEVER_OFF, fetchDisabledModules, setModuleOff } from '@/lib/moduleSwitches';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -88,14 +91,31 @@ export function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Job Description state
+  const [allJds, setAllJds] = useState<JobDescription[]>([]);
+  const [userJdMap, setUserJdMap] = useState<Record<string, string>>({});
+  const [selectedJdId, setSelectedJdId] = useState<string | null>(null);
+  const [showJdFormInline, setShowJdFormInline] = useState(false);
+  const [jdDraft, setJdDraft] = useState<JdDraft>(() => toDraft(EMPTY_JD));
+  const [showJdModal, setShowJdModal] = useState(false);
+  const [editingJdForModal, setEditingJdForModal] = useState<JobDescription | 'new' | null>(null);
+  const [viewingJd, setViewingJd] = useState<JobDescription | null>(null);
+  const [targetUserForJd, setTargetUserForJd] = useState<UserRow | null>(null);
+
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('company_users')
-      .select('id, email, full_name, role, status, company_id, last_login_at, created_at, companies!company_users_company_id_fkey(company_name)')
-      .order('created_at', { ascending: false });
-    if (error) console.error('Failed to load users:', error);
-    setUsers(((data as any[]) || []).map(u => ({ ...u, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—') })));
+    const [usersRes, jdsRes, mapRes] = await Promise.all([
+      supabase
+        .from('company_users')
+        .select('id, email, full_name, role, status, company_id, last_login_at, created_at, companies!company_users_company_id_fkey(company_name)')
+        .order('created_at', { ascending: false }),
+      fetchJobDescriptions().catch(() => []),
+      fetchUserJdMap().catch(() => ({})),
+    ]);
+    if (usersRes.error) console.error('Failed to load users:', usersRes.error);
+    setUsers(((usersRes.data as any[]) || []).map(u => ({ ...u, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—') })));
+    setAllJds(jdsRes);
+    setUserJdMap(mapRes);
     setLoading(false);
   }, []);
 
@@ -113,20 +133,66 @@ export function UsersPage() {
 
   const openCreate = () => {
     setForm({ ...emptyUserForm, company_id: isSuperAdmin ? companyFilter || company?.id || '' : profile?.company_id ?? '' });
+    setSelectedJdId(null);
+    setShowJdFormInline(false);
+    setJdDraft(toDraft({ ...EMPTY_JD, title: '' }));
     setFormError(null);
     setShowForm(true);
   };
 
   const openEdit = (u: UserRow) => {
     setForm({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, company_id: u.company_id ?? '' });
+    const currentJdId = getUserJdId(userJdMap, u);
+    setSelectedJdId(currentJdId);
+    setShowJdFormInline(false);
+    const existing = allJds.find(j => j.id === currentJdId);
+    if (existing) {
+      setJdDraft(toDraft(existing));
+    } else {
+      setJdDraft(toDraft({ ...EMPTY_JD, title: u.full_name ? `${u.full_name} - Role` : '' }));
+    }
     setFormError(null);
     setShowForm(true);
+  };
+
+  const openAssignJdForUser = (u: UserRow) => {
+    setTargetUserForJd(u);
+    const currentJdId = getUserJdId(userJdMap, u);
+    const existing = allJds.find(j => j.id === currentJdId);
+    if (existing) {
+      setEditingJdForModal(existing);
+    } else {
+      setEditingJdForModal('new');
+    }
+    setShowJdModal(true);
+  };
+
+  const handleJdSaved = async (savedJd: JobDescription) => {
+    setAllJds(prev => {
+      const exists = prev.some(j => j.id === savedJd.id);
+      return exists ? prev.map(j => (j.id === savedJd.id ? savedJd : j)) : [savedJd, ...prev];
+    });
+
+    if (showForm) {
+      setSelectedJdId(savedJd.id);
+      setShowJdFormInline(false);
+    }
+
+    if (targetUserForJd) {
+      await saveUserJd(targetUserForJd.id, targetUserForJd.email, savedJd.id, targetUserForJd.company_id);
+      setUserJdMap(prev => ({
+        ...prev,
+        [targetUserForJd.id]: savedJd.id,
+        [targetUserForJd.email.toLowerCase()]: savedJd.id,
+      }));
+      setTargetUserForJd(null);
+    }
   };
 
   const save = async (next: typeof emptyUserForm) => {
     setSaving(true);
     setFormError(null);
-    const { error } = await supabase.rpc('erp_save_user', {
+    const { data: savedData, error } = await supabase.rpc('erp_save_user', {
       p_id: next.id,
       p_email: next.email,
       p_full_name: next.full_name,
@@ -139,16 +205,61 @@ export function UsersPage() {
     setSaving(false);
     if (error) {
       setFormError(error.message);
-      return error.message;
+      return { error: error.message, data: null };
     }
     await loadUsers();
-    return null;
+    return { error: null, data: savedData };
   };
 
   const handleSubmit = async () => {
     if (!form.email.trim()) { setFormError('Google account email is required'); return; }
     if (isSuperAdmin && form.role !== 'SUPER_ADMIN' && !form.company_id) { setFormError('Select a company'); return; }
-    if ((await save(form)) === null) setShowForm(false);
+
+    setSaving(true);
+    setFormError(null);
+
+    let effectiveJdId = selectedJdId;
+
+    // If inline JD form was filled with a title, create the JD now
+    if (showJdFormInline && !selectedJdId && jdDraft.title.trim()) {
+      try {
+        const createdJd = await createJobDescription(fromDraft(jdDraft));
+        effectiveJdId = createdJd.id;
+        setAllJds(prev => [createdJd, ...prev]);
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : 'Failed to save Job Description');
+        setSaving(false);
+        return;
+      }
+    }
+
+    const res = await save(form);
+    if (res.error) {
+      setSaving(false);
+      return;
+    }
+
+    const savedUserId = form.id || (res.data as any)?.id;
+    const targetCompanyId = form.company_id || profile?.company_id || null;
+    await saveUserJd(savedUserId, form.email, effectiveJdId, targetCompanyId);
+
+    if (effectiveJdId) {
+      setUserJdMap(prev => ({
+        ...prev,
+        [form.email.toLowerCase()]: effectiveJdId,
+        ...(savedUserId ? { [savedUserId]: effectiveJdId } : {}),
+      }));
+    } else {
+      setUserJdMap(prev => {
+        const nextMap = { ...prev };
+        delete nextMap[form.email.toLowerCase()];
+        if (savedUserId) delete nextMap[savedUserId];
+        return nextMap;
+      });
+    }
+
+    setSaving(false);
+    setShowForm(false);
   };
 
   // Permanent: removes the BI user and their Google sign-in (erp_delete_user enforces who may do this).
@@ -174,12 +285,58 @@ export function UsersPage() {
     { key: 'email', label: 'Email', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.email}</span> },
     { key: 'company_name', label: 'Company', sortable: true, render: (r) => <span className="text-sm text-slate-600">{r.company_name}</span> },
     { key: 'role', label: 'Role', sortable: true, render: (r) => <Badge variant={r.role === 'USER' ? 'neutral' : 'brand'}>{ROLE_LABELS[r.role]}</Badge> },
+    {
+      key: 'jd',
+      label: 'Job Description',
+      sortable: true,
+      render: (r) => {
+        const jdId = getUserJdId(userJdMap, r);
+        const jd = allJds.find(j => j.id === jdId);
+        if (jd) {
+          return (
+            <button
+              type="button"
+              onClick={() => setViewingJd(jd)}
+              title={`View ${jd.title} JD`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 hover:border-orange-300 transition-all text-left group"
+            >
+              <Briefcase size={12} className="text-orange-600 shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="truncate max-w-[130px]">{jd.title}</span>
+            </button>
+          );
+        }
+        return canEdit(r) ? (
+          <button
+            type="button"
+            onClick={() => openAssignJdForUser(r)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-md border border-dashed border-orange-300 text-orange-600 bg-orange-50/40 hover:bg-orange-100/60 transition-colors"
+            title="Create or assign Job Description"
+          >
+            <Plus size={11} /> Create JD
+          </button>
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        );
+      }
+    },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Active' ? 'success' : 'error'} dot>{r.status}</Badge> },
     { key: 'created_at', label: 'Created Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{formatDate(r.created_at)}</span> },
     {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
           <button title="View" onClick={() => setViewing(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Eye size={15} /></button>
+          <button
+            title="Job Description"
+            onClick={() => {
+              const jdId = getUserJdId(userJdMap, r);
+              const jd = allJds.find(j => j.id === jdId);
+              if (jd) setViewingJd(jd);
+              else openAssignJdForUser(r);
+            }}
+            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors"
+          >
+            <Briefcase size={15} />
+          </button>
           {canEdit(r) && (
             <>
               <button title="Manage access" aria-label={`Manage access for ${r.email}`} onClick={() => navigate(`/admin/access?user=${r.id}${r.company_id ? `&company=${r.company_id}` : ''}`)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><KeyRound size={15} /></button>
@@ -335,6 +492,7 @@ export function UsersPage() {
         onClose={() => setShowForm(false)}
         title={form.id ? 'Edit User' : 'Create User'}
         subtitle="The user signs in with Continue with Google using this exact email address."
+        size={showJdFormInline ? 'xl' : 'lg'}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
@@ -373,6 +531,142 @@ export function UsersPage() {
             </select>
           </FormField>
         </div>
+
+        {/* Job Description (JD) Section */}
+        <div className="mt-5 pt-4 border-t border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Briefcase size={14} className="text-orange-500" />
+                Job Description (JD)
+              </h4>
+              <p className="text-[11px] text-slate-500">
+                Configure role requirements, outcomes, responsibilities and KPIs for this user.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setEditingJdForModal('new');
+                setShowJdModal(true);
+              }}
+              className="!text-orange-600 !border-orange-200 hover:!bg-orange-50 text-xs font-semibold"
+            >
+              <Plus size={13} /> Create New JD
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <FormField label="Assign Existing JD">
+              <select
+                className={inputClass}
+                value={selectedJdId || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__NEW__') {
+                    setEditingJdForModal('new');
+                    setShowJdModal(true);
+                  } else {
+                    setSelectedJdId(val || null);
+                  }
+                }}
+              >
+                <option value="">-- No Job Description assigned --</option>
+                <option value="__NEW__">➕ Create New Job Description...</option>
+                {allJds.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title} {j.department ? `(${j.department})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            {(() => {
+              const activeJd = allJds.find(j => j.id === selectedJdId);
+              if (activeJd) {
+                return (
+                  <div className="flex flex-col justify-end">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-orange-50/80 border border-orange-200">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-orange-950 truncate">{activeJd.title}</p>
+                        <p className="text-[10px] text-orange-700 truncate">
+                          {[activeJd.department, activeJd.employment, activeJd.location].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setViewingJd(activeJd)}
+                          title="View JD"
+                          className="!h-7 !px-2 text-xs"
+                        >
+                          <Eye size={12} /> View
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setEditingJdForModal(activeJd);
+                            setShowJdModal(true);
+                          }}
+                          title="Edit JD"
+                          className="!h-7 !px-2 text-xs"
+                        >
+                          <Edit2 size={12} /> Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setSelectedJdId(null)}
+                          title="Remove assignment"
+                          className="!h-7 !px-2 !text-red-600 hover:!bg-red-50 text-xs"
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600 select-none">
+                    <input
+                      type="checkbox"
+                      checked={showJdFormInline}
+                      onChange={(e) => setShowJdFormInline(e.target.checked)}
+                      className="rounded text-orange-600 focus:ring-orange-500"
+                    />
+                    <span>Fill JD form directly inside this user dialog</span>
+                  </label>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Inline JD form (when user checks the box) */}
+          {showJdFormInline && !selectedJdId && (
+            <div className="mt-3 p-3 bg-slate-50/70 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Create Job Description for this User
+                </span>
+                <span className="text-[11px] text-slate-500">Will be saved and assigned upon user creation</span>
+              </div>
+              <JobDescriptionFormFields
+                draft={jdDraft}
+                onChange={(key, val) => setJdDraft(prev => ({ ...prev, [key]: val }))}
+              />
+            </div>
+          )}
+        </div>
+
         {formError && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{formError}</p>}
       </Modal>
 
@@ -384,11 +678,57 @@ export function UsersPage() {
             <dt className="text-slate-500">Company</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.company_name}</dd>
             <dt className="text-slate-500">Role</dt><dd className="col-span-2 font-medium text-slate-800">{ROLE_LABELS[viewing.role]}</dd>
             <dt className="text-slate-500">Status</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.status}</dd>
+            <dt className="text-slate-500">Job Description</dt>
+            <dd className="col-span-2 font-medium text-slate-800">
+              {(() => {
+                const jdId = getUserJdId(userJdMap, viewing);
+                const jd = allJds.find(j => j.id === jdId);
+                return jd ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewing(null);
+                      setViewingJd(jd);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors"
+                  >
+                    <Briefcase size={12} className="text-orange-600" />
+                    <span>{jd.title} ({jd.department})</span>
+                  </button>
+                ) : (
+                  <span className="text-slate-400 italic">None assigned</span>
+                );
+              })()}
+            </dd>
             <dt className="text-slate-500">Created</dt><dd className="col-span-2 font-medium text-slate-800">{formatDate(viewing.created_at)}</dd>
             <dt className="text-slate-500">Last login</dt><dd className="col-span-2 font-medium text-slate-800">{viewing.last_login_at ? new Date(viewing.last_login_at).toLocaleString('en-IN', { hour12: false }) : 'Never'}</dd>
           </dl>
         )}
       </Modal>
+
+      {/* Standalone / Triggered Job Description Modals */}
+      <JobDescriptionModal
+        open={showJdModal}
+        onClose={() => {
+          setShowJdModal(false);
+          setEditingJdForModal(null);
+        }}
+        initialData={editingJdForModal && editingJdForModal !== 'new' ? editingJdForModal : { ...EMPTY_JD, title: targetUserForJd?.full_name ? `${targetUserForJd.full_name} - Role` : '' }}
+        onSaved={handleJdSaved}
+        zIndex={60}
+      />
+
+      <JobDescriptionViewModal
+        open={!!viewingJd}
+        onClose={() => setViewingJd(null)}
+        jd={viewingJd}
+        onEdit={(j) => {
+          setEditingJdForModal(j);
+          setShowJdModal(true);
+        }}
+        companyName={ownCompanyName}
+        zIndex={60}
+      />
       <Modal open={!!toDelete} onClose={() => !deleting && setToDelete(null)} title="Delete user permanently?" size="sm"
         footer={<><Button variant="secondary" onClick={() => setToDelete(null)} disabled={deleting}>Cancel</Button><button onClick={confirmDeleteUser} disabled={deleting} className="h-9 px-4 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">{deleting ? 'Deleting…' : 'Delete permanently'}</button></>}>
         <p className="text-sm text-slate-700"><b>{toDelete?.full_name || toDelete?.email}</b> ({toDelete?.email}) will be removed completely, including their Google sign-in. This cannot be undone.</p>

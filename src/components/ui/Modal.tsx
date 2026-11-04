@@ -47,7 +47,10 @@ export function Modal({
   windowControls = false,
   maxWidth = MAX_W,
   tall = false,
+  zIndex = 50,
 }: {
+  /** Explicit z-index for layered/nested dialogs (defaults to 50). */
+  zIndex?: number;
   /** Lets the popup use almost the whole screen height (for dense, no-scroll layouts). */
   tall?: boolean;
   /** Widest the popup may be dragged or opened, in px (default 1100). */
@@ -242,7 +245,7 @@ export function Modal({
   };
 
   return (
-    <div role="dialog" aria-modal="true" className={`fixed inset-0 z-50 ${dragging || resizing ? 'select-none' : ''}`}>
+    <div role="dialog" aria-modal="true" style={{ zIndex }} className={`fixed inset-0 ${dragging || resizing ? 'select-none' : ''}`}>
       <div
         className={`absolute inset-0 ${SCRIM}`}
         onPointerDown={(e) => { downRef.current = { x: e.clientX, y: e.clientY }; }}
