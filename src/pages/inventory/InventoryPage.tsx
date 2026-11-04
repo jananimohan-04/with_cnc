@@ -2472,7 +2472,6 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   const locations = locationsFor(form.warehouse_id);
 
   const save = async () => {
-    if (!form.code.trim()) return setError('Product Code is required.');
     if (!form.name.trim()) return setError('Product Name is required.');
     if (!form.category_id) return setError('Select a category.');
     for (const [label, v] of [['Min Stock', form.min_stock], ['Reorder Qty', form.reorder_qty], ['Rate', form.rate]] as const) {
@@ -2485,11 +2484,17 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
     setSaving(true);
     setError(null);
     try {
+      const cat = categories.find(c => c.id === form.category_id);
+      const prefix = (cat?.code || cat?.name || 'PRD').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'PRD';
+      const cleanName = form.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+      const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const effectiveCode = item?.code || form.code.trim() || `${prefix}-${cleanName ? `${cleanName}-` : ''}${randomSuffix}`;
+
       const image_url = file ? await uploadItemImage(companyId, file) : removedImage ? null : (item?.image_url ?? null);
       await inventoryApi.saveItem({
         id: item?.id ?? null,
         kind: item?.kind ?? null,
-        code: form.code.trim(),
+        code: effectiveCode,
         name: form.name.trim(),
         category_id: form.category_id,
         specification: form.specification.trim(),
@@ -2525,8 +2530,8 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
           const catObj = categories.find(c => c.id === form.category_id);
           const stock = Number(form.opening_qty || 0);
           const res = await retailSyncApi.syncItem({
-            id: item?.id ?? form.code.trim(),
-            code: form.code.trim() || item?.code || (item as any)?.part_number || (item as any)?.part_no || '',
+            id: item?.id ?? effectiveCode,
+            code: effectiveCode,
             name: form.name.trim() || item?.name || (item as any)?.part_name || '',
             category_name: catObj?.name ?? 'General',
             specification: form.specification.trim() || form.name.trim(),
@@ -2551,15 +2556,16 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   };
 
   return (
-    <Modal open onClose={onClose} size="lg" title={isNew ? 'Add Product' : 'Edit Product'} subtitle={item ? `${item.code} · ${item.name}` : undefined}
+    <Modal open onClose={onClose} size="lg" title={isNew ? 'Add Product' : 'Edit Product'} subtitle={item ? item.name : undefined}
       footer={<>
         <button onClick={onClose} className={cancelBtn}>Cancel</button>
         <button onClick={save} disabled={saving} className={saveBtn}>{saving && <Loader2 size={14} className="animate-spin" />} Save</button>
       </>}>
       <ModalError message={error} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Product Code" required><input className={inputClass} value={form.code} onChange={e => set('code', e.target.value)} /></FormField>
-        <FormField label="Product Name" required><input className={inputClass} value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
+        <div className="sm:col-span-2">
+          <FormField label="Product Name" required><input className={inputClass} value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
+        </div>
         <FormField label="Category" required>
           <select className={inputClass} value={form.category_id} onChange={e => set('category_id', e.target.value)}>
             <option value="">Select…</option>
