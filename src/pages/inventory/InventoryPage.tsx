@@ -36,7 +36,14 @@ interface FilterState {
 }
 
 const EMPTY_FILTERS: FilterState = { search: '', categoryId: '', supplierId: '', status: '', warehouseId: '' };
-const PAGE_SIZES = [10, 25, 50];
+const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10 / page' },
+  { value: 25, label: '25 / page' },
+  { value: 50, label: '50 / page' },
+  { value: 100, label: '100 / page' },
+  { value: 500, label: 'All' },
+];
+const PAGE_SIZES = PAGE_SIZE_OPTIONS.map(o => o.value);
 const RECENT_LIMIT = 6;
 const DONUT_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#9333ea', '#ef4444', '#0891b2', '#db2777', '#65a30d', '#64748b'];
 
@@ -1256,7 +1263,7 @@ export function InventoryPage() {
               </div>
               <select aria-label="Rows per page" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
                 className="h-8 px-2 text-sm bg-white border border-slate-300 rounded-md">
-                {PAGE_SIZES.map(s => <option key={s} value={s}>{s} / page</option>)}
+                {PAGE_SIZE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
             </div>
           </div>

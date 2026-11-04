@@ -17,7 +17,13 @@ type Delivery = Record<string, any> & { id: string; delivery_no: string; deliver
 type SalesOrder = { id: string; order_no: string; lead_no?: string | null; customer: string; customer_id: string | null; part_name: string; part_no: string | null; quantity: number; delivered: number | null; delivery_date: string | null };
 // Display rule: screens show the UNIQUE number only (lead_no); backend
 // order/delivery numbers stay stored and are used for documents.
-const PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 25, label: '25' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 100000, label: 'All' },
+];
 const tabs = ['All Deliveries', 'Pending Deliveries', 'Partially Delivered', 'Delivered', 'Returns'];
 const quantity = (d: Delivery) => Number(d.dispatch_qty ?? d.quantity ?? 0);
 const uniqueForOrder = (so: SalesOrder | undefined | null) => so?.lead_no || so?.order_no || '—';
@@ -57,6 +63,7 @@ export function DeliveriesPage() {
   const [status, setStatus] = useState('');
   const [tab, setTab] = useState(tabs[0]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selected, setSelected] = useState<Delivery | null>(null);
   const [edit, setEdit] = useState<Delivery | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -113,8 +120,8 @@ export function DeliveriesPage() {
     });
   }, [records, orders, search, from, to, globalFrom, globalTo, customer, status, tab]);
   const customers = useMemo(() => [...new Set(records.map(r => r.customer_name).filter(Boolean))] as string[], [records]);
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
   const summary = useMemo(() => ({
     total: records.length,
     dispatched: records.reduce((n, r) => n + quantity(r), 0),
@@ -228,9 +235,26 @@ export function DeliveriesPage() {
       <Button variant="secondary" onClick={() => { setFrom(''); setTo(''); setCustomer(''); setStatus(''); setSearch(''); setTab(tabs[0]); }}>Clear</Button>
     </div></Card>
     <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full text-left"><thead><tr className="bg-slate-50 border-b text-[10px] uppercase text-slate-500"><th className="p-3">#</th><th className="p-3">Company ID</th><th className="p-3">Date</th><th className="p-3">Company</th><th className="p-3">Project / SO</th><th className="p-3">Part Name</th><th className="p-3 text-right">Order Qty</th><th className="p-3 text-right">Delivered Qty</th><th className="p-3 text-right">Pending Qty</th><th className="p-3">Status</th><th className="p-3">Invoice No</th><th className="p-3">Actions</th></tr></thead><tbody>
-      {loading ? <tr><td colSpan={12} className="p-10 text-center text-slate-500">Loading delivery challans…</td></tr> : visible.map((r, i) => { const so = orders.find(x => x.id === r.sales_order_id); const q = orderDelivered(records, r.sales_order_id); const rowStatus = statusFor(r, records, so); return <tr key={r.id} className="border-b hover:bg-slate-50"><td className="p-3 text-xs">{(page - 1) * PAGE_SIZE + i + 1}</td><td className="p-3 font-mono text-xs">{uniqueForDelivery(r, so)}</td><td className="p-3 text-xs">{formatDate(r.delivery_date) || '—'}</td><td className="p-3 text-sm">{r.customer_name || so?.customer || '—'}</td><td className="p-3 text-xs">{uniqueForOrder(so)}</td><td className="p-3 text-sm">{r.part_name || so?.part_name || '—'}</td><td className="p-3 text-right text-xs">{so?.quantity ?? '—'}</td><td className="p-3 text-right text-xs">{q}</td><td className="p-3 text-right text-xs">{so ? Math.max(0, Number(so.quantity || 0) - q) : '—'}</td><td className="p-3"><Badge variant={statusToVariant(rowStatus)} dot>{rowStatus}</Badge></td><td className="p-3 text-xs">{invoiceLinks[r.id] || invoiceLinks[`dc:${r.delivery_no}`] || '—'}</td><td className="p-3"><Button variant="secondary" size="sm" onClick={() => setSelected(r)} aria-label="View delivery"><Eye size={14}/></Button></td></tr>; })}
+      {loading ? <tr><td colSpan={12} className="p-10 text-center text-slate-500">Loading delivery challans…</td></tr> : visible.map((r, i) => { const so = orders.find(x => x.id === r.sales_order_id); const q = orderDelivered(records, r.sales_order_id); const rowStatus = statusFor(r, records, so); return <tr key={r.id} className="border-b hover:bg-slate-50"><td className="p-3 text-xs">{(page - 1) * pageSize + i + 1}</td><td className="p-3 font-mono text-xs">{uniqueForDelivery(r, so)}</td><td className="p-3 text-xs">{formatDate(r.delivery_date) || '—'}</td><td className="p-3 text-sm">{r.customer_name || so?.customer || '—'}</td><td className="p-3 text-xs">{uniqueForOrder(so)}</td><td className="p-3 text-sm">{r.part_name || so?.part_name || '—'}</td><td className="p-3 text-right text-xs">{so?.quantity ?? '—'}</td><td className="p-3 text-right text-xs">{q}</td><td className="p-3 text-right text-xs">{so ? Math.max(0, Number(so.quantity || 0) - q) : '—'}</td><td className="p-3"><Badge variant={statusToVariant(rowStatus)} dot>{rowStatus}</Badge></td><td className="p-3 text-xs">{invoiceLinks[r.id] || invoiceLinks[`dc:${r.delivery_no}`] || '—'}</td><td className="p-3"><Button variant="secondary" size="sm" onClick={() => setSelected(r)} aria-label="View delivery"><Eye size={14}/></Button></td></tr>; })}
       {!loading && visible.length === 0 && <tr><td colSpan={12} className="p-10 text-center text-slate-500">No delivery challans found for these filters.</td></tr>}
-    </tbody></table></div><div className="flex items-center justify-between border-t p-3 text-xs text-slate-500"><span>{filtered.length ? (page - 1) * PAGE_SIZE + 1 : 0}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} entries</span><div className="flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button><span>{page}/{pages}</span><button disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button></div></div></Card>
+    </tbody></table></div><div className="flex flex-wrap items-center justify-between gap-3 border-t p-3 text-xs text-slate-500">
+  <div className="flex items-center gap-3">
+    <label className="flex items-center gap-1.5 font-medium text-slate-600">
+      Show
+      <select aria-label="Rows per page" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+        {PAGE_SIZE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+      </select>
+      per page
+    </label>
+    <span>{filtered.length ? (page - 1) * pageSize + 1 : 0}-{Math.min(page * pageSize, filtered.length)} of {filtered.length} entries</span>
+  </div>
+  <div className="flex items-center gap-3">
+    <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40">Previous</button>
+    <span className="font-semibold">{page}/{pages}</span>
+    <button disabled={page >= pages} onClick={() => setPage(page + 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40">Next</button>
+  </div>
+</div></Card>
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-4"><h3 className="font-semibold text-sm mb-3">Delivery Summary (This Month)</h3>{tabs.slice(1,4).map((x, i) => { const n = records.filter(r => String(r.delivery_date || '').slice(0,7) === todayISO().slice(0,7) && statusFor(r, records, orders.find(x => x.id === r.sales_order_id)) === ['Pending','Partially Delivered','Delivered'][i]).length; return <div key={x} className="flex justify-between py-1.5 text-sm"><span>{x}</span><b>{n}</b></div>; })}</Card>
       <Card className="p-4"><h3 className="font-semibold text-sm mb-3">Top Companies (Delivery Qty)</h3>{Object.entries(records.reduce<Record<string, number>>((a, r) => { const key = r.customer_name || '—'; a[key] = (a[key] || 0) + quantity(r); return a; }, {})).sort((a,b) => b[1]-a[1]).slice(0,5).map(([name, qty]) => <div key={name} className="flex justify-between py-1.5 text-sm"><span>{name}</span><b>{qty.toLocaleString('en-IN')}</b></div>)}</Card>

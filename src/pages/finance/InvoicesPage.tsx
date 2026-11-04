@@ -20,7 +20,13 @@ import { downloadSalesInvoice, fetchCompanyPrintDetails, salesInvoicePreviewUrl 
 import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
 import { loadTerms } from '@/lib/termsLibrary';
 
-const PAGE = 10;
+const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 25, label: '25' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 500, label: 'All' },
+];
 const cash = (v: string | number | null | undefined) => formatINR(v, { decimals: 'auto' });
 // Due Days <-> Due Date helpers (invoice_date is an ISO yyyy-mm-dd string).
 const addDaysISO = (iso: string, n: number): string => {
@@ -64,6 +70,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
   const [selected, setSelected] = useState<InvoiceDetail | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -130,12 +137,12 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const reload = async (p = page, f = effFilters, t = tab) => {
+  const reload = async (p = page, f = effFilters, t = tab, sz = pageSize) => {
     setLoading(true); setError('');
     try {
       const [list, summary] = await Promise.all([
         // Empty date inputs must be omitted; Postgres cannot cast '' to a date.
-        financeApi.invoices({ type: t || null, status: f.status || null, customer: f.customer || null, search: f.search, from: f.from || undefined, to: f.to || undefined, page: p, pageSize: PAGE }),
+        financeApi.invoices({ type: t || null, status: f.status || null, customer: f.customer || null, search: f.search, from: f.from || undefined, to: f.to || undefined, page: p, pageSize: sz }),
         financeApi.invoiceSummary(f.from || undefined, f.to || undefined),
       ]);
       setRows(list.rows); setTotal(list.total); setStats(summary || emptySummary); setPage(p);
@@ -876,7 +883,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
     if (!selected) return; const reason = window.prompt('Reason for credit note:'); if (!reason?.trim()) return;
     setBusy(true); try { const r = await financeApi.creditNote(selected.id, reason); await reload(); setSelected(await financeApi.invoice(r.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to create credit note.'); } finally { setBusy(false); }
   };
-  const pageCount = Math.max(1, Math.ceil(total / PAGE));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   const [tableStatusFilter, setTableStatusFilter] = useState('All');
 
@@ -1499,7 +1506,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                 <tr><td colSpan={15} className="p-10 text-center">Loading invoices...</td></tr>
               ) : displayedRows.map((r, i) => (
                 <tr key={r.id} onClick={() => (onView ? onView(r) : void view(r))} className="border-b hover:bg-blue-50/50 cursor-pointer text-xs">
-                  <td className="px-2 py-2">{(page - 1) * PAGE + i + 1}</td>
+                  <td className="px-2 py-2">{(page - 1) * pageSize + i + 1}</td>
                   <td className="px-2 py-2 text-slate-600 whitespace-nowrap font-mono">{formatTimestamp(stamps[r.id]?.updated_at || stamps[r.id]?.created_at || r.invoice_date)}</td>
                   <td className="px-2 py-2 whitespace-nowrap">{formatDate(r.invoice_date) || '—'}</td>
                   <td className="px-2 py-2 font-semibold text-blue-700">{r.invoice_no}</td>
@@ -1560,7 +1567,24 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
             </tbody>
           </table>
         </div>
-        <div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-2 border-t text-xs text-slate-500">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 font-medium text-slate-600">
+              Show
+              <select aria-label="Rows per page" value={pageSize} onChange={e => { const sz = Number(e.target.value); setPageSize(sz); void reload(1, effFilters, tab, sz); }}
+                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+                {PAGE_SIZE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+              per page
+            </label>
+            <span>{total ? ((page - 1) * pageSize + 1) : 0}-{Math.min(page * pageSize, total)} of {total}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button disabled={page <= 1} onClick={() => void reload(page - 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40"><ChevronLeft size={16} /></button>
+            <span className="font-semibold">{page} / {pageCount}</span>
+            <button disabled={page >= pageCount} onClick={() => void reload(page + 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40"><ChevronRight size={16} /></button>
+          </div>
+        </div>
       </Card>
     </div>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><Card className="p-4"><h3 className="font-bold text-sm mb-3">Invoice Activity</h3><div className="h-24 flex items-end gap-1 border-b">{stats.monthly.length?stats.monthly.map(x=><div key={x.day} title={formatDate(x.day)+' '+cash(x.invoiced)} className="flex-1 bg-blue-500 rounded-t" style={{height:Math.max(3,Number(x.invoiced)/Math.max(1,...stats.monthly.map(y=>Number(y.invoiced)))*90)}}/>):<span className="w-full text-center text-xs text-slate-400">No invoice activity.</span>}</div><p className="text-[10px] text-slate-500 mt-2">Actual invoice amounts from the selected date range</p></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Outstanding by Ageing</h3><Total label="0-30 days" value={cash(stats.ageing.current)}/><Total label="31-60 days" value={cash(stats.ageing.d31_60)}/><Total label="61-90 days" value={cash(stats.ageing.d61_90)}/><Total label="Over 90 days" value={cash(stats.ageing.d90_plus)}/></Card><Card className="p-4"><h3 className="font-bold text-sm mb-2">Invoice Status</h3><div className="grid grid-cols-2 gap-2">{['Paid','Partially Paid','Overdue','Credit Note','Cancelled'].map(x=><div key={x} className="border rounded p-2 flex justify-between text-xs">{x}<b>{stats.by_status?.[x]||0}</b></div>)}</div><h4 className="font-semibold text-xs mt-3">Top Companies</h4>{stats.top_customers?.slice(0,4).map(x=><Total key={x.customer} label={x.customer} value={cash(x.value)}/>)}</Card></div>

@@ -321,7 +321,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
           <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
             <label className="flex items-center gap-2 text-slate-600">Show
               <select aria-label="Entries per page" className={`${sel} !h-8`} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
-                {[10, 25, 50, 100, 500].map(n => <option key={n} value={n}>{n}</option>)}<option value={0}>All</option></select> entries</label>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}<option value={0}>All</option></select> entries</label>
             <label className="flex items-center gap-2 text-slate-600">Search:
               <input aria-label="Search ledger" className={`${inp} !h-8 w-56`} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></label>
           </div>

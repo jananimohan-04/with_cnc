@@ -5,7 +5,15 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // the "Showing a–b of n" text and previous / next buttons. Pair it with the `erp-table` class on the
 // <table> (index.css) for the dark header.
 
-export const PAGE_SIZES = [10, 15, 25, 50, 100];
+export const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 15, label: '15' },
+  { value: 25, label: '25' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 100000, label: 'All' },
+];
+export const PAGE_SIZES = PAGE_SIZE_OPTIONS.map(o => o.value);
 const SIZE_KEY = 'argus.table.pageSize';
 const DEFAULT_SIZE = 15;
 
@@ -50,7 +58,7 @@ export function PagerFooter<T>({ pager, sticky = false, label = 'records' }: { p
         <label className="flex items-center gap-2 font-medium text-slate-500">Show
           <select aria-label="Rows per page" value={pageSize} onChange={e => pager.setPageSize(Number(e.target.value))}
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-semibold text-slate-700">
-            {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+            {PAGE_SIZE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
           per page
         </label>

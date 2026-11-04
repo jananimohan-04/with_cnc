@@ -212,7 +212,7 @@ export function ProjectCostingPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
   // Process Master rates for valuing production operations (missing table tolerated).
   const [procRates, setProcRates] = useState<any[]>([]);
   // Expense inwards entered for this project (typed product / project name).
@@ -242,7 +242,7 @@ export function ProjectCostingPage() {
     }
   };
 
-  const loadProjects = async (p = 1, q = appliedSearch) => {
+  const loadProjects = async (p = 1, q = appliedSearch, sz = pageSize) => {
     setLoading(true);
     setError('');
     try {
@@ -251,7 +251,7 @@ export function ProjectCostingPage() {
       const { data, error: rpcError } = await supabase.rpc('erp_costing_projects', {
         p_search: q || null,
         p_page: p,
-        p_page_size: pageSize,
+        p_page_size: sz,
       } as never);
       if (rpcError) throw new Error(rpcError.message);
       const result = data as any;
@@ -841,14 +841,27 @@ export function ProjectCostingPage() {
                 <div className="p-4 text-center text-xs text-slate-500">No project cost records found.</div>
               )}
             </div>
-            <div className="flex justify-between p-2 border-t text-xs text-slate-500">
-              <span>{total} projects</span>
-              <div className="flex gap-2">
-                <button disabled={page <= 1} onClick={() => void loadProjects(page - 1)}>
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2 border-t text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 font-medium text-slate-600">
+                  Show
+                  <select aria-label="Projects per page" value={pageSize} onChange={e => { const sz = Number(e.target.value); setPageSize(sz); void loadProjects(1, appliedSearch, sz); }}
+                    className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-semibold text-slate-700">
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={100}>All</option>
+                  </select>
+                </label>
+                <span>{total} projects</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <button disabled={page <= 1} onClick={() => void loadProjects(page - 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40">
                   <span className="sr-only">Previous</span>‹
                 </button>
-                {page}
-                <button disabled={page * pageSize >= total} onClick={() => void loadProjects(page + 1)}>
+                <span className="font-semibold">{page}</span>
+                <button disabled={page * pageSize >= total} onClick={() => void loadProjects(page + 1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40">
                   <span className="sr-only">Next</span>›
                 </button>
               </div>

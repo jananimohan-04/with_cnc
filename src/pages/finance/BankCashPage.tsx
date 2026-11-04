@@ -12,7 +12,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
 
-const PAGE=10;
+const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 25, label: '25' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 500, label: 'All' },
+];
 const cash=(v:string|number|null|undefined)=>formatINR(v,{decimals:'auto'});
 function monthStart(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01'}
 const blank:BankSummary={accounts:[],total_bank:'0',total_cash:'0',total_receipts:'0',total_payments:'0',pending_clearing:'0',pending_count:0,receipts_vs_payments:[],expense_by_category:[]};
@@ -31,6 +37,7 @@ export function BankCashPage(){
   const [options,setOptions]=useState<BankFilters|null>(null);
   const [total,setTotal]=useState(0);
   const [page,setPage]=useState(1);
+  const [pageSize,setPageSize]=useState(10);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -43,13 +50,13 @@ export function BankCashPage(){
   const [invoices,setInvoices]=useState<any[]>([]);
 
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
-  const reload=async(p=page,f=filters,t=tab)=>{
+  const reload=async(p=page,f=filters,t=tab,sz=pageSize)=>{
     setLoading(true);setError('');
     try{
       // Global Topbar range intersects the page's own From/To.
       const eff = intersectRange(f.from, f.to, globalFrom, globalTo);
       const [list,s]=await Promise.all([
-        financeApi.bankTransactions({kind:t||null,account:f.account||null,type:f.type||null,party:f.party||null,search:f.search,from:eff.from||undefined,to:eff.to||undefined,page:p,pageSize:PAGE}),
+        financeApi.bankTransactions({kind:t||null,account:f.account||null,type:f.type||null,party:f.party||null,search:f.search,from:eff.from||undefined,to:eff.to||undefined,page:p,pageSize:sz}),
         financeApi.bankSummary(eff.from||undefined,eff.to||undefined),
       ]);
       setData(list.rows);setTotal(list.total);setSummary(s||blank);setPage(p);
@@ -66,7 +73,7 @@ export function BankCashPage(){
     }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to load account options.');});
     return()=>{active=false};
   },[company?.id]);
-  const pageCount=Math.max(1,Math.ceil(total/PAGE));
+  const pageCount=Math.max(1,Math.ceil(total/pageSize));
   const submitEntry=async()=>{
     if(!form.account_id||Number(form.amount)<=0){setError('Choose an account and enter an amount greater than zero.');return}
     if(form.party_type!=='Other'&&!form.party_name){setError('Choose a party.');return}
@@ -131,9 +138,26 @@ export function BankCashPage(){
       <Button size="sm" onClick={()=>{setFilters(draft);void reload(1,draft,tab)}}>Apply</Button><Button size="sm" variant="secondary" onClick={()=>{const f={from:'',to:'',account:'',type:'',party:'',search:''};setDraft(f);setFilters(f);void reload(1,f,tab)}}>Clear</Button>
     </div></Card>
     <Card className="overflow-hidden"><div className="overflow-auto"><table className="w-full min-w-[980px] text-left"><thead><tr className="bg-slate-50 text-[10px] uppercase text-slate-500 border-b">{['#','Date','Account','Type','Description','Reference No','Company','Receipt','Payment','Balance','Mode','Status','Actions'].map(x=><th key={x} className="px-2 py-2">{x}</th>)}</tr></thead><tbody>
-      {loading?<tr><td colSpan={13} className="p-10 text-center">Loading transactions...</td></tr>:data.map((r,i)=><tr key={r.id} className="border-b hover:bg-slate-50 text-xs"><td className="px-2 py-2 text-slate-400">{(page-1)*PAGE+i+1}</td><td className="px-2 py-2">{formatDate(r.txn_date)}</td><td className="px-2 py-2 font-medium">{r.account_name}</td><td className="px-2 py-2"><Badge variant={r.direction==='IN'?'success':'warning'}>{r.transfer_group?'Transfer':r.kind}</Badge></td><td className="px-2 py-2">{r.description||'—'}</td><td className="px-2 py-2 font-mono">{r.reference_no||r.txn_no}</td><td className="px-2 py-2">{r.party_name||'—'}</td><td className="px-2 py-2 text-right text-emerald-700">{r.receipt?cash(r.receipt):'—'}</td><td className="px-2 py-2 text-right text-rose-700">{r.payment?cash(r.payment):'—'}</td><td className="px-2 py-2 text-right">{r.balance?cash(r.balance):'—'}</td><td className="px-2 py-2">{r.mode||'—'}</td><td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td><td className="px-2 py-2">{r.invoice_id&&<button title="View linked invoice" onClick={()=>navigate('/finance/invoices?invoice='+encodeURIComponent(r.invoice_id!))} className="mr-1 text-blue-700 underline">Invoice</button>}{r.status==='Pending'&&options?.can_manage?<button title="Clear transaction" onClick={()=>void setStatus(r.id,'Cleared')} className="p-1 text-emerald-600"><CheckCircle2 size={15}/></button>:null}</td></tr>)}
+      {loading?<tr><td colSpan={13} className="p-10 text-center">Loading transactions...</td></tr>:data.map((r,i)=><tr key={r.id} className="border-b hover:bg-slate-50 text-xs"><td className="px-2 py-2 text-slate-400">{(page-1)*pageSize+i+1}</td><td className="px-2 py-2">{formatDate(r.txn_date)}</td><td className="px-2 py-2 font-medium">{r.account_name}</td><td className="px-2 py-2"><Badge variant={r.direction==='IN'?'success':'warning'}>{r.transfer_group?'Transfer':r.kind}</Badge></td><td className="px-2 py-2">{r.description||'—'}</td><td className="px-2 py-2 font-mono">{r.reference_no||r.txn_no}</td><td className="px-2 py-2">{r.party_name||'—'}</td><td className="px-2 py-2 text-right text-emerald-700">{r.receipt?cash(r.receipt):'—'}</td><td className="px-2 py-2 text-right text-rose-700">{r.payment?cash(r.payment):'—'}</td><td className="px-2 py-2 text-right">{r.balance?cash(r.balance):'—'}</td><td className="px-2 py-2">{r.mode||'—'}</td><td className="px-2 py-2"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td><td className="px-2 py-2">{r.invoice_id&&<button title="View linked invoice" onClick={()=>navigate('/finance/invoices?invoice='+encodeURIComponent(r.invoice_id!))} className="mr-1 text-blue-700 underline">Invoice</button>}{r.status==='Pending'&&options?.can_manage?<button title="Clear transaction" onClick={()=>void setStatus(r.id,'Cleared')} className="p-1 text-emerald-600"><CheckCircle2 size={15}/></button>:null}</td></tr>)}
       {!loading&&!data.length&&<tr><td colSpan={13} className="p-6 text-center text-slate-500">No transactions found for these filters.</td></tr>}
-    </tbody></table></div><div className="flex justify-between p-2 border-t text-xs text-slate-500"><span>{total?((page-1)*PAGE+1):0}-{Math.min(page*PAGE,total)} of {total}</span><div className="flex gap-2"><button disabled={page<=1} onClick={()=>void reload(page-1)}><ChevronLeft size={16}/></button>{page}/{pageCount}<button disabled={page>=pageCount} onClick={()=>void reload(page+1)}><ChevronRight size={16}/></button></div></div></Card>
+    </tbody></table></div><div className="flex flex-wrap items-center justify-between gap-3 p-2 border-t text-xs text-slate-500">
+  <div className="flex items-center gap-3">
+    <label className="flex items-center gap-1.5 font-medium text-slate-600">
+      Show
+      <select aria-label="Rows per page" value={pageSize} onChange={e => { const sz = Number(e.target.value); setPageSize(sz); void reload(1, filters, tab, sz); }}
+        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+        {PAGE_SIZE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+      </select>
+      per page
+    </label>
+    <span>{total?((page-1)*pageSize+1):0}-{Math.min(page*pageSize,total)} of {total}</span>
+  </div>
+  <div className="flex items-center gap-2">
+    <button disabled={page<=1} onClick={()=>void reload(page-1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40"><ChevronLeft size={16}/></button>
+    <span className="font-semibold">{page}/{pageCount}</span>
+    <button disabled={page>=pageCount} onClick={()=>void reload(page+1)} className="p-1 hover:bg-slate-100 rounded disabled:opacity-40"><ChevronRight size={16}/></button>
+  </div>
+</div></Card>
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <Card className="p-4"><h3 className="font-bold text-sm mb-3">Account Balances</h3>{summary.accounts.map(a=><div key={a.id} className="flex justify-between border-b py-2 text-xs"><span>{a.name}<small className="block text-slate-400">{a.type}{openingBy[a.id]?` · opening ${cash(openingBy[a.id])}`:''}</small></span><b>{cash(a.balance)}</b></div>)}<div className="flex justify-between pt-2 text-xs font-bold"><span>Total</span><span>{cash(Number(summary.total_bank)+Number(summary.total_cash))}</span></div></Card>
       <Card className="p-4"><h3 className="font-bold text-sm mb-3">Receipts vs Payments</h3><div className="flex gap-2 items-end h-36 border-b">{summary.receipts_vs_payments.length?summary.receipts_vs_payments.map(x=><div key={x.week} className="flex-1 h-full flex items-end justify-center gap-1" title={formatDate(x.week)}><div className="w-3 bg-emerald-500 rounded-t" style={{height:Math.max(2,Number(x.receipts)/maxChart*120)}}/><div className="w-3 bg-rose-400 rounded-t" style={{height:Math.max(2,Number(x.payments)/maxChart*120)}}/></div>):<span className="w-full self-center text-center text-xs text-slate-400">No transaction data.</span>}</div><div className="flex gap-3 mt-2 text-[10px]"><span className="text-emerald-700">Receipts</span><span className="text-rose-700">Payments</span></div></Card>
