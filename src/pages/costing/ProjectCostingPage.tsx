@@ -150,7 +150,7 @@ async function loadQuoteLookup() {
   const lc = (v: unknown) => String(v ?? '').trim().toLowerCase();
   const [{ data: sos }, { data: quotes }] = await Promise.all([
     supabase.from('cnc_sales_orders').select('order_no, quotation_id, quote_no'),
-    supabase.from('cnc_quotations').select('id, quote_no, customer, part_name, total_value'),
+    supabase.from('cnc_quotations').select('id, quote_no, customer, part_name, total_value, description, quantity, unit_price'),
   ]);
   const quoteList = quotes ?? [];
   const totalOf = (q: any) => Number(q?.total_value) || 0;
@@ -180,6 +180,8 @@ export type SharedCostingData = {
   allRoutings: any[];
   allCostingSheets: any[];
   allBoms?: any[];
+  allParts?: any[];
+  allQuotations?: any[];
   quoteLookup: (refs: unknown[], party: string | null, part: string | null) => number | null;
 };
 
@@ -405,34 +407,128 @@ function computeProjectDetail(
     const sWo = lc(s.work_order_no);
     const sSo = lc(s.sales_order_no);
     const sProd = lc(s.product_name);
+    const sCode = lc(s.product_code);
     const sKey = quoteNameKey(s.product_name);
     return (
       (sWo && (allWoNos.has(s.work_order_no) || matchingWo.has(sWo))) ||
       (sSo && matchingSo.has(sSo)) ||
       (pPartKey && sKey === pPartKey) ||
-      (pPart && (sProd === pPart || sProd.includes(pPart) || pPart.includes(sProd)))
+      (pPart && (sProd === pPart || sProd.includes(pPart) || pPart.includes(sProd))) ||
+      (pPartKey && sCode && (sCode === pPartKey || sCode.includes(pPartKey)))
     );
   });
 
-  if (matchingCostingSheets.length > 0 && matchingCostingSheets[0]?.workings) {
-    const w = matchingCostingSheets[0].workings;
-    if (allMaterials.length === 0 && Array.isArray(w.materials)) {
-      w.materials.forEach((m: any, idx: number) => {
+  if (matchingCostingSheets.length > 0) {
+    const sheet = matchingCostingSheets[0];
+    const sheetMaterials = sheet?.lines?.materials || sheet?.workings?.materials;
+    if (allMaterials.length === 0 && Array.isArray(sheetMaterials)) {
+      sheetMaterials.forEach((m: any, idx: number) => {
         allMaterials.push({
           id: m.key || `cs-mat-${idx}`,
           date: todayISO(),
           type: 'Costing Sheet Material',
-          reference: matchingCostingSheets[0].quotation_no || 'Costing Sheet',
+          reference: sheet.quotation_no || 'Costing Sheet',
           item: m.material_name || m.material_code || 'Material',
           quantity: String(m.req_qty || m.quantity || 1),
           unit: m.unit || 'pcs',
           rate: String(m.unit_cost || m.rate || 0),
           amount: String(m.total || (Number(m.req_qty || 1) * Number(m.unit_cost || 0))),
           work_order: p.project_name,
-          request_no: matchingCostingSheets[0].quotation_no || '',
+          request_no: sheet.quotation_no || '',
         });
       });
     }
+  }
+
+  // Fallback to Quotation workings if allMaterials is still empty
+  if (allMaterials.length === 0 && shared.allQuotations && shared.allQuotations.length > 0) {
+    const matchQuote = (shared.allQuotations || []).find((q: any) => {
+      const qCust = lc(q.customer);
+      const qPart = lc(q.part_name);
+      const qKey = quoteNameKey(q.part_name);
+      return (
+        (pParty && qCust === pParty && (pPartKey && qKey === pPartKey)) ||
+        (pPartKey && qKey === pPartKey) ||
+        (pPart && (qPart === pPart || qPart.includes(pPart)))
+      );
+    });
+    if (matchQuote?.description) {
+      try {
+        const items = JSON.parse(matchQuote.description);
+        if (Array.isArray(items)) {
+          const matchItem = items.find((it: any) => {
+            const itKey = quoteNameKey(it.partName);
+            return itKey === pPartKey || lc(it.partName) === pPart;
+          }) || items[0];
+          if (matchItem?.workings?.materials && Array.isArray(matchItem.workings.materials)) {
+            matchItem.workings.materials.forEach((m: any, idx: number) => {
+              allMaterials.push({
+                id: `qw-mat-${idx}`,
+                date: todayISO(),
+                type: 'Quotation Material',
+                reference: matchQuote.quote_no || 'Quote',
+                item: m.material_name || m.material_code || 'Material',
+                quantity: String(m.req_qty || m.quantity || 1),
+                unit: m.unit || 'pcs',
+                rate: String(m.unit_cost || m.rate || 0),
+                amount: String(m.total || (Number(m.req_qty || 1) * Number(m.unit_cost || 0))),
+                work_order: p.project_name,
+                request_no: matchQuote.quote_no || '',
+              });
+            });
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Fallback to Part Master material if allMaterials is still empty
+  if (allMaterials.length === 0 && shared.allParts && shared.allParts.length > 0) {
+    const matchPart = (shared.allParts || []).find((pt: any) => {
+      const ptKey = quoteNameKey(pt.part_name);
+      const ptName = lc(pt.part_name);
+      const ptNo = lc(pt.part_no);
+      return (
+        (pPartKey && ptKey === pPartKey) ||
+        (pPart && (ptName === pPart || ptName.includes(pPart) || pPart.includes(ptName))) ||
+        (pPartKey && ptNo && (ptNo === pPartKey || ptNo.includes(pPartKey)))
+      );
+    });
+    if (matchPart && (matchPart.material || Number(matchPart.unit_price) > 0)) {
+      const qty = Number(p.quantity) || 1;
+      const rate = Number(matchPart.unit_price) || 0;
+      allMaterials.push({
+        id: matchPart.id || 'part-mat',
+        date: todayISO(),
+        type: 'Part Master Material',
+        reference: matchPart.part_no || 'Part Master',
+        item: matchPart.material ? `${matchPart.part_name} (${matchPart.material})` : (matchPart.part_name || 'Raw Material'),
+        quantity: String(qty),
+        unit: matchPart.unit || 'pcs',
+        rate: String(rate),
+        amount: String(qty * rate),
+        work_order: p.project_name,
+        request_no: matchPart.part_no || '',
+      });
+    }
+  }
+
+  // Fallback to product_cost from report if still empty
+  if (allMaterials.length === 0 && Number(p.product_cost || baseReport?.project?.product_cost) > 0) {
+    const costVal = Number(p.product_cost || baseReport?.project?.product_cost);
+    allMaterials.push({
+      id: 'prod-cost-mat',
+      date: todayISO(),
+      type: 'Product Material Cost',
+      reference: p.project_name,
+      item: 'Raw Material',
+      quantity: String(p.quantity || 1),
+      unit: 'pcs',
+      rate: String(costVal / (Number(p.quantity) || 1)),
+      amount: String(costVal),
+      work_order: p.project_name,
+      request_no: p.project_name,
+    });
   }
 
   // 6. Job Cards & Machine Operations
@@ -578,29 +674,81 @@ function computeProjectDetail(
   });
 
   // Costing sheet operations fallback
-  if (mergedOps.length === 0 && matchingCostingSheets.length > 0 && matchingCostingSheets[0]?.workings?.processes) {
-    matchingCostingSheets[0].workings.processes.forEach((s: any, idx: number) => {
-      const opName = String(s.process_name || s.process_code || 'Machining').trim();
-      const hrs = Number(s.machine_hours) || Number(s.hours) || 1;
-      const rate = Number(s.machine_rate || s.cost_per_hour || s.rate || 0);
-      mergedOps.push({
-        id: s.key || `sheet-${idx}`,
-        job_no: null,
-        operation: opName,
-        machine: s.machine || '',
-        operator: s.operator || '',
-        qty_planned: String(s.qty ?? 1),
-        qty_completed: String(s.qty ?? 1),
-        qty_rejected: '0',
-        cycle_time: String(s.cycle_time ?? 0),
-        setup_time: String(s.setup_time ?? 0),
-        actual_minutes: String(Math.round(hrs * 60)),
-        hours: hrs,
-        rate: rate,
-        cost: Number(s.machine_cost || s.cost || (hrs * rate)),
-        status: 'Completed',
+  if (mergedOps.length === 0 && matchingCostingSheets.length > 0) {
+    const sheet = matchingCostingSheets[0];
+    const sheetOps = sheet?.lines?.ops || sheet?.workings?.processes || sheet?.workings?.ops;
+    if (Array.isArray(sheetOps) && sheetOps.length > 0) {
+      sheetOps.forEach((s: any, idx: number) => {
+        const opName = String(s.process_name || s.process_code || 'Machining').trim();
+        const hrs = Number(s.machine_hours) || Number(s.hours) || 1;
+        const rate = Number(s.cost_per_hour || s.machine_rate || s.rate || 0);
+        mergedOps.push({
+          id: s.key || `sheet-${idx}`,
+          job_no: null,
+          operation: opName,
+          machine: s.machine || '',
+          operator: s.operator || '',
+          qty_planned: String(s.qty ?? 1),
+          qty_completed: String(s.qty ?? 1),
+          qty_rejected: '0',
+          cycle_time: String(s.cycle_time ?? 0),
+          setup_time: String(s.setup_time ?? 0),
+          actual_minutes: String(Math.round(hrs * 60)),
+          hours: hrs,
+          rate: rate,
+          cost: Number(s.machine_cost || s.cost || (hrs * rate)),
+          status: 'Completed',
+        });
       });
+    }
+  }
+
+  // Quotation operations fallback
+  if (mergedOps.length === 0 && shared.allQuotations && shared.allQuotations.length > 0) {
+    const matchQuote = (shared.allQuotations || []).find((q: any) => {
+      const qCust = lc(q.customer);
+      const qPart = lc(q.part_name);
+      const qKey = quoteNameKey(q.part_name);
+      return (
+        (pParty && qCust === pParty && (pPartKey && qKey === pPartKey)) ||
+        (pPartKey && qKey === pPartKey) ||
+        (pPart && (qPart === pPart || qPart.includes(pPart)))
+      );
     });
+    if (matchQuote?.description) {
+      try {
+        const items = JSON.parse(matchQuote.description);
+        if (Array.isArray(items)) {
+          const matchItem = items.find((it: any) => {
+            const itKey = quoteNameKey(it.partName);
+            return itKey === pPartKey || lc(it.partName) === pPart;
+          }) || items[0];
+          if (matchItem?.workings?.processes && Array.isArray(matchItem.workings.processes)) {
+            matchItem.workings.processes.forEach((pr: any, idx: number) => {
+              const hrs = Number(pr.machine_hours || pr.hours || 1);
+              const rate = Number(pr.machine_rate || pr.cost_per_hour || pr.rate || 0);
+              mergedOps.push({
+                id: `qw-op-${idx}`,
+                job_no: null,
+                operation: pr.process_name || pr.process_code || 'Machining',
+                machine: pr.machine || '',
+                operator: '',
+                qty_planned: '1',
+                qty_completed: '1',
+                qty_rejected: '0',
+                cycle_time: '0',
+                setup_time: '0',
+                actual_minutes: String(Math.round(hrs * 60)),
+                hours: hrs,
+                rate: rate,
+                cost: Number(pr.machine_cost || (hrs * rate)),
+                status: 'Planned',
+              });
+            });
+          }
+        }
+      } catch {}
+    }
   }
 
   // Part routing steps fallback
@@ -612,6 +760,7 @@ function computeProjectDetail(
       return (
         (pPartKey && rKey === pPartKey) ||
         (pPart && (rName === pPart || rName.includes(pPart) || pPart.includes(rName))) ||
+        (pPartKey && (rName.includes(pPartKey) || pPartKey.includes(rName))) ||
         (pPartKey && rCode && (rCode === pPartKey || rCode.includes(pPartKey)))
       );
     });
@@ -621,10 +770,11 @@ function computeProjectDetail(
         const cycle = Number(rs.cycle_time) || 0;
         const setup = Number(rs.setup_time) || 0;
         const hrs = Math.max(0.5, (setup + 1 * cycle) / 60);
+        const stepRate = Number(rs.cost_per_hour || rs.rate || 0);
         mergedOps.push({
           id: rs.id || `routing-${idx}`,
           job_no: null,
-          op_no: rs.step_no || idx + 1,
+          op_no: rs.step_no || rs.sequence || idx + 1,
           operation: opName,
           machine: rs.machine || '',
           operator: '',
@@ -635,8 +785,38 @@ function computeProjectDetail(
           setup_time: String(setup),
           actual_minutes: String(Math.round(hrs * 60)),
           hours: hrs,
+          rate: stepRate,
+          cost: Math.round(hrs * (stepRate || 350) * 100) / 100,
           status: 'Planned',
         });
+      });
+    }
+  }
+
+  // If work order was completed, estimate machining for completed pieces
+  if (mergedOps.length === 0) {
+    const completedWo = allWorkOrders.find((w: any) => ['Completed', 'Done', 'Dispatched'].includes(String(w.status)) || Number(w.completed) > 0);
+    if (completedWo) {
+      const compQty = Number(completedWo.completed) || Number(completedWo.quantity) || 1;
+      const defaultRateVal = (procRates || []).find((pr: any) => Number(pr.cost_per_hour || pr.hourly_rate) > 0)?.cost_per_hour || 350;
+      const estHrs = Math.max(1, compQty * 0.5);
+      mergedOps.push({
+        id: `auto-op-${completedWo.id || 'wo'}`,
+        job_no: completedWo.wo_no,
+        op_no: 1,
+        operation: 'Machining & Turning',
+        machine: 'CNC Lathe / VMC',
+        operator: 'Operator',
+        qty_planned: String(completedWo.quantity || compQty),
+        qty_completed: String(compQty),
+        qty_rejected: String(completedWo.rejected || 0),
+        cycle_time: '15',
+        setup_time: '15',
+        actual_minutes: String(Math.round(estHrs * 60)),
+        hours: estHrs,
+        rate: Number(defaultRateVal),
+        cost: Math.round(estHrs * Number(defaultRateVal) * 100) / 100,
+        status: completedWo.status || 'Completed',
       });
     }
   }
@@ -647,9 +827,10 @@ function computeProjectDetail(
     let cost = vo.cost;
     let rate = vo.rate;
     let matched = vo.matched;
-    if ((!cost || cost === 0) && vo.hours > 0) {
+    const hrs = Number(vo.hours) > 0 ? Number(vo.hours) : 1;
+    if (!cost || cost === 0) {
       rate = Number(rate) > 0 ? Number(rate) : Number(defaultRate);
-      cost = Math.round(vo.hours * rate * 100) / 100;
+      cost = Math.round(hrs * rate * 100) / 100;
       matched = true;
     }
     return { ...vo, rate, cost, matched };
@@ -705,7 +886,7 @@ function computeProjectDetail(
       profit,
       profit_pct: profitPct,
     },
-    categories: [],
+    categories: baseReport?.categories || [],
     processes: baseReport?.processes || [],
     materials: allMaterials,
     services: [...(baseReport?.services || []), ...serviceRows],
@@ -731,9 +912,31 @@ function ProjectCostingBox({
 
   const pData = detail?.project || project;
   const jobs = detail?.work_orders || [];
-  
+
+  const materials = detail?.materials || [];
+  const services = detail?.services || [];
+  const processes = detail?.processes || [];
+  const processOps = detail?.processOps || [];
+  const expenses = detail?.expenses || [];
+
+  const totalMaterialsAmount = useMemo(
+    () => materials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0),
+    [materials]
+  );
+  const totalServiceAmount = useMemo(
+    () =>
+      services.reduce((sum, m) => sum + (Number(m.amount) || 0), 0) +
+      processes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+    [services, processes]
+  );
+  const totalExpensesAmount = useMemo(
+    () => expenses.reduce((n, x) => n + (Number(x.total_amount) || 0), 0),
+    [expenses]
+  );
+  const processOpsTotal = detail?.processOpsTotal || 0;
+
   const calculatedTotal = totalMaterialsAmount + totalServiceAmount + processOpsTotal + totalExpensesAmount;
-  const totalActual = calculatedTotal > 0 ? calculatedTotal : (Number(pData.actual_cost) > 0 ? Number(pData.actual_cost) : null);
+  const totalActual = calculatedTotal > 0 ? calculatedTotal : (Number(pData.actual_cost) > 0 ? Number(pData.actual_cost) : (Number(pData.planned_cost) > 0 ? Number(pData.planned_cost) : null));
 
   const salesNum = Number(pData.sales_value) || 0;
   const profit = salesNum > 0 && totalActual !== null ? (salesNum - totalActual) : (pData.profit ? Number(pData.profit) : null);
@@ -741,7 +944,6 @@ function ProjectCostingBox({
     ? (((salesNum - totalActual) * 100) / salesNum).toFixed(1)
     : (pData.profit_pct ?? null);
 
-  
   // Merged services (outside processes + service inwards)
   const allServices = useMemo(() => {
     return [
@@ -1064,6 +1266,8 @@ export function ProjectCostingPage() {
         { data: sheetRows },
         { data: procData },
         { data: bomRows },
+        { data: partRows },
+        { data: quoteRows },
         quoteLookup,
       ] = await Promise.all([
         supabase.from('cnc_inwards').select('*'),
@@ -1071,10 +1275,12 @@ export function ProjectCostingPage() {
         supabase.from('cnc_job_cards').select('*').order('created_at', { ascending: false }).limit(2000),
         supabase.from('cnc_operation_plans').select('*').order('created_at', { ascending: false }).limit(500),
         supabase.from('cnc_work_order_operations').select('*').order('operation_sequence'),
-        supabase.from('cnc_part_routings').select('id, product_name, product_code, cnc_part_routing_steps(*)').eq('status', 'Active'),
-        supabase.from('cnc_costing_sheets').select('*').order('version', { ascending: false }).limit(100),
+        supabase.from('cnc_part_routings').select('id, product_name, product_code, status, cnc_part_routing_steps(*)'),
+        supabase.from('cnc_costing_sheets').select('*').order('version', { ascending: false }).limit(200),
         supabase.from('cnc_processes').select('*').order('process_code'),
         supabase.from('cnc_bom').select('*'),
+        supabase.from('cnc_parts').select('id, part_no, part_name, material, unit_price, weight, unit'),
+        supabase.from('cnc_quotations').select('id, quote_no, customer, part_name, total_value, description, quantity, unit_price').limit(500),
         loadQuoteLookup(),
       ]);
 
@@ -1090,6 +1296,8 @@ export function ProjectCostingPage() {
         allRoutings: routingRows || [],
         allCostingSheets: sheetRows || [],
         allBoms: bomRows || [],
+        allParts: partRows || [],
+        allQuotations: quoteRows || [],
         quoteLookup,
       };
 
