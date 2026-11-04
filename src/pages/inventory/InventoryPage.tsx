@@ -1031,14 +1031,6 @@ export function InventoryPage() {
               placeholder="Search by product name, code..."
               className={`${selectCls} w-44`}
             />
-            <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
-              <option value="">All Categories</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select aria-label="Supplier" value={draft.supplierId} onChange={e => setDraft({ ...draft, supplierId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
-              <option value="">All Suppliers</option>
-              {(filters?.suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
             <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
