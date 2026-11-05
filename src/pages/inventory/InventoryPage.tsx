@@ -55,6 +55,8 @@ const SHOW_ADD_PRODUCT_BUTTONS = false;
 const DONUT_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#9333ea', '#ef4444', '#0891b2', '#db2777', '#65a30d', '#64748b'];
 
 const money = (v: string | null | undefined) => formatINR(v, { symbol: false });
+/** Total price of the stock on hand = available qty x unit price. */
+const totalPrice = (r: { current_stock?: unknown; rate?: unknown }) => Math.round(Number(r.current_stock || 0) * Number(r.rate || 0) * 100) / 100;
 const rowKey = (r: { kind: ItemKind; id: string }) => `${r.kind}:${r.id}`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -508,7 +510,8 @@ export function InventoryPage() {
         case 'warehouse': return (r.warehouse_name || r.location_name || '').toLowerCase();
         case 'unit': return (r.unit || '').toLowerCase();
         case 'qty': return Number(r.current_stock || 0);
-        case 'value': return Number(r.value ?? (Number(r.current_stock || 0) * Number(r.rate || 0)));
+        case 'value': return totalPrice(r);
+        case 'rate': return Number(r.rate || 0);
         case 'min_stock': return Number(r.min_stock || 0);
         case 'status': return (r.status || '').toLowerCase();
         case 'movement': return lastMovement[rowKey(r)] || '';
@@ -869,6 +872,44 @@ export function InventoryPage() {
     }
   };
 
+  const handleInlineRateChange = async (r: InventoryItemRow, val: string, input?: HTMLInputElement) => {
+    if (val === '' ) { if (input) input.value = r.rate || '0'; return; }
+    if (!isNonNegativeDecimal(val)) {
+      alert('Unit price must be a number of zero or more.');
+      if (input) input.value = r.rate || '0';
+      return;
+    }
+    if (Number(val) === Number(r.rate || 0)) return;
+    setRowBusyId(r.id);
+    try {
+      await inventoryApi.saveItem({
+        id: r.id,
+        kind: r.kind,
+        code: r.code,
+        name: r.name,
+        category_id: r.category_id ?? '',
+        specification: r.specification ?? '',
+        unit: r.unit ?? 'Nos',
+        min_stock: r.min_stock ?? '0',
+        reorder_qty: r.reorder_qty ?? '0',
+        rate: val,
+        supplier_id: r.supplier_id || null,
+        location_id: r.location_id || null,
+        image_url: r.image_url,
+        status: r.item_status ?? 'Active',
+      });
+      setItems(prev => {
+        if (!prev) return prev;
+        return { ...prev, rows: prev.rows.map(row => row.id === r.id ? { ...row, rate: val } : row) };
+      });
+    } catch (e: any) {
+      alert(`Failed to update unit price: ${errText(e)}`);
+      if (input) input.value = r.rate || '0';
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
   const handleInlineMinStockChange = async (r: InventoryItemRow, val: string) => {
     if (!isNonNegativeDecimal(val)) {
       alert('Reorder level must be a non-negative number.');
@@ -928,15 +969,16 @@ export function InventoryPage() {
       }
       if (fgTab) {
         exportCsv(`Finished_Goods_Stock_${todayISO()}`, [
-          ['#', 'Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Available Qty (Opened Stock)', 'Value (INR)', 'Stock Status', 'Last Movement'],
+          ['#', 'Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Unit Price (INR)', 'Available Qty (Opened Stock)', 'Total Price (INR)', 'Stock Status', 'Last Movement'],
           ...all.map((r, i) => [
             i + 1,
             r.name,
             r.category_name ?? 'Finished Goods',
             [r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—',
             r.unit ?? 'Nos',
+            r.rate ?? '0',
             r.current_stock,
-            r.value ?? (Number(r.current_stock || 0) * Number(r.rate || 0)).toFixed(2),
+            totalPrice(r).toFixed(2),
             r.status ?? 'In Stock',
             lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : '—',
           ]),
@@ -946,6 +988,7 @@ export function InventoryPage() {
             'Finished Goods',
             fg.warehouseOf(r)?.name || '—',
             'Nos',
+            '—',
             r.available,
             '—',
             'In Stock',
@@ -956,20 +999,20 @@ export function InventoryPage() {
       }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
+        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
         ...all.map((r, i) => [
           i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
-          r.rate, r.value, r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
+          r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
         ]),
       ]);
     } catch (e) {
       if (items?.rows && items.rows.length > 0) {
         const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
         exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Rate (INR)', 'Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
+          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
           ...items.rows.map((r, i) => [
             i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
-            r.rate, r.value, r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
+            r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
           ]),
         ]);
       } else {
@@ -1334,6 +1377,17 @@ export function InventoryPage() {
                   </th>
                   <th className="px-3 py-3 text-right">
                     <ColumnHeaderFilter
+                      label="Unit Price (₹)"
+                      col="rate"
+                      align="right"
+                      showFilterIcon={false}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort('rate')}
+                    />
+                  </th>
+                  <th className="px-3 py-3 text-right">
+                    <ColumnHeaderFilter
                       label={fgTab ? 'Available Qty (Opened Stock)' : 'Available Qty'}
                       col="qty"
                       align="right"
@@ -1347,7 +1401,7 @@ export function InventoryPage() {
                   </th>
                   <th className="px-3 py-3 text-right">
                     <ColumnHeaderFilter
-                      label="Value (₹)"
+                      label="Total Price (₹)"
                       col="value"
                       align="right"
                       showFilterIcon={false}
@@ -1407,7 +1461,7 @@ export function InventoryPage() {
                 ))}
                 {!itemsLoading && items && items.rows.length === 0 && fgVisible.length === 0 && (
                   <tr>
-                    <td colSpan={fgTab ? 10 : 11} className="px-3 py-12 text-center text-slate-500">
+                    <td colSpan={fgTab ? 11 : 12} className="px-3 py-12 text-center text-slate-500">
                       {fgTab ? (
                         <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
                           <Archive size={32} className="text-indigo-400" />
@@ -1526,6 +1580,26 @@ export function InventoryPage() {
                       )}
                     </td>
 
+                    {/* Unit Price (inline editable) */}
+                    <td className="px-3 py-2 text-right">
+                      {canManage ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          aria-label={`Unit price for ${r.name}`}
+                          className="h-8 w-24 px-2 text-[12px] text-right tabular-nums bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-800 disabled:opacity-50"
+                          defaultValue={r.rate || '0'}
+                          key={`${r.id}-${r.rate}`}
+                          disabled={rowBusyId === r.id}
+                          onBlur={e => void handleInlineRateChange(r, e.target.value.trim(), e.target)}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        />
+                      ) : (
+                        <span className="tabular-nums font-medium text-slate-800">{money(r.rate)}</span>
+                      )}
+                    </td>
+
                     {/* Available Qty */}
                     <td className="px-3 py-2 text-right">
                       <button
@@ -1540,7 +1614,7 @@ export function InventoryPage() {
                     </td>
 
                     {/* Value */}
-                    <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.value)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900" title={`${formatQty(r.current_stock)} × ${money(r.rate)}`}>{money(String(totalPrice(r)))}</td>
 
                     {/* Reorder Level (hidden on Finished Goods tab) */}
                     {!fgTab && (
@@ -1613,6 +1687,7 @@ export function InventoryPage() {
                         ) : <span className="text-slate-600">{wh ? `${wh.name}${wh.isDefault ? ' (default)' : ''}` : '—'}</span>}
                       </td>
                       <td className="px-3 py-2.5 text-slate-600">pcs</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">—</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800" title={`Finished ${r.finished} · Delivered ${r.delivered}`}>{formatQty(String(r.available))}</td>
                       <td className="px-3 py-2.5 text-right text-slate-300">—</td>
                       {!fgTab && <td className="px-3 py-2.5 text-right text-slate-300">—</td>}
@@ -3160,7 +3235,10 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       ['FG-SHAFT-120', 'Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
     ];
 
-    exportCsv('inventory-import-template', [IMPORT_COLUMNS as unknown as string[], ...sampleRows]);
+    // same columns as the import expects, with the unit price named plainly and the total price (qty x unit price) added for reference
+    const header = IMPORT_COLUMNS.map(c => (c === 'rate' ? 'unit_price' : c)).concat('total_price');
+    const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[10]) * Number(row[7]) * 100) / 100)]);
+    exportCsv('inventory-import-template', [header, ...withTotal]);
   };
 
   const readFile = async (file: File | null) => {
@@ -3242,12 +3320,14 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
         unit: ['unit', 'uom', 'unit_of_measure', 'measurement_unit', 'units'],
         min_stock: ['min_stock', 'reorder_level', 'min_order_qty', 'minimum_stock', 'safety_stock', 'min_qty', 'min_quantity'],
         reorder_qty: ['reorder_qty', 'reorder_quantity', 'order_qty', 'reorder_amount', 'batch_size'],
-        rate: ['value', 'value_inr', 'value_rs', 'stock_value', 'total_value', 'rate', 'price', 'unit_price', 'standard_cost', 'cost', 'unit_rate', 'mrp', 'sales_price'],
+        rate: ['unit_price', 'unit_price_inr', 'unit_price_rs', 'rate', 'rate_inr', 'rate_rs', 'price', 'unit_rate', 'standard_cost', 'cost', 'mrp', 'sales_price'],
         supplier: ['supplier', 'supplier_name', 'vendor', 'vendor_name', 'preferred_supplier'],
         location: ['warehouse_location', 'warehouse', 'warehouse_name', 'location', 'location_code', 'location_name', 'store', 'rack', 'bin', 'shelf'],
         opening_qty: ['available_qty', 'opened_stock', 'available_stock', 'available_quantity', 'opening_qty', 'opening_stock', 'stock', 'qty', 'quantity', 'initial_stock', 'on_hand', 'current_stock'],
       };
 
+      // "Total Price" (qty x unit price) is read too: when a row has no unit price, it is worked out as total price / qty.
+      const TOTAL_SYNONYMS = ['total_price', 'total_price_inr', 'total_price_rs', 'total', 'value', 'value_inr', 'value_rs', 'stock_value', 'total_value'];
       const firstRow = nonEmptyGrid[0].map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
 
       // Check how many recognized columns are in the first row
@@ -3262,6 +3342,8 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
           recognizedCols++;
         }
       });
+
+      const totalIdx = firstRow.findIndex(header => TOTAL_SYNONYMS.includes(header));
 
       // Does the first row look like a header row?
       const hasHeader = recognizedCols >= 2 || (colIndices.code !== undefined && colIndices.name !== undefined);
@@ -3289,6 +3371,15 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
 
         // Basic sanity check: code or name must be present
         if (!rowObj.code && !rowObj.name) return; // skip blank rows
+
+        // Unit price: as typed, or total price / qty when only the total was given
+        const num = (v: unknown) => { const n = Number(String(v ?? '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
+        rowObj.rate = String(rowObj.rate ?? '').replace(/[^0-9.]/g, '');
+        if (hasHeader && totalIdx >= 0 && !(num(rowObj.rate) > 0)) {
+          const total = num(r[totalIdx]);
+          const qty = num(rowObj.opening_qty);
+          if (total > 0 && qty > 0) rowObj.rate = String(Math.round((total / qty) * 10000) / 10000);
+        }
 
         // Auto-generate code from product name if code was left blank in the spreadsheet
         if (!rowObj.code && rowObj.name) {
@@ -3373,18 +3464,18 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
           <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">
             <li><b>Supported formats</b>: Excel Workbook (<b>.xlsx</b>), CSV (<b>.csv</b>), or TSV (<b>.tsv</b>).</li>
             <li><b>category</b>: category name or code; <b>supplier</b>: supplier name; <b>location</b>: location code or name.</li>
-            <li>Quantities and rate are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry.</li>
+            <li>Quantities and prices are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry. <b>unit_price</b> is the price of one unit; <b>total_price</b> (qty × unit price) is optional and only used to work out the unit price when it is blank.</li>
             <li>Invalid or duplicate rows are skipped and listed; valid rows are saved.</li>
           </ul>
           <div className="flex flex-wrap gap-2 mt-3">
             <button onClick={() => {
               const sampleRows = [
-                ['Precision Drive Shaft 120mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '50', '850'],
-                ['Aluminium CNC Flange 50mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '120', '340'],
-                ['Hydraulic Valve Block VB-2', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '35', '1200'],
+                ['Precision Drive Shaft 120mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '850', '50', '42500'],
+                ['Aluminium CNC Flange 50mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '340', '120', '40800'],
+                ['Hydraulic Valve Block VB-2', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '1200', '35', '42000'],
               ];
               exportCsv('finished-goods-stock-template', [
-                ['Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Available Qty', 'Value (₹)'],
+                ['Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Unit Price (₹)', 'Available Qty', 'Total Price (₹)'],
                 ...sampleRows,
               ]);
             }} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition">

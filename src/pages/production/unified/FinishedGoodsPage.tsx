@@ -13,6 +13,9 @@ import { formatWorkOrderOption } from '@/lib/workOrderFormat';
 
 const WO_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Completed', 'Dispatched'];
 
+// Temporary toggle: set to `true` to restore the "+ Add Finished Goods" button
+const SHOW_ADD_FINISHED_GOODS = false;
+
 export function FinishedGoodsPage() {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -332,9 +335,11 @@ export function FinishedGoodsPage() {
         <div className="flex items-center gap-3">
           <Button variant="secondary" className="gap-2 bg-white"><Filter size={16} /> Stock Report</Button>
           <Button variant="secondary" className="gap-2 bg-white" onClick={handleExport} title="Export CSV"><Upload size={16} /> Export</Button>
-          <Button variant="primary" className="gap-2 bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-500/20" onClick={() => setShowAddFG(true)}>
-            <Plus size={16} /> Add Finished Goods
-          </Button>
+          {SHOW_ADD_FINISHED_GOODS && (
+            <Button variant="primary" className="gap-2 bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-500/20" onClick={() => setShowAddFG(true)}>
+              <Plus size={16} /> Add Finished Goods
+            </Button>
+          )}
         </div>
       </div>
 
