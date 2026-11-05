@@ -278,6 +278,7 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
 
 export const inventoryApi = {
   filters: () => call<InventoryFilters>('erp_inventory_filters'),
+  addCategory: (name: string, kind: 'PURCHASED' | 'MANUFACTURED') => call<{ id: string; code: string; name: string; kind: string }>('erp_add_inventory_category', { p_name: name, p_kind: kind }),
   items: (q: InventoryItemsQuery) => call<InventoryItemsPage>('erp_inventory_items', {
     p_category_id: q.categoryId, p_search: q.search, p_supplier_id: q.supplierId, p_status: q.status,
     p_warehouse_id: q.warehouseId, p_page: q.page, p_page_size: q.pageSize,

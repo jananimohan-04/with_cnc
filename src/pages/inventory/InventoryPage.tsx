@@ -370,6 +370,26 @@ export function InventoryPage() {
     return () => { cancelled = true; };
   }, [companyId]);
 
+  // "+ New Category": asks for a name, creates it and selects it
+  const addCategory = async () => {
+    const name = (window.prompt('New category name') ?? '').trim();
+    if (!name) return;
+    const purchased = window.confirm(`Is "${name}" bought from suppliers?
+
+OK = Purchased (like Raw Material, Tools)
+Cancel = Manufactured in-house (like Finished Goods)`);
+    try {
+      const created = await inventoryApi.addCategory(name, purchased ? 'PURCHASED' : 'MANUFACTURED');
+      const res = await inventoryApi.filters();
+      setFilters(res);
+      const next = { ...draft, categoryId: created.id };
+      setDraft(next);
+      applyFilters(next);
+    } catch (e) {
+      window.alert(errText(e));
+    }
+  };
+
   // ---- Global header search (?q=) ------------------------------------------------------------
   useEffect(() => {
     if (q === null) return;
@@ -1238,9 +1258,10 @@ export function InventoryPage() {
               placeholder="Search by product name, code..."
               className={`${selectCls} w-44`}
             />
-            <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
+            <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else setDraft({ ...draft, categoryId: e.target.value }); }} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {canManage && <option value="__new__">+ New Category</option>}
             </select>
             <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
