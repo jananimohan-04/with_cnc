@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 // Organisation profile (logo, signature, GSTIN, contacts, bank) plus optional sub-companies (branches / subsidiaries).
 // There is one profile per document type: quotations, invoices and delivery challans each print their own. It is kept in
-// the database for the whole company (cnc_company_profiles), with this browser's copy as a cache.
+// the database for each login (cnc_company_profiles, one row per login and document), with this browser's copy as a cache.
 
 export type ProfileKind = 'quotation' | 'invoice' | 'dc';
 export const PROFILE_KINDS: { kind: ProfileKind; label: string; short: string }[] = [
@@ -43,8 +43,11 @@ export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 export const IMAGE_TYPES = ['image/png', 'image/jpeg'];
 
 // the quotation profile keeps its original key, so profiles saved before invoices / challans had one are still found
+// Each login has its own profile, so this browser's copy is kept per login too (two people sharing a browser never see each other's).
+let owner = '';
+export const setProfileOwner = (id: string | null | undefined) => { owner = id ?? ''; };
 const key = (companyId: string | null | undefined, kind: ProfileKind = 'quotation') =>
-  kind === 'quotation' ? `argus.orgprofile.${companyId ?? 'all'}` : `argus.orgprofile.${kind}.${companyId ?? 'all'}`;
+  `argus.orgprofile.${owner ? `${owner}.` : ''}${kind === 'quotation' ? '' : `${kind}.`}${companyId ?? 'all'}`;
 
 /** Extra arguments for the database calls: the quotation profile is called exactly as before. */
 const kindArgs = (kind: ProfileKind): Record<string, unknown> => (kind === 'quotation' ? {} : { p_kind: kind });
@@ -87,9 +90,9 @@ export const hasContent = (v: any): boolean => {
 };
 
 /**
- * The profile is shared by everyone in the company (database), with this browser's copy kept as a cache:
- *   - the company already has a saved profile  -> it replaces the browser copy
- *   - it has none, but this browser has one      -> that one is uploaded, so it becomes the company's
+ * The profile belongs to the signed-in login (database; a login without its own sees the company's older shared one), with this browser's copy kept as a cache:
+ *   - this login (or the company's older shared profile) is saved -> it replaces the browser copy
+ *   - none yet, but this browser has one                         -> that one is uploaded as this login's
  * Falls back to the browser copy if the database call is not available (migration not applied, offline).
  */
 export async function syncProfileStore(companyId: string | null | undefined, defaults: { orgName: string; email: string }, kind: ProfileKind = 'quotation'): Promise<ProfileStore> {
@@ -109,7 +112,7 @@ export async function syncProfileStore(companyId: string | null | undefined, def
   return loadProfileStore(companyId, defaults, kind);
 }
 
-/** Saves the profile for the whole company. Returns an error message, or null when saved. */
+/** Saves the profile for the signed-in login only. Returns an error message, or null when saved. */
 export async function saveProfileRemote(st: ProfileStore, kind: ProfileKind = 'quotation'): Promise<string | null> {
   try {
     const { error } = await supabase.rpc('erp_save_company_profile', { p_data: st, ...kindArgs(kind) } as never);

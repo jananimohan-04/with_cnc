@@ -17,6 +17,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { isTauri } from '@/lib/desktop/isTauri';
 import { UpdatesSettingsPage } from '@/components/desktop/UpdatesSettingsPage';
 import { DocumentProfilePage } from '@/pages/quotation/CompanyProfilePage';
+import { ProfilesCreatedPanel } from '@/pages/admin/ProfilesCreatedPanel';
 import {
   ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES, VISIBLE_MODULES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
@@ -1638,10 +1639,12 @@ export function PermissionsPage() { return <AdminStub title="Permissions" descri
 // the app updates on the desktop app. A link like /admin/settings?tab=invoice opens straight on a tab.
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
+  const { isSuperAdmin } = useAuth();
   const tabs: { id: string; label: string; hint: string; node: JSX.Element }[] = [
     { id: 'quotation', label: 'Quotation Profile', hint: 'Printed on quotations', node: <DocumentProfilePage kind="quotation" embedded /> },
     { id: 'invoice', label: 'Invoice Profile', hint: 'Printed on invoices', node: <DocumentProfilePage kind="invoice" embedded /> },
     { id: 'dc', label: 'Delivery Challan Profile', hint: 'Printed on delivery challans', node: <DocumentProfilePage kind="dc" embedded /> },
+    ...(isSuperAdmin ? [{ id: 'created', label: 'Profiles Created', hint: 'Who created which profile', node: <ProfilesCreatedPanel /> }] : []),
     { id: 'updates', label: 'App Updates & Releases', hint: 'Version-wise history & updates', node: <UpdatesSettingsPage /> },
   ];
   const active = tabs.find((t) => t.id === params.get('tab')) ?? tabs[0];

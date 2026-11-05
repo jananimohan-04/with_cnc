@@ -3,7 +3,7 @@ import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Pl
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import {
-  cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, syncProfileStore, validateProfile, validateSub,
+  cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, setProfileOwner, syncProfileStore, validateProfile, validateSub,
   type OrgProfile, type ProfileKind, type ProfileStore, type SubCompany,
 } from '@/lib/companyProfile';
 import { clearDocumentSellerCache } from '@/lib/documentProfile';
@@ -31,7 +31,8 @@ export function InvoiceProfilePage({ embedded }: { embedded?: boolean }) { retur
 export function DcProfilePage({ embedded }: { embedded?: boolean }) { return <DocumentProfilePage kind="dc" embedded={embedded} />; }
 
 export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { kind?: ProfileKind; embedded?: boolean }) {
-  const { company, email: authEmail } = useAuth();
+  const { company, email: authEmail, profile: me } = useAuth();
+  setProfileOwner(me?.id);
   const cid = company?.id ?? null;
   const doc = DOC[kind];
   const defaults = { orgName: company?.company_name ?? '', email: authEmail ?? '' };
@@ -54,23 +55,23 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
   const addToList = (k: 'phones' | 'emails') => setP(x => ({ ...x, [k]: [...x[k], ''] }));
   const dropFromList = (k: 'phones' | 'emails', i: number) => setP(x => ({ ...x, [k]: x[k].length > 1 ? x[k].filter((_, j) => j !== i) : [''] }));
 
-  // Shared by everyone in the company: load the company's saved profile (or upload this browser's the first time).
+  // Belongs to this login: load its saved profile (or the company's older shared one, or upload this browser's the first time).
   useEffect(() => {
     let off = false;
     void syncProfileStore(cid, defaults, kind).then(s => { if (!off) { setStore(s); setP(s.profile); } });
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, kind]);
+  }, [cid, kind, me?.id]);
 
   const persist = (next: ProfileStore, okText: string): boolean => {
     if (!saveProfileStore(cid, next, kind)) { setNotice({ kind: 'err', text: 'Could not save: browser storage is unavailable or full. Try a smaller logo / signature.' }); return false; }
     setStore(next); setNotice({ kind: 'ok', text: okText });
-    // ...and for the whole company, so every login under it sees the same profile.
+    // ...and in the database for this login, so it follows them to any browser.
     void saveProfileRemote(next, kind).then(err => {
       clearDocumentSellerCache();   // the next PDF uses these details at once
       setNotice(err
-        ? { kind: 'err', text: `Saved in this browser only; it is not shared with your company yet: ${err}` }
-        : { kind: 'ok', text: `${okText}. Shared with everyone in your company.` });
+        ? { kind: 'err', text: `Saved in this browser only; it is not saved to your login yet: ${err}` }
+        : { kind: 'ok', text: `${okText}. Saved to your login.` });
     });
     return true;
   };
