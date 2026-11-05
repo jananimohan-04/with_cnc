@@ -3354,24 +3354,23 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       </>}>
       <ModalError message={error} />
       <div className="space-y-4">
-        <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FormField label="Spreadsheet or CSV File (.xlsx, .csv)" inline>
+            <input
+              type="file"
+              accept=".xlsx,.csv,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/tab-separated-values"
+              onChange={e => readFile(e.target.files?.[0] ?? null)}
+              className="!w-auto h-9 text-xs text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+            />
+          </FormField>
           <button
             type="button"
             onClick={downloadTemplate}
-            className="h-9 px-3.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+            className="h-9 px-3.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
           >
             <Download size={14} /> Download Full Inventory Template (.csv)
           </button>
         </div>
-
-        <FormField label="Spreadsheet or CSV File (.xlsx, .csv)">
-          <input
-            type="file"
-            accept=".xlsx,.csv,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/tab-separated-values"
-            onChange={e => readFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-          />
-        </FormField>
 
         {parseError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
