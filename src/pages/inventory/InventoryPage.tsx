@@ -1238,6 +1238,10 @@ export function InventoryPage() {
               placeholder="Search by product name, code..."
               className={`${selectCls} w-44`}
             />
+            <select aria-label="Category" value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
+              <option value="">All Categories</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
             <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -3128,16 +3132,16 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       : ['Raw Material', 'Bought-out Items', 'Tools', 'Consumables', 'Finished Goods'];
 
     const sampleRows = [
-      ['Stainless Steel Round Bar 25mm', catNames.find(c => /raw/i.test(c)) || catNames[0] || 'Raw Material', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Main Store', '25'],
-      ['Deep Groove Ball Bearing 6204', catNames.find(c => /bought|component/i.test(c)) || catNames[1] || 'Bought-out Items', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Main Store', '60'],
-      ['Carbide End Mill 10mm 4-Flute', catNames.find(c => /tool/i.test(c)) || catNames[2] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '5', '20', '1250', 'Precision Tools Inc', 'Tool Store', '15'],
-      ['CNC Soluble Cutting Oil 20L', catNames.find(c => /consum/i.test(c)) || catNames[3] || 'Consumables', 'Water Soluble Coolant 20L', 'Ltr', '10', '40', '320', 'Industrial Oils Co', 'Chemical Store', '50'],
-      ['Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
+      ['Stainless Steel Round Bar 25mm', catNames.find(c => /raw/i.test(c)) || catNames[0] || 'Raw Material', 'SS304 Grade 25mm Dia Rod', 'Jindal', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Main Store', '25'],
+      ['Deep Groove Ball Bearing 6204', catNames.find(c => /bought|component/i.test(c)) || catNames[1] || 'Bought-out Items', '20x47x14mm Chrome Steel', 'SKF', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Main Store', '60'],
+      ['Carbide End Mill 10mm 4-Flute', catNames.find(c => /tool/i.test(c)) || catNames[2] || 'Tools', 'TiAlN Coated Solid Carbide', 'Sandvik', 'Nos', '5', '20', '1250', 'Precision Tools Inc', 'Tool Store', '15'],
+      ['CNC Soluble Cutting Oil 20L', catNames.find(c => /consum/i.test(c)) || catNames[3] || 'Consumables', 'Water Soluble Coolant 20L', 'Castrol', 'Ltr', '10', '40', '320', 'Industrial Oils Co', 'Chemical Store', '50'],
+      ['Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', '', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
     ];
 
     // the columns the import expects, plus the total value (qty x unit value) for reference
     const header: string[] = [...IMPORT_HEADERS, 'total_value'];
-    const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[9]) * Number(row[6]) * 100) / 100)]);
+    const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[10]) * Number(row[7]) * 100) / 100)]);
     exportCsv('inventory-import-template', [header, ...withTotal]);
   };
 
@@ -3227,6 +3231,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
 
       // "Total Value" (qty x unit value) is read too: when a row has no unit value, it is worked out as total value / qty.
       const TOTAL_SYNONYMS = ['total_value', 'total_value_inr', 'total_value_rs', 'total_price', 'total_price_inr', 'total_price_rs', 'total', 'value', 'value_inr', 'value_rs', 'stock_value'];
+      const BRAND_SYNONYMS = ['brand', 'brand_name', 'make', 'manufacturer', 'company'];
       const firstRow = nonEmptyGrid[0].map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
 
       // Check how many recognized columns are in the first row
@@ -3243,6 +3248,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       });
 
       const totalIdx = firstRow.findIndex(header => TOTAL_SYNONYMS.includes(header));
+      const brandIdx = firstRow.findIndex(header => BRAND_SYNONYMS.includes(header));
 
       // Does the first row look like a header row?
       const hasHeader = recognizedCols >= 2 || colIndices.name !== undefined;
@@ -3269,6 +3275,12 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
 
         // Basic sanity check: code or name must be present
         if (!rowObj.name) return; // skip blank rows
+
+        // Brand is kept with the specification ("spec | brand"), so the same item from another brand stays a separate product
+        if (hasHeader && brandIdx >= 0) {
+          const brand = String(r[brandIdx] ?? '').trim();
+          if (brand && !rowObj.specification.toLowerCase().includes(brand.toLowerCase())) rowObj.specification = rowObj.specification ? `${rowObj.specification} | ${brand}` : brand;
+        }
 
         // Unit price: as typed, or total price / qty when only the total was given
         const num = (v: unknown) => { const n = Number(String(v ?? '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : 0; };

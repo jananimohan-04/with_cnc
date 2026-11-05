@@ -571,7 +571,7 @@ export const IMPORT_COLUMNS: (keyof ImportRow)[] = [
   'name', 'category', 'specification', 'unit', 'min_stock', 'reorder_qty', 'rate', 'supplier', 'location', 'opening_qty',
 ];
 /** The headings shown to the user for IMPORT_COLUMNS (same order). */
-export const IMPORT_HEADERS: string[] = ['name', 'category', 'specification', 'unit', 'min_stock', 'reorder_qty', 'unit_value', 'supplier', 'warehouse', 'opening_qty'];
+export const IMPORT_HEADERS: string[] = ['name', 'category', 'specification', 'brand', 'unit', 'min_stock', 'reorder_qty', 'unit_value', 'supplier', 'warehouse', 'opening_qty'];
 
 const isFinishedGoodsName = (n: unknown) => /finish/i.test(String(n ?? ''));
 const identity = (name: unknown, spec: unknown, category: unknown) =>
