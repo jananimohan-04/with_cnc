@@ -6,7 +6,6 @@ import { isTauri } from './lib/desktop/isTauri';
 import { installDesktopShims } from './lib/desktop/shims';
 import { startUpdateScheduler } from './lib/desktop/updater';
 import './index.css';
-import './premium-theme.css';
 
 // Desktop shell only: install compatibility shims (popups/print/downloads) before
 // any application code can open one, brand the window, and start update checks.
