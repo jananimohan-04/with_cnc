@@ -276,6 +276,29 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
   return { created, errors };
 }
 
+/** A warehouse needs a zone and a location before an item can sit in it: makes them when missing and returns the location id. */
+export async function ensureWarehouseLocation(whId: string, whName: string, compId: string): Promise<string> {
+  const fail = (what: string, err: { message?: string } | null) =>
+    new Error(`Could not set up a location in "${whName}" (${what}): ${err?.message ?? 'unknown error'}`);
+  const zCheck = await supabase.from('cnc_warehouse_zones').select('id').eq('warehouse_id', whId).limit(1);
+  if (zCheck.error) throw fail('zone lookup', zCheck.error);
+  let zoneId: string | undefined = zCheck.data?.[0]?.id;
+  if (!zoneId) {
+    zoneId = crypto.randomUUID();
+    const zIns = await supabase.from('cnc_warehouse_zones').insert([{ id: zoneId, warehouse_id: whId, code: 'GEN', name: 'General Zone', company_id: compId }]);
+    if (zIns.error) throw fail('zone', zIns.error);
+  }
+  const lCheck = await supabase.from('cnc_warehouse_locations').select('id').eq('zone_id', zoneId).limit(1);
+  if (lCheck.error) throw fail('location lookup', lCheck.error);
+  let locId: string | undefined = lCheck.data?.[0]?.id;
+  if (!locId) {
+    locId = crypto.randomUUID();
+    const lIns = await supabase.from('cnc_warehouse_locations').insert([{ id: locId, zone_id: zoneId, code: 'MAIN', name: whName || 'Main Store', company_id: compId }]);
+    if (lIns.error) throw fail('location', lIns.error);
+  }
+  return locId;
+}
+
 export const inventoryApi = {
   filters: () => call<InventoryFilters>('erp_inventory_filters'),
   addCategory: (name: string, kind: 'PURCHASED' | 'MANUFACTURED') => call<{ id: string; code: string; name: string; kind: string }>('erp_add_inventory_category', { p_name: name, p_kind: kind }),
@@ -396,15 +419,25 @@ export const inventoryApi = {
         if (!foundSup) copy.supplier = '';
       }
 
-      // "warehouse": a warehouse name (or a location code / name inside one); stored on the warehouse's first location
+      // "warehouse": a warehouse name; stored on the warehouse's first location (one is created if the warehouse has none yet)
       if (copy.location) {
         const want = copy.location.trim().toLowerCase();
-        const loc = (filters?.locations ?? []).find(l => l.code.trim().toLowerCase() === want || l.name.trim().toLowerCase() === want);
-        if (loc) copy.location = loc.code || loc.name;
-        else {
-          const wh = (filters?.warehouses ?? []).find(w => w.name.trim().toLowerCase() === want || w.code.trim().toLowerCase() === want);
-          const first = wh ? (filters?.locations ?? []).find(l => l.warehouse_id === wh.id) : undefined;
-          copy.location = first ? (first.code || first.name) : '';
+        const wh = (filters?.warehouses ?? []).find(w => w.name.trim().toLowerCase() === want || w.code.trim().toLowerCase() === want);
+        if (wh) {
+          let first = (filters?.locations ?? []).find(l => l.warehouse_id === wh.id);
+          if (!first && filters?.company?.id) {
+            try {
+              await ensureWarehouseLocation(wh.id, wh.name, filters.company.id);
+              filters = await inventoryApi.filters();
+              first = (filters?.locations ?? []).find(l => l.warehouse_id === wh.id);
+            } catch { /* reported below as an unknown warehouse */ }
+          }
+          if (first) copy.location = first.name;   // the name, because location codes repeat across warehouses
+          else { preErrors.push({ row: idx + 1, code: copy.name, message: `Could not set up a location in warehouse "${wh.name}"` }); continue; }
+        } else {
+          const loc = (filters?.locations ?? []).find(l => l.name.trim().toLowerCase() === want || l.code.trim().toLowerCase() === want);
+          if (loc) copy.location = loc.name;
+          else { preErrors.push({ row: idx + 1, code: copy.name, message: `Warehouse "${copy.location}" not found (create it in Warehouse Master first)` }); continue; }
         }
       }
 

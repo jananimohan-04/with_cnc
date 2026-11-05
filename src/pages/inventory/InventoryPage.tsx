@@ -1269,6 +1269,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
             </select>
             <button onClick={handleSearch} className={primaryBtn}>Search</button>
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
+            {canManage && <button onClick={() => void addCategory()} className={outlineBtn} title="Create a new category">+ New Category</button>}
 
             {canManage && SHOW_ADD_PRODUCT_BUTTONS && (
               fgTab ? (
@@ -3411,22 +3412,26 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 text-[11px] text-slate-500 uppercase border-b border-slate-100">
                     <tr>
-                      <th className="px-2.5 py-1.5">Code</th>
                       <th className="px-2.5 py-1.5">Name</th>
                       <th className="px-2.5 py-1.5">Category</th>
+                      <th className="px-2.5 py-1.5">Specification | Brand</th>
                       <th className="px-2.5 py-1.5">Unit</th>
-                      <th className="px-2.5 py-1.5">Rate</th>
+                      <th className="px-2.5 py-1.5">Unit Value</th>
+                      <th className="px-2.5 py-1.5">Supplier</th>
+                      <th className="px-2.5 py-1.5">Warehouse</th>
                       <th className="px-2.5 py-1.5">Opening Qty</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {rows.slice(0, 5).map((r, i) => (
                       <tr key={i} className="hover:bg-slate-50">
-                        <td className="px-2.5 py-1.5 font-medium text-slate-800">{r.code || '—'}</td>
                         <td className="px-2.5 py-1.5 text-slate-800 max-w-[140px] truncate">{r.name || '—'}</td>
                         <td className="px-2.5 py-1.5 text-slate-600">{r.category || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600 max-w-[160px] truncate">{r.specification || '—'}</td>
                         <td className="px-2.5 py-1.5 text-slate-600">{r.unit || '—'}</td>
                         <td className="px-2.5 py-1.5 text-slate-600">{r.rate || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600 max-w-[120px] truncate">{r.supplier || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-slate-600">{r.location || '—'}</td>
                         <td className="px-2.5 py-1.5 text-slate-600">{r.opening_qty || '0'}</td>
                       </tr>
                     ))}
@@ -3445,7 +3450,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
                 <p className="px-3 py-2 text-xs font-semibold text-red-700 bg-red-50">{formatQty(result.errors.length)} rows skipped</p>
                 <div className="max-h-60 overflow-y-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-xs text-slate-600 bg-slate-50"><th className="px-3 py-1.5 text-left w-16">Row</th><th className="px-3 py-1.5 text-left">Code</th><th className="px-3 py-1.5 text-left">Error</th></tr></thead>
+                    <thead><tr className="text-xs text-slate-600 bg-slate-50"><th className="px-3 py-1.5 text-left w-16">Row</th><th className="px-3 py-1.5 text-left">Product</th><th className="px-3 py-1.5 text-left">Error</th></tr></thead>
                     <tbody>
                       {result.errors.map((er, i) => (
                         <tr key={i} className="border-t border-slate-100">
