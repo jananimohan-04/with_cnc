@@ -365,6 +365,7 @@ export const inventoryApi = {
     let ownSupplierReady = false;
     const preErrors: { row: number; code: string | null; message: string }[] = [];
     const fileSeen = new Set<string>();
+    const newSuppliers = new Set<string>();   // suppliers created from this file (lower-case names)
 
     const normalizedRows: ImportRow[] = [];
     for (let idx = 0; idx < rows.length; idx++) {
@@ -414,9 +415,14 @@ export const inventoryApi = {
         if (!ownSupplierReady) { await ensureOwnSupplier(filters); ownSupplierReady = true; try { filters = await inventoryApi.filters(); } catch { /* keep */ } }
         copy.supplier = ownSupplier;
       }
-      if (copy.supplier && filters?.suppliers) {
-        const foundSup = filters.suppliers.find(s => s.name.trim().toLowerCase() === copy.supplier.trim().toLowerCase());
-        if (!foundSup) copy.supplier = '';
+      // A supplier named in the file that is not in the Suppliers list yet is added to it (instead of being dropped)
+      if (copy.supplier?.trim()) {
+        const supKey = copy.supplier.trim().toLowerCase();
+        const known = (filters?.suppliers ?? []).some(s => s.name.trim().toLowerCase() === supKey) || newSuppliers.has(supKey);
+        if (!known) {
+          const id = await ensureSupplier(copy.supplier);
+          if (id) newSuppliers.add(supKey); else copy.supplier = '';
+        }
       }
 
       // "warehouse": a warehouse name; stored on the warehouse's first location (one is created if the warehouse has none yet)
@@ -615,6 +621,20 @@ const identity = (name: unknown, spec: unknown, category: unknown) =>
  * Finished Goods are supplied by the company itself: finds the supplier named like the signed-in company, or creates it.
  * Returns its id, or null when it cannot be created (the product is then saved without a supplier rather than failing).
  */
+/** Finds the supplier with this name or adds it to the Suppliers list; null when it cannot be added. */
+export async function ensureSupplier(rawName: string, category = 'Supplier'): Promise<string | null> {
+  const name = String(rawName ?? '').trim();
+  if (!name) return null;
+  try {
+    const { data: again } = await supabase.from('cnc_suppliers').select('id').ilike('name', name).limit(1);
+    if (again && again.length) return String((again[0] as { id: unknown }).id);
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `sup-${Date.now()}`;
+    const { data, error } = await supabase.from('cnc_suppliers').insert({ id, name, category, status: 'Active' }).select('id').limit(1);
+    if (error) return null;
+    return data && data.length ? String((data[0] as { id: unknown }).id) : id;
+  } catch { return null; }
+}
+
 export async function ensureOwnSupplier(filters: { company?: { company_name?: string } | null; suppliers?: { id: string; name: string }[] } | null | undefined): Promise<string | null> {
   const name = String(filters?.company?.company_name ?? '').trim();
   if (!name) return null;
