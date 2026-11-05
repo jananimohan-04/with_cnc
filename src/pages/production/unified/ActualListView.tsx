@@ -457,35 +457,35 @@ export function ActualListView() {
 
       {/* Filter and Action Bar - Consistent with DataTable style */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 p-3 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex flex-wrap items-center gap-2 p-2 border-b border-slate-100 bg-slate-50/50">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="relative !w-44 max-w-[180px]">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search job card, WO, product, customer, machine, operator…"
+              placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-slate-400"
+              className="h-8 w-full pl-7 pr-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder:text-slate-400"
             />
           </div>
 
           {/* Date Range */}
-          <div className="flex items-center gap-1.5">
-            <Calendar size={14} className="text-slate-400" />
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 h-8">
+            <Calendar size={13} className="text-slate-400 shrink-0" />
             <input
               type="date"
               value={fDateFrom}
               onChange={(e) => setFDateFrom(e.target.value)}
-              className="px-2 py-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className="h-7 text-xs bg-transparent border-0 p-0 focus:outline-none !w-28 text-slate-700"
               title="From date"
             />
-            <span className="text-slate-400 text-xs">to</span>
+            <span className="text-slate-400 text-[11px]">to</span>
             <input
               type="date"
               value={fDateTo}
               onChange={(e) => setFDateTo(e.target.value)}
-              className="px-2 py-2 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className="h-7 text-xs bg-transparent border-0 p-0 focus:outline-none !w-28 text-slate-700"
               title="To date"
             />
           </div>
@@ -494,8 +494,7 @@ export function ActualListView() {
           <select
             value={fMachine}
             onChange={(e) => setFMachine(e.target.value)}
-            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+            className="h-8 !w-36 max-w-[144px] text-xs font-medium bg-white border border-slate-200 rounded-lg px-2 text-slate-700 truncate focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
           >
             <option value="All">All Machines</option>
             {machines.map((m) => (
@@ -507,8 +506,7 @@ export function ActualListView() {
           <select
             value={fOperator}
             onChange={(e) => setFOperator(e.target.value)}
-            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+            className="h-8 !w-36 max-w-[144px] text-xs font-medium bg-white border border-slate-200 rounded-lg px-2 text-slate-700 truncate focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
           >
             <option value="All">All Operators</option>
             {operators.map((op) => (
@@ -520,8 +518,7 @@ export function ActualListView() {
           <select
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value)}
-            className="px-3 py-2 text-sm font-medium bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 cursor-pointer appearance-none pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+            className="h-8 !w-32 max-w-[130px] text-xs font-medium bg-white border border-slate-200 rounded-lg px-2 text-slate-700 truncate focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
           >
             <option value="All">All Status</option>
             <option value="Running">Running Now</option>
@@ -530,13 +527,13 @@ export function ActualListView() {
           </select>
 
           {/* Quick Date Buttons */}
-          <div className="flex items-center border border-slate-200 rounded-md overflow-hidden bg-white">
+          <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white h-8">
             {(['all', 'today', 'week', 'month'] as const).map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => setQuickRange(r)}
-                className={`px-3 py-2 text-xs font-semibold transition border-r border-slate-200 last:border-r-0 ${
+                className={`px-2.5 h-full text-xs font-semibold transition border-r border-slate-200 last:border-r-0 ${
                   (r === 'all' && !fDateFrom && !fDateTo) ||
                   (r === 'today' && fDateFrom === today && fDateTo === today)
                     ? 'bg-brand-600 text-white'
@@ -548,14 +545,16 @@ export function ActualListView() {
             ))}
           </div>
 
+          <span className="flex-1 min-w-0" />
+
           {/* Export CSV */}
           <button
             type="button"
             onClick={handleExport}
             disabled={!filteredJobs.length}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-wide text-slate-600 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-md transition-colors border border-slate-200 hover:border-brand-200 shadow-sm disabled:opacity-40"
+            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-bold tracking-wide text-slate-700 hover:text-brand-700 bg-white hover:bg-brand-50 rounded-lg transition-colors border border-slate-200 hover:border-brand-200 shadow-2xs disabled:opacity-40 whitespace-nowrap"
           >
-            <Download size={14} />
+            <Download size={13} />
             EXPORT
           </button>
 
@@ -563,9 +562,9 @@ export function ActualListView() {
           <button
             type="button"
             onClick={openAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-md shadow-sm transition cursor-pointer"
+            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-2xs transition cursor-pointer whitespace-nowrap"
           >
-            <Plus size={14} />
+            <Plus size={13} />
             Record Run
           </button>
         </div>
