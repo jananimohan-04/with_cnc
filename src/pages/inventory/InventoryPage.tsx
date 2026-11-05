@@ -12,7 +12,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import {
-  inventoryApi, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
+  inventoryApi, ensureOwnSupplier, IMPORT_HEADERS, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
   parseCsv, isCorruptedItemText, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
   type InventoryFilters, type InventoryItemsPage, type InventoryItemRow, type InventorySummary, type RecentTransaction,
   type StockStatus, type StatusFilter, type Direction, type InventoryItemDetail, type ItemKind, type ImportRow, type ImportResult,
@@ -55,7 +55,7 @@ const SHOW_ADD_PRODUCT_BUTTONS = false;
 const DONUT_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#9333ea', '#ef4444', '#0891b2', '#db2777', '#65a30d', '#64748b'];
 
 const money = (v: string | null | undefined) => formatINR(v, { symbol: false });
-/** Total price of the stock on hand = available qty x unit price. */
+/** Total value of the stock on hand = available qty x unit value. */
 const totalPrice = (r: { current_stock?: unknown; rate?: unknown }) => Math.round(Number(r.current_stock || 0) * Number(r.rate || 0) * 100) / 100;
 const rowKey = (r: { kind: ItemKind; id: string }) => `${r.kind}:${r.id}`;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -856,7 +856,7 @@ export function InventoryPage() {
   const handleInlineRateChange = async (r: InventoryItemRow, val: string, input?: HTMLInputElement) => {
     if (val === '' ) { if (input) input.value = r.rate || '0'; return; }
     if (!isNonNegativeDecimal(val)) {
-      alert('Unit price must be a number of zero or more.');
+      alert('Unit value must be a number of zero or more.');
       if (input) input.value = r.rate || '0';
       return;
     }
@@ -884,7 +884,7 @@ export function InventoryPage() {
         return { ...prev, rows: prev.rows.map(row => row.id === r.id ? { ...row, rate: val } : row) };
       });
     } catch (e: any) {
-      alert(`Failed to update unit price: ${errText(e)}`);
+      alert(`Failed to update unit value: ${errText(e)}`);
       if (input) input.value = r.rate || '0';
     } finally {
       setRowBusyId(null);
@@ -955,7 +955,7 @@ export function InventoryPage() {
       }
       if (fgTab) {
         emit(`Finished_Goods_Stock_${todayISO()}`, [
-          ['#', 'Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Price (INR)', 'Available Qty (Opened Stock)', 'Total Price (INR)', 'Stock Status', 'Last Movement'],
+          ['#', 'Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Value (INR)', 'Available Qty (Opened Stock)', 'Total Value (INR)', 'Stock Status', 'Last Movement'],
           ...all.map((r, i) => [
             i + 1,
             r.name,
@@ -985,7 +985,7 @@ export function InventoryPage() {
       }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       emit(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
+        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Value (INR)', 'Total Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
         ...all.map((r, i) => [
           i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
           r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.item_status,
@@ -995,7 +995,7 @@ export function InventoryPage() {
       if (items?.rows && items.rows.length > 0) {
         const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
         emit(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
+          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Value (INR)', 'Total Value (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
           ...items.rows.map((r, i) => [
             i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
             r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.item_status,
@@ -1361,7 +1361,7 @@ export function InventoryPage() {
                   </th>
                   <th className="px-3 py-3 text-right">
                     <ColumnHeaderFilter
-                      label="Unit Price (₹)"
+                      label="Unit Value (₹)"
                       col="rate"
                       align="right"
                       showFilterIcon={false}
@@ -1385,7 +1385,7 @@ export function InventoryPage() {
                   </th>
                   <th className="px-3 py-3 text-right">
                     <ColumnHeaderFilter
-                      label="Total Price (₹)"
+                      label="Total Value (₹)"
                       col="value"
                       align="right"
                       showFilterIcon={false}
@@ -1545,14 +1545,14 @@ export function InventoryPage() {
                       )}
                     </td>
 
-                    {/* Unit Price (inline editable) */}
+                    {/* Unit Value (inline editable) */}
                     <td className="px-3 py-2 text-right">
                       {canManage ? (
                         <input
                           type="number"
                           min="0"
                           step="any"
-                          aria-label={`Unit price for ${r.name}`}
+                          aria-label={`Unit value for ${r.name}`}
                           className="h-8 w-24 px-2 text-[12px] text-right tabular-nums bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-800 disabled:opacity-50"
                           defaultValue={r.rate || '0'}
                           key={`${r.id}-${r.rate}`}
@@ -2034,6 +2034,7 @@ export function InventoryPage() {
       {(addingFg || (editing === 'new' && fgTab)) && filters && (
         <AddFinishedGoodsModal
           categories={categories}
+          filters={filters}
           warehouses={filters.warehouses}
           locationsFor={locationsFor}
           onClose={() => {
@@ -2232,10 +2233,12 @@ function AddFinishedGoodsModal({
   categories,
   warehouses,
   locationsFor,
+  filters,
   onClose,
   onSaved,
 }: {
   categories: InventoryFilters['categories'];
+  filters: InventoryFilters;
   warehouses: InventoryFilters['warehouses'];
   locationsFor: (warehouseId: string) => InventoryFilters['locations'];
   onClose: () => void;
@@ -2317,7 +2320,7 @@ function AddFinishedGoodsModal({
         min_stock: '0',
         reorder_qty: '0',
         rate: rate.trim() || '0',
-        supplier_id: null,
+        supplier_id: await ensureOwnSupplier(filters),   // Finished Goods are supplied by the company itself
         location_id: locationId || (locs.length > 0 ? locs[0].id : null),
         image_url: null,
         status: 'Active',
@@ -2407,7 +2410,7 @@ function AddFinishedGoodsModal({
           />
         </FormField>
 
-        <FormField label="Unit Rate (₹)" hint="Cost or rate per unit">
+        <FormField label="Unit Value (₹)" hint="Value of one unit">
           <input
             type="number"
             min="0"
@@ -2489,7 +2492,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   const save = async () => {
     if (!form.name.trim()) return setError('Product Name is required.');
     if (!form.category_id) return setError('Select a category.');
-    for (const [label, v] of [['Min Stock', form.min_stock], ['Reorder Qty', form.reorder_qty], ['Rate', form.rate]] as const) {
+    for (const [label, v] of [['Min Stock', form.min_stock], ['Reorder Qty', form.reorder_qty], ['Unit Value', form.rate]] as const) {
       if (!isNonNegativeDecimal(v)) return setError(`${label} must be a number of zero or more.`);
     }
     if (!isNonNegativeDecimal(form.opening_qty)) return setError('Opening Qty must be a number of zero or more.');
@@ -2517,7 +2520,8 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         min_stock: form.min_stock.trim() || '0',
         reorder_qty: form.reorder_qty.trim() || '0',
         rate: form.rate.trim() || '0',
-        supplier_id: form.supplier_id || null,
+        // Finished Goods are supplied by the company itself unless another supplier is chosen
+        supplier_id: form.supplier_id || (/finish/i.test(cat?.name ?? '') ? await ensureOwnSupplier(filters) : null),
         location_id: form.location_id || null,
         image_url,
         status: form.status,
@@ -2584,12 +2588,12 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         </div>
         <FormField label="Min Stock"><input className={inputClass} inputMode="decimal" value={form.min_stock} onChange={e => set('min_stock', e.target.value)} /></FormField>
         <FormField label="Reorder Qty"><input className={inputClass} inputMode="decimal" value={form.reorder_qty} onChange={e => set('reorder_qty', e.target.value)} /></FormField>
-        <FormField label="Rate (₹)" hint={!isNew ? 'Changing the rate revalues current stock in accounts.' : undefined}>
+        <FormField label="Unit Value (₹)" hint={!isNew ? 'Changing the value revalues current stock in accounts.' : undefined}>
           <input className={inputClass} inputMode="decimal" value={form.rate} onChange={e => set('rate', e.target.value)} />
         </FormField>
         <FormField label="Supplier">
           <select className={inputClass} value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
-            <option value="">— None —</option>
+            <option value="">{/finish/i.test(categories.find(c => c.id === form.category_id)?.name ?? '') ? `— Own company (${filters.company?.company_name ?? 'default'}) —` : '— None —'}</option>
             {filters.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </FormField>
@@ -2703,7 +2707,7 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
               ['Total Qty', `${formatQty(it.current_stock)} ${it.unit ?? ''}`],
               ['Minimum Stock', formatQty(it.min_stock)],
               ['Reorder Qty', formatQty(it.reorder_qty)],
-              ['Rate', formatINR(it.rate)],
+              ['Unit Value', formatINR(it.rate)],
               ['Stock Value', formatINR(it.value)],
               ['Supplier', it.supplier_name],
               ['Warehouse', it.warehouse_name || '—'],
@@ -3124,16 +3128,16 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       : ['Raw Material', 'Bought-out Items', 'Tools', 'Consumables', 'Finished Goods'];
 
     const sampleRows = [
-      ['RM-SS304-25', 'Stainless Steel Round Bar 25mm', catNames.find(c => /raw/i.test(c)) || catNames[0] || 'Raw Material', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Main Store', '25'],
-      ['BO-BRG-6204', 'Deep Groove Ball Bearing 6204', catNames.find(c => /bought|component/i.test(c)) || catNames[1] || 'Bought-out Items', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Bin-B4', '60'],
-      ['TL-END-10MM', 'Carbide End Mill 10mm 4-Flute', catNames.find(c => /tool/i.test(c)) || catNames[2] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '5', '20', '1250', 'Precision Tools Inc', 'Tool-Cab-1', '15'],
-      ['CS-COOL-20L', 'CNC Soluble Cutting Oil 20L', catNames.find(c => /consum/i.test(c)) || catNames[3] || 'Consumables', 'Water Soluble Coolant 20L', 'Ltr', '10', '40', '320', 'Industrial Oils Co', 'Chemical Store', '50'],
-      ['FG-SHAFT-120', 'Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
+      ['Stainless Steel Round Bar 25mm', catNames.find(c => /raw/i.test(c)) || catNames[0] || 'Raw Material', 'SS304 Grade 25mm Dia Rod', 'Mtr', '10', '50', '450', 'Steel Tech Corp', 'Main Store', '25'],
+      ['Deep Groove Ball Bearing 6204', catNames.find(c => /bought|component/i.test(c)) || catNames[1] || 'Bought-out Items', '20x47x14mm Chrome Steel', 'Nos', '20', '100', '185', 'Apex Bearings Ltd', 'Main Store', '60'],
+      ['Carbide End Mill 10mm 4-Flute', catNames.find(c => /tool/i.test(c)) || catNames[2] || 'Tools', 'TiAlN Coated Solid Carbide', 'Nos', '5', '20', '1250', 'Precision Tools Inc', 'Tool Store', '15'],
+      ['CNC Soluble Cutting Oil 20L', catNames.find(c => /consum/i.test(c)) || catNames[3] || 'Consumables', 'Water Soluble Coolant 20L', 'Ltr', '10', '40', '320', 'Industrial Oils Co', 'Chemical Store', '50'],
+      ['Precision Drive Shaft 120mm', catNames.find(c => /finish/i.test(c)) || catNames[4] || 'Finished Goods', 'EN8 Hardened Ground Shaft', 'Nos', '15', '50', '850', '', 'FG Store', '30'],
     ];
 
-    // same columns as the import expects, with the unit price named plainly and the total price (qty x unit price) added for reference
-    const header: string[] = [...IMPORT_COLUMNS.map(c => (c === 'rate' ? 'unit_price' : String(c))), 'total_price'];
-    const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[10]) * Number(row[7]) * 100) / 100)]);
+    // the columns the import expects, plus the total value (qty x unit value) for reference
+    const header: string[] = [...IMPORT_HEADERS, 'total_value'];
+    const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[9]) * Number(row[6]) * 100) / 100)]);
     exportCsv('inventory-import-template', [header, ...withTotal]);
   };
 
@@ -3208,29 +3212,28 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       }
 
       // Column mapping with intelligent synonyms
-      const COLUMN_SYNONYMS: Record<keyof ImportRow, string[]> = {
-        code: ['code', 'product_code', 'item_code', 'part_no', 'part_number', 'material_code', 'sku', 'item_no', 'item#', 'prod_code'],
+      const COLUMN_SYNONYMS: Record<Exclude<keyof ImportRow, 'code'>, string[]> = {
         name: ['product_material_name', 'product_material', 'product_name', 'material_name', 'item_name', 'part_name', 'name', 'title', 'product_title', 'description_name', 'product'],
         category: ['category', 'category_name', 'cat', 'item_group', 'group', 'product_category', 'classification', 'type'],
         specification: ['specification', 'spec', 'specs', 'description', 'desc', 'details', 'item_description', 'notes'],
         unit: ['unit', 'uom', 'unit_of_measure', 'measurement_unit', 'units'],
         min_stock: ['min_stock', 'reorder_level', 'min_order_qty', 'minimum_stock', 'safety_stock', 'min_qty', 'min_quantity'],
         reorder_qty: ['reorder_qty', 'reorder_quantity', 'order_qty', 'reorder_amount', 'batch_size'],
-        rate: ['unit_price', 'unit_price_inr', 'unit_price_rs', 'rate', 'rate_inr', 'rate_rs', 'price', 'unit_rate', 'standard_cost', 'cost', 'mrp', 'sales_price'],
+        rate: ['unit_value', 'unit_value_inr', 'unit_value_rs', 'unit_price', 'unit_price_inr', 'unit_price_rs', 'rate', 'rate_inr', 'rate_rs', 'price', 'unit_rate', 'standard_cost', 'cost', 'mrp', 'sales_price'],
         supplier: ['supplier', 'supplier_name', 'vendor', 'vendor_name', 'preferred_supplier'],
-        location: ['warehouse_location', 'warehouse', 'warehouse_name', 'location', 'location_code', 'location_name', 'store', 'rack', 'bin', 'shelf'],
+        location: ['warehouse', 'warehouse_name', 'warehouse_location', 'location', 'location_code', 'location_name', 'store', 'rack', 'bin', 'shelf'],
         opening_qty: ['available_qty', 'opened_stock', 'available_stock', 'available_quantity', 'opening_qty', 'opening_stock', 'stock', 'qty', 'quantity', 'initial_stock', 'on_hand', 'current_stock'],
       };
 
-      // "Total Price" (qty x unit price) is read too: when a row has no unit price, it is worked out as total price / qty.
-      const TOTAL_SYNONYMS = ['total_price', 'total_price_inr', 'total_price_rs', 'total', 'value', 'value_inr', 'value_rs', 'stock_value', 'total_value'];
+      // "Total Value" (qty x unit value) is read too: when a row has no unit value, it is worked out as total value / qty.
+      const TOTAL_SYNONYMS = ['total_value', 'total_value_inr', 'total_value_rs', 'total_price', 'total_price_inr', 'total_price_rs', 'total', 'value', 'value_inr', 'value_rs', 'stock_value'];
       const firstRow = nonEmptyGrid[0].map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
 
       // Check how many recognized columns are in the first row
       let recognizedCols = 0;
       const colIndices: Partial<Record<keyof ImportRow, number>> = {};
 
-      (Object.keys(COLUMN_SYNONYMS) as (keyof ImportRow)[]).forEach(col => {
+      (Object.keys(COLUMN_SYNONYMS) as Exclude<keyof ImportRow, 'code'>[]).forEach(col => {
         const synonyms = COLUMN_SYNONYMS[col];
         const foundIdx = firstRow.findIndex(header => synonyms.includes(header));
         if (foundIdx >= 0) {
@@ -3242,7 +3245,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       const totalIdx = firstRow.findIndex(header => TOTAL_SYNONYMS.includes(header));
 
       // Does the first row look like a header row?
-      const hasHeader = recognizedCols >= 2 || (colIndices.code !== undefined && colIndices.name !== undefined);
+      const hasHeader = recognizedCols >= 2 || colIndices.name !== undefined;
 
       let dataRows = hasHeader ? nonEmptyGrid.slice(1) : nonEmptyGrid;
 
@@ -3256,17 +3259,16 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       // Map rows
       const parsed: ImportRow[] = [];
       const invalidRows: string[] = [];
-      const usedCodes = new Set<string>();
 
       dataRows.forEach((r, rowIdx) => {
-        const rowObj = {} as ImportRow;
+        const rowObj = { code: '' } as ImportRow;
         IMPORT_COLUMNS.forEach(col => {
           const idx = colIndices[col];
           rowObj[col] = (idx !== undefined && r[idx] !== undefined) ? r[idx].trim() : '';
         });
 
         // Basic sanity check: code or name must be present
-        if (!rowObj.code && !rowObj.name) return; // skip blank rows
+        if (!rowObj.name) return; // skip blank rows
 
         // Unit price: as typed, or total price / qty when only the total was given
         const num = (v: unknown) => { const n = Number(String(v ?? '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
@@ -3275,26 +3277,6 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
           const total = num(r[totalIdx]);
           const qty = num(rowObj.opening_qty);
           if (total > 0 && qty > 0) rowObj.rate = String(Math.round((total / qty) * 10000) / 10000);
-        }
-
-        // Auto-generate code from product name if code was left blank in the spreadsheet
-        if (!rowObj.code && rowObj.name) {
-          const base = rowObj.name
-            .trim()
-            .toUpperCase()
-            .replace(/[^A-Z0-9_-]+/g, '-')
-            .replace(/^-+|-+$/g, '')
-            .substring(0, 36) || `ITEM-${rowIdx + 1}`;
-          let uniqueCode = base;
-          let counter = 1;
-          while (usedCodes.has(uniqueCode.toLowerCase())) {
-            counter++;
-            uniqueCode = `${base}-${counter}`;
-          }
-          rowObj.code = uniqueCode;
-        }
-        if (rowObj.code) {
-          usedCodes.add(rowObj.code.toLowerCase());
         }
 
         // Default unit to Nos if omitted
@@ -3308,7 +3290,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
         }
 
         // Binary/corruption guard: check if code or name contains replacement char \uFFFD or binary control chars
-        if (isCorruptedItemText(rowObj.code) || isCorruptedItemText(rowObj.name) || isCorruptedItemText(rowObj.category)) {
+        if (isCorruptedItemText(rowObj.name) || isCorruptedItemText(rowObj.category)) {
           invalidRows.push(`Row ${rowIdx + (hasHeader ? 2 : 1)}`);
         } else {
           parsed.push(rowObj);

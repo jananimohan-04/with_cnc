@@ -327,11 +327,24 @@ export const inventoryApi = {
     let filters: InventoryFilters | null = null;
     try { filters = await inventoryApi.filters(); } catch { filters = null; }
 
-    const normalizedRows: ImportRow[] = rows.map((r, idx) => {
-      const copy = { ...r };
-      if (!copy.code?.trim() && copy.name?.trim()) {
-        copy.code = copy.name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 36) || `ITEM-${idx + 1}`;
+    // Products already in Inventory, to recognise duplicates by name + specification + category (never by code)
+    const existing = new Set<string>();
+    const usedCodes = new Set<string>();
+    try {
+      for (let p = 1; ; p++) {
+        const res = await inventoryApi.items({ categoryId: null, search: null, supplierId: null, status: null, warehouseId: null, page: p, pageSize: 500 });
+        res.rows.forEach(x => { existing.add(identity(x.name, x.specification, x.category_name)); usedCodes.add(String(x.code).trim().toLowerCase()); });
+        if (res.rows.length < 500 || usedCodes.size >= res.total) break;
       }
+    } catch { /* without the list, only the rows inside the file are compared */ }
+    const ownSupplier = (filters?.company?.company_name ?? '').trim();
+    let ownSupplierReady = false;
+    const preErrors: { row: number; code: string | null; message: string }[] = [];
+    const fileSeen = new Set<string>();
+
+    const normalizedRows: ImportRow[] = [];
+    for (let idx = 0; idx < rows.length; idx++) {
+      const copy = { ...rows[idx] };
       if (!copy.unit?.trim()) {
         copy.unit = 'Nos';
       }
@@ -357,34 +370,60 @@ export const inventoryApi = {
         }
       }
 
+      // Same product already there (or twice in the file)? Skip it and say so.
+      const key = identity(copy.name, copy.specification, copy.category);
+      if (existing.has(key) || fileSeen.has(key)) {
+        preErrors.push({ row: idx + 1, code: copy.name, message: 'Already exists (same name, specification and category)' });
+        continue;
+      }
+      fileSeen.add(key);
+
+      // A code is made from the name + specification (kept unique); the file never carries one
+      const base = `${copy.name} ${copy.specification || ''}`.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 36) || `ITEM-${idx + 1}`;
+      let code = base;
+      for (let k = 2; usedCodes.has(code.toLowerCase()); k++) code = `${base}-${k}`;
+      usedCodes.add(code.toLowerCase());
+      copy.code = code;
+
+      // Finished Goods are supplied by the company itself unless a supplier is given
+      if (!copy.supplier?.trim() && isFinishedGoodsName(copy.category) && ownSupplier) {
+        if (!ownSupplierReady) { await ensureOwnSupplier(filters); ownSupplierReady = true; try { filters = await inventoryApi.filters(); } catch { /* keep */ } }
+        copy.supplier = ownSupplier;
+      }
       if (copy.supplier && filters?.suppliers) {
         const foundSup = filters.suppliers.find(s => s.name.trim().toLowerCase() === copy.supplier.trim().toLowerCase());
         if (!foundSup) copy.supplier = '';
       }
 
-      if (copy.location && filters?.locations) {
-        const foundLoc = filters.locations.find(l =>
-          l.code.trim().toLowerCase() === copy.location.trim().toLowerCase() ||
-          l.name.trim().toLowerCase() === copy.location.trim().toLowerCase()
-        );
-        if (!foundLoc) copy.location = '';
+      // "warehouse": a warehouse name (or a location code / name inside one); stored on the warehouse's first location
+      if (copy.location) {
+        const want = copy.location.trim().toLowerCase();
+        const loc = (filters?.locations ?? []).find(l => l.code.trim().toLowerCase() === want || l.name.trim().toLowerCase() === want);
+        if (loc) copy.location = loc.code || loc.name;
+        else {
+          const wh = (filters?.warehouses ?? []).find(w => w.name.trim().toLowerCase() === want || w.code.trim().toLowerCase() === want);
+          const first = wh ? (filters?.locations ?? []).find(l => l.warehouse_id === wh.id) : undefined;
+          copy.location = first ? (first.code || first.name) : '';
+        }
       }
 
-      return copy;
-    });
+      normalizedRows.push(copy);
+    }
+    if (normalizedRows.length === 0) return { created: 0, errors: preErrors };
+    const withPre = (res: ImportResult): ImportResult => ({ created: res.created, errors: [...preErrors, ...(res.errors ?? [])] });
 
     try {
       const res = await call<ImportResult>('erp_import_inventory_items', { p_rows: normalizedRows });
       if (res && typeof res.created === 'number' && (res.created > 0 || !res.errors?.length)) {
-        return res;
+        return withPre(res);
       }
       if (res && res.errors?.length > 0 && res.created === 0) {
-        return await fallbackSaveImport(normalizedRows, filters);
+        return withPre(await fallbackSaveImport(normalizedRows, filters));
       }
-      return res || { created: 0, errors: [] };
+      return withPre(res || { created: 0, errors: [] });
     } catch (rpcErr) {
       console.warn('erp_import_inventory_items RPC call failed, falling back to direct save:', rpcErr);
-      return await fallbackSaveImport(normalizedRows, filters);
+      return withPre(await fallbackSaveImport(normalizedRows, filters));
     }
   },
 };
@@ -526,6 +565,33 @@ export function parseCsv(text: string): string[][] {
   return rows.filter(r => r.some(cell => cell.trim() !== ''));
 }
 
+// The import file has no product code: a product is told apart by its name + specification + category (a code is made for it).
+// `rate` is the unit value and `location` the warehouse; those two keep their internal names.
 export const IMPORT_COLUMNS: (keyof ImportRow)[] = [
-  'code', 'name', 'category', 'specification', 'unit', 'min_stock', 'reorder_qty', 'rate', 'supplier', 'location', 'opening_qty',
+  'name', 'category', 'specification', 'unit', 'min_stock', 'reorder_qty', 'rate', 'supplier', 'location', 'opening_qty',
 ];
+/** The headings shown to the user for IMPORT_COLUMNS (same order). */
+export const IMPORT_HEADERS: string[] = ['name', 'category', 'specification', 'unit', 'min_stock', 'reorder_qty', 'unit_value', 'supplier', 'warehouse', 'opening_qty'];
+
+const isFinishedGoodsName = (n: unknown) => /finish/i.test(String(n ?? ''));
+const identity = (name: unknown, spec: unknown, category: unknown) =>
+  [name, spec, category].map(v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase()).join('|');
+
+/**
+ * Finished Goods are supplied by the company itself: finds the supplier named like the signed-in company, or creates it.
+ * Returns its id, or null when it cannot be created (the product is then saved without a supplier rather than failing).
+ */
+export async function ensureOwnSupplier(filters: { company?: { company_name?: string } | null; suppliers?: { id: string; name: string }[] } | null | undefined): Promise<string | null> {
+  const name = String(filters?.company?.company_name ?? '').trim();
+  if (!name) return null;
+  const found = (filters?.suppliers ?? []).find(s => s.name.trim().toLowerCase() === name.toLowerCase());
+  if (found) return found.id;
+  try {
+    const { data: again } = await supabase.from('cnc_suppliers').select('id').ilike('name', name).limit(1);
+    if (again && again.length) return String((again[0] as { id: unknown }).id);
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `sup-${Date.now()}`;
+    const { data, error } = await supabase.from('cnc_suppliers').insert({ id, name, category: 'Own company', status: 'Active' }).select('id').limit(1);
+    if (error) return null;
+    return data && data.length ? String((data[0] as { id: unknown }).id) : id;
+  } catch { return null; }
+}
