@@ -1175,7 +1175,7 @@ export function CompaniesPage() {
   const handleExport = () => {
     if (searchedRows.length === 0) return;
     exportCsv(`BI_Companies_${todayISO()}`, [
-      ['Company Name', 'Code', 'Users', 'Status', 'Created Date'],
+      ['Company Name', 'GST No.', 'Users', 'Status', 'Created Date'],
       ...searchedRows.map(r => [
         r.company_name || '',
         r.code || '',
@@ -1258,7 +1258,7 @@ export function CompaniesPage() {
         <p className="font-medium text-slate-800">{r.company_name}</p>
       </div>
     )},
-    { key: 'code', label: 'Code', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-600">{r.code || '—'}</span> },
+    { key: 'code', label: 'GST No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-600">{r.code || '—'}</span> },
     { key: 'users', label: 'Users', sortable: true, align: 'center', render: (r) => <span className="text-sm text-slate-700">{r.users}</span> },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge variant={r.status === 'Active' ? 'success' : 'error'} dot>{r.status}</Badge> },
     { key: 'created_at', label: 'Created Date', sortable: true, render: (r) => <span className="text-xs text-slate-500">{formatDate(r.created_at)}</span> },
@@ -1325,12 +1325,13 @@ export function CompaniesPage() {
                 placeholder="e.g. Argus Technology"
               />
             </FormField>
-            <FormField label="Code">
+            <FormField label="GST No.">
               <input
                 className={inputClass}
                 value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-                placeholder="e.g. ARGUS"
+                maxLength={15}
+                onChange={(e) => setForm({ ...form, code: e.target.value.replace(/\s+/g, '').toUpperCase() })}
+                placeholder="e.g. 33ABCDE1234F1Z5"
               />
             </FormField>
             <FormField label="Status" required>
