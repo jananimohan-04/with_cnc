@@ -111,6 +111,14 @@
   background-color: #f8fafc;
 }
 
+/* A table inside a horizontally scrolling wrapper (overflow-x-auto) is its own scroll container, so the sticky heading above
+   could never stick to the page and scrolled away with the rows. The wrapper is given a height limit instead: the rows scroll
+   inside it (and sideways too) while the column headings stay visible. Short tables keep their natural height. */
+:where(main) :is(.overflow-x-auto, .overflow-auto):has(> table) {
+  max-height: calc(100dvh - 210px);
+  overflow-y: auto;
+}
+
 /* List tables: dark header bar with bold white column titles (add `erp-table` to the <table>). */
 .erp-table {
   width: 100%;
@@ -285,3 +293,14 @@ body { font-size: 15px; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Inventory stock table: compact (tighter cells, smaller controls) so every column fits without sideways scrolling. */
+.inv-compact :is(th, td) { padding-left: 6px !important; padding-right: 6px !important; }
+.inv-compact td { padding-top: 4px !important; padding-bottom: 4px !important; }
+.inv-compact th { padding-top: 8px !important; padding-bottom: 8px !important; white-space: nowrap; }
+.inv-compact td select, .inv-compact td input { height: 28px !important; font-size: 12px !important; padding-left: 6px !important; padding-right: 4px !important; }
+.inv-compact td select { max-width: 124px !important; }
+.inv-compact td input[type="number"] { width: 68px !important; }
+.inv-compact td [class*="max-w-[220px]"] { max-width: 190px !important; }
+.inv-compact td img, .inv-compact td [class*="w-8"][class*="h-8"]:not(button) { width: 26px !important; height: 26px !important; }
+.inv-compact td button[title="Edit"], .inv-compact td button[title="More"] { width: 28px !important; height: 28px !important; }

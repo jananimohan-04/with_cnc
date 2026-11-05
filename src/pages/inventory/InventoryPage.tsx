@@ -5,7 +5,7 @@ import {
   Upload, Download, ChevronDown, Plus, Box, Layers, AlertTriangle, XCircle, Package,
   Pencil, MoreVertical, Eye, History, SlidersHorizontal, ChevronLeft, ChevronRight, Building2, Loader2,
   ExternalLink, FileSpreadsheet, AlertCircle, Info, ArrowLeftRight, Factory, Archive, Search, Store, Trash2, Check,
-  Filter, ArrowUp, ArrowDown, X,
+  Filter, ArrowUp, ArrowDown, X, Printer,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
@@ -18,7 +18,7 @@ import {
   type StockStatus, type StatusFilter, type Direction, type InventoryItemDetail, type ItemKind, type ImportRow, type ImportResult,
 } from '@/lib/inventory';
 import { formatDate, formatINR, formatPercent, toPaise, todayISO } from '@/lib/format';
-import { exportCsv } from '@/lib/reportExport';
+import { exportCsv, printGrid } from '@/lib/reportExport';
 import { xlsxToGrid } from '@/lib/xlsxRead';
 import { useFinishedGoods, WarehouseMasterModal } from './FinishedGoodsStock';
 import { retailSyncApi } from '@/lib/retailSync';
@@ -931,7 +931,12 @@ export function InventoryPage() {
   };
 
   // ---- Export (all rows for the current filters) -----------------------------------------------
-  const handleExport = async () => {
+  const handleExport = async (mode: 'csv' | 'print' = 'csv') => {
+    // the same rows go to the CSV file or to the printer
+    const emit = (name: string, grid: unknown[][]) => {
+      if (mode === 'print') printGrid(name.replace(/_/g, ' '), grid, fgTab ? 'Finished Goods' : (categories.find(c => c.id === applied.categoryId)?.name ?? 'All items'));
+      else exportCsv(name, grid);
+    };
     setExportOpen(false);
     setExporting(true);
     setExportError(null);
@@ -949,7 +954,7 @@ export function InventoryPage() {
         all.push(...items.rows);
       }
       if (fgTab) {
-        exportCsv(`Finished_Goods_Stock_${todayISO()}`, [
+        emit(`Finished_Goods_Stock_${todayISO()}`, [
           ['#', 'Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Price (INR)', 'Available Qty (Opened Stock)', 'Total Price (INR)', 'Stock Status', 'Last Movement'],
           ...all.map((r, i) => [
             i + 1,
@@ -979,7 +984,7 @@ export function InventoryPage() {
         return;
       }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
-      exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
+      emit(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
         ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
         ...all.map((r, i) => [
           i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
@@ -989,7 +994,7 @@ export function InventoryPage() {
     } catch (e) {
       if (items?.rows && items.rows.length > 0) {
         const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
-        exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
+        emit(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
           ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
           ...items.rows.map((r, i) => [
             i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
@@ -1063,6 +1068,9 @@ export function InventoryPage() {
           title="Export CSV"
         >
           {exporting ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Export
+        </button>
+        <button type="button" onClick={() => void handleExport('print')} disabled={exporting || !ready} className={topbarBtn} title="Print this list">
+          <Printer size={13} /> Print
         </button>
         {SHOW_ADD_PRODUCT_BUTTONS && (
           fgTab ? (
@@ -1157,6 +1165,9 @@ export function InventoryPage() {
           )}
           <button onClick={() => void handleExport()} disabled={exporting || !ready} className={outlineBtn} title="Export CSV">
             {exporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Export
+          </button>
+          <button onClick={() => void handleExport('print')} disabled={exporting || !ready} className={outlineBtn} title="Print this list">
+            <Printer size={16} /> Print
           </button>
           {SHOW_ADD_PRODUCT_BUTTONS && (
             fgTab ? (
@@ -1281,7 +1292,7 @@ export function InventoryPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1320px] text-[13px]">
+            <table className="inv-compact w-full text-[13px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-700 text-xs font-semibold border-b border-slate-200">
                   <th className="px-3 py-3 text-left w-12">

@@ -58,3 +58,13 @@ export function printHtml(title: string, bodyHtml: string) {
 </body></html>`);
   w.document.close();
 }
+
+/** Prints rows as a clean table (first row = column headings). Numbers are right-aligned. */
+export function printGrid(title: string, rows: unknown[][], subtitle?: string) {
+  if (rows.length === 0) return;
+  const [head, ...body] = rows;
+  const isNum = (v: unknown) => typeof v === 'number' || (typeof v === 'string' && /^[-+]?[\d,]*\.?\d+$/.test(v.trim()));
+  const th = head.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+  const tr = body.map(r => `<tr>${r.map(c => `<td${isNum(c) ? ' class="num"' : ''}>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+  printHtml(title, `<div class="brand"><div><h1>${escapeHtml(title)}</h1><div class="meta">${escapeHtml(subtitle ?? '')}${subtitle ? ' · ' : ''}Printed ${escapeHtml(new Date().toLocaleString('en-IN'))} · ${body.length} row(s)</div></div></div><table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`);
+}
