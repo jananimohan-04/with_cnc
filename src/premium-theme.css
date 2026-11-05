@@ -5,45 +5,45 @@
    ===================================================================================================================== */
 @media screen {
 :root {
-  --px-bg: #151a26;
-  --px-bg-2: #1a2030;
-  --px-surface: #20273a;
-  --px-surface-2: #283049;
-  --px-surface-3: #313a57;
-  --px-border: #37405c;
-  --px-border-soft: #2b334b;
-  --px-text: #eef1f9;
-  --px-text-2: #cfd5e6;
-  --px-muted: #9ba5bf;
-  --px-accent: #ff7a1a;
-  --px-accent-2: #ff5a00;
-  --px-glow: rgba(255, 122, 26, 0.35);
-  --px-indigo: #7c8cff;
+  --px-bg: #1d1511;
+  --px-bg-2: #241a15;
+  --px-surface: #2e221b;
+  --px-surface-2: #3a2c23;
+  --px-surface-3: #483829;
+  --px-border: #5b4535;
+  --px-border-soft: #443328;
+  --px-text: #f6ece0;
+  --px-text-2: #e3d3c1;
+  --px-muted: #bfa68d;
+  --px-accent: #f0a45a;
+  --px-accent-2: #d9792b;
+  --px-glow: rgba(240, 164, 90, 0.35);
+  --px-indigo: #d9b38c;
   --px-ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
 }
 html { background: var(--px-bg); }
 body {
   background:
-    radial-gradient(1200px 600px at 8% -10%, rgba(124, 140, 255, 0.10), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(255, 122, 26, 0.08), transparent 55%),
+    radial-gradient(1200px 600px at 8% -10%, rgba(217, 179, 140, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(240, 164, 90, 0.08), transparent 55%),
     var(--px-bg) !important;
   background-attachment: fixed !important;
   color: var(--px-text) !important;
 }
 .retail-app, .retail-shell { background: transparent !important; color: var(--px-text) !important; }
 main[style], main { background: transparent !important; }
-::selection { background: rgba(255, 122, 26, 0.45) !important; color: #fff !important; }
+::selection { background: rgba(240, 164, 90, 0.45) !important; color: #fff !important; }
 
 /* ---------- scrollbars ---------- */
-* { scrollbar-color: #465178 transparent; }
-::-webkit-scrollbar-thumb { background: #465178 !important; border-color: var(--px-bg) !important; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #5b678f !important; }
-.scrollbar-dark::-webkit-scrollbar-thumb, .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgba(120, 134, 180, 0.45) !important; }
+* { scrollbar-color: #6e5844 transparent; }
+::-webkit-scrollbar-thumb { background: #6e5844 !important; border-color: var(--px-bg) !important; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #86705a !important; }
+.scrollbar-dark::-webkit-scrollbar-thumb, .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgba(150, 120, 90, 0.45) !important; }
 
 /* ---------- top bar & navigation ---------- */
 header.sticky {
-  background: rgba(21, 26, 38, 0.78) !important;
+  background: rgba(29, 21, 17, 0.78) !important;
   border-color: var(--px-border-soft) !important;
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
@@ -51,37 +51,37 @@ header.sticky {
 }
 header.sticky h1, header.sticky .text-slate-800 { color: var(--px-text) !important; }
 aside, .bg-navy-950 {
-  background-image: linear-gradient(180deg, #1b2236 0%, #141927 100%) !important;
+  background-image: linear-gradient(180deg, #22180f 0%, #1a120e 100%) !important;
 }
 aside nav button { transition: background-color .25s var(--px-ease), transform .25s var(--px-ease), color .2s ease !important; }
 aside nav button:hover { transform: translateX(3px); }
-aside nav button[class*="bg-"]:not([class*="hover:"]) { box-shadow: inset 0 0 0 1px rgba(255, 122, 26, 0.35), 0 6px 18px -8px var(--px-glow); }
+aside nav button[class*="bg-"]:not([class*="hover:"]) { box-shadow: inset 0 0 0 1px rgba(240, 164, 90, 0.35), 0 6px 18px -8px var(--px-glow); }
 
 /* ---------- surfaces: cards, panels, white containers ---------- */
 :root:root:root:root .bg-white:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface) !important; }
-:root:root:root:root .bg-white\/95:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .95) !important; }
-:root:root:root:root .bg-white\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .90) !important; }
-:root:root:root:root .bg-white\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .80) !important; }
-:root:root:root:root .bg-white\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .70) !important; }
-:root:root:root:root .bg-white\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .60) !important; }
-:root:root:root:root .bg-white\/50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(32, 39, 58, .50) !important; }
+:root:root:root:root .bg-white\/95:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .95) !important; }
+:root:root:root:root .bg-white\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .90) !important; }
+:root:root:root:root .bg-white\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .80) !important; }
+:root:root:root:root .bg-white\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .70) !important; }
+:root:root:root:root .bg-white\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .60) !important; }
+:root:root:root:root .bg-white\/50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(46, 34, 27, .50) !important; }
 :root:root:root:root .bg-slate-50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-bg-2) !important; }
-:root:root:root:root .bg-slate-50\/50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(26, 32, 48, .6) !important; }
-:root:root:root:root .bg-slate-50\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(26, 32, 48, .65) !important; }
-:root:root:root:root .bg-slate-50\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(26, 32, 48, .7) !important; }
-:root:root:root:root .bg-slate-50\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(26, 32, 48, .8) !important; }
-:root:root:root:root .bg-slate-50\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(26, 32, 48, .9) !important; }
+:root:root:root:root .bg-slate-50\/50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(36, 26, 21, .6) !important; }
+:root:root:root:root .bg-slate-50\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(36, 26, 21, .65) !important; }
+:root:root:root:root .bg-slate-50\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(36, 26, 21, .7) !important; }
+:root:root:root:root .bg-slate-50\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(36, 26, 21, .8) !important; }
+:root:root:root:root .bg-slate-50\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(36, 26, 21, .9) !important; }
 :root:root:root:root .bg-gray-50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-bg-2) !important; }
 :root:root:root:root .bg-zinc-50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-bg-2) !important; }
 :root:root:root:root .bg-neutral-50:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-bg-2) !important; }
 :root:root:root:root .bg-slate-100:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface-2) !important; }
-:root:root:root:root .bg-slate-100\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(40, 48, 73, .8) !important; }
-:root:root:root:root .bg-slate-100\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(40, 48, 73, .9) !important; }
+:root:root:root:root .bg-slate-100\/80:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(58, 44, 35, .8) !important; }
+:root:root:root:root .bg-slate-100\/90:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(58, 44, 35, .9) !important; }
 :root:root:root:root .bg-gray-100:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface-2) !important; }
 :root:root:root:root .bg-zinc-100:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface-2) !important; }
 :root:root:root:root .bg-slate-200:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface-3) !important; }
-:root:root:root:root .bg-slate-200\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(49, 58, 87, .6) !important; }
-:root:root:root:root .bg-slate-200\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(49, 58, 87, .7) !important; }
+:root:root:root:root .bg-slate-200\/60:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(72, 56, 41, .6) !important; }
+:root:root:root:root .bg-slate-200\/70:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: rgba(72, 56, 41, .7) !important; }
 :root:root:root:root .bg-gray-200:not(.keep-white):not(header *):not(aside *):not(.hero *) { background-color: var(--px-surface-3) !important; }
 :root:root:root:root .card:not(.hero *), :root:root:root:root .icon-btn:not(.hero *), :root:root:root:root .ind-stat:not(.hero *) { background-color: var(--px-surface) !important; border-color: var(--px-border) !important; color: var(--px-text) !important; }
 :root:root:root:root .keep-white { background-color: #ffffff !important; color: #0f172a !important; }
@@ -207,22 +207,22 @@ aside nav button[class*="bg-"]:not([class*="hover:"]) { box-shadow: inset 0 0 0 
 :root:root:root:root input:not(#headerSearchInput):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 :root:root:root:root select:not(.company-select),
 :root:root:root:root textarea {
-  background-color: #171d2d !important;
+  background-color: #1a130f !important;
   border: 1px solid var(--px-border) !important;
   color: var(--px-text) !important;
   border-radius: 10px;
   transition: border-color .22s var(--px-ease), box-shadow .22s var(--px-ease), background-color .22s ease, transform .22s var(--px-ease);
 }
 :root:root:root:root input:not(#headerSearchInput):not([type="checkbox"]):not([type="radio"]):hover,
-:root:root:root:root select:not(.company-select):hover, :root:root:root:root textarea:hover { border-color: #4b5679 !important; }
+:root:root:root:root select:not(.company-select):hover, :root:root:root:root textarea:hover { border-color: #7a6048 !important; }
 :root:root:root:root input:not(#headerSearchInput):focus, :root:root:root:root select:not(.company-select):focus, :root:root:root:root textarea:focus {
   border-color: var(--px-accent) !important;
-  background-color: #1b2236 !important;
-  box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.20), 0 8px 24px -10px var(--px-glow) !important;
+  background-color: #22180f !important;
+  box-shadow: 0 0 0 3px rgba(240, 164, 90, 0.20), 0 8px 24px -10px var(--px-glow) !important;
   outline: none;
 }
-input::placeholder, textarea::placeholder { color: #7480a0 !important; }
-select option, select optgroup { background: #1d2335; color: var(--px-text); }
+input::placeholder, textarea::placeholder { color: #a08670 !important; }
+select option, select optgroup { background: #241a14; color: var(--px-text); }
 input:disabled, select:disabled, textarea:disabled { opacity: .55; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--px-accent); }
 input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] { color-scheme: dark; }
@@ -232,7 +232,7 @@ label { color: var(--px-text-2); }
 button, [role="button"], a.btn, .btn { transition: transform .22s var(--px-ease), box-shadow .25s var(--px-ease), background-color .22s ease, border-color .22s ease, color .2s ease, filter .2s ease; }
 button:not(:disabled):active, .btn:not(:disabled):active { transform: translateY(1px) scale(.985); }
 .btn-primary, .bg-brand-500, .bg-brand-600 {
-  background-image: linear-gradient(135deg, #ff8a2c 0%, #ff5a00 100%) !important;
+  background-image: linear-gradient(135deg, #e59a4d 0%, #d9792b 100%) !important;
   box-shadow: 0 6px 18px -6px var(--px-glow), inset 0 1px 0 rgba(255, 255, 255, .22);
 }
 .btn-primary:hover, .bg-brand-500:hover, .bg-brand-600:hover, .hover\:bg-brand-600:hover, .hover\:bg-brand-700:hover {
@@ -240,33 +240,33 @@ button:not(:disabled):active, .btn:not(:disabled):active { transform: translateY
 }
 .btn-ghost, :root:root:root:root .btn-ghost { background: var(--px-surface) !important; border-color: var(--px-border) !important; color: var(--px-text-2) !important; }
 .btn-ghost:hover, :root:root:root:root .btn-ghost:hover { background: var(--px-surface-2) !important; border-color: var(--px-accent) !important; color: #fff !important; transform: translateY(-1px); }
-button.border.bg-white:hover, button.border.bg-slate-50:hover { border-color: rgba(255, 122, 26, .55) !important; transform: translateY(-1px); box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .6); }
+button.border.bg-white:hover, button.border.bg-slate-50:hover { border-color: rgba(240, 164, 90, .55) !important; transform: translateY(-1px); box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .6); }
 :focus-visible { outline: 2px solid var(--px-accent) !important; outline-offset: 2px; }
 
 /* ---------- tables ---------- */
 :root:root:root:root table { background: transparent !important; }
 :root:root:root:root table thead, :root:root:root:root thead, :root:root:root:root table th, :root:root:root:root thead th {
-  background-color: #11162a !important; color: #e9ecf8 !important; border-bottom: 1px solid var(--px-border) !important;
+  background-color: #150f0b !important; color: #f3e6d6 !important; border-bottom: 1px solid var(--px-border) !important;
 }
 :root:root:root:root .erp-table thead th, :root:root:root:root .erp-table thead th button {
-  background-color: #11162a !important; box-shadow: inset 0 -2px 0 rgba(255, 122, 26, .75) !important; letter-spacing: .07em;
+  background-color: #150f0b !important; box-shadow: inset 0 -2px 0 rgba(240, 164, 90, .75) !important; letter-spacing: .07em;
 }
-:root:root:root:root :where(main thead th) { background-color: #11162a !important; }
+:root:root:root:root :where(main thead th) { background-color: #150f0b !important; }
 :root:root:root:root table td { border-bottom: 1px solid var(--px-border-soft) !important; color: var(--px-text) !important; }
 :root:root:root:root main table:not(.no-stripe) > tbody > tr > td { color: var(--px-text) !important; }
 :root:root:root:root main table:not(.no-stripe) > tbody > tr > td .text-slate-500, :root:root:root:root main table:not(.no-stripe) > tbody > tr > td .text-slate-400 { color: var(--px-muted) !important; }
 /* the five repeating row tints stay (they tell rows apart) but become soft, translucent glass tones */
 :root:root:root:root main table:not(.no-stripe) > tbody > tr { transition: background-color .25s ease, box-shadow .25s ease, transform .25s var(--px-ease); }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: rgba(251, 146, 60, .10) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: rgba(96, 165, 250, .10) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3) { background-color: rgba(74, 222, 128, .09) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4) { background-color: rgba(192, 132, 252, .10) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5) { background-color: rgba(244, 114, 182, .09) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1):hover { background-color: rgba(251, 146, 60, .20) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2):hover { background-color: rgba(96, 165, 250, .20) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3):hover { background-color: rgba(74, 222, 128, .18) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4):hover { background-color: rgba(192, 132, 252, .20) !important; }
-:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5):hover { background-color: rgba(244, 114, 182, .18) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1) { background-color: rgba(240, 164, 90, .10) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2) { background-color: rgba(205, 160, 120, .09) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3) { background-color: rgba(176, 140, 100, .10) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4) { background-color: rgba(214, 140, 110, .09) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5) { background-color: rgba(232, 196, 150, .08) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 1):hover { background-color: rgba(240, 164, 90, .22) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 2):hover { background-color: rgba(205, 160, 120, .20) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 3):hover { background-color: rgba(176, 140, 100, .20) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 4):hover { background-color: rgba(214, 140, 110, .20) !important; }
+:root:root:root:root main table:not(.no-stripe) > tbody > tr:nth-child(5n + 5):hover { background-color: rgba(232, 196, 150, .18) !important; }
 :root:root:root:root table tr:hover td, :root:root:root:root tbody tr:hover td { background-color: transparent !important; }
 :root:root:root:root tbody tr:hover { box-shadow: inset 3px 0 0 var(--px-accent); }
 :root:root:root:root .erp-table-blue thead th { background-color: #0f2247 !important; }
@@ -308,11 +308,11 @@ button.border.bg-white:hover, button.border.bg-slate-50:hover { border-color: rg
   box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .03) !important;
 }
 :root:root:root:root .modal-head { background-color: var(--px-surface-2) !important; border-bottom: 1px solid var(--px-border) !important; color: var(--px-text) !important; }
-.fixed.inset-0[class*="bg-slate-900"], .fixed.inset-0[class*="bg-black"], .fixed.inset-0[class*="bg-slate-950"] { background-color: rgba(8, 11, 20, .62) !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.fixed.inset-0[class*="bg-slate-900"], .fixed.inset-0[class*="bg-black"], .fixed.inset-0[class*="bg-slate-950"] { background-color: rgba(14, 9, 6, .62) !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 :root:root:root:root .tab { background: var(--px-surface-2) !important; border-color: var(--px-border) !important; color: var(--px-muted) !important; }
 :root:root:root:root .tab.active { background: var(--px-surface) !important; color: var(--px-accent) !important; border-color: var(--px-accent) !important; }
 :root:root:root:root .pill { background: var(--px-surface-2) !important; border-color: var(--px-border) !important; color: var(--px-text-2) !important; }
-:root:root:root:root .pill.active { background: linear-gradient(135deg, #ff8a2c, #ff5a00) !important; color: #fff !important; border-color: transparent !important; }
+:root:root:root:root .pill.active { background: linear-gradient(135deg, #e59a4d, #d9792b) !important; color: #fff !important; border-color: transparent !important; }
 :root:root:root:root .empty { background: var(--px-bg-2) !important; color: var(--px-muted) !important; }
 :root:root:root:root .w-full.bg-slate-100 { background-color: var(--px-surface-3) !important; }
 .shadow-sm, .shadow, .shadow-md, .shadow-premium, .shadow-card { --tw-shadow-color: rgba(0, 0, 0, .5); box-shadow: 0 6px 20px -10px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .02); }
@@ -323,7 +323,7 @@ button.border.bg-white:hover, button.border.bg-slate-50:hover { border-color: rg
 @keyframes px-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes px-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes px-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes px-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0); } 50% { box-shadow: 0 0 22px -4px rgba(255, 122, 26, .5); } }
+@keyframes px-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(240, 164, 90, 0); } 50% { box-shadow: 0 0 22px -4px rgba(240, 164, 90, .5); } }
 main > * { animation: px-rise .55s var(--px-ease) backwards; }
 .modal, .animate-scale-in { animation: px-pop .38s var(--px-ease) backwards; }
 [role="dialog"] > div { animation: px-fade .3s ease backwards; }
@@ -335,8 +335,52 @@ main table:not(.no-stripe) > tbody > tr:nth-child(3) { animation-delay: .08s; } 
 main table:not(.no-stripe) > tbody > tr:nth-child(5) { animation-delay: .14s; } main table:not(.no-stripe) > tbody > tr:nth-child(n+6) { animation-delay: .17s; }
 /* cards lift on hover */
 .card, [class*="rounded-2xl"][class*="border"], [class*="rounded-xl"][class*="shadow"] { transition: transform .35s var(--px-ease), box-shadow .35s var(--px-ease), border-color .3s ease; }
-.card:hover, [class*="rounded-2xl"][class*="border"][class*="shadow"]:hover { transform: translateY(-2px); border-color: rgba(255, 122, 26, .35) !important; box-shadow: 0 22px 44px -22px rgba(0, 0, 0, .8), 0 0 28px -14px var(--px-glow); }
+.card:hover, [class*="rounded-2xl"][class*="border"][class*="shadow"]:hover { transform: translateY(-2px); border-color: rgba(240, 164, 90, .35) !important; box-shadow: 0 22px 44px -22px rgba(0, 0, 0, .8), 0 0 28px -14px var(--px-glow); }
 .animate-pulse { background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, .06), transparent); background-size: 200% 100%; animation: px-shimmer 1.6s linear infinite, pulse 2s cubic-bezier(.4, 0, .6, 1) infinite; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { main > *, .modal, main table > tbody > tr { animation: none !important; } }
 }
+
+
+/* ---------- pages with their own light backdrops: keep titles readable ---------- */
+:root:root:root:root .bg-grid { background-color: var(--px-bg) !important; background-image:
+  linear-gradient(to right, rgba(240,164,90,.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(240,164,90,.045) 1px, transparent 1px) !important; background-size: 64px 64px !important; }
+:root:root:root:root .bg-navy-800, :root:root:root:root .bg-navy-900, :root:root:root:root .bg-slate-800, :root:root:root:root .bg-slate-900 { background-color: #2a1e17 !important; }
+:root:root:root:root .bg-navy-700, :root:root:root:root .bg-slate-700 { background-color: #3a2c23 !important; }
+
+:root:root:root:root [style*="background:#f8fafc"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #f8fafc"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#f8fafc"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #f8fafc"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#f1f5f9"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #f1f5f9"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#f1f5f9"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #f1f5f9"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#fff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #fff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#fff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #fff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#ffffff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #ffffff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#ffffff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #ffffff"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#fafafa"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #fafafa"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#fafafa"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #fafafa"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#f9fafb"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #f9fafb"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#f9fafb"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #f9fafb"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#f3f4f6"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #f3f4f6"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#f3f4f6"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #f3f4f6"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#e2e8f0"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #e2e8f0"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#e2e8f0"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #e2e8f0"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background:#f5f5f4"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background: #f5f5f4"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color:#f5f5f4"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *),
+:root:root:root:root [style*="background-color: #f5f5f4"]:not(.keep-white):not(img):not(svg):not(canvas):not(header *):not(aside *) { background-color: var(--px-surface) !important; background-image: none !important; }
