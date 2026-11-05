@@ -10,7 +10,7 @@ import { refreshSavedProducts } from '@/lib/savedProducts';
 import { productWithCompany, productOnly, splitProductAndRef, combineProductAndRef, registerKnownCompanies, formatFullReference } from '@/lib/productLabel';
 import { todayISO, formatDate } from '@/lib/format';
 import { financeApi } from '@/lib/finance';
-import { baseNo, downstreamLeadKeys, leadIsLinked, enquiryColumnLeads } from '@/lib/pipelineLinks';
+import { baseNo, downstreamOfLead, enquiryColumnLeads, usedProjectNumbers } from '@/lib/pipelineLinks';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { OpeningBalanceFields, emptyOpening } from '@/components/OpeningBalanceFields';
@@ -3831,8 +3831,10 @@ export function SalesPipelinePage() {
 
   const [rawLeadsList, setRawLeadsList] = useState<any[]>([]);
 
+  // numbers that a quotation, order or inward still carries: a new enquiry must not take one of them (it would be taken for that job)
+  const [usedProjectNos, setUsedProjectNos] = useState<string[]>([]);
   const resetEnquiryForm = (leads = rawLeadsList) => ({
-    leadNo: generateUniqueProjectNo(leads),
+    leadNo: generateUniqueProjectNo([...leads, ...usedProjectNos]),
     company: '', partName: '', partNumber: '', quantity: '', expectedDate: '', source: 'Direct',
     estimatedValue: '', receivedDate: new Date().toISOString().split('T')[0],
     contacts: [{ person: '', phone: '', email: '' }],
@@ -4238,15 +4240,20 @@ export function SalesPipelinePage() {
            });
         }
       });
+      const taken = usedProjectNumbers({ quotes: quotesRes.data ?? [], orders: ordersRes.data ?? [], inwards: inwardsRes.data ?? [] });
+      setUsedProjectNos(taken);
+      const takenSet = new Set([...taken, ...allLeads.flatMap((l: any) => [baseUniqueNo(l.lead_no), baseUniqueNo(l.enquiry_no)])].filter(Boolean));
+      const freshNo = () => generateUniqueProjectNo([...allLeads, ...taken]);
       setNewLeadForm((prev: any) => {
-        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-')) {
-          return { ...prev, leadNo: generateUniqueProjectNo(allLeads) };
+        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-') || (takenSet.has(baseUniqueNo(prev.leadNo)) && !String(prev.company ?? '').trim())) {
+          return { ...prev, leadNo: freshNo() };
         }
         return prev;
       });
       setEnquiryForm((prev: any) => {
-        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-')) {
-          return { ...prev, leadNo: generateUniqueProjectNo(allLeads) };
+        // the number in an empty form is renewed when it has been taken meanwhile (a form someone is typing in keeps its number)
+        if (!prev.leadNo || prev.leadNo.startsWith('PROJ-') || (takenSet.has(baseUniqueNo(prev.leadNo)) && !String(prev.company ?? '').trim())) {
+          return { ...prev, leadNo: freshNo() };
         }
         return prev;
       });
@@ -4949,18 +4956,17 @@ export function SalesPipelinePage() {
           return 'Cannot delete: finished goods were already made from this inward.\n\nDelete those finished goods first, then this inward.';
         }
         if (card.type === 'lead' || card.type === 'quotation') {
-          const [qs, os, iw] = await Promise.all([
-            supabase.from('cnc_quotations').select('id,quote_no,lead_id,lead_no,enquiry_no,status'),
-            supabase.from('cnc_sales_orders').select('id,order_no,lead_no,quote_no,quotation_id'),
-            supabase.from('cnc_inwards').select('id,project_name,enquiry_id,status').neq('status', 'Deleted'),
+          const [qs, os, iw, ls] = await Promise.all([
+            supabase.from('cnc_quotations').select('id,quote_no,lead_id,lead_no,enquiry_no,status,created_at'),
+            supabase.from('cnc_sales_orders').select('id,order_no,lead_no,quote_no,quotation_id,created_at'),
+            supabase.from('cnc_inwards').select('id,project_name,enquiry_id,status,created_at').neq('status', 'Deleted'),
+            supabase.from('cnc_enquiries').select('id,lead_no,enquiry_no,created_at'),
           ]);
           const quotes = (qs.data ?? []).filter((q: any) => !(card.type === 'quotation' && String(q.id) === String(raw.id)));
           const orders = os.data ?? [];
           if (card.type === 'lead') {
-            const own = quotes.filter((q: any) => leadIsLinked(raw, downstreamLeadKeys({ quotes: [q] })));
-            const ordersOf = orders.filter((o: any) => leadIsLinked(raw, downstreamLeadKeys({ orders: [o], quotes })));
-            const inwardsOf = (iw.data ?? []).filter((i: any) => leadIsLinked(raw, downstreamLeadKeys({ inwards: [i] })));
-            const parts = [[own.length, 'quotation'], [ordersOf.length, 'sales order'], [inwardsOf.length, 'inward']].filter(([n]) => Number(n) > 0).map(([n, l]) => `${n} ${l}${Number(n) === 1 ? '' : 's'}`);
+            const down = downstreamOfLead(raw, (ls.data ?? []).length ? (ls.data ?? []) : [raw], { quotes, orders, inwards: iw.data ?? [] });
+            const parts = [[down.quotes.length, 'quotation'], [down.orders.length, 'sales order'], [down.inwards.length, 'inward']].filter(([n]) => Number(n) > 0).map(([n, l]) => `${n} ${l}${Number(n) === 1 ? '' : 's'}`);
             if (parts.length) return `Cannot delete: enquiry ${raw.lead_no || raw.enquiry_no || ''} already has ${parts.join(', ')}.\n\nDelete those later stages first (inward, then order, then quotation), then the enquiry.`;
           } else {
             const qId = String(raw.id || '');
@@ -5449,7 +5455,12 @@ export function SalesPipelinePage() {
   };
   useEffect(() => {
     const m = ACTIVE_VIEW_MODULE[activeView];
-    if (m && permissions && !canView(m)) setActiveView('pipeline');
+    // The same rule as the tiles at the top: a tile that is shown opens. (Qty Tracking was shown for Sales Orders / Sales Pipeline
+    // rights but opened only with Reports, so with Reports switched off it jumped back to the board by itself.)
+    const mayOpen = activeView === 'tracking_list'
+      ? (canView('sales-orders') || canView('sales-pipeline') || canView('reports'))
+      : (!m || canView(m) || canView('sales-pipeline'));
+    if (m && permissions && !mayOpen) setActiveView('pipeline');
     if (activeView === 'pipeline' && pipelineViewMode === 'companies' && permissions && !canView('sales-pipeline')) {
       setPipelineViewMode('kanban');
     }
@@ -6160,7 +6171,7 @@ export function SalesPipelinePage() {
       // Generate next unique lead/enquiry number
       const { data: latestLeads } = await supabase.from('cnc_enquiries').select('lead_no, enquiry_no');
       const baseLeads = latestLeads && latestLeads.length > 0 ? latestLeads : rawLeadsList;
-      const newLeadNo = generateUniqueProjectNo(baseLeads);
+      const newLeadNo = generateUniqueProjectNo([...baseLeads, ...usedProjectNos]);
 
       const itemsToSave = mapped.length ? mapped : [{ productName: '', partName: '', quantity: '0', remarks: '', filePaths: [] }];
       const firstItem = itemsToSave[0];
@@ -6238,8 +6249,22 @@ export function SalesPipelinePage() {
       const multiplePartsString = itemsToSave.length > 1 ? `${productNamesList} (${itemsToSave.length} Products)` : firstItem.productName;
       const totalQty = itemsToSave.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0);
       const cStr = getContactStrings(enquiryForm);
+      // The number was made when the form opened. Check it against what exists now (enquiries and the later records that still carry
+      // a number); if it was taken meanwhile, the next free one is used.
+      let leadNo = String(enquiryForm.leadNo ?? '').trim();
+      try {
+        const [le, lq, lo, li] = await Promise.all([
+          supabase.from('cnc_enquiries').select('lead_no,enquiry_no'),
+          supabase.from('cnc_quotations').select('lead_no,enquiry_no'),
+          supabase.from('cnc_sales_orders').select('lead_no'),
+          supabase.from('cnc_inwards').select('project_name').neq('status', 'Deleted'),
+        ]);
+        const used = [...(le.data ?? []), ...usedProjectNumbers({ quotes: lq.data ?? [], orders: lo.data ?? [], inwards: li.data ?? [] })];
+        const usedSet = new Set(used.flatMap((r: any) => (typeof r === 'string' ? [r] : [r.lead_no, r.enquiry_no])).map((v: any) => baseUniqueNo(v)).filter(Boolean));
+        if (!leadNo || usedSet.has(baseUniqueNo(leadNo))) leadNo = generateUniqueProjectNo(used);
+      } catch { /* keep the number from the form */ }
       const payload: any = {
-        id: crypto.randomUUID(), lead_no: enquiryForm.leadNo, enquiry_no: enquiryForm.leadNo, customer: enquiryForm.company,
+        id: crypto.randomUUID(), lead_no: leadNo, enquiry_no: leadNo, customer: enquiryForm.company,
         contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
         enquiring_for: JSON.stringify(itemsToSave),
         part_name: multiplePartsString, part_no: 'N/A', quantity: totalQty,

@@ -184,6 +184,7 @@ async function fallbackSaveImport(rows: ImportRow[], preloadedFilters?: Inventor
   const categories = filters?.categories ?? [];
   const suppliers = filters?.suppliers ?? [];
   const locations = filters?.locations ?? [];
+  const warehouses = filters?.warehouses ?? [];
 
   let created = 0;
   const errors: { row: number; code: string | null; message: string }[] = [];

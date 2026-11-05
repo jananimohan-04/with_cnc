@@ -70,8 +70,8 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'profit-loss', label: 'Profit & Loss', category: 'Finance', actions: [...VCEDX], pages: ['accounts/profit-loss'], parent: 'ledger' },
   { key: 'balance-sheet', label: 'Balance Sheet', category: 'Finance', actions: [...VCEDX], pages: ['accounts/balance-sheet'], parent: 'ledger' },
   { key: 'opening-balances', label: 'Opening Balances', category: 'Finance', actions: [...VCEDX], pages: ['accounts/opening-balances'] },
-  { key: 'project-costing', label: 'Project Costing', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/job-costing', 'costing/job_costing'] },
-  { key: 'product-costing', label: 'Product Costing', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/material', 'costing/machine', 'costing/labour', 'costing/tooling', 'costing/overhead', 'costing/quote-costing'] },
+  { key: 'project-costing', label: 'Product Costing', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/job-costing', 'costing/job_costing'] },
+  { key: 'product-costing', label: 'Material Cost', category: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['costing/material', 'costing/machine', 'costing/labour', 'costing/tooling', 'costing/overhead', 'costing/quote-costing'] },
 
   { key: 'inventory', label: 'Inventory', category: 'Inventory & Purchasing', actions: [...VCEDX], pages: ['inventory/raw-materials', 'inventory/components', 'inventory/stock', 'inventory/movements', 'inventory/requests', 'inventory/warehouse', 'inventory/alerts'] },
   { key: 'suppliers', label: 'Suppliers', category: 'Inventory & Purchasing', actions: [...VCEDX], pages: ['purchasing/suppliers', 'purchasing/supplier-performance'] },

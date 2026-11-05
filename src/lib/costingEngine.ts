@@ -563,7 +563,7 @@ export function buildCostingPdfInput(args: {
       rate: costPdfInr(o.cost_per_hour), cost: costPdfInr(o.process_cost),  // Machine Cost = Rate × Hours
     })),
     summary: [
-      ['Project Costing', costPdfInr(totals.calculated)],
+      ['Product Costing', costPdfInr(totals.calculated)],
       ['Material Cost', costPdfInr(totals.material)],
       ['Machine & Labour', costPdfInr(totals.machineLabour)],
       ['Process Cost', costPdfInr(totals.process)],

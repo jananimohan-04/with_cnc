@@ -22,6 +22,7 @@ export type ProjectRow = {
   cost_source: string | null;
   profit?: string | null;
   profit_pct?: string | null;
+  product_cost?: string | number | null;
 };
 
 export type CostingDetail = {
@@ -898,7 +899,7 @@ function computeProjectDetail(
   };
 }
 
-// Sub-component: Individual Compact Project Costing Box
+// Sub-component: Individual Compact Product Costing Box
 function ProjectCostingBox({
   project,
   detail,
@@ -1340,7 +1341,7 @@ export function ProjectCostingPage() {
     } catch (e) {
       setProjects([]);
       setTotal(0);
-      setError(e instanceof Error ? e.message : 'Unable to load project costing.');
+      setError(e instanceof Error ? e.message : 'Unable to load product costing.');
     } finally {
       setLoading(false);
       setDetailsLoading(false);
@@ -1383,7 +1384,7 @@ export function ProjectCostingPage() {
         return [p.project_name, p.part_name, p.party_name, pl, act, sv, prof, pct];
       }),
     ];
-    exportCsv(`Project_Costing_Report_${todayISO()}`, rowsToExport);
+    exportCsv(`Product_Costing_Report_${todayISO()}`, rowsToExport);
   };
 
   const printAll = () => {
@@ -1394,7 +1395,7 @@ export function ProjectCostingPage() {
   printRef.current = printAll;
 
   useEffect(() => {
-    setHeader({ title: 'Project Costing' });
+    setHeader({ title: 'Product Costing' });
     setTabActions(
       <div className="flex items-center gap-2">
         <Button
@@ -1427,7 +1428,7 @@ export function ProjectCostingPage() {
     <div className="p-3 sm:p-5 lg:px-6 lg:pt-3 lg:pb-8 space-y-4 bg-[#F8F5F1] min-h-full">
       <div className="lg:hidden">
         <PageHeader
-          title="Project Costing"
+          title="Product Costing"
           description="Cost analysis by project and work order with goods purchase, service purchase, machine cost and expenses."
           actions={
             <>
@@ -1551,7 +1552,7 @@ export function ProjectCostingPage() {
         {loading ? (
           <Card className="p-16 text-center text-sm font-medium text-slate-500">
             <div className="animate-spin text-2xl mb-2">⚙️</div>
-            Loading project costings...
+            Loading product costings...
           </Card>
         ) : filteredProjects.length === 0 ? (
           <Card className="p-16 text-center text-sm font-medium text-slate-500">

@@ -1093,10 +1093,13 @@ export function CompaniesPage() {
         await retailApi.post('/api/companies', retailPayload).catch(() => {});
       }
 
-      await supabase.rpc('erp_set_company_retail_menus', {
-        p_company_id: targetCompanyId,
-        p_retail_menus: selectedRetailList,
-      }).catch(() => {});
+      // (an rpc call is awaited, not chained with .catch: the builder has no catch)
+      try {
+        await supabase.rpc('erp_set_company_retail_menus', {
+          p_company_id: targetCompanyId,
+          p_retail_menus: selectedRetailList,
+        });
+      } catch { /* the company is saved; the retail menu list can be set again */ }
     } catch (err) {
       console.warn('Failed syncing to retail backend:', err);
     }

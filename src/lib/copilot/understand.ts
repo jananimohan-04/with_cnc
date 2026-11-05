@@ -98,7 +98,7 @@ const ALIASES: [RegExp, string][] = [
   [/\bscheduling\b|\bschedule\b/, 'production/scheduling'],
   [/\bproduction\b/, 'production/planning'],
   [/\bprocess master\b/, 'production/process-master'],
-  [/\bproject costing\b|\bcosting\b/, 'costing/job-costing'],
+  [/\bproduct costing\b|\bcosting\b/, 'costing/job-costing'],
   [/\bcompany profile\b/, 'quotation/company-profile'],
   [/\breports?\b/, 'reports/production'],
   [/\bdashboard\b|\bhome\b/, 'dashboard'],

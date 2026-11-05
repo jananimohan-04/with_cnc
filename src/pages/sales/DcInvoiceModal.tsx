@@ -862,7 +862,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             <p className="text-[11px] text-slate-400 mt-2">Unit prices come from the approved Finished Goods costing — never re-entered. The FG approved price itself is never modified here.</p>
           </div>
 
-          {/* project costing: the approved costing sheet behind each price, in full */}
+          {/* product costing: the approved costing sheet behind each price, in full */}
           {lines.filter((l) => l.sheet).map((l) => {
             const sh = l.sheet;
             let ln: any = sh.lines;
@@ -875,7 +875,7 @@ export function DcInvoiceModal({ card, onClose, onMoved }: {
             const processTotal = ops.reduce((a, o) => a + num(o.process_cost), 0);
             return (
               <div key={`cost-${l.key}`} data-testid="project-costing" className="bg-white rounded-xl border border-slate-200 p-4">
-                <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">Project Costing — {l.itemName || l.productCode || 'Product'}</h3>
+                <h3 className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mb-1 border-b border-brand-100 pb-2">Product Costing — {l.itemName || l.productCode || 'Product'}</h3>
                 <p className="text-[11px] text-slate-500 mb-3">Approved costing sheet {l.sheetRef}{sh.costing_date ? ` · ${String(sh.costing_date).slice(0, 10).split('-').reverse().join('-')}` : ''} · costed quantity {num(sh.quantity)} · status {sh.status}</p>
 
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Raw material</p>

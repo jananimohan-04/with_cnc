@@ -102,7 +102,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const userName: string = profile?.email ?? '';
   // ---- Access control (User Access Matrix) ----
   // Finished Goods permission governs the transaction; every costing section
-  // and action additionally requires the Project Costing module
+  // and action additionally requires the Product Costing module
   // (product-costing accepted as its sibling module, mirroring RLS).
   const fgView: boolean = typeof canView === 'function' ? !!canView('finished-goods') : true;
   const fgEdit: boolean = typeof canDo === 'function' ? !!canDo('finished-goods', 'edit') : true;
@@ -140,7 +140,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const [prodInitKey, setProdInitKey] = useState('');
   // Linked purchase inwards (actuals): service → reference block, goods →
   // one-click material lines. The estimate itself still prices from BOM when
-  // one exists, like Project Costing separates estimated vs recorded cost.
+  // one exists, like Product Costing separates estimated vs recorded cost.
   const [serviceActuals, setServiceActuals] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 });
   const [goodsActuals, setGoodsActuals] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 });
   const [goodsLoaded, setGoodsLoaded] = useState(false);
@@ -352,7 +352,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
         if (soRow?.lead_no && !candidateRefs.includes(String(soRow.lead_no).trim())) candidateRefs.push(String(soRow.lead_no).trim());
         if (cancelled) return;
         setSo(soRow);
-        // Quotation pricing is restricted: only fetch it for Project Costing viewers.
+        // Quotation pricing is restricted: only fetch it for Product Costing viewers.
         let qRow: any = null;
         if (hasCostView) {
           if (soRow?.quotation_id) {
@@ -437,7 +437,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             if (!cancelled && summary) setQtySum(summary);
           } catch { /* summary stays null; local work-order fallback below */ }
         }
-        // Masters feed costing only: skip them without Project Costing view.
+        // Masters feed costing only: skip them without Product Costing view.
         let rmRes: any = { data: [], error: null };
         let supRes: any = { data: [], error: null };
         let jcRes: any = { data: [], error: null };
@@ -501,7 +501,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // BOM + routing are costing inputs: skip them without Project Costing view.
+      // BOM + routing are costing inputs: skip them without Product Costing view.
       if (!hasCostView) { setBom([]); setRouting([]); return; }
       if (!code.trim()) { setBom([]); setRouting([]); return; }
       const b = await supabase.from('cnc_bom').select('*').eq('parent_part_no', code.trim()).order('level').order('created_at');
@@ -546,7 +546,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Saved sheets hold restricted pricing: never load them without Project Costing view.
+      // Saved sheets hold restricted pricing: never load them without Product Costing view.
       if (!sheetKey || !hasCostView) return;
       const v = await sheetsFor(sheetKey);
       if (cancelled) return;
@@ -700,8 +700,8 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   const approvedNum = approvedInput.trim() === '' ? null : num(approvedInput);
   const effectiveApproved = approvedNum ?? totals.calculated;
   const adjustment = effectiveApproved - totals.calculated;
-  // Comparison: quotation (quoted) vs project cost (manufacturing cost).
-  // Project cost = Goods Purchase (material) + Service Purchase (outside work) + Machine Cost (in-house operations).
+  // Comparison: quotation (quoted) vs product cost (manufacturing cost).
+  // Product cost = Goods Purchase (material) + Service Purchase (outside work) + Machine Cost (in-house operations).
   const projectCost = totals.material + totals.service + totals.process;
   const costDiff = effQuoteTotal - projectCost;
   const costDiffPct = effQuoteTotal > 0 ? (costDiff / effQuoteTotal) * 100 : null;
@@ -740,7 +740,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     setNewMat({ code: '', name: '', qty: '', unit: 'Nos', rate: '' });
   };
 
-  // Fill the estimate from linked goods-purchase actuals (Project Costing
+  // Fill the estimate from linked goods-purchase actuals (Product Costing
   // material tab source). Lines stay editable and flagged manual.
   const loadGoodsActuals = () => {
     const lines: MaterialLine[] = goodsActuals.rows.map((inv: any) => {
@@ -760,7 +760,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
   };
 
   // No BOM to calculate from (BOM missing or all-zero) → consider the
-  // Project Costing material actuals as the material cost, automatically.
+  // Product Costing material actuals as the material cost, automatically.
   useEffect(() => {
     if (goodsLoaded || goodsActuals.rows.length === 0 || extraMats.length > 0) return;
     const bomTotal = autoMats.reduce((s, m) => s + num(m.total), 0);
@@ -855,7 +855,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
 
   const saveDraft = async () => {
     if (!(canCreateCosting || canEditCosting)) {
-      alert('Saving costing needs the Project Costing create or edit permission.');
+      alert('Saving costing needs the Product Costing create or edit permission.');
       return;
     }
     if (sheetsMissing) {
@@ -893,7 +893,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
     // sheet persist below and only move the goods; pricing approval happens
     // later through an authorized costing user.
     if (!canApproveCosting && !fgEdit) {
-      alert('Moving to Finished Goods needs Finished Goods edit access (approving pricing additionally needs the Project Costing approve permission).');
+      alert('Moving to Finished Goods needs Finished Goods edit access (approving pricing additionally needs the Product Costing approve permission).');
       return;
     }
     if (!canApprove) {
@@ -1346,7 +1346,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           {!hasCostView ? (
             inline ? null : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Costing details are hidden — you have Finished Goods access without Project Costing access. Quotation pricing, process and material costs, the cost summary and the final price need the Project Costing view permission.
+              Costing details are hidden — you have Finished Goods access without Product Costing access. Quotation pricing, process and material costs, the cost summary and the final price need the Product Costing view permission.
               {fgEdit ? ' You can still move the goods with the button below; pricing approval must be completed later by an authorized costing user before invoicing.' : ''}
             </div>
             )
@@ -1354,13 +1354,13 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           <>
           {(!canEditCosting && mode !== 'view') && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
-              Read-only — you can view costing but cannot change it. Editing needs the Project Costing edit permission.
+              Read-only — you can view costing but cannot change it. Editing needs the Product Costing edit permission.
             </div>
           )}
           {/* Costing edits lock together: view-only users get every costing
               section read-only through this single fieldset (no layout change). */}
           <fieldset disabled={!canEditCosting} className="contents">
-          {/* comparison workspace: quotation vs project costing */}
+          {/* comparison workspace: quotation vs product costing */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           {/* LEFT — quotation (reference only, master never modified) */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -1421,10 +1421,10 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
             <p className="text-[11px] text-slate-400 mt-2">Reference values — overrides affect this sheet only (discount/tax ratio preserved). The quotation master is never modified.</p>
           </div>
 
-          {/* RIGHT — project costing (actual estimated manufacturing cost) */}
+          {/* RIGHT — product costing (actual estimated manufacturing cost) */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-5">
             <div>
-              <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Project Costing</h3>
+              <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Product Costing</h3>
               <p className="text-[11px] text-slate-400 mt-1">Actual estimated manufacturing cost</p>
             </div>
 
@@ -1640,23 +1640,23 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
           </div>
           </div>
 
-          {/* cost summary — quotation vs project cost */}
+          {/* cost summary — quotation vs product cost */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Cost Summary — Quotation vs Project Cost</h3>
+            <h3 className={`${panelTitleClass} text-brand-600 border-b border-brand-100 pb-2`}>Cost Summary — Quotation vs Product Cost</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mt-3">
               <div className="border border-slate-200 rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Quotation Total</p>
                 <p className="font-bold tabular-nums text-lg">{inr(effQuoteTotal)}</p>
               </div>
               <div className="border border-slate-200 rounded-lg px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wider text-slate-400">Actual Cost (Project Cost)</p>
+                <p className="text-[10px] uppercase tracking-wider text-slate-400">Actual Cost (Product Cost)</p>
                 <p className="font-bold tabular-nums text-lg">{inr(projectCost)}</p>
                 <p className="text-[11px] text-slate-400">Machine Cost {inr(totals.process)} + Goods Purchase {inr(totals.material)} + Service Purchase {inr(totals.service)}</p>
               </div>
               <div className={`border rounded-lg px-3 py-2 ${costDiff < 0 ? 'border-red-200 bg-red-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Cost Difference</p>
                 <p className={`font-bold tabular-nums text-lg ${costDiff < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{costDiff >= 0 ? '+' : ''}{inr(costDiff)}{costDiffPct == null ? '' : ` (${costDiffPct >= 0 ? '+' : ''}${costDiffPct.toFixed(1)}%)`}</p>
-                <p className="text-[11px] text-slate-400">Quotation − Project Cost{costDiffPct == null ? '' : ' · (Diff ÷ Quotation) × 100'}</p>
+                <p className="text-[11px] text-slate-400">Quotation − Product Cost{costDiffPct == null ? '' : ' · (Diff ÷ Quotation) × 100'}</p>
               </div>
             </div>
             <p className="text-[11px] text-slate-400 mt-2">

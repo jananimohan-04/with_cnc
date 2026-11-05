@@ -201,7 +201,7 @@ export const PAGE_TEACHINGS: Record<string, { en: string; ta: string }> = {
     ta: `Dashboard-க்கு வரவேற்கிறோம்! இது உங்கள் வணிகத்தின் பறவைப் பார்வையை வழங்குகிறது.`
   },
   '/costing/job-costing': {
-    en: `Welcome to Project Costing! Here you track costs for each project.
+    en: `Welcome to Product Costing! Here you track costs for each project.
     
     See material cost, labor cost, machine cost, and overheads for each job.
     
@@ -212,7 +212,7 @@ export const PAGE_TEACHINGS: Record<string, { en: string; ta: string }> = {
     View profitability by project.
     
     Export cost reports for analysis.`,
-    ta: `Project Costing-க்கு வரவேற்கிறோம்!`
+    ta: `Product Costing-க்கு வரவேற்கிறோம்!`
   },
   '/engineering/cnc-vault': {
     en: `Welcome to Products and Drawings! Here you manage product specifications.
