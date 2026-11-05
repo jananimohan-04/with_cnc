@@ -545,38 +545,6 @@ export function ProcessMasterPage() {
               </FormField>
               {errText('processName')}
             </div>
-            <div>
-              <FormField label="Process Category">
-                <input
-                  value={form.processCategory}
-                  onChange={(e) => set('processCategory', e.target.value)}
-                  placeholder="e.g. CNC Machining"
-                  list="process-category-list"
-                  className={inputClass}
-                />
-                <datalist id="process-category-list">
-                  {categories.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              </FormField>
-            </div>
-            <div>
-              <FormField label="Machine Type">
-                <input
-                  value={form.machineType}
-                  onChange={(e) => set('machineType', e.target.value)}
-                  placeholder="e.g. 4 Axis CNC"
-                  list="process-machine-list"
-                  className={inputClass}
-                />
-                <datalist id="process-machine-list">
-                  {machineTypes.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </FormField>
-            </div>
             <div className="md:col-span-2">
               <FormField label="Description">
                 <textarea
