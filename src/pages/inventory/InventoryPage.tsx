@@ -48,6 +48,10 @@ const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
 ];
 const PAGE_SIZES = PAGE_SIZE_OPTIONS.map(o => o.value);
 const RECENT_LIMIT = 6;
+
+// Temporary toggle: Set to `true` to restore "+ Add Product" and "+ Add Finished Goods Stock" buttons.
+// When `false`, manual product / finished goods creation buttons are hidden across all tabs.
+const SHOW_ADD_PRODUCT_BUTTONS = false;
 const DONUT_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#9333ea', '#ef4444', '#0891b2', '#db2777', '#65a30d', '#64748b'];
 
 const money = (v: string | null | undefined) => formatINR(v, { symbol: false });
@@ -1041,14 +1045,16 @@ export function InventoryPage() {
         >
           {exporting ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Export
         </button>
-        {fgTab ? (
-          <button type="button" onClick={() => setAddingFg(true)} disabled={!filters} className={topbarPrimaryBtn}>
-            <Plus size={13} /> Add Finished Goods Stock
-          </button>
-        ) : (
-          <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
-            <Plus size={13} /> Add Product
-          </button>
+        {SHOW_ADD_PRODUCT_BUTTONS && (
+          fgTab ? (
+            <button type="button" onClick={() => setAddingFg(true)} disabled={!filters} className={topbarPrimaryBtn}>
+              <Plus size={13} /> Add Finished Goods Stock
+            </button>
+          ) : (
+            <button type="button" onClick={() => setEditing('new')} disabled={!filters} className={topbarPrimaryBtn}>
+              <Plus size={13} /> Add Product
+            </button>
+          )
         )}
       </div>
     );
@@ -1136,14 +1142,16 @@ export function InventoryPage() {
           <button onClick={() => void handleExport()} disabled={exporting || !ready} className={outlineBtn} title="Export CSV">
             {exporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Export
           </button>
-          {fgTab ? (
-            <button onClick={() => setAddingFg(true)} disabled={!filters} className={primaryBtn}>
-              <Plus size={16} /> Add Finished Goods Stock
-            </button>
-          ) : (
-            <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}>
-              <Plus size={16} /> Add Product
-            </button>
+          {SHOW_ADD_PRODUCT_BUTTONS && (
+            fgTab ? (
+              <button onClick={() => setAddingFg(true)} disabled={!filters} className={primaryBtn}>
+                <Plus size={16} /> Add Finished Goods Stock
+              </button>
+            ) : (
+              <button onClick={() => setEditing('new')} disabled={!filters} className={primaryBtn}>
+                <Plus size={16} /> Add Product
+              </button>
+            )
           )}
         </div>
       </div>
@@ -1210,7 +1218,7 @@ export function InventoryPage() {
             <button onClick={handleSearch} className={primaryBtn}>Search</button>
             <button onClick={handleClear} className={outlineBtn}>Clear</button>
 
-            {canManage && (
+            {canManage && SHOW_ADD_PRODUCT_BUTTONS && (
               fgTab ? (
                 <button
                   type="button"
@@ -1407,7 +1415,7 @@ export function InventoryPage() {
                           <p className="text-xs text-slate-500">
                             Add unordered finished goods, buffer products, or opening stock in your inventory to track stock and values.
                           </p>
-                          {canManage && (
+                          {canManage && SHOW_ADD_PRODUCT_BUTTONS && (
                             <button
                               type="button"
                               onClick={() => setAddingFg(true)}
