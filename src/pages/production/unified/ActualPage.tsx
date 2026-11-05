@@ -98,20 +98,20 @@ export function ActualTimeline() {
 
   return (
     <div className="space-y-4" data-testid="actual-timeline">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <CalendarNav nav={nav} onToday={() => { nav.setAnchor(ymd(new Date())); setSignal(s => s + 1); }} loading={data.loading} />
-        <select aria-label="Machine filter" value={machine} onChange={e => setMachine(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Machine filter" value={machine} onChange={e => setMachine(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate shadow-2xs">
           <option value="All">All machines</option>
           {data.machines.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select aria-label="Operator filter" value={operator} onChange={e => setOperator(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Operator filter" value={operator} onChange={e => setOperator(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate shadow-2xs">
           <option value="All">All operators</option>
           {data.operators.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <input aria-label="Search" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
-        <Badge variant="neutral">{Math.round(hoursInView * 10) / 10} h run in view</Badge>
-        <Button variant="primary" onClick={openAddButton} className="ml-auto" aria-label="Add runs">+ Add runs</Button>
-        <Button variant="secondary" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1.5" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={16} /> Add Task</Button>
+        <input aria-label="Search" placeholder="Search work order, product…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 !w-40 max-w-[160px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs shadow-2xs" />
+        <Badge variant="neutral" className="text-xs py-0.5 px-2">{Math.round(hoursInView * 10) / 10} h run</Badge>
+        <Button variant="primary" size="sm" onClick={openAddButton} className="ml-auto h-8 px-2.5 text-xs whitespace-nowrap" aria-label="Add runs">+ Add runs</Button>
+        <Button variant="secondary" size="sm" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1 h-8 px-2.5 text-xs whitespace-nowrap" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={14} /> Add Task</Button>
       </div>
       <TimelineGrid key={signal} days={nav.days} blocks={blocks} testId="actual-grid" onDragRange={openRun} />
       {!data.loading && !anyActual && (

@@ -250,36 +250,40 @@ export function ComparisonTimeline() {
 
   return (
     <div className="space-y-4" data-testid="comparison-timeline">
-      <div className="flex flex-wrap items-end gap-3">
-        <div><span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">From</span>
-          <input type="date" aria-label="Comparison from" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value, to: r.to < e.target.value ? e.target.value : r.to }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm" /></div>
-        <div><span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">To</span>
-          <input type="date" aria-label="Comparison to" value={range.to} min={range.from} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm" /></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From</span>
+          <input type="date" aria-label="Comparison from" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value, to: r.to < e.target.value ? e.target.value : r.to }))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs !w-32" />
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">To</span>
+          <input type="date" aria-label="Comparison to" value={range.to} min={range.from} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs !w-32" />
+        </div>
         <div className="flex gap-1">
-          {([['week', 'This week'], ['month', 'This month'], ['last30', 'Last 30 days']] as const).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setPreset(k)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">{l}</button>
+          {([['week', 'This week'], ['month', 'This month'], ['last30', '30d']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setPreset(k)} className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">{l}</button>
           ))}
         </div>
-        <select aria-label="Machine filter" value={machine} onChange={e => setMachine(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Machine filter" value={machine} onChange={e => setMachine(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate">
           <option value="All">All machines</option>
           {data.machines.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select aria-label="Operator filter" value={operator} onChange={e => setOperator(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Operator filter" value={operator} onChange={e => setOperator(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate">
           <option value="All">All operators</option>
           {data.operators.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select aria-label="Status filter" value={status} onChange={e => setStatus(e.target.value as typeof status)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Status filter" value={status} onChange={e => setStatus(e.target.value as typeof status)} className="h-8 !w-32 max-w-[130px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate">
           {STATUS_FILTERS.map(s => <option key={s} value={s}>{s === 'All' ? 'All statuses' : s}</option>)}
         </select>
-        <input aria-label="Search" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-60 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
-        {data.loading && <Badge variant="neutral">Loading…</Badge>}
-        <span className="flex-1" />
-        <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+        <input aria-label="Search" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 !w-36 max-w-[150px] rounded-lg border border-slate-200 bg-white px-2 text-xs" />
+        {data.loading && <Badge variant="neutral" className="text-xs py-0.5 px-2">Loading…</Badge>}
+        <span className="flex-1 min-w-0" />
+        <div className="flex bg-white rounded-lg border border-slate-200 p-0.5">
           {(['table', 'calendar'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)} className={`px-3 py-1 text-sm font-medium rounded-md ${mode === m ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m === 'table' ? 'Table' : 'Calendar'}</button>
+            <button key={m} onClick={() => setMode(m)} className={`px-2.5 py-1 text-xs font-medium rounded ${mode === m ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m === 'table' ? 'Table' : 'Calendar'}</button>
           ))}
         </div>
-        <Button variant="secondary" className="bg-white" icon={<Upload size={14} />} onClick={exportCsv} disabled={rows.length === 0}>Export CSV</Button>
+        <Button variant="secondary" size="sm" className="bg-white h-8 text-xs px-2.5" icon={<Upload size={14} />} onClick={exportCsv} disabled={rows.length === 0}>Export CSV</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">

@@ -75,19 +75,19 @@ export function useCalendarNav() {
 
 export function CalendarNav({ nav, onToday, loading }: { nav: ReturnType<typeof useCalendarNav>; onToday: () => void; loading?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="flex items-center bg-white rounded-lg border border-slate-200">
-        <button aria-label="Previous" className="p-2 text-slate-600 hover:bg-slate-50 border-r border-slate-200" onClick={() => nav.step(-1)}><ChevronLeft size={16} /></button>
-        <div className="px-4 py-1.5 text-sm font-medium text-slate-700 min-w-[210px] text-center">{nav.title}</div>
-        <button aria-label="Next" className="p-2 text-slate-600 hover:bg-slate-50 border-l border-slate-200" onClick={() => nav.step(1)}><ChevronRight size={16} /></button>
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center bg-white rounded-lg border border-slate-200 shadow-2xs">
+        <button aria-label="Previous" className="p-1.5 text-slate-600 hover:bg-slate-50 border-r border-slate-200" onClick={() => nav.step(-1)}><ChevronLeft size={14} /></button>
+        <div className="px-2.5 py-1 text-xs font-semibold text-slate-700 min-w-[155px] text-center">{nav.title}</div>
+        <button aria-label="Next" className="p-1.5 text-slate-600 hover:bg-slate-50 border-l border-slate-200" onClick={() => nav.step(1)}><ChevronRight size={14} /></button>
       </div>
-      <Button variant="secondary" className="bg-white" onClick={onToday}>Today</Button>
-      <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+      <Button variant="secondary" size="sm" className="h-8 px-2.5 text-xs bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-2xs" onClick={onToday}>Today</Button>
+      <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-2xs">
         {(['Week', 'Day'] as const).map(v => (
-          <button key={v} onClick={() => nav.setView(v)} className={`px-3 py-1 text-sm font-medium rounded-md ${nav.view === v ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v}</button>
+          <button key={v} onClick={() => nav.setView(v)} className={`px-2 py-0.5 text-xs font-medium rounded ${nav.view === v ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v}</button>
         ))}
       </div>
-      {loading && <Badge variant="neutral">Loading…</Badge>}
+      {loading && <Badge variant="neutral" className="text-xs py-0.5 px-2">Loading…</Badge>}
     </div>
   );
 }

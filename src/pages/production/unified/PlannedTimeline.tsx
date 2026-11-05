@@ -505,33 +505,33 @@ export function PlannedTimeline() {
 
   return (
     <div className="space-y-4" data-testid="planned-timeline">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center bg-white rounded-lg border border-slate-200">
-          <button aria-label="Previous" className="p-2 text-slate-600 hover:bg-slate-50 border-r border-slate-200" onClick={() => step(-1)}><ChevronLeft size={16} /></button>
-          <div className="px-4 py-1.5 text-sm font-medium text-slate-700 min-w-[210px] text-center">{title}</div>
-          <button aria-label="Next" className="p-2 text-slate-600 hover:bg-slate-50 border-l border-slate-200" onClick={() => step(1)}><ChevronRight size={16} /></button>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center bg-white rounded-lg border border-slate-200 shadow-2xs">
+          <button aria-label="Previous" className="p-1.5 text-slate-600 hover:bg-slate-50 border-r border-slate-200" onClick={() => step(-1)}><ChevronLeft size={14} /></button>
+          <div className="px-2.5 py-1 text-xs font-semibold text-slate-700 min-w-[155px] text-center">{title}</div>
+          <button aria-label="Next" className="p-1.5 text-slate-600 hover:bg-slate-50 border-l border-slate-200" onClick={() => step(1)}><ChevronRight size={14} /></button>
         </div>
-        <Button variant="secondary" className="bg-white" onClick={() => { setAnchor(today); setTimeout(() => scrollToNow(true), 0); }}>Today</Button>
-        <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+        <Button variant="secondary" size="sm" className="h-8 px-2.5 text-xs bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-2xs" onClick={() => { setAnchor(today); setTimeout(() => scrollToNow(true), 0); }}>Today</Button>
+        <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-2xs">
           {(['Week', 'Day'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} className={`px-3 py-1 text-sm font-medium rounded-md ${view === v ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v}</button>
+            <button key={v} onClick={() => setView(v)} className={`px-2 py-0.5 text-xs font-medium rounded ${view === v ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v}</button>
           ))}
         </div>
-        <select aria-label="Machine filter" value={machineFilter} onChange={e => setMachineFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Machine filter" value={machineFilter} onChange={e => setMachineFilter(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate shadow-2xs">
           <option value="All">All machines</option>
           {machines.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select aria-label="Operator filter" value={operatorFilter} onChange={e => setOperatorFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+        <select aria-label="Operator filter" value={operatorFilter} onChange={e => setOperatorFilter(e.target.value)} className="h-8 !w-36 max-w-[144px] rounded-lg border border-slate-200 bg-white px-2 text-xs truncate shadow-2xs">
           <option value="All">All operators</option>
           {operators.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <input aria-label="Search plans" placeholder="Search work order, product, company…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm" />
-        <Badge variant="neutral">{Math.round(totalHours * 10) / 10} h planned in view</Badge>
-        <Badge variant={runningNow.length > 0 ? 'success' : 'neutral'} dot={runningNow.length > 0}>{runningNow.length} running now</Badge>
-        {loading && <Badge variant="neutral">Loading…</Badge>}
-        <span className="flex-1" />
-        <Button variant="primary" className="bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm" onClick={() => openPlan()}><Plus size={16} /> Plan Operation</Button>
-        <Button variant="secondary" className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1.5" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={16} /> Add Task</Button>
+        <input aria-label="Search plans" placeholder="Search plans…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 !w-40 max-w-[160px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs shadow-2xs" />
+        <Badge variant="neutral" className="text-xs py-0.5 px-2">{Math.round(totalHours * 10) / 10} h planned</Badge>
+        {runningNow.length > 0 && <Badge variant="success" dot className="text-xs py-0.5 px-2">{runningNow.length} running</Badge>}
+        {loading && <Badge variant="neutral" className="text-xs py-0.5 px-2">Loading…</Badge>}
+        <span className="flex-1 min-w-0" />
+        <Button variant="primary" size="sm" className="h-8 px-2.5 text-xs bg-brand-500 hover:bg-brand-600 text-white border-0 shadow-sm whitespace-nowrap" onClick={() => openPlan()}><Plus size={14} /> Plan Operation</Button>
+        <Button variant="secondary" size="sm" className="h-8 px-2.5 text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm flex items-center gap-1 whitespace-nowrap" onClick={() => { setTaskToEdit(null); setShowAddTask(true); }}><ListTodo size={14} /> Add Task</Button>
       </div>
 
       {missing && (

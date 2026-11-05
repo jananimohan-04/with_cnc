@@ -4,7 +4,7 @@ import { Badge, Button, Card, statusToVariant } from '@/components/ui/Card';
 import { inputClass } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
-import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
+import { exportCsv, escapeHtml, printHtml, printGrid } from '@/lib/reportExport';
 import { supabase } from '@/lib/supabase';
 import { machineCostTotal, quoteNameKey, valueOperations } from '@/lib/projectCosting';
 import { calcJobCardHours } from '@/lib/costingEngine';
@@ -1387,8 +1387,30 @@ export function ProjectCostingPage() {
     exportCsv(`Product_Costing_Report_${todayISO()}`, rowsToExport);
   };
 
+  // Prints a clean cost table of the products shown (the page itself is not printed: its screen layout printed as a blank sheet).
   const printAll = () => {
-    window.print();
+    if (!filteredProjects.length) return;
+    const n = (v: unknown) => Number(v) || 0;
+    const sum = (a: any[] | undefined, f: (x: any) => number) => (a ?? []).reduce((t, x) => t + f(x), 0);
+    const rows: unknown[][] = [['Work Order', 'Product', 'Customer', 'Machine', 'Goods Purchase', 'Service Purchase', 'Expenses', 'Total Cost', 'Sales Value', 'Margin (INR)', 'Margin %']];
+    let tCost = 0, tSales = 0;
+    for (const p of filteredProjects) {
+      const d: any = detailsMap[projectKey(p)];
+      const machine = n(d?.processOpsTotal);
+      const goods = sum(d?.materials, m => n(m.amount));
+      const service = sum(d?.services, m => n(m.amount)) + sum(d?.processes, m => n(m.amount));
+      const exp = sum(d?.expenses, m => n(m.total_amount));
+      const calc = machine + goods + service + exp;
+      const pd: any = d?.project || p;
+      const cost = calc > 0 ? calc : n(pd.actual_cost) || n(pd.planned_cost);
+      const sales = n(pd.sales_value);
+      const margin = sales > 0 ? sales - cost : null;
+      tCost += cost; tSales += sales;
+      rows.push([p.project_name, p.part_name, p.party_name, machine.toFixed(2), goods.toFixed(2), service.toFixed(2), exp.toFixed(2), cost.toFixed(2), sales.toFixed(2),
+        margin === null ? '—' : margin.toFixed(2), margin === null || sales <= 0 ? '—' : `${((margin * 100) / sales).toFixed(1)}%`]);
+    }
+    rows.push(['Total', '', '', '', '', '', '', tCost.toFixed(2), tSales.toFixed(2), (tSales - tCost).toFixed(2), tSales > 0 ? `${(((tSales - tCost) * 100) / tSales).toFixed(1)}%` : '—']);
+    printGrid('Product Costing', rows);
   };
 
   exportRef.current = exportAll;
