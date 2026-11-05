@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, Plus, Printer, SlidersHorizontal } from 'lucide-react';
+import { Download, Loader2, Plus, Printer, SlidersHorizontal, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { inventoryApi, formatQty, parseCsv, type InventoryItemRow, type RecentTransaction } from '@/lib/inventory';
@@ -33,11 +33,19 @@ export function StockAdjustmentPage() {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
+  const exportList = () => {
+    if (!rows?.length) return;
+    exportCsv(`Stock_Adjustments_${todayISO()}`, [
+      ['Date', 'Product Name', 'Product Code', 'Change', 'Unit', 'Reason', 'Reference', 'By'],
+      ...rows.map(t => [formatDate(t.txn_date), t.item_name, t.item_code, Number(t.qty) || 0, t.unit ?? '', t.remarks ?? '', t.reference_no ?? '', t.created_by ?? '']),
+    ]);
+  };
+
   const printList = () => {
     if (!rows?.length) return;
     printGrid('Stock Adjustments', [
-      ['Date', 'Product Code', 'Product', 'Change', 'Unit', 'Reason', 'Reference', 'By'],
-      ...rows.map(t => [formatDate(t.txn_date), t.item_code, t.item_name, Number(t.qty) || 0, t.unit ?? '', t.remarks ?? '', t.reference_no ?? '', t.created_by ?? '']),
+      ['Date', 'Product', 'Product Code', 'Change', 'Unit', 'Reason', 'Reference', 'By'],
+      ...rows.map(t => [formatDate(t.txn_date), t.item_name, t.item_code, Number(t.qty) || 0, t.unit ?? '', t.remarks ?? '', t.reference_no ?? '', t.created_by ?? '']),
     ]);
   };
 
@@ -47,6 +55,9 @@ export function StockAdjustmentPage() {
         title="Stock Adjustment"
         description="Correct the stock of a product (physical count difference, damage, opening corrections). Every adjustment is kept with its reason."
         actions={<>
+          <button onClick={exportList} disabled={!rows?.length} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50" title="Download the adjustments listed below as a CSV file">
+            <Upload size={16} /> Export
+          </button>
           <button onClick={printList} disabled={!rows?.length} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50" title="Print the adjustments listed below">
             <Printer size={16} /> Print
           </button>
@@ -111,11 +122,12 @@ export function StockAdjustmentPage() {
 }
 
 // ---- Import: adjust many products from an Excel (.xlsx) or CSV file -----------------------------------------------------
-interface ImportLine { n: number; code: string; direction: 'IN' | 'OUT' | null; qty: number; target: number | null; reason: string; reference: string; date: string; problem?: string }
+interface ImportLine { n: number; name: string; code: string; direction: 'IN' | 'OUT' | null; qty: number; target: number | null; reason: string; reference: string; date: string; problem?: string }
 interface ImportOutcome { ok: number; failed: { n: number; code: string; message: string }[] }
 
 const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 const SYN: Record<string, string[]> = {
+  name: ['product_name', 'product', 'name', 'item_name', 'product_material_name', 'material_name', 'part_name'],
   code: ['product_code', 'code', 'item_code', 'part_no', 'material_code', 'sku'],
   change: ['change', 'adjust_qty', 'adjustment', 'adjust_by', 'qty_change', 'qty', 'quantity'],
   direction: ['direction', 'type', 'increase_decrease', 'in_out'],
@@ -143,10 +155,10 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
 
   const template = () => exportCsv('stock-adjustment-import-template', [
-    ['product_code', 'change', 'new_stock', 'reason', 'reference', 'date'],
-    ['RM-SS304-25', '5', '', 'Physical count difference', 'COUNT-01', todayISO()],
-    ['BO-BRG-6204', '-2', '', 'Damaged', '', todayISO()],
-    ['TL-END-10MM', '', '40', 'Counted stock (leave change empty)', '', todayISO()],
+    ['product_name', 'change', 'new_stock', 'reason', 'reference', 'date'],
+    ['Stainless Steel Round Bar 25mm', '5', '', 'Physical count difference', 'COUNT-01', todayISO()],
+    ['Deep Groove Ball Bearing 6204', '-2', '', 'Damaged', '', todayISO()],
+    ['Carbide End Mill 10mm 4-Flute', '', '40', 'Counted stock (leave change empty)', '', todayISO()],
   ]);
 
   const readFile = async (file: File | null) => {
@@ -164,11 +176,12 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
       if (data.length < 2) { setParseError('No data rows found. The first row must be the column headings.'); return; }
       const head = data[0].map(norm);
       const col = (k: string) => head.findIndex(h => SYN[k].includes(h));
-      const idx = { code: col('code'), change: col('change'), direction: col('direction'), target: col('target'), reason: col('reason'), reference: col('reference'), date: col('date') };
-      if (idx.code < 0) { setParseError('A "product_code" column is needed. Download the template to see the columns.'); return; }
+      const idx = { name: col('name'), code: col('code'), change: col('change'), direction: col('direction'), target: col('target'), reason: col('reason'), reference: col('reference'), date: col('date') };
+      if (idx.name < 0 && idx.code < 0) { setParseError('A "product_name" column is needed. Download the template to see the columns.'); return; }
       if (idx.change < 0 && idx.target < 0) { setParseError('Add a "change" column (e.g. 5 or -2) or a "new_stock" column (the counted quantity).'); return; }
       const get = (r: string[], i: number) => (i >= 0 ? r[i] ?? '' : '');
       setLines(data.slice(1).map((r, i): ImportLine => {
+        const name = get(r, idx.name);
         const code = get(r, idx.code);
         const rawChange = get(r, idx.change);
         const dirText = get(r, idx.direction).toLowerCase();
@@ -177,10 +190,10 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
         const target = get(r, idx.target) === '' ? null : num(get(r, idx.target));
         const date = toISO(get(r, idx.date));
         const line: ImportLine = {
-          n: i + 2, code, direction: Number.isNaN(change) ? null : change < 0 ? 'OUT' : 'IN', qty: Number.isNaN(change) ? 0 : Math.abs(change),
+          n: i + 2, name, code, direction: Number.isNaN(change) ? null : change < 0 ? 'OUT' : 'IN', qty: Number.isNaN(change) ? 0 : Math.abs(change),
           target, reason: get(r, idx.reason) || 'Stock adjustment (import)', reference: get(r, idx.reference), date,
         };
-        if (!code) line.problem = 'Product code is missing';
+        if (!name && !code) line.problem = 'Product name is missing';
         else if (Number.isNaN(change) && target === null) line.problem = 'Give a change or a new stock quantity';
         else if (target !== null && Number.isNaN(target)) line.problem = 'New stock is not a number';
         else if (target !== null && target < 0) line.problem = 'New stock cannot be negative';
@@ -200,33 +213,48 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
     const failed: ImportOutcome['failed'] = [];
     const touched = new Map<string, InventoryItemRow>();
     try {
-      // every product once, by code
+      // every product once, found by its name (the code is only used to tell apart products that share a name)
+      const byName = new Map<string, InventoryItemRow[]>();
       const byCode = new Map<string, InventoryItemRow>();
+      const nameKey = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+      let seen = 0;
       for (let p = 1; ; p++) {
         const res = await inventoryApi.items({ categoryId: null, search: null, supplierId: null, status: null, warehouseId: null, page: p, pageSize: 500 });
-        res.rows.forEach(r => byCode.set(String(r.code).trim().toLowerCase(), r));
-        if (res.rows.length < 500 || byCode.size >= res.total) break;
+        res.rows.forEach(r => {
+          byName.set(nameKey(r.name), [...(byName.get(nameKey(r.name)) ?? []), r]);
+          byCode.set(String(r.code).trim().toLowerCase(), r);
+        });
+        seen += res.rows.length;
+        if (res.rows.length < 500 || seen >= res.total) break;
       }
       for (const l of lines) {
-        if (l.problem) { failed.push({ n: l.n, code: l.code, message: l.problem }); continue; }
-        const item = byCode.get(l.code.trim().toLowerCase());
-        if (!item) { failed.push({ n: l.n, code: l.code, message: 'No product with this code' }); continue; }
+        if (l.problem) { failed.push({ n: l.n, code: l.name || l.code, message: l.problem }); continue; }
+        const label = l.name || l.code;
+        let item: InventoryItemRow | undefined;
+        if (l.name) {
+          const same = byName.get(nameKey(l.name)) ?? [];
+          item = same.length === 1 ? same[0] : same.find(x => l.code && String(x.code).trim().toLowerCase() === l.code.trim().toLowerCase());
+          if (same.length > 1 && !item) { failed.push({ n: l.n, code: label, message: `${same.length} products have this name. Add a product_code column to choose one` }); continue; }
+        } else {
+          item = byCode.get(l.code.trim().toLowerCase());
+        }
+        if (!item) { failed.push({ n: l.n, code: label, message: 'No product with this name' }); continue; }
         let direction = l.direction;
         let qty = l.qty;
         if (l.target !== null && direction === null) {
           // "new_stock": adjust by the difference to the counted quantity
           const diff = Math.round((l.target - (Number(item.current_stock) || 0)) * 1000) / 1000;
-          if (diff === 0) { failed.push({ n: l.n, code: l.code, message: 'Stock already equals the counted quantity' }); continue; }
+          if (diff === 0) { failed.push({ n: l.n, code: label, message: 'Stock already equals the counted quantity' }); continue; }
           direction = diff > 0 ? 'IN' : 'OUT'; qty = Math.abs(diff);
         }
-        if (!direction) { failed.push({ n: l.n, code: l.code, message: 'Nothing to adjust' }); continue; }
+        if (!direction) { failed.push({ n: l.n, code: label, message: 'Nothing to adjust' }); continue; }
         try {
           const res = await inventoryApi.adjustStock({ kind: item.kind, id: item.id, direction, qty: String(qty), reason: l.reason, reference: l.reference, date: l.date });
           item.current_stock = res.new_stock;           // later lines for the same product see the new stock
           touched.set(`${item.kind}:${item.id}`, item);
           ok.push(l.n);
         } catch (e) {
-          failed.push({ n: l.n, code: l.code, message: e instanceof Error ? e.message : String(e) });
+          failed.push({ n: l.n, code: label, message: e instanceof Error ? e.message : String(e) });
         }
       }
       // Retail Store: products kept in the Retail Store warehouse show their new stock there
@@ -266,8 +294,9 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
       <div className="space-y-4">
         <div className="text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">
           <p className="mb-2 font-medium text-slate-800">Upload an Excel (.xlsx) or CSV file with these columns:</p>
-          <code className="block text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-slate-800">product_code, change, new_stock, reason, reference, date</code>
+          <code className="block text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-slate-800">product_name, change, new_stock, reason, reference, date</code>
           <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">
+            <li><b>product_name</b>: the product's name, exactly as in Inventory (capital letters and extra spaces do not matter).</li>
             <li><b>change</b>: how much to add (5) or take off (-2). Or use <b>direction</b> (IN / OUT) with a positive qty.</li>
             <li><b>new_stock</b>: instead of a change, give the counted quantity and the difference is adjusted for you.</li>
             <li><b>reason</b> is kept with each adjustment (blank = "Stock adjustment (import)"); <b>date</b> blank = today.</li>
@@ -288,11 +317,11 @@ function ImportAdjustmentsModal({ onClose, onDone }: { onClose: () => void; onDo
             </div>
             <div className="max-h-56 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead><tr className="text-left text-slate-500"><th className="px-2 py-1">Row</th><th className="px-2 py-1">Code</th><th className="px-2 py-1 text-right">Change</th><th className="px-2 py-1 text-right">New stock</th><th className="px-2 py-1">Reason</th><th className="px-2 py-1">Check</th></tr></thead>
+                <thead><tr className="text-left text-slate-500"><th className="px-2 py-1">Row</th><th className="px-2 py-1">Product</th><th className="px-2 py-1 text-right">Change</th><th className="px-2 py-1 text-right">New stock</th><th className="px-2 py-1">Reason</th><th className="px-2 py-1">Check</th></tr></thead>
                 <tbody>
                   {lines.map(l => (
                     <tr key={l.n} className="border-t border-slate-100">
-                      <td className="px-2 py-1 text-slate-500">{l.n}</td><td className="px-2 py-1 font-medium">{l.code || '—'}</td>
+                      <td className="px-2 py-1 text-slate-500">{l.n}</td><td className="px-2 py-1 font-medium">{l.name || l.code || '—'}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{l.direction ? `${l.direction === 'OUT' ? '-' : '+'}${l.qty}` : '—'}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{l.target ?? '—'}</td>
                       <td className="px-2 py-1 text-slate-600">{l.reason}</td>
