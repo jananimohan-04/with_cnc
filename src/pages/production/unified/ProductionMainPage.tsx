@@ -66,7 +66,7 @@ export function ProductionMainPage() {
         <div className="lg:hidden">
           <PageHeader
             title="Production"
-            description="Plan, track and manage production from project to part to finished goods."
+            description="Plan, track and manage production from product to part to finished goods."
             actions={
               <div className="flex items-center gap-2">
                 {loading && <span className="text-xs text-slate-400">Syncing...</span>}

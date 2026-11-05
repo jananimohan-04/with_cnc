@@ -201,7 +201,7 @@ export const PAGE_TEACHINGS: Record<string, { en: string; ta: string }> = {
     ta: `Dashboard-க்கு வரவேற்கிறோம்! இது உங்கள் வணிகத்தின் பறவைப் பார்வையை வழங்குகிறது.`
   },
   '/costing/job-costing': {
-    en: `Welcome to Product Costing! Here you track costs for each project.
+    en: `Welcome to Product Costing! Here you track costs for each product.
     
     See material cost, labor cost, machine cost, and overheads for each job.
     
@@ -209,7 +209,7 @@ export const PAGE_TEACHINGS: Record<string, { en: string; ta: string }> = {
     
     Add cost entries for materials used, labor hours, and machine time.
     
-    View profitability by project.
+    View profitability by product.
     
     Export cost reports for analysis.`,
     ta: `Product Costing-க்கு வரவேற்கிறோம்!`

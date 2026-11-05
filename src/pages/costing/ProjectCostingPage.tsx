@@ -1373,7 +1373,7 @@ export function ProjectCostingPage() {
   const exportAll = () => {
     if (!filteredProjects.length) return;
     const rowsToExport = [
-      ['Project / Work Order', 'Part Name', 'Customer / Party', 'Planned Cost', 'Actual Cost', 'Sales Value', 'Margin (₹)', 'Margin (%)'],
+      ['Product / Work Order', 'Part Name', 'Customer / Party', 'Planned Cost', 'Actual Cost', 'Sales Value', 'Margin (₹)', 'Margin (%)'],
       ...filteredProjects.map((p) => {
         const d = detailsMap[projectKey(p)];
         const act = d?.project?.actual_cost || p.actual_cost || '';
@@ -1429,7 +1429,7 @@ export function ProjectCostingPage() {
       <div className="lg:hidden">
         <PageHeader
           title="Product Costing"
-          description="Cost analysis by project and work order with goods purchase, service purchase, machine cost and expenses."
+          description="Cost analysis by product and work order with goods purchase, service purchase, machine cost and expenses."
           actions={
             <>
               <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={exportAll}>
@@ -1453,7 +1453,7 @@ export function ProjectCostingPage() {
             {/* Project / Work Order Dropdown */}
             <div className="min-w-[280px] sm:min-w-[340px]">
               <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1 block">
-                Filter by Project / Work Order
+                Filter by Product / Work Order
               </label>
               <div className="relative">
                 <select
@@ -1461,7 +1461,7 @@ export function ProjectCostingPage() {
                   onChange={(e) => setSelectedProjectKey(e.target.value)}
                   className="w-full text-xs font-bold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 pr-8 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all cursor-pointer shadow-2xs"
                 >
-                  <option value="all">📁 All Projects / Work Orders ({projects.length})</option>
+                  <option value="all">📁 All Products / Work Orders ({projects.length})</option>
                   {projects.map((p) => {
                     const k = projectKey(p);
                     return (
@@ -1483,7 +1483,7 @@ export function ProjectCostingPage() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search project, part, company..."
+                  placeholder="Search product, part, company..."
                   className="w-full pl-8 pr-8 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
                 />
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -1557,7 +1557,7 @@ export function ProjectCostingPage() {
         ) : filteredProjects.length === 0 ? (
           <Card className="p-16 text-center text-sm font-medium text-slate-500">
             <Package className="w-8 h-8 text-slate-400 mx-auto mb-2 stroke-1" />
-            No projects match the selected criteria.
+            No products match the selected criteria.
           </Card>
         ) : (
           <div className={filteredProjects.length === 1 ? 'max-w-xl mx-auto' : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5'}>

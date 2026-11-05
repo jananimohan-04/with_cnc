@@ -1,4 +1,4 @@
-// Project Costing: the machine-cost and planned-cost rules, kept free of React so they can be tested.
+// Product Costing: the machine-cost and planned-cost rules, kept free of React so they can be tested.
 
 /** Minutes between two timestamps (a run still open counts up to `now`); null when it cannot be worked out. */
 export function spanMinutes(start: unknown, end: unknown, now: number = Date.now()): number | null {
