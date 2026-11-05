@@ -417,7 +417,7 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
         )}
 
         {type === 'STOCK' && (<>
-          <FormField label="Warehouse / Location" hint="Leave blank to use the product's own location">
+          <FormField label="Warehouse" hint="Leave blank to use the product's own warehouse">
             <select className={inputClass} value={f.warehouse_id ?? ''} onChange={e => set('warehouse_id', e.target.value)}>
               <option value="">Product default</option>
               {lookups.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}

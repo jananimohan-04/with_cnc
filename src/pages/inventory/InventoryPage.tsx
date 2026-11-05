@@ -269,8 +269,6 @@ export function InventoryPage() {
 
   const [editing, setEditing] = useState<InventoryItemRow | 'new' | null>(null);
   const [viewing, setViewing] = useState<{ row: InventoryItemRow; tab: 'details' | 'history' } | null>(null);
-  const [adjusting, setAdjusting] = useState<InventoryItemRow | null>(null);
-  const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [masterOpen, setMasterOpen] = useState(false);
@@ -507,7 +505,7 @@ export function InventoryPage() {
       switch (sortKey) {
         case 'name': return (r.name || '').toLowerCase();
         case 'category': return (r.category_name || '').toLowerCase();
-        case 'warehouse': return (r.warehouse_name || r.location_name || '').toLowerCase();
+        case 'warehouse': return (r.warehouse_name || '').toLowerCase();
         case 'unit': return (r.unit || '').toLowerCase();
         case 'qty': return Number(r.current_stock || 0);
         case 'value': return totalPrice(r);
@@ -681,24 +679,12 @@ export function InventoryPage() {
   };
 
   const getWarehouseSelectValue = (r: InventoryItemRow): string => {
+    if (r.warehouse_id) return r.warehouse_id;
     if (r.location_id) {
       const loc = (filters?.locations ?? []).find(l => l.id === r.location_id);
-      const wid = loc?.warehouse_id || r.warehouse_id;
-      if (wid) {
-        const rawLocs = locationsFor(wid);
-        const distinct = rawLocs.filter(l =>
-          l.name &&
-          l.name.trim().toLowerCase() !== (loc?.warehouse_name || '').trim().toLowerCase() &&
-          l.name.trim().toLowerCase() !== 'general' &&
-          l.name.trim().toLowerCase() !== 'main store'
-        );
-        if (distinct.length === 0) {
-          return `wh:${wid}`;
-        }
-      }
-      return r.location_id;
+      if (loc?.warehouse_id) return loc.warehouse_id;
     }
-    return r.warehouse_id ? `wh:${r.warehouse_id}` : '';
+    return '';
   };
 
   const handleInlineWarehouseChange = async (r: InventoryItemRow, value: string) => {
@@ -710,10 +696,13 @@ export function InventoryPage() {
       let newLocationName: string | null = null;
       let createdLocation = false;
 
-      if (!value) {
+      const wid = value.startsWith('wh:') ? value.replace('wh:', '') : value;
+
+      if (!wid) {
         newLocationId = null;
-      } else if (value.startsWith('wh:')) {
-        const wid = value.replace('wh:', '');
+        newWarehouseId = null;
+        newWarehouseName = null;
+      } else {
         newWarehouseId = wid;
         const targetWh = filters?.warehouses.find(w => w.id === wid);
         newWarehouseName = targetWh?.name ?? null;
@@ -726,14 +715,6 @@ export function InventoryPage() {
           newLocationId = await ensureWarehouseLocation(wid, targetWh?.name || 'Main Store', companyId);
           createdLocation = true;
           newLocationName = targetWh?.name || 'Main Store';
-        }
-      } else {
-        newLocationId = value;
-        const loc = filters?.locations.find(l => l.id === value);
-        if (loc) {
-          newLocationName = loc.name;
-          newWarehouseId = loc.warehouse_id;
-          newWarehouseName = loc.warehouse_name;
         }
       }
 
@@ -773,7 +754,7 @@ export function InventoryPage() {
         };
       });
 
-      // The dropdown only shows locations it knows about: reload the list so the one just created is selectable (else it snaps back to "Not set").
+      // Reload filters if a new location was auto-created so it stays selectable
       if (createdLocation) void inventoryApi.filters().then(setFilters).catch(() => { /* the row already shows the change */ });
 
       try {
@@ -969,12 +950,12 @@ export function InventoryPage() {
       }
       if (fgTab) {
         exportCsv(`Finished_Goods_Stock_${todayISO()}`, [
-          ['#', 'Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Unit Price (INR)', 'Available Qty (Opened Stock)', 'Total Price (INR)', 'Stock Status', 'Last Movement'],
+          ['#', 'Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Price (INR)', 'Available Qty (Opened Stock)', 'Total Price (INR)', 'Stock Status', 'Last Movement'],
           ...all.map((r, i) => [
             i + 1,
             r.name,
             r.category_name ?? 'Finished Goods',
-            [r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—',
+            r.warehouse_name || '—',
             r.unit ?? 'Nos',
             r.rate ?? '0',
             r.current_stock,
@@ -999,20 +980,20 @@ export function InventoryPage() {
       }
       const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
       exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
+        ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
         ...all.map((r, i) => [
           i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
-          r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
+          r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.item_status,
         ]),
       ]);
     } catch (e) {
       if (items?.rows && items.rows.length > 0) {
         const catName = categories.find(c => c.id === applied.categoryId)?.name ?? 'All-Items';
         exportCsv(`Inventory_${catName.replace(/\W+/g, '-')}_${todayISO()}`, [
-          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Location', 'Product Status'],
+          ['#', 'Product Code', 'Product Name', 'Category', 'Specification', 'Unit', 'Current Stock', 'Min Stock', 'Reorder Qty', 'Unit Price (INR)', 'Total Price (INR)', 'Status', 'Supplier', 'Warehouse', 'Product Status'],
           ...items.rows.map((r, i) => [
             i + 1, r.code, r.name, r.category_name ?? '', r.specification ?? '', r.unit ?? '', r.current_stock, r.min_stock, r.reorder_qty,
-            r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.location_name ?? '', r.item_status,
+            r.rate, totalPrice(r).toFixed(2), r.status, r.supplier_name ?? '', r.warehouse_name ?? '', r.item_status,
           ]),
         ]);
       } else {
@@ -1054,11 +1035,6 @@ export function InventoryPage() {
 
     setTabActions(
       <div className="flex items-center gap-1.5">
-        {canManage && (
-          <button type="button" onClick={() => setAdjustPickerOpen(true)} className={topbarBtn}>
-            <SlidersHorizontal size={13} /> Stock Adjustment
-          </button>
-        )}
         {canManage && (
           <button type="button" onClick={() => setTransferOpen(true)} className={topbarBtn}>
             <ArrowLeftRight size={13} /> Stock Transfer
@@ -1170,9 +1146,6 @@ export function InventoryPage() {
           <p className="text-sm text-slate-500 mt-1">Real-time visibility of raw materials, work-in-progress and finished goods.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {canManage && (
-            <button onClick={() => setAdjustPickerOpen(true)} className={outlineBtn}><SlidersHorizontal size={16} /> Stock Adjustment</button>
-          )}
           {canManage && (
             <button onClick={() => setTransferOpen(true)} className={outlineBtn}><ArrowLeftRight size={16} /> Stock Transfer</button>
           )}
@@ -1350,7 +1323,7 @@ export function InventoryPage() {
                   </th>
                   <th className="px-3 py-3 text-left">
                     <ColumnHeaderFilter
-                      label="Warehouse / Location"
+                      label="Warehouse"
                       col="warehouse"
                       isFiltered={Boolean(applied.warehouseId)}
                       filterSummary={filters?.warehouses.find(w => w.id === applied.warehouseId)?.name || null}
@@ -1360,7 +1333,7 @@ export function InventoryPage() {
                       }}
                       sortKey={sortKey}
                       sortDir={sortDir}
-                      onClick={(e) => setActiveColMenu({ col: 'warehouse', label: 'Warehouse / Location', rect: e.currentTarget.getBoundingClientRect() })}
+                      onClick={(e) => setActiveColMenu({ col: 'warehouse', label: 'Warehouse', rect: e.currentTarget.getBoundingClientRect() })}
                     />
                   </th>
                   <th className="px-3 py-3 text-left">
@@ -1520,43 +1493,24 @@ export function InventoryPage() {
                       )}
                     </td>
 
-                    {/* Warehouse / Location (inline editable) */}
+                    {/* Warehouse (inline editable) */}
                     <td className="px-3 py-2 text-slate-600">
                       {canManage ? (
                         <select
-                          aria-label={`Warehouse / Location for ${r.name}`}
+                          aria-label={`Warehouse for ${r.name}`}
                           className="h-8 w-full max-w-[210px] px-2 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 truncate"
                           value={getWarehouseSelectValue(r)}
                           disabled={rowBusyId === r.id}
                           onChange={e => void handleInlineWarehouseChange(r, e.target.value)}
                         >
                           <option value="">— Not set —</option>
-                          {(filters?.warehouses ?? []).map(w => {
-                            const rawLocs = locationsFor(w.id);
-                            const locs = rawLocs.filter(l =>
-                              l.name &&
-                              l.name.trim().toLowerCase() !== w.name.trim().toLowerCase() &&
-                              l.name.trim().toLowerCase() !== 'general' &&
-                              l.name.trim().toLowerCase() !== 'main store'
-                            );
-                            if (locs.length === 0) {
-                              return <option key={`wh:${w.id}`} value={`wh:${w.id}`}>{w.name}</option>;
-                            }
-                            return (
-                              <optgroup key={w.id} label={w.name}>
-                                <option value={`wh:${w.id}`}>{w.name} (General)</option>
-                                {locs.map(l => (
-                                  <option key={l.id} value={l.id}>
-                                    {l.name || l.code}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            );
-                          })}
+                          {(filters?.warehouses ?? []).map(w => (
+                            <option key={w.id} value={w.id}>{w.name}</option>
+                          ))}
                         </select>
                       ) : (
-                        <span className="max-w-[240px] truncate block" title={[r.warehouse_name, r.location_name].filter(Boolean).join(' / ')}>
-                          {[r.warehouse_name, r.location_name].filter(Boolean).join(' / ') || '—'}
+                        <span className="max-w-[240px] truncate block" title={r.warehouse_name || '—'}>
+                          {r.warehouse_name || '—'}
                         </span>
                       )}
                     </td>
@@ -1602,15 +1556,7 @@ export function InventoryPage() {
 
                     {/* Available Qty */}
                     <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setAdjusting(r)}
-                        title="Click to adjust stock count"
-                        className="hover:bg-blue-50 hover:text-blue-700 px-1.5 py-1 rounded text-right tabular-nums font-medium text-slate-800 inline-flex items-center justify-end gap-1 group transition-colors ml-auto"
-                      >
-                        <span>{formatQty(r.current_stock)}</span>
-                        <Pencil size={11} className="opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
-                      </button>
+                      <span className="px-1.5 py-1 tabular-nums font-medium text-slate-800">{formatQty(r.current_stock)}</span>
                     </td>
 
                     {/* Value */}
@@ -2050,9 +1996,6 @@ export function InventoryPage() {
           <button onClick={() => { setViewing({ row: menu.row, tab: 'details' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Eye size={14} /> View Product</button>
           <button onClick={() => { setViewing({ row: menu.row, tab: 'history' }); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><History size={14} /> Stock Movement</button>
           {canManage && (
-            <button onClick={() => { setAdjusting(menu.row); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><SlidersHorizontal size={14} /> Adjust Stock</button>
-          )}
-          {canManage && (
             <button onClick={() => { setDeleting(menu.row); setMenu(null); }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100"><Trash2 size={14} /> Delete Product</button>
           )}
         </div>
@@ -2105,7 +2048,6 @@ export function InventoryPage() {
           locationsFor={locationsFor}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refreshAll(); }}
-          onAdjustStock={canManage ? (row) => setAdjusting(row) : undefined}
         />
       )}
       {editing === 'new' && !fgTab && filters && (
@@ -2119,7 +2061,6 @@ export function InventoryPage() {
           locationsFor={locationsFor}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refreshAll(); }}
-          onAdjustStock={canManage ? (row) => setAdjusting(row) : undefined}
         />
       )}
       {viewing && (
@@ -2130,12 +2071,6 @@ export function InventoryPage() {
           onClose={() => setViewing(null)}
           onOpenSource={route => { setViewing(null); navigate(route); }}
         />
-      )}
-      {adjusting && canManage && (
-        <AdjustStockModal row={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); refreshAll(); }} />
-      )}
-      {adjustPickerOpen && canManage && (
-        <ItemPickerModal title="Stock Adjustment — Select Product" onClose={() => setAdjustPickerOpen(false)} onPick={row => { setAdjustPickerOpen(false); setAdjusting(row); }} />
       )}
       {transferOpen && canManage && (
         <TransferModal onClose={() => setTransferOpen(false)} onSaved={refreshAll} />
@@ -2449,19 +2384,6 @@ function AddFinishedGoodsModal({
           </select>
         </FormField>
 
-        <FormField label="Location / Bin (Optional)">
-          <select
-            className={inputClass}
-            value={locationId}
-            onChange={e => setLocationId(e.target.value)}
-          >
-            <option value="">— General / Not set —</option>
-            {locs.map(l => (
-              <option key={l.id} value={l.id}>{l.name || l.code}</option>
-            ))}
-          </select>
-        </FormField>
-
         <FormField label="Available Qty (Opened Stock)" required hint="Initial quantity available in stock right now">
           <input
             type="number"
@@ -2504,7 +2426,7 @@ function AddFinishedGoodsModal({
   );
 }
 
-function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId, imageUrl, locationsFor, onClose, onSaved, onAdjustStock }: {
+function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId, imageUrl, locationsFor, onClose, onSaved }: {
   item: InventoryItemRow | null;
   filters: InventoryFilters;
   categories: InventoryFilters['categories'];
@@ -2514,7 +2436,6 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
   locationsFor: (warehouseId: string) => InventoryFilters['locations'];
   onClose: () => void;
   onSaved: () => void;
-  onAdjustStock?: (row: InventoryItemRow) => void;
 }) {
   const isNew = !item;
   // An existing item keeps its master table: purchased ↔ manufactured categories only.
@@ -2561,8 +2482,8 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
       if (!isNonNegativeDecimal(v)) return setError(`${label} must be a number of zero or more.`);
     }
     if (!isNonNegativeDecimal(form.opening_qty)) return setError('Opening Qty must be a number of zero or more.');
-    const stockDiff = isNew ? 0 : Math.round((Number(form.opening_qty || 0) - Number(item!.current_stock || 0)) * 1000) / 1000;
-    if (((isNew && isPositiveQty(form.opening_qty)) || stockDiff !== 0) && !form.opening_date) return setError('Select the opening date.');
+    // Stock of an existing product is only changed in the Stock Adjustment menu, never from this form.
+    if (isNew && isPositiveQty(form.opening_qty) && !form.opening_date) return setError('Select the opening date.');
     if (file && !file.type.startsWith('image/')) return setError('The image must be a picture file (JPG, PNG, WEBP…).');
     setSaving(true);
     setError(null);
@@ -2591,18 +2512,6 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         status: form.status,
         ...(isNew ? { opening_qty: form.opening_qty.trim() || '0', opening_date: form.opening_date } : {}),
       });
-
-      // Editing the opening stock of an existing product: the books keep every change, so the difference is posted as an adjustment.
-      if (stockDiff !== 0) {
-        try {
-          await inventoryApi.adjustStock({
-            kind: item!.kind, id: item!.id, direction: stockDiff > 0 ? 'IN' : 'OUT', qty: String(Math.abs(stockDiff)),
-            reason: 'Opening stock edited', reference: '', date: form.opening_date,
-          });
-        } catch (adjErr) {
-          throw new Error(`The product was saved, but its stock was not changed: ${errText(adjErr)}`);
-        }
-      }
 
       // Retail Store: send the item when it is (or just stopped being) in the Retail Store warehouse.
       try {
@@ -2677,23 +2586,11 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
           <select className={inputClass} value={form.warehouse_id} onChange={e => {
             const wid = e.target.value;
             const locs = locationsFor(wid);
-            const autoLoc = locs.some(l => l.id === form.location_id)
-              ? form.location_id
-              : (locs.length > 0 ? locs[0].id : '');
+            const autoLoc = locs.length > 0 ? locs[0].id : '';
             setForm(f => ({ ...f, warehouse_id: wid, location_id: autoLoc }));
           }}>
             <option value="">— Any —</option>
             {filters.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        </FormField>
-        <FormField label="Location">
-          <select className={inputClass} value={form.location_id} onChange={e => {
-            const lid = e.target.value;
-            const loc = filters.locations.find(l => l.id === lid);
-            setForm(f => ({ ...f, location_id: lid, warehouse_id: loc ? loc.warehouse_id : f.warehouse_id }));
-          }}>
-            <option value="">— None —</option>
-            {locations.map(l => <option key={l.id} value={l.id}>{l.name}{form.warehouse_id ? '' : ` (${l.warehouse_name})`}</option>)}
           </select>
         </FormField>
         <FormField label="Status">
@@ -2721,22 +2618,10 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
             </div>
           </div>
         </FormField>
-        <FormField label={isNew ? 'Opening Qty' : 'Opening / Current Qty'} hint={!isNew ? 'Changing this posts a stock adjustment for the difference.' : undefined}>
-          <input className={inputClass} inputMode="decimal" value={form.opening_qty} onChange={e => set('opening_qty', e.target.value)} />
+        <FormField label={isNew ? 'Opening Qty' : 'Current Qty'} hint={!isNew ? 'Stock is changed in the Stock Adjustment menu.' : undefined}>
+          <input className={`${inputClass}${isNew ? '' : ' bg-slate-50 text-slate-500'}`} inputMode="decimal" value={form.opening_qty} readOnly={!isNew} onChange={e => set('opening_qty', e.target.value)} />
         </FormField>
-        <FormField label={isNew ? 'Opening Date' : 'Date of change'}><input type="date" className={inputClass} value={form.opening_date} onChange={e => set('opening_date', e.target.value)} /></FormField>
-        {!isNew && onAdjustStock && (
-          <div className="sm:col-span-2 flex items-center justify-between gap-3 text-xs text-slate-500">
-            <span>Need a reason or reference with it? Use the full stock adjustment instead.</span>
-            <button
-              type="button"
-              onClick={() => { onClose(); onAdjustStock(item!); }}
-              className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition inline-flex items-center gap-1.5 shrink-0"
-            >
-              <SlidersHorizontal size={14} /> Adjust / Add Stock
-            </button>
-          </div>
-        )}
+        {isNew && <FormField label="Opening Date"><input type="date" className={inputClass} value={form.opening_date} onChange={e => set('opening_date', e.target.value)} /></FormField>}
       </div>
     </Modal>
   );
@@ -2810,7 +2695,7 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
               ['Rate', formatINR(it.rate)],
               ['Stock Value', formatINR(it.value)],
               ['Supplier', it.supplier_name],
-              ['Warehouse / Location', [it.warehouse_name, it.location_name].filter(Boolean).join(' / ')],
+              ['Warehouse', it.warehouse_name || '—'],
               ['Status', <span className="inline-flex items-center gap-2"><StatusPill status={it.status} /> <span className="text-xs text-slate-500">{it.item_status}</span></span>],
               ['Last Updated', it.updated_at ? new Date(it.updated_at).toLocaleString('en-IN', { hour12: false }) : ''],
             ]} />
@@ -2894,7 +2779,7 @@ function ViewItemModal({ row, initialTab, imageUrl, onClose, onOpenSource }: {
   );
 }
 
-function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; onClose: () => void; onSaved: () => void }) {
+export function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; onClose: () => void; onSaved: () => void }) {
   const [direction, setDirection] = useState<'IN' | 'OUT'>('IN');
   const [qty, setQty] = useState('');
   const [date, setDate] = useState(todayISO());
@@ -2980,7 +2865,7 @@ function AdjustStockModal({ row, onClose, onSaved }: { row: InventoryItemRow; on
   );
 }
 
-function ItemPickerModal({ title, onPick, onClose }: {
+export function ItemPickerModal({ title, onPick, onClose }: {
   title: string;
   onPick: (row: InventoryItemRow) => void;
   onClose: () => void;
@@ -3236,7 +3121,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
     ];
 
     // same columns as the import expects, with the unit price named plainly and the total price (qty x unit price) added for reference
-    const header = IMPORT_COLUMNS.map(c => (c === 'rate' ? 'unit_price' : c)).concat('total_price');
+    const header: string[] = [...IMPORT_COLUMNS.map(c => (c === 'rate' ? 'unit_price' : String(c))), 'total_price'];
     const withTotal = sampleRows.map(row => [...row, String(Math.round(Number(row[10]) * Number(row[7]) * 100) / 100)]);
     exportCsv('inventory-import-template', [header, ...withTotal]);
   };
@@ -3475,7 +3360,7 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
                 ['Hydraulic Valve Block VB-2', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '1200', '35', '42000'],
               ];
               exportCsv('finished-goods-stock-template', [
-                ['Product / Material Name', 'Category', 'Warehouse / Location', 'Unit', 'Unit Price (₹)', 'Available Qty', 'Total Price (₹)'],
+                ['Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Price (₹)', 'Available Qty', 'Total Price (₹)'],
                 ...sampleRows,
               ]);
             }} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition">
