@@ -102,6 +102,7 @@ import {
 } from './pages/admin/AdminPages';
 import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
+import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
@@ -359,6 +360,7 @@ function MainLayout() {
           onCloseMobile={() => setMobileMenuOpen(false)}
         />
       )}
+      <AssistantDock />
       <HelpAssistant />
       <GuideCoach />
       <TeachingTour />

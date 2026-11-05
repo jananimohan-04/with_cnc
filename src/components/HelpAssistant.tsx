@@ -848,12 +848,12 @@ export function HelpAssistant() {
   return (
     <>
     <TamilVoiceNotice lang={lang} />
-    <div ref={rootRef} style={drag.style} data-voice-ignore
-      className={`fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
-      <button type="button" {...drag.bind}
+    <div ref={rootRef} data-voice-ignore
+      className={`dock-help fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
+      <button type="button" data-assistant-launcher
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => { if (drag.wasDragged()) return; setMenu((m) => !m); }}
-        aria-label="AI assistant" aria-expanded={menu} title="AI assistant: Teaching, Co-worker, Adviser · drag to move"
+        aria-label="AI assistant" aria-expanded={menu} title="AI assistant: Teaching, Co-worker, Adviser"
         className={`relative flex h-12 touch-none cursor-grab select-none items-center gap-2 rounded-full pl-4 pr-5 text-white shadow-lg active:cursor-grabbing ${anyOn ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
         {active && phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
         <span className="relative">

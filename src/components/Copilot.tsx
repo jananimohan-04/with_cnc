@@ -1831,28 +1831,8 @@ export function Copilot() {
   if (!open) {
     return (
       <div
-        className={`fixed ${pillPos ? '' : 'bottom-4 left-[5.5rem] max-lg:bottom-20 max-lg:left-2'} z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs hover:shadow-xl cursor-grab active:cursor-grabbing select-none touch-none`}
-        style={pillPos ? { left: pillPos.x, top: pillPos.y } : undefined}
-        onPointerDown={(e) => {
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          pillDrag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
-          pillMoved.current = false;
-          (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const d = pillDrag.current; if (!d) return;
-          if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) return;
-          d.moved = true; pillMoved.current = true;
-          const el = e.currentTarget as HTMLElement;
-          const x = Math.min(Math.max(0, e.clientX - d.dx), window.innerWidth - el.offsetWidth);
-          const y = Math.min(Math.max(0, e.clientY - d.dy), window.innerHeight - el.offsetHeight);
-          setPillPos({ x, y });
-        }}
-        onPointerUp={() => {
-          const d = pillDrag.current; pillDrag.current = null;
-          if (d?.moved) { try { localStorage.setItem('coworker-pill-pos', JSON.stringify(pillPosRef.current)); } catch { /* not saved */ } setTimeout(() => { pillMoved.current = false; }, 0); }
-        }}
-        onDoubleClick={() => { setPillPos(null); try { localStorage.removeItem('coworker-pill-pos'); } catch { /* ignore */ } }}
+        data-assistant-launcher
+        className="dock-cowork fixed bottom-4 left-[5.5rem] max-lg:bottom-20 max-lg:left-2 z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs hover:shadow-xl cursor-pointer select-none"
         onClick={async () => {
           if (pillMoved.current) return;
           setMicMuted(false);
@@ -1866,7 +1846,7 @@ export function Copilot() {
           playWakeChime();
           setOpen(true);
         }}
-        title="Co-worker is listening! Say 'Hi Raaju!' or click to open, drag to move."
+        title="Co-worker is listening! Say 'Hi Raaju!' or click to open."
       >
         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white shadow-xs">
           <Sparkles size={13} />

@@ -304,3 +304,10 @@ body { font-size: 15px; }
 .inv-compact td [class*="max-w-[220px]"] { max-width: 190px !important; }
 .inv-compact td img, .inv-compact td [class*="w-8"][class*="h-8"]:not(button) { width: 26px !important; height: 26px !important; }
 .inv-compact td button[title="Edit"], .inv-compact td button[title="More"] { width: 28px !important; height: 28px !important; }
+
+/* AI help + Co-worker buttons sit beside the movable arrow tab (AssistantDock) and show only while it is open. */
+html:not([data-dock="open"]) [data-assistant-launcher] { display: none !important; }
+.dock-help { left: calc(var(--dock-x, 80px) + 32px) !important; bottom: var(--dock-y, 20px) !important; }
+.dock-cowork { left: calc(var(--dock-x, 80px) + 32px) !important; bottom: calc(var(--dock-y, 20px) + 56px) !important; }
+html[data-dock-side="right"] .dock-help,
+html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(100vw - var(--dock-x, 0px) + 6px) !important; }
