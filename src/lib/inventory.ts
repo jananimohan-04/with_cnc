@@ -285,7 +285,13 @@ export const inventoryApi = {
   summary: () => call<InventorySummary>('erp_inventory_summary'),
   recent: (limit: number) => call<RecentTransaction[]>('erp_inventory_recent', { p_limit: limit }),
   item: (kind: ItemKind, id: string) => call<InventoryItemDetail>('erp_inventory_item', { p_kind: kind, p_id: id }),
-  saveItem: (item: SaveItemInput) => call<{ kind: ItemKind; id: string }>('erp_save_inventory_item', { p_item: item }),
+  // The unit and the item code are optional on the forms: an empty unit is saved as "Nos" and an empty code gets one made from the name.
+  saveItem: (item: SaveItemInput) => {
+    const code = String(item.code ?? '').trim()
+      || `PRD-${String(item.name ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const unit = String(item.unit ?? '').trim() || 'Nos';
+    return call<{ kind: ItemKind; id: string }>('erp_save_inventory_item', { p_item: { ...item, code, unit } });
+  },
   adjustStock: (args: { kind: ItemKind; id: string; direction: 'IN' | 'OUT'; qty: string; reason: string; reference: string; date: string }) =>
     call<{ movement_id: string; new_stock: string }>('erp_adjust_stock', {
       p_kind: args.kind, p_id: args.id, p_direction: args.direction, p_qty: args.qty,
