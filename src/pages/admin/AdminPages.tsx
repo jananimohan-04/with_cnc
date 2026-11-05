@@ -896,6 +896,37 @@ export function CompaniesPage() {
     }
   };
 
+  // Reuse the menu choices of a company that already exists (only fills the ticks; nothing is saved until Create / Save).
+  const [copyingFrom, setCopyingFrom] = useState(false);
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+  const copyAccessFrom = async (companyId: string) => {
+    const src = (companies as CompanyRow[]).find((c) => c.id === companyId);
+    if (!src) return;
+    setCopyingFrom(true);
+    setCopyNote(null);
+    try {
+      const compOffBi = new Set<string>((await fetchDisabledModules(src.id)) || []);
+      setSelectedBi(new Set(VISIBLE_MODULES.filter((m) => !globalDisabledBi.has(m.key) && !compOffBi.has(m.key)).map((m) => m.key)));
+
+      let retailPerms: string[] | null = null;
+      try {
+        const coRes = await retailApi.get('/api/companies/' + encodeURIComponent(src.code || src.id));
+        if (coRes && Array.isArray(coRes.menuPermissions)) retailPerms = coRes.menuPermissions;
+      } catch {}
+      if (retailPerms && retailPerms.length > 0) {
+        setSelectedRetail(new Set(retailPerms.filter((id) => !globalDisabledRetail.has(id))));
+      } else {
+        setSelectedRetail(new Set(availableRetailItems.map((i: any) => i.id)));
+      }
+      setCopyNote(`Menus copied from ${src.company_name}. Adjust if needed, then save.`);
+    } catch (err) {
+      console.error('Failed copying company menus:', err);
+      setCopyNote('Could not copy menus from that company.');
+    } finally {
+      setCopyingFrom(false);
+    }
+  };
+
   useEffect(() => {
     supabase.from('company_users').select('company_id').then(({ data, error }) => {
       if (error) console.error('Failed to count users:', error);
@@ -910,6 +941,7 @@ export function CompaniesPage() {
     setFormError(null);
     setAccessTab('bi');
     setAccessSearch('');
+    setCopyNote(null);
     setLoadingAccess(true);
     setShowForm(true);
 
@@ -957,6 +989,7 @@ export function CompaniesPage() {
     setFormError(null);
     setAccessTab('bi');
     setAccessSearch('');
+    setCopyNote(null);
     setLoadingAccess(true);
     setShowForm(true);
 
@@ -1364,6 +1397,18 @@ export function CompaniesPage() {
                     className="h-6 w-36 pl-6 pr-2 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/40"
                   />
                 </div>
+                <select
+                  value=""
+                  disabled={copyingFrom || loadingAccess}
+                  onChange={(e) => { if (e.target.value) copyAccessFrom(e.target.value); }}
+                  title="Reuse the menu choices of an existing company"
+                  className="h-6 max-w-[170px] px-1.5 text-[11px] font-semibold rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                >
+                  <option value="">{copyingFrom ? 'Copying…' : 'Copy from company…'}</option>
+                  {(companies as CompanyRow[]).filter((c) => c.id !== form.id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={handleSelectAllTab}
@@ -1392,7 +1437,7 @@ export function CompaniesPage() {
                 </span>
               </span>
               <span className="text-[10px] text-amber-600/90 font-medium">
-                Only active platform options shown
+                {copyNote ?? 'Only active platform options shown'}
               </span>
             </div>
 
