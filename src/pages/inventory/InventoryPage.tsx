@@ -3354,37 +3354,14 @@ function ImportModal({ categories, onClose, onImported }: { categories: { id: st
       </>}>
       <ModalError message={error} />
       <div className="space-y-4">
-        <div className="text-sm text-slate-600 bg-white border border-slate-200 rounded-lg p-4">
-          <p className="mb-2 font-medium text-slate-800">Upload an Excel spreadsheet (.xlsx) or CSV file with these columns:</p>
-          <code className="block text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-slate-800 break-all">{IMPORT_COLUMNS.join(',')}</code>
-          <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">
-            <li><b>Supported formats</b>: Excel Workbook (<b>.xlsx</b>), CSV (<b>.csv</b>), or TSV (<b>.tsv</b>).</li>
-            <li><b>category</b>: category name or code; <b>supplier</b>: supplier name; <b>location</b>: location code or name.</li>
-            <li>Quantities and prices are plain numbers (no ₹ or commas). <b>opening_qty</b> posts an opening stock entry. <b>unit_price</b> is the price of one unit; <b>total_price</b> (qty × unit price) is optional and only used to work out the unit price when it is blank.</li>
-            <li>Invalid or duplicate rows are skipped and listed; valid rows are saved.</li>
-          </ul>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={() => {
-              const sampleRows = [
-                ['Precision Drive Shaft 120mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '850', '50', '42500'],
-                ['Aluminium CNC Flange 50mm', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '340', '120', '40800'],
-                ['Hydraulic Valve Block VB-2', 'Finished Goods', 'Main Plant Warehouse', 'Nos', '1200', '35', '42000'],
-              ];
-              exportCsv('finished-goods-stock-template', [
-                ['Product / Material Name', 'Category', 'Warehouse', 'Unit', 'Unit Price (₹)', 'Available Qty', 'Total Price (₹)'],
-                ...sampleRows,
-              ]);
-            }} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition">
-              <Download size={14} /> Download Finished Goods Template (.csv)
-            </button>
-            <button onClick={downloadTemplate} className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
-              <Download size={14} /> Download Full Inventory Template (.csv)
-            </button>
-          </div>
-          <div className="mt-3 p-2.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
-            <span className="font-semibold">Available Categories: </span>
-            {categories && categories.length > 0 ? categories.map(c => c.name).join(', ') : 'Raw Materials, Bought-Out Components, Consumables, Tools'}
-          </div>
+        <div>
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="h-9 px-3.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+          >
+            <Download size={14} /> Download Full Inventory Template (.csv)
+          </button>
         </div>
 
         <FormField label="Spreadsheet or CSV File (.xlsx, .csv)">
