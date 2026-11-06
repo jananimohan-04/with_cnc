@@ -1,6 +1,7 @@
 /* Supabase Auth bridge (Google OAuth). Secret key stays server-side only.
    Frontend receives only url + publishable key via /api/config. */
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+/* dotenv is only for local runs (it is not a dependency of the project): on Vercel the settings come from the environment */
+try { require('dotenv').config({ path: require('path').join(__dirname, '.env') }); } catch (_e) { /* not installed: use the process environment */ }
 const { createClient } = require('@supabase/supabase-js');
 
 const URL = process.env.SUPABASE_URL || '';
