@@ -117,7 +117,7 @@ export const navSections: NavSection[] = [
   {
     label: 'Administration',
     items: [
-      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
+      { label: 'User Management', icon: Users, page: 'admin/users', roles: ['COMPANY_ADMIN'], iconClass: 'text-cyan-400', module: 'admin-users' },
       { label: 'JD Build', icon: Briefcase, page: 'admin/jd-build', iconClass: 'text-purple-400', module: 'jd-build' },
       { label: 'Access Management', icon: Users, page: 'admin/access', roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'], iconClass: 'text-emerald-400', module: 'admin-access' },
       { label: 'Company Management', icon: Building2, page: 'admin/companies', roles: ['SUPER_ADMIN'], iconClass: 'text-indigo-400', module: 'admin-companies' },

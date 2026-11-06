@@ -83,14 +83,14 @@ function useCompanies() {
 
 const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '', mobile: '', retail_role: '', terms: false };
 
-export function UsersPage() {
+export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } = {}) {
   const navigate = useNavigate();
   const { profile, company, isSuperAdmin, isCompanyAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const { companies } = useCompanies();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [companyFilter, setCompanyFilter] = useState<string>(() => searchParams.get('company') ?? company?.id ?? '');
+  const [companyFilter, setCompanyFilter] = useState<string>(() => embeddedCompanyId ?? searchParams.get('company') ?? company?.id ?? '');
   const [form, setForm] = useState(emptyUserForm);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<UserRow | null>(null);
@@ -147,8 +147,9 @@ export function UsersPage() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const visibleUsers = useMemo(
-    () => (isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter || u.role === 'SUPER_ADMIN') : users),
-    [users, companyFilter, isSuperAdmin],
+    () => (embeddedCompanyId ? users.filter(u => u.company_id === embeddedCompanyId)
+      : isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter || u.role === 'SUPER_ADMIN') : users),
+    [users, companyFilter, isSuperAdmin, embeddedCompanyId],
   );
 
   // A Super Admin may edit anyone except themselves (self-edit stays blocked
@@ -438,6 +439,7 @@ export function UsersPage() {
   const { setHeader, setTabActions, setHeaderCenter } = useHeaderKpis();
 
   useEffect(() => {
+    if (embeddedCompanyId) return;   // inside a company's hub the toolbar is part of the page, not the top bar
     setHeader({ title: 'User Management' });
     setHeaderCenter(
       <div className="flex items-center gap-1.5">
@@ -508,11 +510,21 @@ export function UsersPage() {
       setHeaderCenter(null);
       setTabActions(null);
     };
-  }, [setHeader, setHeaderCenter, setTabActions, visibleUsers.length, activeCount, inactiveCount, isSuperAdmin, companyFilter, companies, search]);
+  }, [setHeader, setHeaderCenter, setTabActions, visibleUsers.length, activeCount, inactiveCount, isSuperAdmin, companyFilter, companies, search, embeddedCompanyId]);
 
   return (
-    <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
-      <div className="lg:hidden">
+    <div className={embeddedCompanyId ? 'space-y-2' : 'p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2'}>
+      {embeddedCompanyId && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500"><b className="text-slate-800">{visibleUsers.length}</b> users · <b className="text-emerald-700">{activeCount}</b> active</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search users…" className="h-8 w-44 px-2.5 text-xs rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500/30 focus:border-brand-500" />
+            {(isSuperAdmin || isCompanyAdmin) && <Button variant="secondary" size="sm" icon={<ShieldCheck size={13} />} onClick={() => setShowRoles(true)} className="h-8 text-xs">RETAIL ROLES</Button>}
+            <Button size="sm" icon={<Plus size={14} />} onClick={openCreate} className="h-8 text-xs">Create User</Button>
+          </div>
+        </div>
+      )}
+      <div className={embeddedCompanyId ? 'hidden' : 'lg:hidden'}>
         <PageHeader
           title="User Management"
           description={isSuperAdmin ? 'All BI users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
@@ -809,6 +821,52 @@ export function UsersPage() {
   );
 }
 
+// One page per company, like the Retail Store's Company Hub: the company's details and its users together.
+function CompanyHub({ company, onBack, onEdit }: { company: CompanyRow; onBack: () => void; onEdit: (c: CompanyRow) => void }) {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<'users' | 'details'>('users');
+  const [details, setDetails] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    supabase.from('companies').select(COMPANY_DETAIL_KEYS.join(',')).eq('id', company.id).maybeSingle().then(({ data }) => { if (data) setDetails(data as any); });
+  }, [company.id]);
+  const rows: [string, string | null | undefined][] = [
+    ['GST No.', company.code], ['Status', company.status], ['Created', formatDate(company.created_at)],
+    ['Industry', details.industry], ['Company email', details.email], ['Phone', details.phone], ['Plan', details.plan],
+    ['City', details.city], ['State', details.state], ['PIN code', details.pin], ['PAN', details.pan], ['CIN', details.cin],
+    ['Address', details.address], ['Description', details.description],
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={onBack} className="text-xs font-semibold text-brand-600 hover:underline">← All companies</button>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500"><Building2 size={15} /></div>
+          <h2 className="text-lg font-bold text-slate-800">{company.company_name}</h2>
+          <Badge variant={company.status === 'Active' ? 'success' : 'error'} dot>{company.status}</Badge>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="secondary" size="sm" icon={<KeyRound size={13} />} onClick={() => navigate(`/admin/access?company=${company.id}`)} className="h-8 text-xs">Manage access</Button>
+          <Button variant="secondary" size="sm" icon={<Edit2 size={13} />} onClick={() => onEdit(company)} className="h-8 text-xs">Edit company</Button>
+        </div>
+      </div>
+      <div className="flex gap-1 border-b border-slate-200">
+        {([['users', 'Users'], ['details', 'Company details']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === k ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}</button>
+        ))}
+      </div>
+      {tab === 'users' && <UsersPage embeddedCompanyId={company.id} />}
+      {tab === 'details' && (
+        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+          {rows.map(([k, v]) => (
+            <div key={k} className="grid grid-cols-3 gap-3 px-4 py-2.5 text-sm"><span className="text-slate-500">{k}</span><span className="col-span-2 text-slate-800 break-words">{v || '—'}</span></div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ======================================================================================
 // Company Management (Super Admin only)
 // ======================================================================================
@@ -822,6 +880,9 @@ const COMPANY_DETAIL_KEYS = ['industry', 'email', 'phone', 'address', 'city', 's
 
 export function CompaniesPage() {
   const navigate = useNavigate();
+  const [hubParams, setHubParams] = useSearchParams();
+  const hubId = hubParams.get('hub');
+  const openHub = (id: string | null) => setHubParams(id ? { hub: id } : {});
   const { refresh, profile } = useAuth();
   const { companies, reload } = useCompanies();
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
@@ -1346,7 +1407,7 @@ export function CompaniesPage() {
     { key: 'company_name', label: 'Company', sortable: true, render: (r) => (
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500"><Building2 size={15} /></div>
-        <p className="font-medium text-slate-800">{r.company_name}</p>
+        <p className="font-medium text-slate-800 hover:text-brand-600">{r.company_name}</p>
       </div>
     )},
     { key: 'code', label: 'GST No.', sortable: true, render: (r) => <span className="font-mono text-xs text-slate-600">{r.code || '—'}</span> },
@@ -1356,7 +1417,7 @@ export function CompaniesPage() {
     {
       key: 'actions', label: 'Actions', align: 'center', render: (r) => (
         <div className="flex items-center justify-center gap-1">
-          <button title="View users" onClick={() => navigate(`/admin/users?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><UsersIcon size={15} /></button>
+          <button title="Open company (details and users)" onClick={() => openHub(r.id)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><UsersIcon size={15} /></button>
           <button title="Manage access" aria-label={`Manage access for ${r.company_name}`} onClick={() => navigate(`/admin/access?company=${r.id}`)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><KeyRound size={15} /></button>
           <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"><Edit size={15} /></button>
           <button title="Delete company" aria-label={`Delete company ${r.company_name}`} onClick={() => { setDeleteError(null); setConfirmText(''); setToDelete(r); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={15} /></button>
@@ -1375,14 +1436,19 @@ export function CompaniesPage() {
           <StatCard label="Inactive" value={inactiveCount.toString()} icon={<Building2 size={20} />} accent="neutral" />
         </div>
       </div>
-      <DataTable
-        data={searchedRows}
-        columns={columns}
-        searchKeys={['company_name', 'code']}
-        onAdd={() => openCreate()}
-        addLabel="Create Company"
-        hideToolbar
-      />
+      {hubId && companies.find(c => c.id === hubId) ? (
+        <CompanyHub company={companies.find(c => c.id === hubId)!} onBack={() => openHub(null)} onEdit={(c) => openEdit(c)} />
+      ) : (
+        <DataTable
+          data={searchedRows}
+          columns={columns}
+          searchKeys={['company_name', 'code']}
+          onAdd={() => openCreate()}
+          addLabel="Create Company"
+          onRowClick={(row) => openHub(row.id)}
+          hideToolbar
+        />
+      )}
 
       <Modal
         open={showForm}
