@@ -15,8 +15,8 @@ type Shape = 'box' | 'round' | 'model' | 'spin';
 interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null }
 type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[] };
 const SHAPES: { id: Shape; label: string; hint: string }[] = [
-  { id: 'box', label: 'Packed product (box with the picture)', hint: 'The product is shown as a box with your picture on it.' },
-  { id: 'round', label: 'Round / turned product (3D from one photo)', hint: 'For probes, bushes, shafts, cylinders. Use a straight-on photo on a plain background; a real 3D body is built from it and turns.' },
+  { id: 'round', label: 'Real product shape from the photo (recommended)', hint: 'The product itself turns, not a box. Best for round / turned parts (probes, bushes, shafts). Use a straight-on photo on a plain background; a 3D body is built from it.' },
+  { id: 'box', label: 'Packed product (a box with the picture)', hint: 'Only for products sold in a box: the box turns, with your picture on it.' },
   { id: 'model', label: '3D model file (.glb)', hint: 'Upload a real 3D model. The product itself turns in the viewer. Best quality.' },
   { id: 'spin', label: '360 degree photos (turntable)', hint: 'Upload photos taken all around the product (8 to 36, in order, e.g. 01.jpg, 02.jpg). Dragging turns through them.' },
 ];
@@ -94,8 +94,8 @@ export function DigitalStorePage() {
     const it = byPlace.get(`${rack}:${row_no}:${slot}`);
     setFile(null); setModelFile(null); setAngleFiles([]); setFormError(null);
     setDraft(it
-      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path, shape: (it.shape ?? 'box') as Shape, model_path: it.model_path ?? null, angle_paths: it.angle_paths ?? [] }
-      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null, shape: 'box', model_path: null, angle_paths: [] });
+      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path, shape: (it.shape ?? 'round') as Shape, model_path: it.model_path ?? null, angle_paths: it.angle_paths ?? [] }
+      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null, shape: 'round', model_path: null, angle_paths: [] });
   };
 
   const saveItem = async () => {

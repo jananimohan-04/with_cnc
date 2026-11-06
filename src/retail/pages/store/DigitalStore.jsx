@@ -22,6 +22,8 @@ export default function DigitalStore() {
   const [targetId, setTargetId] = useState(null);
   const [goTo, setGoTo] = useState(null);
   const [picked, setPicked] = useState(null);
+  const [bodyFailed, setBodyFailed] = useState(false);
+  useEffect(() => { setBodyFailed(false); }, [picked]);
   const [companyName, setCompanyName] = useState('');
   // the reflective floor and shadows look best but need a decent graphics card: phones and small laptops start on 'fast'
   const [quality, setQuality] = useState(() => (typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 4) >= 6 && !/Mobi|Android/i.test(navigator.userAgent) ? 'high' : 'fast'));
@@ -130,7 +132,7 @@ export default function DigitalStore() {
                 <SpinViewer name={picked.name} frames={picked.angle_paths.map((x) => urls[x]).filter(Boolean)} />
               ) : (
                 <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400 text-sm">Loading 3D view…</div>}>
-                  <Viewer item={picked} imgUrl={picked.image_path ? urls[picked.image_path] : ''} modelUrl={picked.model_path ? urls[picked.model_path] : ''} />
+                  <Viewer item={{ ...picked, shape: picked.shape || 'round' }} imgUrl={picked.image_path ? urls[picked.image_path] : ''} modelUrl={picked.model_path ? urls[picked.model_path] : ''} onFail={() => setBodyFailed(true)} />
                 </Suspense>
               )}
             </div>
@@ -143,6 +145,7 @@ export default function DigitalStore() {
               {picked.price != null && <div className="text-2xl font-black text-emerald-700 mt-3">{fmt(picked.price)}</div>}
               {picked.description && <p className="text-sm text-slate-600 mt-3 whitespace-pre-line">{picked.description}</p>}
               <div className="mt-3 text-xs text-slate-500">Found at Rack {picked.rack} · Row {picked.row_no} · Place {picked.slot}</div>
+              {bodyFailed && <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">A 3D body could not be built from this photo, so a box is shown. Use a straight-on photo of the product on a plain background, or give it a 3D model or 360° photos in BI → Digital Store.</div>}
               <div className="mt-auto pt-4 text-[11px] text-slate-400">Drag to turn it around{picked.shape === 'spin' ? '' : ' · scroll or pinch to zoom'}</div>
             </div>
           </div>

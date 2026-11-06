@@ -45,19 +45,50 @@ function buildRoundBody(url) {
         const g = c.getContext('2d', { willReadFrequently: true });
         g.drawImage(img, 0, 0, W, H);
         const d = g.getImageData(0, 0, W, H).data;
-        // the background colour of every row, from the two edges of that row (handles a gradient background)
+        // Find the product: the background colour of each row is read just inside the picture's edges (so frames and crop
+        // lines are ignored), pixels that differ from it are "product", and only the connected blob in the middle is kept.
+        const m = Math.max(4, Math.round(Math.min(W, H) * 0.03));
         const bg = (y) => {
           let r = 0, gg = 0, b = 0, n = 0;
-          for (const x of [0, 1, 2, 3, W - 4, W - 3, W - 2, W - 1]) { const i = (y * W + x) * 4; r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; }
+          for (const x of [m + 1, m + 2, m + 3, m + 4, W - m - 5, W - m - 4, W - m - 3, W - m - 2]) { const i = (y * W + x) * 4; r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; }
           return [r / n, gg / n, b / n];
         };
-        const isObj = (x, y, B) => { const i = (y * W + x) * 4; if (d[i + 3] < 128) return false; return Math.abs(d[i] - B[0]) + Math.abs(d[i + 1] - B[1]) + Math.abs(d[i + 2] - B[2]) > 66; };
-        const left = new Array(H).fill(-1), right = new Array(H).fill(-1);
-        for (let y = 0; y < H; y++) {
+        const mask = new Uint8Array(W * H);
+        for (let y = m; y < H - m; y++) {
           const B = bg(y);
-          for (let x = 2; x < W - 2; x++) if (isObj(x, y, B) && isObj(x + 1, y, B) && isObj(x + 2, y, B)) { left[y] = x; break; }
-          for (let x = W - 3; x > 1; x--) if (isObj(x, y, B) && isObj(x - 1, y, B) && isObj(x - 2, y, B)) { right[y] = x; break; }
+          for (let x = m; x < W - m; x++) {
+            const i = (y * W + x) * 4;
+            if (d[i + 3] >= 128 && Math.abs(d[i] - B[0]) + Math.abs(d[i + 1] - B[1]) + Math.abs(d[i + 2] - B[2]) > 66) mask[y * W + x] = 1;
+          }
         }
+        // the product blob: flood fill from the mask pixel closest to the middle of the picture
+        let seed = -1;
+        for (let rad = 0; rad < Math.max(W, H) / 2 && seed < 0; rad += 2) {
+          for (let dy = -rad; dy <= rad && seed < 0; dy += 2) for (let dx = -rad; dx <= rad; dx += 2) {
+            const x = Math.round(W / 2) + dx, y = Math.round(H / 2) + dy;
+            if (x >= 0 && x < W && y >= 0 && y < H && mask[y * W + x]) { seed = y * W + x; break; }
+          }
+        }
+        if (seed < 0) throw new Error('no product found in the picture');
+        const comp = new Uint8Array(W * H), queue = new Int32Array(W * H);
+        let qh = 0, qt = 0, count = 0; queue[qt++] = seed; comp[seed] = 1;
+        while (qh < qt) {
+          const q = queue[qh++]; count++;
+          const x = q % W, y = (q / W) | 0;
+          for (const nb of [x > 0 ? q - 1 : -1, x < W - 1 ? q + 1 : -1, y > 0 ? q - W : -1, y < H - 1 ? q + W : -1]) {
+            if (nb >= 0 && mask[nb] && !comp[nb]) { comp[nb] = 1; queue[qt++] = nb; }
+          }
+        }
+        const left = new Array(H).fill(-1), right = new Array(H).fill(-1);
+        let bx0 = W, bx1 = 0, by0 = H, by1 = 0;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) if (comp[y * W + x]) { left[y] = x; break; }
+          for (let x = W - 1; x >= 0; x--) if (comp[y * W + x]) { right[y] = x; break; }
+          if (left[y] >= 0) { bx0 = Math.min(bx0, left[y]); bx1 = Math.max(bx1, right[y]); by0 = Math.min(by0, y); by1 = Math.max(by1, y); }
+        }
+        const fill = count / ((bx1 - bx0 + 1) * (by1 - by0 + 1));
+        // nothing recognisable (the "product" is the whole picture, or a thin speck): do not build a wrong shape
+        if (count < W * H * 0.02 || (bx1 - bx0) > (W - 2 * m) * 0.96 && (by1 - by0) > (H - 2 * m) * 0.96 || fill < 0.35) throw new Error('could not find the product outline');
         const rows = []; for (let y = 0; y < H; y++) if (left[y] >= 0 && right[y] - left[y] > 4) rows.push(y);
         if (rows.length < 12) throw new Error('could not find the product outline');
         const top = rows[0], bottom = rows[rows.length - 1];
@@ -113,8 +144,9 @@ function PackBox({ name, imgUrl, size, dim }) {
 }
 
 /* a round / turned product: a real 3D body made from its photo */
-function RoundBody({ name, imgUrl, height, fallbackSize, dim }) {
+function RoundBody({ name, imgUrl, height, fallbackSize, dim, onFail }) {
   const body = useRoundBody(imgUrl);
+  useEffect(() => { if (body === false && onFail) onFail(); }, [body, onFail]);
   if (!body) return <PackBox name={name} imgUrl={imgUrl} size={fallbackSize} dim={dim} />;
   return (
     <mesh geometry={body.geo} scale={[height, height, height]} castShadow>
@@ -132,7 +164,7 @@ class Guard extends Component {
 function ProductOnShelf({ item, place, imgUrl, state, onPick }) {
   const group = useRef();
   const pulse = state === 'match' || state === 'target';
-  const round = item.shape === 'round' && imgUrl;
+  const round = (item.shape ?? 'round') === 'round' && imgUrl;
   const h = round ? 0.5 : 0.55;
   const tag = useMemo(() => canvasTexture(256, 64, (g, w, hh) => {
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, hh); g.fillStyle = '#0f172a'; g.textBaseline = 'middle';
@@ -414,19 +446,19 @@ function Turntable({ children }) {
   return <group ref={group} position={[0, 0, 0]}>{children}</group>;
 }
 
-function ViewerBody({ item, imgUrl, modelUrl }) {
+function ViewerBody({ item, imgUrl, modelUrl, onFail }) {
   if (item.shape === 'model' && modelUrl) {
     return <Guard fallback={<PackBox name={item.name} imgUrl={imgUrl} size={[1, 1.3, 0.7]} />}><ModelBody url={modelUrl} /></Guard>;
   }
   if (item.shape === 'round' && imgUrl) {
     return (
-      <group position={[0, 0.78, 0]}><RoundBody name={item.name} imgUrl={imgUrl} height={1.5} fallbackSize={[1, 1.4, 0.7]} /></group>
+      <group position={[0, 0.78, 0]}><RoundBody name={item.name} imgUrl={imgUrl} height={1.5} fallbackSize={[1, 1.4, 0.7]} onFail={onFail} /></group>
     );
   }
   return <group position={[0, 0.72, 0]}><PackBox name={item.name} imgUrl={imgUrl} size={[1.1, 1.4, 0.75]} /></group>;
 }
 
-export function ProductViewer3D({ item, imgUrl, modelUrl }) {
+export function ProductViewer3D({ item, imgUrl, modelUrl, onFail }) {
   return (
     <Canvas shadows camera={{ position: [0, 1.25, 3.3], fov: 36 }} dpr={[1, 2]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }} style={{ touchAction: 'none' }}>
       <color attach="background" args={['#0b1220']} />
@@ -442,7 +474,7 @@ export function ProductViewer3D({ item, imgUrl, modelUrl }) {
       {/* the display stand */}
       <mesh position={[0, -0.04, 0]} receiveShadow><cylinderGeometry args={[1.15, 1.2, 0.08, 64]} /><meshStandardMaterial color="#111827" metalness={0.7} roughness={0.25} /></mesh>
       <mesh position={[0, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[1.05, 1.1, 64]} /><meshBasicMaterial color="#f97316" toneMapped={false} /></mesh>
-      <Suspense fallback={null}><Turntable><ViewerBody item={item} imgUrl={imgUrl} modelUrl={modelUrl} /></Turntable></Suspense>
+      <Suspense fallback={null}><Turntable><ViewerBody item={item} imgUrl={imgUrl} modelUrl={modelUrl} onFail={onFail} /></Turntable></Suspense>
       <ContactShadows position={[0, 0.005, 0]} opacity={0.55} scale={5} blur={2.4} far={2} />
       <OrbitControls enablePan={false} enableRotate={false} minDistance={1.8} maxDistance={6} target={[0, 0.75, 0]} />
     </Canvas>
