@@ -463,6 +463,51 @@ function deleteRoleFromBI(id) {
   Promise.resolve(SB.admin.from('retail_roles').delete().eq('id', id)).catch(() => {});
 }
 
+/* Business Intelligence is the master for who a person is: every sign-in re-reads their BI record (throttled) and the Retail account follows it
+   (role, company, name, mobile, active/inactive, and a suspended company). Retail-only people with no BI record are left alone. */
+const biSyncedAt = {};
+const BI_USER_COLS = 'full_name, role, status, mobile, retail_role, terms_accepted_at, company_id, companies!company_users_company_id_fkey(company_name, code, status, industry, email, phone, address, city, state, pin, pan, cin, plan, description)';
+function retailRoleFromBI(bi) {
+  if (bi.role === 'SUPER_ADMIN') return 'super_admin';
+  if (bi.role === 'COMPANY_ADMIN') return 'company_admin';
+  return ['super_admin', 'company_admin'].includes(bi.retail_role) ? null : (bi.retail_role || null);
+}
+function retailCompanyFromBI(co) {
+  if (!co) return null;
+  const coId = co.code || ('C-' + String(co.company_name || 'CO').slice(0, 3).toUpperCase());
+  const today = new Date().toISOString().slice(0, 10);
+  let rc = companyById(coId);
+  if (!rc) {
+    rc = { id: coId, code: coId, name: co.company_name, logo: '🏭', industry: co.industry || 'CNC Manufacturing', email: co.email || '', phone: co.phone || '', address: co.address || '', city: co.city || 'Default', state: co.state || '', pin: co.pin || '', gstin: co.code || '', pan: co.pan || '', cin: co.cin || '', description: co.description || '', status: 'active', storeStatus: 'active', plan: co.plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today, menuPermissions: [], disabledMenus: [] };
+    db.companies.unshift(rc);
+  } else {
+    if (co.company_name) rc.name = co.company_name;
+    rc.status = co.status === 'Active' ? 'active' : 'suspended';
+  }
+  return coId;
+}
+async function syncPersonFromBI(person, email) {
+  if (!person || person.role === 'super_admin' || Date.now() - (biSyncedAt[email] || 0) < 30000) return;
+  biSyncedAt[email] = Date.now();
+  try {
+    const { data: bi, error } = await SB.admin.from('company_users').select(BI_USER_COLS).eq('email', email).maybeSingle();
+    if (error || !bi) return;   // no BI record (or BI unreachable): keep the Retail account as it is
+    let changed = false;
+    const set = (k, v) => { if (v !== undefined && person[k] !== v) { person[k] = v; changed = true; } };
+    const role = retailRoleFromBI(bi);
+    const companyActive = !bi.companies || bi.companies.status === 'Active';
+    if (role) {
+      set('role', role);
+      set('companyId', role === 'super_admin' ? null : retailCompanyFromBI(bi.companies));
+    }
+    if (bi.full_name) set('name', bi.full_name);
+    set('mobile', bi.mobile || '');
+    set('active', bi.status === 'Active' && companyActive && !!role);   // a BI user with no Retail role has no Retail access
+    if (bi.terms_accepted_at && !person.termsAccepted) { person.termsAccepted = true; person.termsAcceptedAt = bi.terms_accepted_at; changed = true; }
+    if (changed) save();
+  } catch (e) { console.warn('BI sync failed:', e.message); }
+}
+
 app.use(async (req, _res, next) => {
   await syncRolesFromBI();
   const h = req.headers['authorization'] || '';
@@ -508,6 +553,7 @@ app.use(async (req, _res, next) => {
             }
           } catch (e) { console.warn('BI user lookup failed:', e.message); }
         }
+        if (person && !isSuper) await syncPersonFromBI(person, email);
         const display = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || (person && person.name) || email;
         if (person && person.active === false) { req.ctx = { role: 'disabled', companyId: person.companyId, name: display, email, google: true, id: person.id }; return next(); }
         if (person) { req.ctx = { role: person.role, companyId: person.companyId, name: display, email, google: true, id: person.id }; return next(); }
