@@ -243,19 +243,25 @@ export function ProcessMasterPage() {
     return n;
   };
 
+  const generateProcessCode = (name: string, excludeId?: string | null): string => {
+    const base = name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 16) || 'PRC';
+    let code = base;
+    let counter = 1;
+    while (processes.some((p) => p.processCode.toLowerCase() === code.toLowerCase() && p.id !== excludeId)) {
+      counter++;
+      code = `${base}-${counter}`;
+    }
+    return code;
+  };
+
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    const code = form.processCode.trim();
     const name = form.processName.trim();
-
-    if (!code) next.processCode = 'Process Code is required.';
-    else if (
-      processes.some(
-        (p) => p.processCode.toLowerCase() === code.toLowerCase() && p.id !== editId
-      )
-    ) {
-      next.processCode = 'This Process Code already exists. Use a unique code.';
-    }
 
     if (!name) next.processName = 'Process Name is required.';
 
@@ -272,8 +278,9 @@ export function ProcessMasterPage() {
     if (!validate() || saving) return;
     setSaving(true);
     try {
+      const code = form.processCode.trim() || generateProcessCode(form.processName, editId);
       const payload = {
-        process_code: form.processCode.trim(),
+        process_code: code,
         process_name: form.processName.trim(),
         process_category: form.processCategory.trim() || null,
         machine_type: form.machineType.trim() || null,
@@ -522,18 +529,7 @@ export function ProcessMasterPage() {
         }
       >
         <FormSection title="Process Information">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <FormField label="Process Code" required>
-                <input
-                  value={form.processCode}
-                  onChange={(e) => set('processCode', e.target.value.toUpperCase())}
-                  placeholder="e.g. C10"
-                  className={`${inputClass} font-mono ${errors.processCode ? 'border-red-400' : ''}`}
-                />
-              </FormField>
-              {errText('processCode')}
-            </div>
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <FormField label="Process Name" required>
                 <input
@@ -545,7 +541,7 @@ export function ProcessMasterPage() {
               </FormField>
               {errText('processName')}
             </div>
-            <div className="md:col-span-2">
+            <div>
               <FormField label="Description">
                 <textarea
                   value={form.description}
@@ -562,7 +558,7 @@ export function ProcessMasterPage() {
         <FormSection title="Costing">
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <FormField label="Cost Per Hour (₹)" required hint="Machine cost = Cost Per Hour × Hours the machine runs">
+              <FormField label="Cost Per Hour (₹)" required>
                 <input
                   type="number"
                   min="0"
@@ -574,7 +570,6 @@ export function ProcessMasterPage() {
                 />
               </FormField>
               {errText('costPerHour')}
-              <p className="text-xs text-slate-500 mt-1">Machine Cost = Cost/Hour × Run Hours</p>
             </div>
           </div>
         </FormSection>
@@ -587,17 +582,6 @@ export function ProcessMasterPage() {
                 <option value="Inactive">Inactive</option>
               </select>
             </FormField>
-            <div className="md:col-span-2">
-              <FormField label="Notes">
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => set('notes', e.target.value)}
-                  placeholder="Internal notes about this process."
-                  rows={2}
-                  className={inputClass}
-                />
-              </FormField>
-            </div>
           </div>
         </FormSection>
       </Modal>
