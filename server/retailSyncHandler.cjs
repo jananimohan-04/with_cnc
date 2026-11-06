@@ -132,6 +132,41 @@ async function callSupabaseRpc(fn, args, token, apiKey) {
   }
 }
 
+/* Who is calling? The signed-in BI user's token is checked by the database itself (erp_current_user only returns an
+   Active user of an Active company). The company always comes from that user - never from a header or the request body. */
+async function restGet(pathAndQuery, token) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
+    return res.ok ? await res.json() : null;
+  } catch (e) { return null; }
+}
+async function authenticate(req) {
+  const token = bearer(req);
+  if (!token) return { ok: false, status: 401, error: 'Sign in to Business Intelligence first' };
+  const who = await callSupabaseRpc('erp_current_user', {}, token);
+  const me = who.ok ? who.data : null;
+  if (!me || !me.id) return { ok: false, status: 401, error: 'Your sign-in was not accepted (expired, inactive user or suspended company)' };
+  let companyUuid = me.company_id;
+  if (me.role === 'SUPER_ADMIN') {   // a Super Admin works inside the company chosen in BI
+    const rc = await callSupabaseRpc('erp_report_company', {}, token);
+    companyUuid = rc.ok && typeof rc.data === 'string' ? rc.data : null;
+  }
+  if (!companyUuid) return { ok: false, status: 400, error: 'No company selected' };
+  const rows = await restGet(`companies?id=eq.${encodeURIComponent(companyUuid)}&select=code,company_name`, token);
+  const co = Array.isArray(rows) ? rows[0] : null;
+  if (!co) return { ok: false, status: 403, error: 'Company not available' };
+  return { ok: true, role: me.role, companyUuid, companyCode: co.code || ('C-' + String(co.company_name || 'CO').slice(0, 3).toUpperCase()) };
+}
+/* the ERP company (uuid) behind a Retail company code - used by the Retail order webhook, with the service key */
+async function erpCompanyForRetailCode(code) {
+  if (!code || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_URL) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/companies?code=eq.${encodeURIComponent(code)}&select=id`, { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } });
+    const rows = res.ok ? await res.json() : [];
+    return rows && rows[0] ? rows[0].id : null;
+  } catch (e) { return null; }
+}
+
 const bearer = (req) => String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || '';
 const sameKey = (a, b) => {
   if (!a || !b) return false;
@@ -150,15 +185,23 @@ async function handleRetailSyncRequest(req, res) {
 
   const method = req.method.toUpperCase();
 
+  // everything except the Retail Store's own order webhook needs a real BI sign-in
+  let authCompany = null, authRole = null;
+  if (subpath !== '/order-deduct') {
+    const a = await authenticate(req);
+    if (!a.ok) return sendJson(res, a.status, { ok: false, error: a.error });
+    authCompany = a.companyCode; authRole = a.role;
+  }
+
   // 1. GET /api/retail-sync/status
   if (method === 'GET' && (subpath === '/status' || subpath === '/')) {
-    const companyId = req.headers['x-company-id'] || 'C-ARGUS';
+    const companyId = authCompany;
     if (!RETAIL_STORE_API_KEY) return sendJson(res, 200, { ok: false, connection: 'disconnected', storeUrl: RETAIL_STORE_API_BASE_URL, error: NOT_CONFIGURED, syncSummary: { synced: 0, pending: 0, failed: 0, updated: 0, removed: 0, total: 0 }, designatedWarehouse: designations[companyId] || null });
     try {
       const storeRes = await fetch(`${RETAIL_STORE_API_BASE_URL}/api/integrations/erp/status`, {
         headers: {
           'x-erp-api-key': RETAIL_STORE_API_KEY,
-          'x-company-id': RETAIL_COMPANY_ID
+          'x-company-id': companyId
         }
       });
 
@@ -210,7 +253,7 @@ async function handleRetailSyncRequest(req, res) {
   // 2. POST /api/retail-sync/sync-item
   if (method === 'POST' && subpath === '/sync-item') {
     const body = await parseBody(req);
-    const companyId = req.headers['x-company-id'] || body.companyId || 'C-ARGUS';
+    const companyId = authCompany;
     if (!RETAIL_STORE_API_KEY) return sendJson(res, 503, { ok: false, error: NOT_CONFIGURED });
 
     // Resilient SKU extraction across all possible fields
@@ -240,12 +283,12 @@ async function handleRetailSyncRequest(req, res) {
         headers: {
           'Content-Type': 'application/json',
           'x-erp-api-key': RETAIL_STORE_API_KEY,
-          'x-company-id': RETAIL_COMPANY_ID,
+          'x-company-id': companyId,
           'x-idempotency-key': idempotencyKey
         },
         body: JSON.stringify({
           ...body,
-          companyId: RETAIL_COMPANY_ID
+          companyId
         })
       });
 
@@ -339,7 +382,7 @@ async function handleRetailSyncRequest(req, res) {
   // 3. POST /api/retail-sync/sync-all (Bulk synchronization)
   if (method === 'POST' && subpath === '/sync-all') {
     const body = await parseBody(req);
-    const companyId = req.headers['x-company-id'] || body.companyId || 'C-ARGUS';
+    const companyId = authCompany;
     const rawItems = Array.isArray(body.items) ? body.items : [];
     if (!RETAIL_STORE_API_KEY) return sendJson(res, 503, { ok: false, error: NOT_CONFIGURED });
 
@@ -367,11 +410,11 @@ async function handleRetailSyncRequest(req, res) {
         headers: {
           'Content-Type': 'application/json',
           'x-erp-api-key': RETAIL_STORE_API_KEY,
-          'x-company-id': RETAIL_COMPANY_ID,
+          'x-company-id': companyId,
           'x-idempotency-key': `batch-${Date.now()}`
         },
         body: JSON.stringify({
-          companyId: RETAIL_COMPANY_ID,
+          companyId,
           items
         })
       });
@@ -416,7 +459,7 @@ async function handleRetailSyncRequest(req, res) {
 
   // 4. GET /api/retail-sync/logs
   if (method === 'GET' && subpath === '/logs') {
-    const companyId = req.headers['x-company-id'] || urlObj.searchParams.get('companyId') || 'C-ARGUS';
+    const companyId = authCompany;
     const status = urlObj.searchParams.get('status');
     const q = (urlObj.searchParams.get('q') || '').toLowerCase();
 
@@ -433,7 +476,8 @@ async function handleRetailSyncRequest(req, res) {
   // 5. POST /api/retail-sync/designate-warehouse
   if (method === 'POST' && subpath === '/designate-warehouse') {
     const body = await parseBody(req);
-    const companyId = req.headers['x-company-id'] || body.companyId || 'C-ARGUS';
+    const companyId = authCompany;
+    if (authRole !== 'SUPER_ADMIN' && authRole !== 'COMPANY_ADMIN') return sendJson(res, 403, { ok: false, error: 'Only an admin can choose the Retail Store warehouse' });
     const warehouseId = body.warehouse_id;
     const warehouseName = body.warehouse_name || 'Retail Store Warehouse';
 
@@ -464,18 +508,23 @@ async function handleRetailSyncRequest(req, res) {
     if (!sameKey(req.headers['x-erp-api-key'], RETAIL_STORE_API_KEY)) {
       return sendJson(res, 401, { success: false, error: 'Unauthorized: Invalid ERP integration key' });
     }
-    if (!SUPABASE_SERVICE_ROLE_KEY || !ERP_COMPANY_ID) {
-      return sendJson(res, 503, { success: false, error: 'Order deduction is not configured: set SUPABASE_SERVICE_ROLE_KEY and ERP_COMPANY_ID on the server. No stock was changed.' });
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return sendJson(res, 503, { success: false, error: 'Order deduction is not configured: set SUPABASE_SERVICE_ROLE_KEY on the server. No stock was changed.' });
     }
 
     const body = await parseBody(req);
     const { order_id, items, customer } = body;
+    // the ERP company is the one that owns the Retail company the order was placed in
+    const retailCo = String(body.company_id || req.headers['x-company-id'] || '');
+    let erpCompany = await erpCompanyForRetailCode(retailCo);
+    if (!erpCompany && ERP_COMPANY_ID && (!retailCo || retailCo === RETAIL_COMPANY_ID)) erpCompany = ERP_COMPANY_ID;   // single-company setups
+    if (!erpCompany) return sendJson(res, 404, { success: false, error: `No ERP company matches Retail company "${retailCo}". No stock was changed.` });
     if (!order_id || !Array.isArray(items) || !items.length) {
       return sendJson(res, 400, { success: false, error: 'order_id and items[] are required' });
     }
 
     const rpcRes = await callSupabaseRpc('erp_retail_deduct_stock_service', {
-      p_company: ERP_COMPANY_ID,
+      p_company: erpCompany,
       p_deduction: {
         order_id: String(order_id),
         items,

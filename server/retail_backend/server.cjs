@@ -2621,7 +2621,7 @@ function setIdempotent(key, data) {
 }
 
 // Server-to-server auth middleware for ERP
-function verifyErpServerAuth(req, res, next) {
+async function verifyErpServerAuth(req, res, next) {
   const authHeader = req.headers['authorization'] || '';
   const apiKeyHeader = req.headers['x-erp-api-key'] || req.headers['x-api-key'] || '';
   let token = apiKeyHeader;
@@ -2637,7 +2637,13 @@ function verifyErpServerAuth(req, res, next) {
   if (!co) {
     return res.status(400).json({ error: 'Company ID required (via x-company-id header or body)' });
   }
-  const company = companyById(co);
+  let company = companyById(co);
+  if (!company && SB.enabled) {   // a BI company that nobody has opened the Retail Store for yet: create it from BI's record
+    try {
+      const { data } = await SB.admin.from('companies').select('company_name, code, status, industry, email, phone, address, city, state, pin, pan, cin, plan, description').eq('code', co).maybeSingle();
+      if (data && data.status === 'Active') { retailCompanyFromBI(data); save(); company = companyById(co); }
+    } catch (e) { /* reported below */ }
+  }
   if (!company) {
     return res.status(404).json({ error: `Company "${co}" not found in Retail Store` });
   }
