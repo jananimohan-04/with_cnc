@@ -1260,12 +1260,12 @@ Cancel = Manufactured in-house (like Finished Goods)`);
               placeholder="Search by product name, code..."
               className={`${selectCls} w-44`}
             />
-            <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else setDraft({ ...draft, categoryId: e.target.value }); }} className={`${selectCls} max-w-[150px]`}>
+            <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else { const next = { ...draft, categoryId: e.target.value }; setDraft(next); applyFilters(next); } }} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               {canManage && <option value="__new__">+ New Category</option>}
             </select>
-            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => setDraft({ ...draft, warehouseId: e.target.value })} className={`${selectCls} max-w-[150px]`}>
+            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => { const next = { ...draft, warehouseId: e.target.value }; setDraft(next); applyFilters(next); }} className={`${selectCls} max-w-[150px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
