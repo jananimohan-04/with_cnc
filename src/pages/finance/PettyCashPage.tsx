@@ -177,7 +177,7 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
         const pAmt = x.petty_amount !== null && x.petty_amount !== undefined && String(x.petty_amount).trim() !== ''
           ? Number(x.petty_amount)
           : null;
-        const amt = pAmt !== null ? pAmt : lineTotal;
+        const amt = pAmt !== null ? Math.min(Math.max(pAmt, 0), lineTotal) : lineTotal;   // same cap the database and the member page apply
 
         const inwNo = String(x.inward_no ?? '').trim();
         const projName = String(x.project_name ?? '').trim();
@@ -272,7 +272,9 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
 
   const clearForm = () => { setDate(todayISO()); setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setPaidTo(''); setNote(null); };
 
+  const saveLock = useRef(false);   // Enter pressed twice (or held) must not post the same entry twice
   const save = async () => {
+    if (saveLock.current) return;
     setNote(null);
     const d = Number(debit.replace(/,/g, '')) || 0, c = Number(credit.replace(/,/g, '')) || 0;
     if (!date) return setNote({ kind: 'err', text: 'Choose the value date.' });
@@ -285,6 +287,7 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
     if (!ledger) return setNote({ kind: 'err', text: 'Choose a ledger from the list.' });
     if (d > 0 && c > 0) return setNote({ kind: 'err', text: 'Enter either a debit or a credit, not both.' });
     if (!(d > 0) && !(c > 0)) return setNote({ kind: 'err', text: 'Enter a debit or a credit amount.' });
+    saveLock.current = true;
     setSaving(true);
     try {
       await financeApi.addBankEntry({
@@ -296,7 +299,7 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
       setDesc(''); setDebit(''); setCredit(''); setLedgerText(''); setPaidTo('');
       await load();
     } catch (e) { setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save the entry.' }); }
-    finally { setSaving(false); }
+    finally { setSaving(false); saveLock.current = false; }
   };
 
   const cancelRow = async (r: PettyRow) => {

@@ -217,7 +217,14 @@ export function BankEntryPage() {
     setMsg({ kind: 'ok', text: 'Entries updated: type defaults applied and every row re-checked against saved bank data.' });
   };
 
+  // one save at a time: a double click used to start a second batch before the first had marked itself busy
+  const saveLock = useRef(false);
   const save = async () => {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    try { await saveBatch(); } finally { saveLock.current = false; }
+  };
+  const saveBatch = async () => {
     if (!bankId) { setMsg({ kind: 'err', text: 'Select a bank first.' }); return; }
     let list = rows;
     if (!list.length) list = await parseNow();
@@ -234,7 +241,7 @@ export function BankEntryPage() {
       try {
         await financeApi.addBankEntry({
           direction: dir, account_id: bankId, contra_account_id: r.ledgerId || '', amount: String(dir === 'IN' ? r.credit : r.debit), txn_date: r.date,
-          party_type: cust ? 'Customer' : sup ? 'Supplier' : r.party ? (/^internal$/i.test(others.find(o => o.name === r.party)?.kind ?? '') ? 'Internal' : 'Other') : '', party_name: r.party, customer_id: cust?.id ?? '', supplier_id: sup?.id ?? '',
+          party_type: cust ? 'Customer' : sup ? 'Supplier' : r.party ? (/^internal$/i.test(others.find(o => o.name === r.party)?.kind ?? '') ? 'Other' : 'Other') : '', party_name: r.party, customer_id: cust?.id ?? '', supplier_id: sup?.id ?? '',
           mode: 'Statement import', reference_no: r.reference, description: [t?.name, r.description].filter(Boolean).join(' - '), status: 'Cleared', source_type: 'bank_import',
         });
         savedIds.add(r.id);
@@ -303,8 +310,8 @@ export function BankEntryPage() {
     <button className={`${btn} !rounded-full !h-9`} onClick={onClick}>{icon}{label}</button>
   );
   const msgTone = msg?.kind === 'err' ? 'bg-red-50 border-red-200 text-red-800' : msg?.kind === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-sky-50 border-sky-200 text-sky-800';
-  const inTotal = shownData.filter(r => r.direction === 'IN').reduce((n, r) => n + Number(r.amount || 0), 0);
-  const outTotal = shownData.filter(r => r.direction === 'OUT').reduce((n, r) => n + Number(r.amount || 0), 0);
+  const inTotal = shownData.filter(r => r.status !== 'Cancelled' && r.direction === 'IN').reduce((n, r) => n + Number(r.amount || 0), 0);
+  const outTotal = shownData.filter(r => r.status !== 'Cancelled' && r.direction === 'OUT').reduce((n, r) => n + Number(r.amount || 0), 0);
   const quick = (months: number, label: string) => {
     const active = from === isoDaysAgo(months) && to === todayISO();
     return <button key={label} type="button" className={`h-7 px-2 text-[11px] font-semibold rounded-md border transition whitespace-nowrap cursor-pointer ${active ? 'bg-orange-500 text-white border-orange-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`} onClick={() => range(months)}>{label}</button>;

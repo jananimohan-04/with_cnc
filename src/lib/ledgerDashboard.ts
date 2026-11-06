@@ -39,7 +39,8 @@ const day = (v: unknown): string => String(v ?? '').slice(0, 10);
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export function fromBank(rows: BankRow[]): LedgerLine[] {
-  return rows.map(r => ({
+  // a cancelled entry is not money that moved: leaving it in made cancelled receipts still count as paid
+  return rows.filter(r => String((r as any).status ?? '') !== 'Cancelled').map(r => ({
     id: `bank:${r.id}`, source: 'Bank' as const, date: day(r.txn_date), ref: r.reference_no ?? '',
     particulars: r.account_name ?? '', narration: r.mode || r.description || '',
     debit: r.direction === 'OUT' ? r2(num(r.amount)) : 0, credit: r.direction === 'IN' ? r2(num(r.amount)) : 0,
@@ -71,7 +72,7 @@ export const isPurchaseInward = (category: unknown) => PURCHASE_CATEGORIES.has(S
 export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
   return rows.filter(r => String(r.status ?? '') !== 'Deleted').map(r => {
     const direct = r.total_amount ?? r.total ?? r.amount;
-    const q = num(r.quantity), p = num(r.price), d = num(r.discount), g = num(r.gst);
+    const q = num(r.quantity), p = num(r.price), d = num(r.discount_percent ?? r.discount), g = num(r.gst_percent ?? r.gst);
     const amount = direct !== undefined && direct !== null && direct !== '' ? num(direct) : q * p * (1 - d / 100) * (1 + g / 100);
     const bill = isPurchaseInward(r.category);
     return {
@@ -155,7 +156,7 @@ export function statementFor(lines: LedgerLine[], party: string, from?: string, 
   const rows = inRange.map(l => { bal = r2(bal + l.debit - l.credit); debit = r2(debit + l.debit); credit = r2(credit + l.credit); return { ...l, balance: bal }; });
   return { rows, opening, debit, credit, closing: bal };
 }
-export const drCr = (n: number) => (n > 0 ? 'Dr' : n < 0 ? 'Cr' : '');
+export const drCr = (n: number) => { const x = Math.round(n * 100) / 100; return x > 0 ? 'Dr' : x < 0 ? 'Cr' : ''; };   // rounded, so 0.1 + 0.2 - 0.3 is not "0.00 Dr"
 
 export interface ReceivablePayable { receivable: number; payable: number; customers: number; suppliers: number }
 /** Receivable = what customers owe (debit balances on Customer ledgers). Payable = what we owe suppliers (credit balances on Supplier ledgers).
