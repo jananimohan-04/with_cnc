@@ -50,7 +50,12 @@ interface UserRow {
   last_login_at: string | null;
   created_at: string;
   company_name: string;
+  mobile?: string | null;
+  retail_role?: string | null;
 }
+
+/** A Retail Store role (sales partner tier, content writer, finance...), kept by the Retail Store backend. */
+interface RetailRole { id: string; name: string; category?: string; markupPct?: number; requireTerms?: boolean; terms?: string; active?: boolean }
 
 const ROLE_LABELS: Record<ErpRole, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -75,7 +80,7 @@ function useCompanies() {
 // User Management
 // ======================================================================================
 
-const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '' };
+const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '', mobile: '', retail_role: '', terms: false };
 
 export function UsersPage() {
   const navigate = useNavigate();
@@ -93,6 +98,10 @@ export function UsersPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [retailRoles, setRetailRoles] = useState<RetailRole[]>([]);
+  useEffect(() => {
+    retailApi.get('/api/roles').then((rows: RetailRole[]) => setRetailRoles((rows || []).filter(x => x.id !== 'super_admin' && x.id !== 'company_admin' && x.active !== false))).catch(() => setRetailRoles([]));
+  }, []);
 
   // Job Description state
   const [allJds, setAllJds] = useState<JobDescription[]>([]);
@@ -116,7 +125,10 @@ export function UsersPage() {
       fetchUserJdMap().catch(() => ({})),
     ]);
     if (usersRes.error) console.error('Failed to load users:', usersRes.error);
-    setUsers(((usersRes.data as any[]) || []).map(u => ({ ...u, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—') })));
+    // mobile + Retail Store role live in extra columns; a failed read (migration not applied yet) just leaves them empty
+    const extra = await supabase.from('company_users').select('id, mobile, retail_role');
+    const extraById = new Map(((extra.error ? [] : extra.data) as any[]).map(x => [x.id, x]));
+    setUsers(((usersRes.data as any[]) || []).map(u => ({ ...u, mobile: extraById.get(u.id)?.mobile ?? null, retail_role: extraById.get(u.id)?.retail_role ?? null, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—') })));
     setAllJds(jdsRes);
     setUserJdMap(mapRes);
     setLoading(false);
@@ -144,7 +156,7 @@ export function UsersPage() {
   };
 
   const openEdit = (u: UserRow) => {
-    setForm({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, company_id: u.company_id ?? '' });
+    setForm({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, company_id: u.company_id ?? '', mobile: u.mobile ?? '', retail_role: u.retail_role ?? '', terms: false });
     const currentJdId = getUserJdId(userJdMap, u);
     setSelectedJdId(currentJdId);
     setShowJdFormInline(false);
@@ -205,17 +217,39 @@ export function UsersPage() {
       // Super Admin accounts span all companies: no company is sent.
       p_company_id: isSuperAdmin && next.role !== 'SUPER_ADMIN' ? next.company_id || null : null,
     });
-    setSaving(false);
     if (error) {
+      setSaving(false);
       setFormError(error.message);
       return { error: error.message, data: null };
     }
+    // Retail Store details (mobile, Retail Store role): saved with the user; a failure here never undoes the user itself
+    const savedId = next.id || (savedData as any)?.id;
+    if (savedId) {
+      const { error: dErr } = await supabase.rpc('erp_save_user_details', {
+        p_id: savedId,
+        p_data: { mobile: next.mobile, retail_role: next.role === 'USER' ? next.retail_role : '', terms_accepted: next.terms || undefined },
+      });
+      if (dErr) console.warn('Could not save the mobile / Retail Store role (apply the company hub migration):', dErr.message);
+    }
+    // the person is also set up in the Retail Store right away (otherwise it happens on their first login)
+    const retailRole = next.role === 'SUPER_ADMIN' ? 'super_admin' : next.role === 'COMPANY_ADMIN' ? 'company_admin' : next.retail_role;
+    if (!next.id && retailRole) {
+      const co = companies.find(c => c.id === (next.company_id || profile?.company_id));
+      try {
+        await retailApi.post('/api/users', {
+          name: next.full_name || next.email.split('@')[0], email: next.email, mobile: next.mobile, role: retailRole,
+          companyId: next.role === 'SUPER_ADMIN' ? null : (co?.code || co?.id), termsAccepted: next.terms || retailRoles.find(x => x.id === retailRole)?.requireTerms === false,
+        });
+      } catch { /* created on their first login instead */ }
+    }
+    setSaving(false);
     await loadUsers();
     return { error: null, data: savedData };
   };
 
   const handleSubmit = async () => {
     if (!form.email.trim()) { setFormError('Google account email is required'); return; }
+    if (form.role === 'USER' && form.retail_role && retailRoles.find(x => x.id === form.retail_role)?.requireTerms && !form.terms && !form.id) { setFormError('Accept the sales terms for this Retail Store role'); return; }
     if (isSuperAdmin && form.role !== 'SUPER_ADMIN' && !form.company_id) { setFormError('Select a company'); return; }
 
     setSaving(true);
@@ -527,6 +561,17 @@ export function UsersPage() {
               {roleOptions.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
           </FormField>
+          <FormField label="Mobile Number">
+            <input className={inputClass} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="Optional" />
+          </FormField>
+          {form.role === 'USER' && (
+            <FormField label="Retail Store Role">
+              <select className={inputClass} value={form.retail_role} onChange={(e) => setForm({ ...form, retail_role: e.target.value, terms: false })}>
+                <option value="">No Retail Store access</option>
+                {retailRoles.map(x => <option key={x.id} value={x.id}>{x.name}{typeof x.markupPct === 'number' && x.markupPct > 0 ? ` (+${x.markupPct}%)` : ''}</option>)}
+              </select>
+            </FormField>
+          )}
           <FormField label="Status" required>
             <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'Active' | 'Inactive' })}>
               <option value="Active">Active</option>
@@ -534,6 +579,12 @@ export function UsersPage() {
             </select>
           </FormField>
         </div>
+        {form.role === 'USER' && retailRoles.find(x => x.id === form.retail_role)?.requireTerms && (
+          <label className="mt-3 flex items-start gap-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={form.terms} onChange={(e) => setForm({ ...form, terms: e.target.checked })} />
+            <span><b>Sales terms accepted.</b> {retailRoles.find(x => x.id === form.retail_role)?.terms}</span>
+          </label>
+        )}
 
         {/* Job Description (JD) Section */}
         <div className="mt-5 pt-4 border-t border-slate-200">
@@ -745,7 +796,12 @@ export function UsersPage() {
 // Company Management (Super Admin only)
 // ======================================================================================
 
-const emptyCompanyForm = { id: null as string | null, company_name: '', code: '', status: 'Active' as 'Active' | 'Inactive' };
+const emptyCompanyForm = {
+  id: null as string | null, company_name: '', code: '', status: 'Active' as 'Active' | 'Inactive',
+  // company details (the same ones the Retail Store company form asked for)
+  industry: '', email: '', phone: '', address: '', city: '', state: '', pin: '', pan: '', cin: '', plan: 'Scale', description: '',
+};
+const COMPANY_DETAIL_KEYS = ['industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'pan', 'cin', 'plan', 'description'] as const;
 
 export function CompaniesPage() {
   const navigate = useNavigate();
@@ -986,7 +1042,11 @@ export function CompaniesPage() {
   };
 
   const openEdit = async (r: CompanyRow) => {
-    setForm({ id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status });
+    setForm({ ...emptyCompanyForm, id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status });
+    // company details are read separately: a failed read (migration not applied yet) just leaves them empty
+    supabase.from('companies').select(COMPANY_DETAIL_KEYS.join(',')).eq('id', r.id).maybeSingle().then(({ data }) => {
+      if (data) setForm(f => (f.id === r.id ? { ...f, ...Object.fromEntries(COMPANY_DETAIL_KEYS.map(k => [k, (data as any)[k] ?? (k === 'plan' ? 'Scale' : '')])) } : f));
+    });
     setFormError(null);
     setAccessTab('bi');
     setAccessSearch('');
@@ -1066,6 +1126,15 @@ export function CompaniesPage() {
 
     const targetCompanyId = (savedCompany as any)?.id || form.id;
 
+    // 1b. Company details (industry, contact, address, PAN, CIN, plan...)
+    {
+      const { error: dErr } = await supabase.rpc('erp_save_company_details', {
+        p_id: targetCompanyId,
+        p_data: Object.fromEntries(COMPANY_DETAIL_KEYS.map(k => [k, form[k]])),
+      });
+      if (dErr) console.warn('Could not save the company details (apply the company hub migration):', dErr.message);
+    }
+
     // 2. Save BI module access for this company
     const biAvail = VISIBLE_MODULES.filter((m) => !globalDisabledBi.has(m.key));
     const unselectedBi = biAvail
@@ -1113,7 +1182,11 @@ export function CompaniesPage() {
       const retailPayload = {
         name: form.company_name,
         code: form.code,
-        city: 'Default',
+        city: form.city || 'Default',
+        industry: form.industry || undefined, email: form.email || undefined, phone: form.phone || undefined,
+        address: form.address || undefined, state: form.state || undefined, pin: form.pin || undefined,
+        description: form.description || undefined, plan: form.plan || undefined,
+        gstin: form.code || undefined, pan: form.pan || undefined, cin: form.cin || undefined,
         status: form.status.toLowerCase(),
         menuPermissions: selectedRetailList,
         disabledMenus: unselectedRetailList,
@@ -1345,6 +1418,25 @@ export function CompaniesPage() {
                 <option value="Inactive">Inactive</option>
               </select>
             </FormField>
+          </div>
+
+          {/* Company details: the same ones the Retail Store company form used to ask for */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
+            <FormField label="Industry"><input className={inputClass} value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} placeholder="e.g. CNC Manufacturing" /></FormField>
+            <FormField label="Company Email"><input className={inputClass} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></FormField>
+            <FormField label="Phone"><input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></FormField>
+            <FormField label="Plan">
+              <select className={inputClass} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
+                <option>Starter</option><option>Growth</option><option>Scale</option><option>Enterprise</option>
+              </select>
+            </FormField>
+            <FormField label="City"><input className={inputClass} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></FormField>
+            <FormField label="State"><input className={inputClass} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} /></FormField>
+            <FormField label="PIN Code"><input className={inputClass} value={form.pin} maxLength={6} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} /></FormField>
+            <FormField label="PAN"><input className={inputClass} value={form.pan} maxLength={10} onChange={(e) => setForm({ ...form, pan: e.target.value.replace(/\s+/g, '').toUpperCase() })} /></FormField>
+            <FormField label="CIN"><input className={inputClass} value={form.cin} maxLength={21} onChange={(e) => setForm({ ...form, cin: e.target.value.replace(/\s+/g, '').toUpperCase() })} /></FormField>
+            <div className="col-span-2"><FormField label="Address"><input className={inputClass} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></FormField></div>
+            <div className="col-span-2 sm:col-span-4"><FormField label="Short Description"><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></FormField></div>
           </div>
 
           {/* Menu Access Header & Controls */}

@@ -451,6 +451,31 @@ app.use(async (req, _res, next) => {
           person.active = true;
           save();
         }
+        /* Business Intelligence is the master for people and companies: a BI user with no Retail Store account yet is set up here
+           (an admin, or a user that was given a Retail Store role in BI). The company is created from BI's company record when missing. */
+        if (!person) {
+          try {
+            const { data: bi } = await SB.admin.from('company_users')
+              .select('full_name, role, status, mobile, retail_role, terms_accepted_at, company_id, companies!company_users_company_id_fkey(company_name, code, status, industry, email, phone, address, city, state, pin, pan, cin, plan, description)')
+              .eq('email', email).maybeSingle();
+            if (bi) {
+              const retailRole = bi.role === 'SUPER_ADMIN' ? 'super_admin' : bi.role === 'COMPANY_ADMIN' ? 'company_admin' : (bi.retail_role || null);
+              if (retailRole) {
+                let coId = null;
+                const co = bi.companies;
+                if (bi.role !== 'SUPER_ADMIN' && co) {
+                  coId = co.code || ('C-' + String(co.company_name || 'CO').slice(0, 3).toUpperCase());
+                  if (!companyById(coId)) {
+                    const today = new Date().toISOString().slice(0, 10);
+                    db.companies.unshift({ id: coId, code: coId, name: co.company_name, logo: '🏭', industry: co.industry || 'CNC Manufacturing', email: co.email || '', phone: co.phone || '', address: co.address || '', city: co.city || 'Default', state: co.state || '', pin: co.pin || '', gstin: co.code || '', pan: co.pan || '', cin: co.cin || '', description: co.description || '', status: 'active', storeStatus: 'active', plan: co.plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today, menuPermissions: [], disabledMenus: [] });
+                  }
+                }
+                person = { id: uid('U-', db.users), name: bi.full_name || (u.user_metadata && u.user_metadata.full_name) || email.split('@')[0], email, mobile: bi.mobile || '', role: retailRole, companyId: coId, termsAccepted: !!bi.terms_accepted_at, termsAcceptedAt: bi.terms_accepted_at || null, termsVersion: '1.0', active: bi.status === 'Active', createdAt: new Date().toISOString().slice(0, 10), source: 'bi' };
+                db.users.unshift(person); save();
+              }
+            }
+          } catch (e) { console.warn('BI user lookup failed:', e.message); }
+        }
         const display = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || (person && person.name) || email;
         if (person && person.active === false) { req.ctx = { role: 'disabled', companyId: person.companyId, name: display, email, google: true, id: person.id }; return next(); }
         if (person) { req.ctx = { role: person.role, companyId: person.companyId, name: display, email, google: true, id: person.id }; return next(); }
@@ -712,7 +737,7 @@ app.get('/api/companies/:id', (req, res) => {
 });
 app.post('/api/companies', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
-  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan, menuPermissions, disabledMenus } = req.body;
+  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan, menuPermissions, disabledMenus, gstin, pan, cin } = req.body;
   if (!name || !city) return res.status(400).json({ error: 'name and city required' });
   const finalCode = (code || ('C-' + name.slice(0, 1).toUpperCase() + Math.floor(Math.random() * 90 + 10))).trim();
   if (db.companies.some(x => x.id === finalCode || x.code === finalCode)) return res.status(400).json({ error: 'company code already exists' });
@@ -724,6 +749,7 @@ app.post('/api/companies', (req, res) => {
     id: finalCode, code: finalCode, name, logo: '🏭', industry: industry || 'CNC Manufacturing',
     email: email || '', phone: phone || '', address: address || '', city, state: state || '',
     pin: pin || '', description: description || '', status: 'active', storeStatus: 'active',
+    gstin: gstin || '', pan: pan || '', cin: cin || '',
     plan: plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today,
     menuPermissions: Array.isArray(menuPermissions) ? menuPermissions : [],
     disabledMenus: Array.isArray(disabledMenus) ? disabledMenus : []
@@ -739,7 +765,7 @@ app.put('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
   const c = companyById(req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);
@@ -751,14 +777,10 @@ app.patch('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
   let c = db.companies.find(x => x.id === req.params.id || x.code === req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);
-  save();
-  audit(req, 'company.update', 'company', c.id, c.id, `Updated ${c.name}: ${Object.keys(req.body).join(', ')}`);
-  ok(res, c);
-});
   save();
   audit(req, 'company.update', 'company', c.id, c.id, `Updated ${c.name}: ${Object.keys(req.body).join(', ')}`);
   ok(res, c);
