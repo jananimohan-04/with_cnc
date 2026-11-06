@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
+import { PaymentBadge } from '../../components/PaymentModal';
 import { downloadQuotationPdf, downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
 import { asList } from './Home';
 
@@ -85,6 +86,8 @@ export default function Quotes() {
     return {
       ...quoteData,
       invoiceNo: q.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`,
+      paidAmount: q.invoicePayment?.paidAmount || 0,
+      paymentStatus: q.invoicePayment?.paymentStatus || '',
       date: q.invoiceDate || new Date().toISOString().slice(0, 10),
       dueDate: q.invoiceDueDate || new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
       orderId: q.orderId || q.id,
@@ -187,6 +190,7 @@ export default function Quotes() {
                           <Check className="w-3 h-3" /> Invoiced: {q.invoiceNo || 'INV-Generated'}
                         </span>
                       )}
+                      {isInvoiced && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
                     </div>
 
                     <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">

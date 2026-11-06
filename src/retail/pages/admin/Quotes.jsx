@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
+import { PaymentBadge } from '../../components/PaymentModal';
 import { downloadQuotationPdf, downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
@@ -100,6 +101,8 @@ export default function Quotes() {
     return {
       ...quoteData,
       invoiceNo: q.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`,
+      paidAmount: q.invoicePayment?.paidAmount || 0,
+      paymentStatus: q.invoicePayment?.paymentStatus || '',
       date: q.invoiceDate || new Date().toISOString().slice(0, 10),
       dueDate: q.invoiceDueDate || new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
       orderId: q.orderId || q.id,
@@ -258,6 +261,7 @@ export default function Quotes() {
                         <Download className="w-3.5 h-3.5" />
                       </button>
 
+                      {(q.invoiced || q.invoiceNo) && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
                       {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (
                         <button
                           type="button"

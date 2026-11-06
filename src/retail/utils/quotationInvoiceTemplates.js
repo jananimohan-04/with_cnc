@@ -399,7 +399,10 @@ export async function generateTaxInvoiceHtml({
   company = {},
   customer = {},
   items = [],
-  notes = ''
+  notes = '',
+  payments = [],
+  paidAmount = 0,
+  paymentStatus = ''
 }) {
   let co = { ...DEFAULT_COMPANY, ...company };
   if (!company || Object.keys(company).length === 0 || !company.gstin) {
@@ -457,14 +460,28 @@ export async function generateTaxInvoiceHtml({
   const sgst = subtotal * 0.09;
   const total = subtotal + cgst + sgst;
   const words = numberToWordsIndian(total);
+  const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const received = Math.min(total, Math.round((Number(paidAmount) || 0) * 100) / 100);
+  const balanceDue = Math.max(0, Math.round((total - received) * 100) / 100);
+  const isPaid = paymentStatus === 'Paid' || (received > 0 && balanceDue <= 0.009);
+  const paymentRowsHtml = received > 0 ? `
+          <tr><td class="t-lbl" style="color:#047857">Amount Received</td><td class="t-val" style="color:#047857">- ${inr(received)}</td></tr>
+          <tr><td class="t-lbl" style="font-weight:800">Balance Due</td><td class="t-val" style="font-weight:800;color:${isPaid ? '#047857' : '#B91C1C'}">${inr(balanceDue)}</td></tr>` : '';
+  const paymentRefs = (Array.isArray(payments) ? payments : []).map(p => `${escapeHtml(p.date || '')} ${escapeHtml(p.mode || '')}${p.utr ? ' · ' + escapeHtml(p.utr) : ''} — ${inr(p.amount)}`).join('<br/>');
+  const paidStamp = isPaid ? `
+    <div style="position:absolute;top:150px;right:46px;transform:rotate(-14deg);border:4px solid #059669;color:#059669;font-weight:900;font-size:34px;letter-spacing:4px;padding:2px 16px;border-radius:8px;opacity:0.82;pointer-events:none">PAID</div>` : '';
 
   let qrDataUrl = null;
   let qrCaption = `Scan & Pay ₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (co.qrMode === 'custom' && co.customQrImage) {
+  if (isPaid) {
+    qrDataUrl = null;   // nothing left to pay
+  } else if (co.qrMode === 'custom' && co.customQrImage) {
     qrDataUrl = co.customQrImage;
     qrCaption = 'Scan to Pay (UPI Merchant)';
   } else if (co.upiId) {
-    qrDataUrl = await generateUpiQrCode(co.upiId, co.accName || co.name, total, invNumber);
+    // a part-paid invoice asks for the balance only
+    qrDataUrl = await generateUpiQrCode(co.upiId, co.accName || co.name, received > 0 ? balanceDue : total, invNumber);
+    if (received > 0) qrCaption = `Scan & Pay Balance ${inr(balanceDue)}`;
   }
 
   const defaultInvoiceTerms = [
@@ -535,7 +552,7 @@ export async function generateTaxInvoiceHtml({
     </div>
   </div>
 
-  <div class="sheet">
+  <div class="sheet" style="position:relative">${paidStamp}
     <div class="top-badge">
       <span>Rule 46 of CGST Rules, 2017 &bull; Commercial Tax Invoice</span>
       <span>Original for Recipient</span>
@@ -621,7 +638,7 @@ export async function generateTaxInvoiceHtml({
           <tr><td class="t-lbl">Total Taxable Value</td><td class="t-val">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr><td class="t-lbl">Central GST (CGST @ 9%)</td><td class="t-val">₹${cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr><td class="t-lbl">State GST (SGST @ 9%)</td><td class="t-val">₹${sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
-          <tr class="grand-total"><td class="t-lbl" style="font-weight:800">Net Invoice Amount Payable</td><td class="t-val" style="font-size:13px;color:#0369A1">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          <tr class="grand-total"><td class="t-lbl" style="font-weight:800">Net Invoice Amount Payable</td><td class="t-val" style="font-size:13px;color:#0369A1">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>${paymentRowsHtml}
         </table>
       </div>
     </div>
@@ -642,6 +659,7 @@ export async function generateTaxInvoiceHtml({
           <b>A/C Number:</b> <span style="font-family:monospace;font-weight:700">${escapeHtml(co.accNo)}</span><br />
           <b>IFSC Code:</b> <span style="font-family:monospace;font-weight:700">${escapeHtml(co.ifsc)}</span> &bull; <b>Branch:</b> ${escapeHtml(co.branch)}<br />
           <b>UPI VPA:</b> <span style="font-family:monospace;font-weight:700">${escapeHtml(co.upiId)}</span>
+          ${paymentRefs ? `<div style="margin-top:4px;color:#047857;font-weight:700">Payments received:<br/>${paymentRefs}</div>` : ''}
         </div>
         ${qrDataUrl ? `
         <div style="text-align:center; flex-shrink:0; background:#FFFFFF; padding:6px 8px; border-radius:6px; border:1px solid #BAE6FD; box-shadow:0 1px 3px rgba(0,0,0,0.05)">

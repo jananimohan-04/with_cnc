@@ -10,11 +10,17 @@ import {
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, PageHero, toast } from '../../components/ui';
 import { downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
+import { useAuth } from '../../auth';
+import { PaymentBadge, PaymentModal } from '../../components/PaymentModal';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const { me } = useAuth();
+  const [payInv, setPayInv] = useState(null);   // the invoice whose payments are open
+  const canRecord = ['super_admin', 'company_admin', 'finance'].includes(me?.role);
+  const canRemove = ['super_admin', 'company_admin'].includes(me?.role);
 
   useEffect(() => { 
     window.scrollTo(0, 0); 
@@ -97,7 +103,10 @@ export default function Invoices() {
         items,
         taxableAmount: subtotal,
         gstAmount: inv.gstAmount || Math.round(subtotal * 0.18),
-        total: inv.total || Math.round(subtotal * 1.18)
+        total: inv.total || Math.round(subtotal * 1.18),
+        payments: inv.payments || [],
+        paidAmount: inv.paidAmount || 0,
+        paymentStatus: inv.paymentStatus || ''
       });
       toast(`Tax Invoice ${inv.invoiceNo} opened for download`, '🧾');
     } catch (e) {
@@ -106,9 +115,13 @@ export default function Invoices() {
   };
 
   if (invoices === null) return <Skeleton h={280} />;
+  const paymentModal = payInv ? (
+    <PaymentModal invoice={payInv} canRecord={canRecord} canRemove={canRemove} onClose={() => setPayInv(null)} onChanged={loadInvoices} />
+  ) : null;
 
   return (
     <div className="space-y-6 w-full">
+      {paymentModal}
       <PageHero
         title={`Tax Invoice History (${invoices.length})`}
         subtitle="Official Rule 46 GST tax invoices, corporate credit records, and print-ready PDF downloads."
@@ -271,6 +284,7 @@ export default function Invoices() {
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                           {inv.status || 'Issued'}
                         </span>
+                        <PaymentBadge status={inv.paymentStatus} balance={inv.balance} />
                         {inv.poRef && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 font-mono">
                             PO: {inv.poRef}
@@ -316,6 +330,14 @@ export default function Invoices() {
                         Taxable: {fmt(inv.taxableAmount)} + GST: {fmt(inv.gstAmount)}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPayInv(inv)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-extrabold text-xs rounded-xl transition-all cursor-pointer shrink-0"
+                    >
+                      <IndianRupee className="w-4 h-4" /> {canRecord && inv.paymentStatus !== 'Paid' ? 'Record payment' : 'Payments'}
+                    </button>
 
                     <button
                       type="button"

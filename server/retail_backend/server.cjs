@@ -1723,6 +1723,65 @@ app.post('/api/orders/:id/raise-invoice', scopeCompany, (req, res) => {
   });
 });
 
+/* ---- payments on invoices (recorded by hand: the UPI QR itself cannot report a payment) ----
+   An invoice is an order that has an invoiceNo (or a quotation that was invoiced without an order); payments live on that record. */
+const money2 = n => Math.round((Number(n) || 0) * 100) / 100;
+function invoiceTotalOf(doc) {
+  const items = Array.isArray(doc.items) ? doc.items : [];
+  const subtotal = items.reduce((a, it) => a + (Number(it.price != null ? it.price : (doc.quotePrice || 0)) || 0) * (Number(it.qty) || 1), 0);
+  return money2(doc.total || Math.round(subtotal * 1.18));
+}
+function paySummary(doc, total) {
+  const payments = Array.isArray(doc.payments) ? doc.payments : [];
+  const paidAmount = money2(payments.reduce((a, p) => a + (Number(p.amount) || 0), 0));
+  const balance = money2(Math.max(0, total - paidAmount));
+  const paymentStatus = total > 0 && balance <= 0.009 ? 'Paid' : paidAmount > 0 ? 'Partly paid' : 'Unpaid';
+  return { payments, paidAmount, balance, paymentStatus };
+}
+function recordPayment(req, res, doc, kind) {
+  if (!doc) return res.status(404).json({ error: `${kind} not found` });
+  if (req.ctx.role !== 'super_admin' && doc.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
+  if (!isFinance(req)) return res.status(403).json({ error: 'Only an admin or finance user can record a payment' });
+  if (!doc.invoiceNo) return res.status(400).json({ error: 'Raise the tax invoice before recording a payment' });
+  if (doc.status === 'Cancelled') return res.status(400).json({ error: 'This invoice is cancelled' });
+  const b = req.body || {};
+  const amount = money2(b.amount);
+  const mode = ['UPI', 'Bank transfer', 'Cash', 'Cheque'].includes(b.mode) ? b.mode : 'UPI';
+  const utr = String(b.utr || '').trim().slice(0, 60);
+  const total = invoiceTotalOf(doc);
+  const sum = paySummary(doc, total);
+  if (!(amount > 0)) return res.status(400).json({ error: 'Enter the amount received' });
+  if (amount > sum.balance + 0.009) return res.status(400).json({ error: `The amount is more than the balance due (₹${sum.balance})` });
+  if (mode !== 'Cash' && !utr) return res.status(400).json({ error: 'Enter the UTR / transaction reference number' });
+  const dupe = utr && (doc.payments || []).some(p => String(p.utr || '').toLowerCase() === utr.toLowerCase());
+  if (dupe) return res.status(409).json({ error: 'A payment with this UTR is already recorded on this invoice' });
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? b.date : new Date().toISOString().slice(0, 10);
+  doc.payments = doc.payments || [];
+  doc.payments.push({
+    id: uid('PAY-', doc.payments), amount, date, mode, utr,
+    note: String(b.note || '').slice(0, 300), proof: b.proof ? String(b.proof).slice(0, 500) : '',
+    recordedBy: req.ctx.name || '', recordedAt: new Date().toISOString()
+  });
+  save();
+  audit(req, 'invoice.payment', kind.toLowerCase(), doc.id, doc.companyId, `Payment ₹${amount} (${mode}${utr ? ' ' + utr : ''}) on ${doc.invoiceNo}`);
+  ok(res, { ...paySummary(doc, total) });
+}
+function removePayment(req, res, doc, kind) {
+  if (!doc) return res.status(404).json({ error: `${kind} not found` });
+  if (req.ctx.role !== 'super_admin' && doc.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Only an admin can remove a recorded payment' });
+  const before = (doc.payments || []).length;
+  doc.payments = (doc.payments || []).filter(p => p.id !== req.params.pid);
+  if (doc.payments.length === before) return res.status(404).json({ error: 'Payment not found' });
+  save();
+  audit(req, 'invoice.payment_removed', kind.toLowerCase(), doc.id, doc.companyId, `Removed payment ${req.params.pid} from ${doc.invoiceNo}`);
+  ok(res, { ...paySummary(doc, invoiceTotalOf(doc)) });
+}
+app.post('/api/orders/:id/payments', scopeCompany, (req, res) => recordPayment(req, res, db.orders.find(x => x.id === req.params.id), 'Order'));
+app.delete('/api/orders/:id/payments/:pid', scopeCompany, (req, res) => removePayment(req, res, db.orders.find(x => x.id === req.params.id), 'Order'));
+app.post('/api/quotations/:id/payments', scopeCompany, (req, res) => recordPayment(req, res, db.quotations.find(x => x.id === req.params.id), 'Quotation'));
+app.delete('/api/quotations/:id/payments/:pid', scopeCompany, (req, res) => removePayment(req, res, db.quotations.find(x => x.id === req.params.id), 'Quotation'));
+
 app.get('/api/invoices', scopeCompany, (req, res) => {
   const cid = req.ctx.role === 'super_admin' ? (req.query.companyId && req.query.companyId !== 'all' ? req.query.companyId : null) : req.companyId;
 
@@ -1767,7 +1826,8 @@ app.get('/api/invoices', scopeCompany, (req, res) => {
       taxableAmount: subtotal,
       gstAmount,
       total,
-      items
+      items,
+      ...paySummary(o, total)
     };
   });
 
@@ -1812,7 +1872,8 @@ app.get('/api/invoices', scopeCompany, (req, res) => {
         taxableAmount: subtotal,
         gstAmount,
         total,
-        items
+        items,
+        ...paySummary(q, total)
       });
     }
   }
@@ -1863,8 +1924,17 @@ app.get('/api/quotations', scopeCompany, (req, res) => {
   const withNames = l => l.map(q => {
     const p = db.products.find(x => x.id === q.pid) || {};
     const firstItem = (Array.isArray(q.items) && q.items[0]) ? q.items[0] : null;
+    let invoicePayment = null;
+    if (q.invoiceNo) {
+      const linked = q.orderId ? db.orders.find(x => x.id === q.orderId) : null;
+      const src = linked && linked.invoiceNo ? linked : q;
+      const t = invoiceTotalOf(src);
+      const ps = paySummary(src, t);
+      invoicePayment = { total: t, paidAmount: ps.paidAmount, balance: ps.balance, paymentStatus: ps.paymentStatus };
+    }
     return {
       ...q,
+      invoicePayment,
       productName: p.name || (firstItem ? firstItem.name : q.pid) || 'Commercial Indent',
       sku: p.sku || (firstItem ? firstItem.sku : ''),
       companyName2: (companyById(q.companyId) || {}).name || q.companyId
