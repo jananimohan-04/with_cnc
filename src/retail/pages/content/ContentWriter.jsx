@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, uploadFiles, imgFallback } from '../../api';
+import { useAuth } from '../../auth';
 import { PageHero, PageHead, Empty, Skeleton, Pager, Field, Modal, Confirm, toast } from '../../components/ui';
 import {
   ArrowLeft, CheckCircle2, CircleAlert, FileText, Film, ImageIcon,
@@ -79,6 +80,12 @@ function ContentQueue() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(true);
+  // administrators can remove products here (for example old, already-published test products)
+  const { me } = useAuth();
+  const canDelete = me?.role === 'super_admin' || me?.role === 'company_admin';
+  const [picked, setPicked] = useState(() => new Set());
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => {
     setBusy(true);
@@ -98,6 +105,20 @@ function ContentQueue() {
 
   const counts = (data && data.counts) || {};
   const rows = (data && data.rows) || [];
+  const togglePick = (id) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allOnPage = rows.length > 0 && rows.every((r) => picked.has(r.id));
+  const toggleAll = () => setPicked((s) => { const n = new Set(s); if (allOnPage) rows.forEach((r) => n.delete(r.id)); else rows.forEach((r) => n.add(r.id)); return n; });
+  const pickPublished = () => setPicked((s) => { const n = new Set(s); rows.filter((r) => r.workflow_stage === 'published').forEach((r) => n.add(r.id)); return n; });
+  const deleteSelected = async () => {
+    setDeleting(true);
+    let done = 0; const failed = [];
+    for (const id of Array.from(picked)) {
+      try { await api.del('/api/products/' + id); done++; } catch (e) { failed.push(e.message || id); }
+    }
+    setDeleting(false); setConfirmDel(false); setPicked(new Set());
+    toast(failed.length ? `Deleted ${done}; ${failed.length} could not be deleted (${failed[0]})` : `Deleted ${done} product${done === 1 ? '' : 's'}`, failed.length ? '⚠️' : '🗑️');
+    load();
+  };
 
   const tabCount = (t) => {
     if (t.id === 'all') return (data && data.total) || 0;
@@ -159,9 +180,18 @@ function ContentQueue() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+          {canDelete && (
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/60 text-xs">
+              <button type="button" onClick={pickPublished} className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50">Select all published on this page</button>
+              {picked.size > 0 && <span className="text-slate-600"><b>{picked.size}</b> selected</span>}
+              {picked.size > 0 && <button type="button" onClick={() => setPicked(new Set())} className="text-slate-500 underline">Clear</button>}
+              {picked.size > 0 && <button type="button" onClick={() => setConfirmDel(true)} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold"><Trash2 className="w-3.5 h-3.5" /> Delete selected ({picked.size})</button>}
+            </div>
+          )}
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/80 border-b border-slate-200/80 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
               <tr>
+                {canDelete && <th className="px-4 py-3 w-8"><input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="Select all on this page" /></th>}
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Stock</th>
@@ -174,7 +204,8 @@ function ContentQueue() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                <tr key={p.id} className={`hover:bg-slate-50/80 transition-colors ${picked.has(p.id) ? 'bg-rose-50/60' : ''}`}>
+                  {canDelete && <td className="px-4 py-3"><input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} /></td>}
                   <td className="px-4 py-3 max-w-[280px]">
                     <div className="flex items-center gap-2.5">
                       <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0 text-slate-400 overflow-hidden relative">
@@ -218,6 +249,17 @@ function ContentQueue() {
           </table>
           <div className="px-4 pb-3"><Pager total={data.total} page={data.page} limit={data.limit} onPage={setPage} /></div>
         </div>
+      )}
+      {confirmDel && (
+        <Confirm
+          title="Delete products"
+          body={`Permanently delete ${picked.size} selected product${picked.size === 1 ? '' : 's'}? This cannot be undone. Orders and quotations that already include them keep their own copy of the details.`}
+          okLabel="Delete permanently"
+          danger
+          busy={deleting}
+          onCancel={() => setConfirmDel(false)}
+          onOk={deleteSelected}
+        />
       )}
     </>
   );

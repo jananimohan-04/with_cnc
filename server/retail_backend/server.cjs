@@ -1438,7 +1438,7 @@ app.put('/api/products/:id', scopeCompany, (req, res) => {
   ok(res, p);
 });
 app.delete('/api/products/:id', scopeCompany, (req, res) => {
-  if (req.ctx.role === 'sales_user') return res.status(403).json({ error: 'admin only' });
+  if (!isAdmin(req)) return res.status(403).json({ error: 'admin only' });
   const idx = db.products.findIndex(x => x.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'not found' });
   const p = db.products[idx];
