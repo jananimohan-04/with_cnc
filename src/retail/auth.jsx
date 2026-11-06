@@ -114,6 +114,7 @@ export function AuthProvider({ children }) {
               resolved.current = true;
               await resolveMe(sess.access_token).catch(() => { setSession(null); setMe(null); });
             }
+            if (ev === 'TOKEN_REFRESHED' && sess) setGoogleToken(sess.access_token);   // the token expires hourly; keep the new one
             if (ev === 'SIGNED_OUT') {
               setGoogleToken(null); setSession(null); setMe(null); resolved.current = false;
             }

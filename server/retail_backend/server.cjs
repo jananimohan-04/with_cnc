@@ -491,7 +491,7 @@ app.use(async (req, _res, next) => {
               .select('full_name, role, status, mobile, retail_role, terms_accepted_at, company_id, companies!company_users_company_id_fkey(company_name, code, status, industry, email, phone, address, city, state, pin, pan, cin, plan, description)')
               .eq('email', email).maybeSingle();
             if (bi) {
-              const retailRole = bi.role === 'SUPER_ADMIN' ? 'super_admin' : bi.role === 'COMPANY_ADMIN' ? 'company_admin' : (bi.retail_role || null);
+              const retailRole = bi.role === 'SUPER_ADMIN' ? 'super_admin' : bi.role === 'COMPANY_ADMIN' ? 'company_admin' : (['super_admin', 'company_admin'].includes(bi.retail_role) ? null : (bi.retail_role || null));
               if (retailRole) {
                 let coId = null;
                 const co = bi.companies;
@@ -550,6 +550,8 @@ app.use(async (req, _res, next) => {
 });
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
+  /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
+  if (req.path.startsWith('/api/integrations/erp/')) return next();
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -1009,6 +1011,7 @@ app.get('/api/permissions/users/:id', (req, res) => {
   ensureRolePermissions();
   const u = (db.users || []).find(x => x.id === req.params.id);
   if (!u) return res.status(404).json({ error: 'User not found' });
+  if (req.ctx.role !== 'super_admin' && u.companyId !== req.ctx.companyId) return res.status(403).json({ error: 'Cross-company access denied' });
 
   const roleObj = (db.roles || []).find(r => r.id === u.role);
   const roleDefaults = roleObj && Array.isArray(roleObj.menuPermissions)
@@ -1266,7 +1269,7 @@ app.get('/api/categories/company/:cid', (req, res) => {
   ok(res, catsForCompany(req.params.cid).filter(c => c.active !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
 });
 app.post('/api/categories', (req, res) => {
-  if (req.ctx.role === 'sales_user') return res.status(403).json({ error: 'admin only' });
+  if (!isAdmin(req)) return res.status(403).json({ error: 'admin only' });
   const { name, icon, desc, image, scope, companyId, sortOrder } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -1280,7 +1283,7 @@ app.post('/api/categories', (req, res) => {
   ok(res, c);
 });
 app.put('/api/categories/:id', (req, res) => {
-  if (req.ctx.role === 'sales_user') return res.status(403).json({ error: 'admin only' });
+  if (!isAdmin(req)) return res.status(403).json({ error: 'admin only' });
   const c = db.categories.find(x => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
   if (req.ctx.role !== 'super_admin' && !(c.scope === 'company' && c.companyId === req.ctx.companyId)) return res.status(403).json({ error: 'denied' });

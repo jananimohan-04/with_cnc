@@ -173,7 +173,7 @@ function Gate({ children, noSide, roles, perm }) {
     );
   }
   if (loc.pathname === '/login' || loc.pathname === '/retail/login') return <>{children}</>;
-  if (!me) return <Navigate to="/store/home" replace />;
+  if (!me) { window.location.replace('/'); return null; }   // not signed in: the BI sign-in is the only login
   if (me.role === 'pending' || me.role === 'disabled') return <Pending />;
 
   /* global disabled killswitch check */
