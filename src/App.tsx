@@ -57,6 +57,7 @@ import { TeachingTour } from './components/TeachingTour';
 import { Copilot } from './components/Copilot';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { StockAdjustmentPage } from './pages/inventory/StockAdjustmentPage';
+import { DigitalStorePage } from './pages/inventory/DigitalStorePage';
 import { LedgerPage } from './pages/accounts/LedgerPage';
 import {
   MetalCalculatorPage, CreateQuotationPage, ClientLibraryPage, ProductLibraryPage,
@@ -250,6 +251,7 @@ function MainLayout() {
             <Route path="/inventory/components" element={<ComponentsPage />} />
             <Route path="/inventory/stock" element={<InventoryPage />} />
             <Route path="/inventory/stock-adjustment" element={<StockAdjustmentPage />} />
+            <Route path="/inventory/digital-store" element={<DigitalStorePage />} />
             <Route path="/inventory/movements" element={<StockMovementsPage />} />
             <Route path="/inventory/requests" element={<MaterialRequestsPage />} />
             <Route path="/inventory/warehouse" element={<WarehousesPage />} />

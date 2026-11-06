@@ -262,6 +262,9 @@ function getEffectivePermissionsForUser(uOrCtx) {
     ? roleObj.menuPermissions
     : defaultPermissionsForRole(roleId));
 
+  // The Digital Store page is open to every role that can open the store home (roles saved earlier do not list it)
+  if (rolePerms.has('store_home') || rolePerms.has('store_listing')) rolePerms.add('store_digital');
+
   // 2. User-specific overrides ('allow' | 'deny' | 'inherit')
   const overrides = (u && u.menuOverrides) || (uOrCtx && uOrCtx.menuOverrides) || {};
   const effective = new Set(rolePerms);

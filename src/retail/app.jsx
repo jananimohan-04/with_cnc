@@ -34,6 +34,7 @@ import AdminQuotes from './pages/admin/Quotes';
 import AdminSettings from './pages/admin/Settings';
 import StoreHome from './pages/store/Home';
 import StoreListing from './pages/store/Listing';
+import DigitalStore from './pages/store/DigitalStore';
 import StoreProduct from './pages/store/Product';
 import StoreCart from './pages/store/Cart';
 import StoreCheckout from './pages/store/Checkout';
@@ -264,6 +265,7 @@ export function RetailApp() {
           <Route path="/finance/:id" element={<Gate perm="finance_review" roles={R.finance}><FinanceReview /></Gate>} />
           <Route path="/store/home" element={<Gate perm="store_home" roles={R.store}><StoreHome /></Gate>} />
           <Route path="/store/listing" element={<Gate perm="store_listing" roles={R.store}><StoreListing /></Gate>} />
+          <Route path="/store/digital" element={<Gate perm="store_digital" roles={R.store}><DigitalStore /></Gate>} />
           <Route path="/store/product/:id" element={<Gate perm="store_listing" roles={R.store}><StoreProduct /></Gate>} />
           <Route path="/store/cart" element={<Gate perm="store_cart" roles={R.store}><StoreCart /></Gate>} />
           <Route path="/store/checkout" element={<Gate perm="store_cart" roles={R.store}><StoreCheckout /></Gate>} />

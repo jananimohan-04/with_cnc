@@ -1,0 +1,216 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, ImagePlus, Loader2, Plus, Settings2, Trash2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { signedImageUrls, uploadItemImage } from '@/lib/inventory';
+import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Card';
+import { PageHeader } from '@/components/ui/PageHeader';
+
+// Digital Store setup. The administrator says how many racks, how many rows (shelves) on each rack and how many products fit
+// on a row, then puts a product (name + picture) in each place. The Retail Store shows this as a 3D store people walk through.
+
+interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number }
+interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null }
+type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null };
+
+const errText = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e));
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || lo)));
+
+export function DigitalStorePage() {
+  const { profile, company } = useAuth();
+  const isAdmin = profile?.role === 'SUPER_ADMIN' || profile?.role === 'COMPANY_ADMIN';
+  const [store, setStore] = useState<Store | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [size, setSize] = useState({ name: 'Digital Store', racks: 4, rows: 4, slots: 4 });
+  const [editSize, setEditSize] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const s = await supabase.from('digital_stores').select('*').maybeSingle();
+    if (s.error) { setError(/digital_stores/.test(s.error.message) ? 'The Digital Store tables are not created yet. Run the migration 20261108000000_digital_store.sql in Supabase.' : s.error.message); setLoading(false); return; }
+    setError(null);
+    const st = (s.data as Store | null) ?? null;
+    setStore(st);
+    if (st) {
+      setSize({ name: st.name, racks: st.racks, rows: st.rows_per_rack, slots: st.slots_per_row });
+      const it = await supabase.from('digital_store_items').select('*').eq('store_id', st.id).order('rack').order('row_no').order('slot');
+      if (it.error) setError(it.error.message);
+      const list = (it.data as Item[] | null) ?? [];
+      setItems(list);
+      setUrls(await signedImageUrls(list.map(i => i.image_path ?? '')));
+    } else { setItems([]); setUrls({}); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { void load(); }, [load, company?.id]);
+
+  const byPlace = useMemo(() => {
+    const m = new Map<string, Item>();
+    items.forEach(i => m.set(`${i.rack}:${i.row_no}:${i.slot}`, i));
+    return m;
+  }, [items]);
+
+  const saveStore = async () => {
+    setBusy(true); setFormError(null);
+    const payload = { name: size.name.trim() || 'Digital Store', racks: clamp(size.racks, 1, 40), rows_per_rack: clamp(size.rows, 1, 8), slots_per_row: clamp(size.slots, 1, 8), updated_at: new Date().toISOString() };
+    try {
+      if (store) {
+        const outside = items.filter(i => i.rack > payload.racks || i.row_no > payload.rows_per_rack || i.slot > payload.slots_per_row);
+        if (outside.length && !window.confirm(`${outside.length} product(s) are in places that will no longer exist. They will be removed. Continue?`)) { setBusy(false); return; }
+        if (outside.length) {
+          const del = await supabase.from('digital_store_items').delete().in('id', outside.map(i => i.id));
+          if (del.error) throw del.error;
+        }
+        const up = await supabase.from('digital_stores').update(payload).eq('id', store.id);
+        if (up.error) throw up.error;
+      } else {
+        const ins = await supabase.from('digital_stores').insert(payload);
+        if (ins.error) throw ins.error;
+      }
+      setEditSize(false);
+      await load();
+    } catch (e) { setFormError(errText(e)); }
+    setBusy(false);
+  };
+
+  const openSlot = (rack: number, row_no: number, slot: number) => {
+    if (!isAdmin) return;
+    const it = byPlace.get(`${rack}:${row_no}:${slot}`);
+    setFile(null); setFormError(null);
+    setDraft(it
+      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path }
+      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null });
+  };
+
+  const saveItem = async () => {
+    if (!draft || !store) return;
+    if (!draft.name.trim()) { setFormError('Enter the product name.'); return; }
+    const price = draft.price.trim() === '' ? null : Number(draft.price);
+    if (price !== null && (!Number.isFinite(price) || price < 0)) { setFormError('Price must be a number of zero or more.'); return; }
+    setBusy(true); setFormError(null);
+    try {
+      let image_path = draft.image_path;
+      if (file) {
+        if (!company?.id) throw new Error('Choose a company first (top bar), then upload the picture.');
+        image_path = await uploadItemImage(company.id, file);
+      }
+      const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, updated_at: new Date().toISOString() };
+      const res = draft.id ? await supabase.from('digital_store_items').update(row).eq('id', draft.id) : await supabase.from('digital_store_items').insert(row);
+      if (res.error) throw res.error;
+      setDraft(null);
+      await load();
+    } catch (e) { setFormError(errText(e)); }
+    setBusy(false);
+  };
+
+  const removeItem = async () => {
+    if (!draft?.id || !window.confirm('Remove this product from the rack?')) return;
+    setBusy(true);
+    const res = await supabase.from('digital_store_items').delete().eq('id', draft.id);
+    setBusy(false);
+    if (res.error) { setFormError(res.error.message); return; }
+    setDraft(null);
+    await load();
+  };
+
+  if (loading) return <div className="p-8 flex items-center gap-2 text-slate-500"><Loader2 className="animate-spin" size={16} /> Loading the Digital Store…</div>;
+
+  return (
+    <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-3">
+      <PageHeader title="Digital Store" description="Set up the racks and rows, then put a product (name and picture) in each place. The Retail Store shows it as a 3D store people can walk through." />
+      {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+      {!error && !store && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 max-w-xl space-y-4">
+          <h3 className="font-semibold text-slate-800">Create the store</h3>
+          {!isAdmin && <p className="text-sm text-slate-500">The store has not been set up yet. An administrator can create it here.</p>}
+          {isAdmin && <SizeForm size={size} setSize={setSize} />}
+          {formError && <p className="text-sm text-red-700">{formError}</p>}
+          {isAdmin && <Button onClick={saveStore} disabled={busy}>{busy ? 'Creating…' : 'Create store'}</Button>}
+        </div>
+      )}
+
+      {store && (
+        <>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="font-semibold text-slate-800 flex items-center gap-1.5"><Box size={15} /> {store.name}</span>
+            <span className="text-slate-500">{store.racks} racks · {store.rows_per_rack} rows each · {store.slots_per_row} products per row · {items.length} of {store.racks * store.rows_per_rack * store.slots_per_row} places filled</span>
+            {isAdmin && <Button variant="secondary" size="sm" icon={<Settings2 size={13} />} onClick={() => { setEditSize(true); setFormError(null); }}>Rack settings</Button>}
+          </div>
+          <p className="text-xs text-slate-500">{isAdmin ? 'Click a place to add or change its product.' : 'Only an administrator can change the store.'} Row 1 is the bottom shelf.</p>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: store.racks }, (_, r) => r + 1).map(rack => (
+              <div key={rack} className="bg-white border border-slate-200 rounded-xl p-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Rack {rack}</div>
+                <div className="space-y-1.5">
+                  {Array.from({ length: store.rows_per_rack }, (_, i) => store.rows_per_rack - i).map(row => (
+                    <div key={row} className="flex items-center gap-1.5">
+                      <span className="w-10 text-[10px] text-slate-400 shrink-0">Row {row}</span>
+                      <div className="grid gap-1.5 flex-1" style={{ gridTemplateColumns: `repeat(${store.slots_per_row}, minmax(0, 1fr))` }}>
+                        {Array.from({ length: store.slots_per_row }, (_, s) => s + 1).map(slot => {
+                          const it = byPlace.get(`${rack}:${row}:${slot}`);
+                          const img = it?.image_path ? urls[it.image_path] : '';
+                          return (
+                            <button key={slot} type="button" onClick={() => openSlot(rack, row, slot)} disabled={!isAdmin && !it}
+                              title={it ? it.name : `Rack ${rack}, row ${row}, place ${slot} (empty)`}
+                              className={`aspect-square rounded-md border text-[9px] leading-tight overflow-hidden flex items-center justify-center p-0.5 text-center ${it ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-dashed border-slate-300 text-slate-300 hover:border-brand-400 hover:text-brand-500'}`}>
+                              {it ? (img ? <img src={img} alt={it.name} className="w-full h-full object-cover rounded" /> : <span className="line-clamp-3">{it.name}</span>) : <Plus size={12} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {editSize && store && (
+        <Modal open onClose={() => setEditSize(false)} title="Rack settings" footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditSize(false)}>Cancel</Button><Button onClick={saveStore} disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button></div>}>
+          {formError && <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
+          <SizeForm size={size} setSize={setSize} />
+        </Modal>
+      )}
+
+      {draft && (
+        <Modal open onClose={() => setDraft(null)} title={`Rack ${draft.rack} · Row ${draft.row_no} · Place ${draft.slot}`}
+          footer={<div className="flex justify-between w-full">{draft.id ? <Button variant="danger" icon={<Trash2 size={13} />} onClick={removeItem} disabled={busy}>Remove</Button> : <span />}<div className="flex gap-2"><Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button><Button onClick={saveItem} disabled={busy}>{busy ? 'Saving…' : 'Save product'}</Button></div></div>}>
+          {formError && <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Product name" required><input className={inputClass} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></FormField>
+            <FormField label="Code / SKU"><input className={inputClass} value={draft.sku} onChange={e => setDraft({ ...draft, sku: e.target.value })} /></FormField>
+            <FormField label="Price (₹)"><input className={inputClass} inputMode="decimal" value={draft.price} onChange={e => setDraft({ ...draft, price: e.target.value })} /></FormField>
+            <FormField label="Picture" hint="PNG or JPG. It is shown on the product's box in the 3D store.">
+              <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> {file ? file.name : draft.image_path ? 'Replace picture' : 'Upload picture'}
+                <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
+            </FormField>
+            <div className="sm:col-span-2"><FormField label="Description"><textarea className={`${inputClass} min-h-[70px]`} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></FormField></div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function SizeForm({ size, setSize }: { size: { name: string; racks: number; rows: number; slots: number }; setSize: (s: { name: string; racks: number; rows: number; slots: number }) => void }) {
+  const num = (k: 'racks' | 'rows' | 'slots') => (e: React.ChangeEvent<HTMLInputElement>) => setSize({ ...size, [k]: Number(e.target.value) });
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="sm:col-span-2"><FormField label="Store name"><input className={inputClass} value={size.name} onChange={e => setSize({ ...size, name: e.target.value })} /></FormField></div>
+      <FormField label="Number of racks" hint="1 to 40"><input className={inputClass} type="number" min={1} max={40} value={size.racks} onChange={num('racks')} /></FormField>
+      <FormField label="Rows on each rack" hint="1 to 8 shelves"><input className={inputClass} type="number" min={1} max={8} value={size.rows} onChange={num('rows')} /></FormField>
+      <FormField label="Products on each row" hint="1 to 8"><input className={inputClass} type="number" min={1} max={8} value={size.slots} onChange={num('slots')} /></FormField>
+    </div>
+  );
+}

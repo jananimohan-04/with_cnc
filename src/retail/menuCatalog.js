@@ -494,6 +494,22 @@ export const MENU_CATALOG = [
         }
       },
       {
+        id: 'store_digital',
+        label: 'Digital Store (3D)',
+        path: '/store/digital',
+        icon: 'Store',
+        defaultRoles: ['super_admin', 'company_admin', 'sales_user', 'sales_regional_partner', 'sales_channel_partner', 'sales_referral_partner'],
+        theme: {
+          name: 'amber',
+          gradient: 'from-amber-500 via-orange-500 to-yellow-600',
+          activeLink: 'bg-amber-50/90 text-amber-900 font-bold border-amber-200/80 shadow-xs shadow-amber-100',
+          activeIcon: 'text-amber-600',
+          indicator: 'bg-amber-500',
+          badge: 'bg-amber-600 text-white',
+          glow: 'shadow-amber-500/20'
+        }
+      },
+      {
         id: 'store_cart',
         label: 'My Cart',
         path: '/store/cart',

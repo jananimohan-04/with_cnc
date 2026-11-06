@@ -105,6 +105,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Inventory', icon: Boxes, page: 'inventory/stock', iconClass: 'text-orange-300', module: 'inventory' },
       { label: 'Stock Adjustment', icon: SlidersHorizontal, page: 'inventory/stock-adjustment', iconClass: 'text-amber-300', module: 'stock-adjustment' },
+      { label: 'Digital Store', icon: Boxes, page: 'inventory/digital-store', iconClass: 'text-sky-300', module: 'digital-store' },
       { label: 'Suppliers', icon: Users, page: 'purchasing/suppliers', iconClass: 'text-lime-300', module: 'suppliers' },
       { label: 'Purchase Requisitions', icon: ClipboardList, page: 'purchasing/requisitions', iconClass: 'text-violet-300', module: 'purchase-requisitions' },
       { label: 'Purchase Orders', icon: ShoppingCart, page: 'purchasing/orders', iconClass: 'text-pink-400', module: 'purchase-orders' },
@@ -158,6 +159,7 @@ export const pageTitles: Record<string, string> = {
   'inventory/components': 'Components',
   'inventory/stock': 'Stock Overview',
   'inventory/stock-adjustment': 'Stock Adjustment',
+  'inventory/digital-store': 'Digital Store',
   'inventory/movements': 'Stock Movements',
   'inventory/requests': 'Material Requests',
   'inventory/warehouse': 'Warehouse',
