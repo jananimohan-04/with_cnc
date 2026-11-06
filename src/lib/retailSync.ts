@@ -140,26 +140,18 @@ export const retailSyncApi = {
    * else a warehouse whose name or code says "retail". Always ask this (not the cache) before syncing.
    */
   resolveDesignation: async (): Promise<Designation | null> => {
-    // 1. Return cached designation if available
-    if (cachedDesignation) return cachedDesignation;
+    // 1. The cached warehouse is only good while it is still one of THIS company's warehouses
+    //    (the cache is browser-wide, so after switching company it can point at another company's warehouse).
+    if (cachedDesignation) {
+      try {
+        const chk = await supabase.from('cnc_warehouses').select('id').eq('id', cachedDesignation.warehouse_id).maybeSingle();
+        if (!chk.error && chk.data) return cachedDesignation;
+        if (!chk.error) { cachedDesignation = null; try { localStorage.removeItem('erp_retail_warehouse_designation'); } catch (e) {} }
+        else return cachedDesignation;
+      } catch (e) { return cachedDesignation; }
+    }
 
-    // 2. Fetch designated warehouse from server status
-    try {
-      const res = await apiFetch('/api/retail-sync/status', {
-        headers: await authHeaders({ 'x-company-id': 'C-ARGUS' })
-      });
-      if (res.ok) {
-        const j = await res.json();
-        if (j?.designatedWarehouse?.warehouse_id) {
-          cachedDesignation = asDesignation(
-            j.designatedWarehouse.warehouse_id,
-            j.designatedWarehouse.warehouse_name || 'Retail Store Warehouse'
-          );
-          try { localStorage.setItem('erp_retail_warehouse_designation', JSON.stringify(cachedDesignation)); } catch (e) {}
-          return cachedDesignation;
-        }
-      }
-    } catch (e) {}
+    // 2. (the server's shared, company-less designation is no longer used: it was the same for every tenant)
 
     // 3. Fallback to Supabase database query
     try {
@@ -250,6 +242,7 @@ export const retailSyncApi = {
         image_url: item.image_url || null,
         status: item.status || 'Active',
         is_retail_warehouse: isRetail,
+        item_kind: item.item_kind,
         companyId,
         idempotency_key: `erp-sync-${item.id || sku}-${Date.now()}`
       };
@@ -304,6 +297,7 @@ export const retailSyncApi = {
           image_url: item.image_url || null,
           status: item.status || 'Active',
           is_retail_warehouse: item.is_retail_warehouse !== false,
+          item_kind: item.item_kind,
           companyId
         };
       });
