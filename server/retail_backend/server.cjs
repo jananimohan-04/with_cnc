@@ -609,7 +609,17 @@ app.use((req, res, next) => {
 /* company isolation: non-super users locked to their own company */
 function scopeCompany(req, res, next) {
   if (req.ctx.role === 'super_admin') {
-    req.companyId = req.query.companyId || req.body.companyId || 'C-ARGUS';
+    let co = req.query.companyId || (req.body && req.body.companyId);
+    if (!co || co === 'all') {
+      // no company chosen: work in the company of the product / order / quotation / media the request is about
+      const ref = (req.body && (req.body.productId || req.body.pid)) || req.query.productId || (req.params && req.params.id);
+      if (ref) {
+        const hit = (db.products || []).find(x => x.id === ref) || (db.orders || []).find(x => x.id === ref)
+          || (db.quotations || []).find(x => x.id === ref) || (db.product_media || []).find(x => x.id === ref);
+        if (hit && hit.companyId) co = hit.companyId;
+      }
+    }
+    req.companyId = (co && co !== 'all') ? co : ((db.companies || []).some(c => c.id === 'C-ARGUS') ? 'C-ARGUS' : ((db.companies || [])[0] || {}).id || 'C-ARGUS');
     return next();
   }
   const q = req.query.companyId || req.body.companyId;
