@@ -145,13 +145,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadPermissions]);
 
   useEffect(() => {
+    // The Retail Store keeps its own copy of "who is signed in" in this browser. It must never outlive the BI sign-in,
+    // or the next person to sign in here would briefly see the previous user's Retail view.
+    const forgetRetailSession = () => {
+      try {
+        localStorage.removeItem('cncforge_session');
+        localStorage.removeItem('cncforge_cart');
+        localStorage.removeItem('super_active_company');
+        sessionStorage.removeItem('cncforge_gtoken');
+      } catch { /* storage blocked: nothing to clear */ }
+    };
     const handleSession = (userId: string | null) => {
       if (!userId) {
+        forgetRetailSession();
+        loadedForUser.current = null;
         clear();
         setStatus('signed_out');
         return;
       }
       if (loadedForUser.current === userId) return; // token refreshes don't need a reload
+      if (loadedForUser.current) forgetRetailSession(); // a different person signed in without signing out first
       loadedForUser.current = userId;
       setStatus('loading');
       loadErpSession();
