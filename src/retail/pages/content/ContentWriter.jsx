@@ -183,20 +183,21 @@ function ContentQueue() {
           value={q}
           onChange={(e) => { setQ(e.target.value); setPage(1); }}
           placeholder="Search product name, SKU, brand…"
-          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+          style={{ flex: '1 1 240px', width: 'auto', minWidth: 200 }}
+          className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
         />
-        <select value={cat} onChange={(e) => { setCat(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Category">
+        <select value={cat} onChange={(e) => { setCat(e.target.value); setPage(1); }} style={{ width: 'auto', minWidth: 170 }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Category">
           <option value="all">All categories</option>
           {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {me?.role === 'super_admin' && (
-          <select value={co} onChange={(e) => { setCo(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Company">
+          <select value={co} onChange={(e) => { setCo(e.target.value); setPage(1); }} style={{ width: 'auto', minWidth: 170 }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Company">
             <option value="all">All companies</option>
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
           </select>
         )}
         {(q || cat !== 'all' || co !== 'all') && (
-          <button type="button" onClick={() => { setQ(''); setCat('all'); setCo('all'); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</button>
+          <button type="button" onClick={() => { setQ(''); setCat('all'); setCo('all'); setPage(1); }} style={{ width: 'auto' }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</button>
         )}
       </div>
 

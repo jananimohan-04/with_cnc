@@ -2729,7 +2729,7 @@ async function verifyErpServerAuth(req, res, next) {
 }
 
 // Map ERP category or name to valid Retail Store category ID
-function resolveStoreCategory(catInput, catNameInput) {
+function resolveStoreCategory(catInput, catNameInput, companyId) {
   const norm = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const cats = db.categories || [];
   if (catInput) {
@@ -2749,6 +2749,15 @@ function resolveStoreCategory(catInput, catNameInput) {
     if (n.includes('elect') || n.includes('sensor') || n.includes('servo')) return 'electrical';
     if (n.includes('safe') || n.includes('ppe')) return 'safety';
     if (n.includes('consum') || n.includes('oil') || n.includes('coolant')) return 'consumables';
+    // no store category fits (e.g. "Finished Goods", "Bought-out Items"): keep the BI category as the company's own store category
+    const slug = String(catNameInput).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (slug) {
+      const id = companyId ? `${slug}--${String(companyId).toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24)}` : slug;
+      const have = cats.find(c => c.id === id);
+      if (have) return have.id;
+      db.categories.push({ id, name: String(catNameInput).trim(), icon: '📦', desc: '', image: '', scope: companyId ? 'company' : 'global', companyId: companyId || null, sortOrder: db.categories.length, active: true });
+      return id;
+    }
   }
   return cats[0]?.id || 'cutting-tools';
 }
@@ -2813,7 +2822,7 @@ function syncSingleErpProduct(item, companyId) {
   }
 
   // Case 2: In retail warehouse and Active
-  const catId = resolveStoreCategory(category, category_name);
+  const catId = resolveStoreCategory(category, category_name, companyId);
 
   if (p) {
     // UPDATE existing product with strict field ownership:
