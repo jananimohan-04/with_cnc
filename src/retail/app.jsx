@@ -173,7 +173,20 @@ function Gate({ children, noSide, roles, perm }) {
     );
   }
   if (loc.pathname === '/login' || loc.pathname === '/retail/login') return <>{children}</>;
-  if (!me) { window.location.replace('/'); return null; }   // not signed in: the BI sign-in is the only login
+  if (!me) {   // not signed in to the Retail Store: the BI sign-in is the only login, so say why instead of bouncing silently
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+          <h2 className="text-lg font-bold text-slate-800">Retail Store could not sign you in</h2>
+          <p className="mt-2 text-sm text-slate-600">Your Business Intelligence login was not accepted by the Retail Store. This usually means the Retail Store server is not connected to Supabase yet (an administrator must add SUPABASE_SECRET_KEY on the host), or your sign-in has expired.</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold" onClick={() => window.location.reload()}>Try again</button>
+            <button className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700" onClick={() => window.location.assign('/')}>Back to Business Intelligence</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (me.role === 'pending' || me.role === 'disabled') return <Pending />;
 
   /* global disabled killswitch check */
