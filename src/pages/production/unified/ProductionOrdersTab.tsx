@@ -62,7 +62,9 @@ const newOpKey = () =>
     ? crypto.randomUUID()
     : `op-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
-export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]; refresh: () => void }) {
+// `workOrders` is the list shown (date-filtered); `allWorkOrders` is every work order, used for the remaining-quantity and
+// number-uniqueness checks so an order from outside the date range is still counted.
+export function ProductionOrdersTab({ workOrders, allWorkOrders, refresh }: { workOrders: any[]; allWorkOrders?: any[]; refresh: () => void }) {
   const { setTabActions } = useHeaderKpis();
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [inwards, setInwards] = useState<any[]>([]);
@@ -258,7 +260,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
 
   // Products (sales orders + inwards), and the parts of each with how many were ordered / are still remaining.
   const productChoices = useMemo(() => buildProductChoices(salesOrders, inwards), [salesOrders, inwards]);
-  const partChoices = useMemo(() => buildPartChoices(productChoices, inwards, workOrders ?? []), [productChoices, inwards, workOrders]);
+  const partChoices = useMemo(() => buildPartChoices(productChoices, inwards, allWorkOrders ?? workOrders ?? []), [productChoices, inwards, allWorkOrders, workOrders]);
   const partOptions = useMemo(
     () => (woForm.productKey ? partChoices.filter((p) => p.productKey === woForm.productKey) : partChoices),
     [partChoices, woForm.productKey]
@@ -492,7 +494,7 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const generateWoNo = () => {
     const d = new Date();
     const prefix = `WO-${d.getFullYear().toString().slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}-`;
-    const existing = new Set((workOrders ?? []).map((w) => w.wo_no));
+    const existing = new Set((allWorkOrders ?? workOrders ?? []).map((w) => w.wo_no));
     for (let i = 0; i < 50; i++) {
       const candidate = `${prefix}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       if (!existing.has(candidate)) return candidate;
@@ -603,7 +605,64 @@ export function ProductionOrdersTab({ workOrders, refresh }: { workOrders: any[]
   const saveOpDrafts = async (workOrderId: string, wo: { wo_no?: string; sales_order?: string }) => {
     if (opsMissing) return;
     const prev = opsByWO[workOrderId] ?? [];
-    // Rebuild: simplest reliable sync is delete-all + re-insert in sequence order.
+    // EDITING: keep the operations that already exist (same row, so completed qty, status, actual times and the job
+    // cards that point at them survive). Only removed operations are deleted and only new ones are inserted.
+    if (editWO && prev.length > 0) {
+      const keepSeqs = new Set(opDrafts.filter((o) => o.origSeq).map((o) => o.origSeq as number));
+      const prevBySeq = new Map<number, any>(prev.map((r: any) => [Number(r.operation_sequence), r]));
+      for (const r of prev) {
+        if (!keepSeqs.has(Number(r.operation_sequence))) {
+          const del = await supabase.from('cnc_work_order_operations').delete().eq('id', r.id);
+          if (del.error) throw del.error;
+        }
+      }
+      const kept = opDrafts.map((o, i) => ({ o, i, row: o.origSeq ? prevBySeq.get(o.origSeq) : undefined })).filter((x) => x.row);
+      // (company, work order, sequence) is unique: park the kept rows out of the way, then give them their final numbers
+      for (const { i, row } of kept) {
+        const up = await supabase.from('cnc_work_order_operations').update({ operation_sequence: 1000 + i + 1 }).eq('id', row.id);
+        if (up.error) throw up.error;
+      }
+      for (const { o, i, row } of kept) {
+        const proc = processes.find((p) => String(p.id) === o.processId);
+        const up = await supabase.from('cnc_work_order_operations').update({
+          process_id: o.processId || null,
+          process_code: proc?.process_code ?? '',
+          process_name: proc?.process_name ?? '',
+          operation_sequence: i + 1,
+          machine: o.machine.trim() || null,
+          operator: o.operator.trim() || null,
+          planned_qty: o.plannedQty.trim() === '' ? Number(woForm.targetQty) || 0 : Number(o.plannedQty),
+          est_cycle_time: o.cycleTime.trim() === '' ? 0 : Number(o.cycleTime),
+          setup_time: o.setupTime.trim() === '' ? 0 : Number(o.setupTime),
+        }).eq('id', row.id);
+        if (up.error) throw up.error;
+      }
+      const fresh = opDrafts.map((o, i) => ({ o, i })).filter(({ o }) => !(o.origSeq && prevBySeq.has(o.origSeq)));
+      if (fresh.length === 0) return;
+      const rowsNew = fresh.map(({ o, i }) => {
+        const proc = processes.find((p) => String(p.id) === o.processId);
+        return {
+          id: crypto.randomUUID(),
+          work_order_id: workOrderId,
+          sales_order_no: wo.sales_order ?? null,
+          process_id: o.processId || null,
+          process_code: proc?.process_code ?? '',
+          process_name: proc?.process_name ?? '',
+          operation_sequence: i + 1,
+          machine: o.machine.trim() || null,
+          operator: o.operator.trim() || null,
+          planned_qty: o.plannedQty.trim() === '' ? Number(woForm.targetQty) || 0 : Number(o.plannedQty),
+          completed_qty: 0,
+          est_cycle_time: o.cycleTime.trim() === '' ? 0 : Number(o.cycleTime),
+          setup_time: o.setupTime.trim() === '' ? 0 : Number(o.setupTime),
+          status: 'Pending',
+        };
+      });
+      const ins = await supabase.from('cnc_work_order_operations').insert(rowsNew);
+      if (ins.error) throw ins.error;
+      return;
+    }
+    // NEW work order (or one that had no operations yet): insert every operation
     if (prev.length > 0) {
       const { error } = await supabase.from('cnc_work_order_operations').delete().eq('work_order_id', workOrderId);
       if (error) throw error;

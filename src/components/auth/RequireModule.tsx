@@ -40,5 +40,12 @@ export function RequireModule({ module, action = 'view', children }: {
 
 /** Resolve the owning module for a route page (no leading slash). */
 export function moduleForPage(page: string): string | undefined {
-  return PAGE_MODULE[page];
+  if (PAGE_MODULE[page]) return PAGE_MODULE[page];
+  // a sub-page (e.g. engineering/cnc-vault/<anything>) belongs to the module of its closest mapped parent page
+  const parts = page.split('/');
+  for (let n = parts.length - 1; n >= 1; n--) {
+    const m = PAGE_MODULE[parts.slice(0, n).join('/')];
+    if (m) return m;
+  }
+  return undefined;
 }

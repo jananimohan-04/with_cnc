@@ -104,6 +104,7 @@ import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
+import { MODULE_CATALOG } from '@/config/permissions';
 import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
 import { UpdateCenter } from './components/desktop/UpdateCenter';
@@ -204,7 +205,7 @@ function MainLayout() {
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
-            <Route path="/" element={<Navigate to="/sales/pipeline" replace />} />
+            <Route path="/" element={<HomeRedirect />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
             
             {/* Sales */}
@@ -418,6 +419,15 @@ const isRetailRoute = (path: string) =>
   path.startsWith('/admin/quotes') ||
   path.startsWith('/admin/invoice-profile') ||
   path.startsWith('/admin/settings-retail');
+
+// "/" opens the first page this user can actually see (Sales Pipelines when allowed, as before), not a lock screen.
+function HomeRedirect() {
+  const { canView, permissions } = useAuth();
+  if (permissions === null) return null;
+  if (canView('sales-pipeline')) return <Navigate to="/sales/pipeline" replace />;
+  const first = MODULE_CATALOG.find((m) => m.pages.length > 0 && canView(m.key));
+  return <Navigate to={first ? `/${first.pages[0]}` : '/dashboard'} replace />;
+}
 
 function RootRoutes() {
   const location = useLocation();

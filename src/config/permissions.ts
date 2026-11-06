@@ -37,7 +37,7 @@ const VCEDX: PermAction[] = ['view', 'create', 'edit', 'delete', 'export'];
 
 export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'dashboard', label: 'Dashboard', category: 'Overview', actions: [...V], pages: ['dashboard'] },
-  { key: 'reports', label: 'Reports', category: 'Overview', actions: ['view', 'export'], pages: ['reports/production', 'reports/order-tracking', 'reports/sales', 'reports/inventory', 'reports/quality', 'reports/machine-utilization', 'reports/cost-analysis'] },
+  { key: 'reports', label: 'Reports', category: 'Overview', actions: ['view', 'export'], pages: ['reports/production', 'reports/order-tracking', 'reports/sales', 'reports/inventory', 'reports/quality', 'reports/machine-utilization', 'reports/cost-analysis', 'reports/pipeline-report'] },
 
   { key: 'sales-pipeline', label: 'Sales Pipelines', category: 'Sales', actions: [...VCED], pages: ['sales/pipeline', 'sales/in-house'] },
   { key: 'site-visit-sales', label: 'Site Visit Sales', category: 'Sales', actions: [...VCED], pages: ['sales/site-visits'], parent: 'sales-pipeline' },

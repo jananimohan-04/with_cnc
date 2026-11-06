@@ -99,7 +99,7 @@ export function ProductionMainPage() {
 
       {/* Dynamic Tab Content */}
       {isOrders ? (
-        <ProductionOrdersTab workOrders={rangedWorkOrders} refresh={fetchData} />
+        <ProductionOrdersTab workOrders={rangedWorkOrders} allWorkOrders={workOrders} refresh={fetchData} />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200">
           {activeTab === 'Part Routing' && <PartRoutingTab />}
