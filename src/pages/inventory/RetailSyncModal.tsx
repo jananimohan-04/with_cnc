@@ -10,7 +10,7 @@ import {
   type RetailSyncLog,
   type SyncStatus
 } from '@/lib/retailSync';
-import { formatQty } from '@/lib/inventory';
+import { formatQty, inventoryApi } from '@/lib/inventory';
 
 interface RetailSyncModalProps {
   open: boolean;
@@ -135,13 +135,22 @@ export function RetailSyncModal({
     try {
       // Find all rows currently in the designated retail warehouse
       const designatedWhId = syncState?.designatedWarehouse?.warehouse_id || selectedWhId;
-      const qualifying = (allInventoryRows || []).filter(r => {
-        return (designatedWhId && r.warehouse_id === designatedWhId) ||
-          /retail/i.test(r.warehouse_name || '');
-      });
+      // Every product of the Retail Store warehouse, not only the page / filter currently open on the Inventory screen
+      let qualifying: any[] = [];
+      if (designatedWhId) {
+        for (let page = 1; page <= 50; page++) {
+          const res: any = await inventoryApi.items({ categoryId: null, search: null, supplierId: null, status: null, warehouseId: designatedWhId, page, pageSize: 200 });
+          const got: any[] = res?.rows ?? [];
+          qualifying = qualifying.concat(got);
+          if (got.length < 200) break;
+        }
+      }
+      if (qualifying.length === 0) {
+        qualifying = (allInventoryRows || []).filter(r => (designatedWhId && r.warehouse_id === designatedWhId) || /retail/i.test(r.warehouse_name || ''));
+      }
 
       if (qualifying.length === 0) {
-        setBannerMsg({ type: 'error', text: 'No products currently assigned to the designated Retail Store warehouse.' });
+        setBannerMsg({ type: 'error', text: `No products in the Retail Store warehouse of the company you are in${syncState?.store?.name ? ` (${syncState.store.name})` : ''}. Check that you are in the right company (top bar) and that the products are in that company's Retail Store warehouse.` });
         return;
       }
 
