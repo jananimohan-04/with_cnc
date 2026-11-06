@@ -1,7 +1,7 @@
 /* Store product detail — Professional Industrial Catalog Showcase.
    Features high-resolution gallery with photo captions (title/description),
    technical specs tables, PDF datasheet cards, and video showcases. */
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, imgFallback } from '../../api';
 import { useAuth } from '../../auth';
@@ -12,6 +12,9 @@ import {
   Film, Layers, MonitorPlay, Package, ShieldCheck, Sparkles, BookOpen, Share2
 } from 'lucide-react';
 import ProductShareModal from '../../components/ProductShareModal';
+
+// documents open inside the application (no download); the PDF engine loads only when one is opened
+const PdfViewer = lazy(() => import('../../components/PdfViewer'));
 
 /* youtube watch/shorts/embed url → video id (null when not a YouTube link) */
 const ytId = (u) => {
@@ -30,6 +33,7 @@ export default function Product() {
   const [cats, setCats] = useState([]);
   const [companyProds, setCompanyProds] = useState([]);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [viewDoc, setViewDoc] = useState(null);
   const [qty, setQty] = useState(1);
   const [rfq, setRfq] = useState(null);
   const [activeTab, setActiveTab] = useState('specs'); // 'specs' | 'docs' | 'videos' | 'overview'
@@ -453,8 +457,8 @@ export default function Product() {
           <div className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">Downloadable Technical Documents</h3>
-                <p className="text-xs text-slate-500">Official product brochures, dimensional diagrams, and material certificates.</p>
+                <h3 className="text-sm font-extrabold text-slate-900">Technical Documents</h3>
+                <p className="text-xs text-slate-500">Official product brochures, dimensional diagrams, and material certificates. Open a document to read it here.</p>
               </div>
             </div>
 
@@ -479,14 +483,13 @@ export default function Product() {
                         </p>
                       )}
                       <div className="mt-2">
-                        <a
-                          href={d.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                        <button
+                          type="button"
+                          onClick={() => setViewDoc(d)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                         >
-                          <Download className="w-3 h-3" /> Download PDF Datasheet
-                        </a>
+                          <BookOpen className="w-3 h-3" /> View document
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -494,10 +497,16 @@ export default function Product() {
               </div>
             ) : (
               <div className="rounded-xl border-2 border-dashed border-slate-200 p-8 text-center text-slate-400 text-xs">
-                No downloadable PDF documents attached to this product yet.
+                No documents attached to this product yet.
               </div>
             )}
           </div>
+        )}
+
+        {viewDoc && (
+          <Suspense fallback={null}>
+            <PdfViewer url={viewDoc.url} title={viewDoc.title || 'Technical Datasheet'} onClose={() => setViewDoc(null)} />
+          </Suspense>
         )}
 
         {/* Tab 3: Videos & Demonstrations */}
