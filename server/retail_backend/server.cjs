@@ -2673,8 +2673,12 @@ app.post('/api/workflow/:id/return', scopeCompany, (req, res) => {
    Endpoints for secure product synchronization, status checks & stock consistency
    ========================================================================== */
 
-const ERP_INTEGRATION_KEY = process.env.ERP_INTEGRATION_KEY || 'erp_sec_c4f8d9b1a03e7f22589e6d4c';
-const ERP_API_BASE_URL = process.env.ERP_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://arguscnc.com' : 'http://localhost:5173');
+/* the shared ERP <-> Retail key: set ERP_INTEGRATION_KEY, or it is derived from the Supabase secret (the ERP sync server derives the same value) */
+const _SB_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+const ERP_INTEGRATION_KEY = process.env.ERP_INTEGRATION_KEY
+  || (_SB_SECRET ? require('crypto').createHash('sha256').update('erp-retail-sync:' + _SB_SECRET).digest('hex').slice(0, 40) : 'erp_sec_c4f8d9b1a03e7f22589e6d4c');
+const ERP_API_BASE_URL = process.env.ERP_API_BASE_URL
+  || (process.env.VERCEL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL}` : (process.env.NODE_ENV === 'production' ? 'https://arguscnc.com' : 'http://localhost:5173'));
 
 // Idempotency cache (key -> { data, ts })
 const erpIdempotencyCache = new Map();

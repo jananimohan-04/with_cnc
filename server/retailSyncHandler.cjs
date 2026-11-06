@@ -59,12 +59,25 @@ loadLocalEnv();
 //   SUPABASE_SERVICE_ROLE_KEY + ERP_COMPANY_ID   only for the retail store's order webhook (/order-deduct):
 //                                                the ERP company (uuid) whose stock a retail order reduces
 const env = (...names) => { for (const n of names) if (process.env[n]) return process.env[n]; return ''; };
-const RETAIL_STORE_API_BASE_URL = env('RETAIL_STORE_API_BASE_URL') || (process.env.NODE_ENV === 'production' ? 'https://retail.arguscnc.com' : 'http://localhost:4000');
-const RETAIL_STORE_API_KEY = env('RETAIL_STORE_API_KEY', 'ERP_INTEGRATION_KEY');
+const SUPABASE_SECRET = env('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_KEY');
+// The Retail Store runs in this same deployment, so nothing has to be set by hand: the shared key is derived from the Supabase secret
+// (the Retail server derives the very same value) and its address is this site's own address.
+const DERIVED_KEY = SUPABASE_SECRET ? require('crypto').createHash('sha256').update('erp-retail-sync:' + SUPABASE_SECRET).digest('hex').slice(0, 40) : '';
+const RETAIL_STORE_API_BASE_URL_ENV = env('RETAIL_STORE_API_BASE_URL');
+const RETAIL_STORE_API_KEY = env('RETAIL_STORE_API_KEY', 'ERP_INTEGRATION_KEY') || DERIVED_KEY;
+function retailBase(req) {
+  if (RETAIL_STORE_API_BASE_URL_ENV) return RETAIL_STORE_API_BASE_URL_ENV.replace(/\/$/, '');
+  if (process.env.VERCEL && req && req.headers) {
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    if (host) return `${req.headers['x-forwarded-proto'] || 'https'}://${host}`;
+  }
+  return 'http://localhost:4000';
+}
+const RETAIL_STORE_API_BASE_URL = RETAIL_STORE_API_BASE_URL_ENV || 'http://localhost:4000';
 const RETAIL_COMPANY_ID = env('RETAIL_COMPANY_ID') || 'C-ARGUS';
 const SUPABASE_URL = env('VITE_SUPABASE_URL', 'SUPABASE_URL');
 const SUPABASE_ANON_KEY = env('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY');
-const SUPABASE_SERVICE_ROLE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
+const SUPABASE_SERVICE_ROLE_KEY = SUPABASE_SECRET;
 const ERP_COMPANY_ID = env('ERP_COMPANY_ID');
 const NOT_CONFIGURED = 'RETAIL_STORE_API_KEY is not set on the server, so the Retail Store cannot be reached. Add it to the server environment (.env.local for local dev).';
 
@@ -196,9 +209,9 @@ async function handleRetailSyncRequest(req, res) {
   // 1. GET /api/retail-sync/status
   if (method === 'GET' && (subpath === '/status' || subpath === '/')) {
     const companyId = authCompany;
-    if (!RETAIL_STORE_API_KEY) return sendJson(res, 200, { ok: false, connection: 'disconnected', storeUrl: RETAIL_STORE_API_BASE_URL, error: NOT_CONFIGURED, syncSummary: { synced: 0, pending: 0, failed: 0, updated: 0, removed: 0, total: 0 }, designatedWarehouse: designations[companyId] || null });
+    if (!RETAIL_STORE_API_KEY) return sendJson(res, 200, { ok: false, connection: 'disconnected', storeUrl: retailBase(req), error: NOT_CONFIGURED, syncSummary: { synced: 0, pending: 0, failed: 0, updated: 0, removed: 0, total: 0 }, designatedWarehouse: designations[companyId] || null });
     try {
-      const storeRes = await fetch(`${RETAIL_STORE_API_BASE_URL}/api/integrations/erp/status`, {
+      const storeRes = await fetch(`${retailBase(req)}/api/integrations/erp/status`, {
         headers: {
           'x-erp-api-key': RETAIL_STORE_API_KEY,
           'x-company-id': companyId
@@ -225,7 +238,7 @@ async function handleRetailSyncRequest(req, res) {
       return sendJson(res, 200, {
         ok: true,
         connection: storeRes.ok ? 'connected' : 'disconnected',
-        storeUrl: RETAIL_STORE_API_BASE_URL,
+        storeUrl: retailBase(req),
         store: storeData?.store || null,
         metrics: storeData?.metrics || null,
         syncSummary: summary,
@@ -235,7 +248,7 @@ async function handleRetailSyncRequest(req, res) {
       return sendJson(res, 200, {
         ok: false,
         connection: 'disconnected',
-        storeUrl: RETAIL_STORE_API_BASE_URL,
+        storeUrl: retailBase(req),
         error: err.message,
         syncSummary: {
           synced: syncLogs.filter(l => l.sync_status === 'synced').length,
@@ -278,7 +291,7 @@ async function handleRetailSyncRequest(req, res) {
     const idempotencyKey = req.headers['x-idempotency-key'] || body.idempotency_key || `erp-sync-${sku}-${Date.now()}`;
 
     try {
-      const storeRes = await fetch(`${RETAIL_STORE_API_BASE_URL}/api/integrations/erp/sync-product`, {
+      const storeRes = await fetch(`${retailBase(req)}/api/integrations/erp/sync-product`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -405,7 +418,7 @@ async function handleRetailSyncRequest(req, res) {
     });
 
     try {
-      const storeRes = await fetch(`${RETAIL_STORE_API_BASE_URL}/api/integrations/erp/sync-batch`, {
+      const storeRes = await fetch(`${retailBase(req)}/api/integrations/erp/sync-batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

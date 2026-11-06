@@ -781,7 +781,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
         const d = await retailSyncApi.resolveDesignation();
         if (d && (newWarehouseId === d.id || r.warehouse_id === d.id)) {
           const isRetail = newWarehouseId === d.id;
-          await retailSyncApi.syncItem({
+          const syncRes = await retailSyncApi.syncItem({
             id: r.id ?? r.code,
             code: r.code,
             name: r.name,
@@ -793,6 +793,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
             warehouse_name: isRetail ? d.warehouse_name : undefined,
             status: isRetail ? 'Active' : 'Inactive',
           }, isRetail);
+          if (!syncRes.ok) alert(`The warehouse was changed, but the Retail Store was not updated: ${syncRes.error ?? 'sync failed'}. Open Inventory > Retail Store Sync to retry.`);
         }
       } catch { /* best effort */ }
 
