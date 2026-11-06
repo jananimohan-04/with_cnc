@@ -7,6 +7,7 @@ import { fmt } from '../../api';
 import { Skeleton } from '../../components/ui';
 import { computeLayout, placeOf } from '../../components/storeLayout';
 import SpinViewer from '../../components/SpinViewer';
+import { useAuth } from '../../auth';
 
 // three.js is large: load it only when this page is opened
 const Scene = lazy(() => import('../../components/StoreScene').then((m) => ({ default: m.StoreScene })));
@@ -23,7 +24,38 @@ export default function DigitalStore() {
   const [goTo, setGoTo] = useState(null);
   const [picked, setPicked] = useState(null);
   const [bodyFailed, setBodyFailed] = useState(false);
-  useEffect(() => { setBodyFailed(false); }, [picked]);
+  const { me: user } = useAuth();
+  // ordering from the popup
+  const [ordering, setOrdering] = useState(false);
+  const [form, setForm] = useState({ qty: '1', name: '', phone: '', address: '', notes: '' });
+  const [orderBusy, setOrderBusy] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [placed, setPlaced] = useState(null);
+  useEffect(() => {
+    setBodyFailed(false); setOrdering(false); setOrderError(''); setPlaced(null);
+    setForm((f) => ({ qty: '1', name: f.name || user?.name || '', phone: f.phone || user?.mobile || '', address: f.address, notes: '' }));
+  }, [picked]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const placeOrder = async () => {
+    if (orderBusy || !picked) return;
+    setOrderError('');
+    const qty = Number(form.qty);
+    const stock = Number(picked.stock_qty ?? 0);
+    if (!(qty > 0)) return setOrderError('Enter the quantity you want.');
+    if (qty > stock) return setOrderError(`Only ${stock} available in stock.`);
+    if (!form.name.trim()) return setOrderError('Enter your name.');
+    if (form.phone.replace(/\D/g, '').length < 7) return setOrderError('Enter a valid contact number.');
+    if (form.address.trim().length < 8) return setOrderError('Enter the full delivery address.');
+    setOrderBusy(true);
+    const res = await supabase.rpc('erp_place_digital_order', { p_item: picked.id, p_qty: qty, p_name: form.name, p_phone: form.phone, p_address: form.address, p_notes: form.notes });
+    setOrderBusy(false);
+    if (res.error) return setOrderError(res.error.message);
+    const left = Number(res.data?.stock_left ?? 0);
+    setItems((list) => list.map((i) => (i.id === picked.id ? { ...i, stock_qty: left } : i)));
+    setPicked((p) => (p ? { ...p, stock_qty: left } : p));
+    setPlaced({ order_no: res.data?.order_no, total: res.data?.total, qty });
+    setOrdering(false);
+  };
   const [companyName, setCompanyName] = useState('');
   // the reflective floor and shadows look best but need a decent graphics card: phones and small laptops start on 'fast'
   const [quality, setQuality] = useState(() => (typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 4) >= 6 && !/Mobi|Android/i.test(navigator.userAgent) ? 'high' : 'fast'));
@@ -104,7 +136,7 @@ export default function DigitalStore() {
                 <div key={m.id} className={`flex items-center gap-2 px-3 py-2 ${targetId === m.id ? 'bg-emerald-50' : ''}`}>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-slate-800 truncate">{m.name}</div>
-                    <div className="text-[11px] text-slate-500">Rack {m.rack} · Row {m.row_no} · Place {m.slot}{m.sku ? ` · ${m.sku}` : ''}</div>
+                    <div className="text-[11px] text-slate-500">Rack {m.rack} · Row {m.row_no} · Place {m.slot}{m.sku ? ` · ${m.sku}` : ''}{m.stock_qty !== undefined ? (Number(m.stock_qty) > 0 ? ` · ${Number(m.stock_qty)} in stock` : ' · out of stock') : ''}</div>
                   </div>
                   <button type="button" onClick={() => goToItem(m)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shrink-0"><MapPin className="w-3 h-3" /> Go there</button>
                 </div>
@@ -126,7 +158,7 @@ export default function DigitalStore() {
 
       {picked && (
         <div className="fixed inset-0 z-[300] bg-slate-950/70 flex items-center justify-center p-4" onClick={() => setPicked(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl grid md:grid-cols-2" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto shadow-2xl grid md:grid-cols-2" onClick={(e) => e.stopPropagation()}>
             <div className="h-72 md:h-[420px] bg-slate-900">
               {picked.shape === 'spin' && (picked.angle_paths || []).filter((x) => urls[x]).length >= 4 ? (
                 <SpinViewer name={picked.name} frames={picked.angle_paths.map((x) => urls[x]).filter(Boolean)} />
@@ -144,7 +176,46 @@ export default function DigitalStore() {
               {picked.sku && <div className="text-xs font-mono text-slate-500 mt-0.5">{picked.sku}</div>}
               {picked.price != null && <div className="text-2xl font-black text-emerald-700 mt-3">{fmt(picked.price)}</div>}
               {picked.description && <p className="text-sm text-slate-600 mt-3 whitespace-pre-line">{picked.description}</p>}
+              {picked.stock_qty !== undefined && (
+                <div className={`mt-3 inline-flex self-start items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${Number(picked.stock_qty) > 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {Number(picked.stock_qty) > 0 ? `In stock: ${Number(picked.stock_qty)} ${picked.unit || ''}` : 'Out of stock'}
+                </div>
+              )}
               <div className="mt-3 text-xs text-slate-500">Found at Rack {picked.rack} · Row {picked.row_no} · Place {picked.slot}</div>
+              {placed && (
+                <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
+                  <div className="font-black">Order placed ✓</div>
+                  <div>Order no. <b className="font-mono">{placed.order_no}</b> · {placed.qty} × {picked.name}{placed.total != null ? ` · ${fmt(placed.total)}` : ''}</div>
+                  <div className="text-xs mt-1">We will contact you on the number you gave to confirm and arrange delivery.</div>
+                </div>
+              )}
+              {!placed && !ordering && picked.stock_qty !== undefined && Number(picked.stock_qty) > 0 && (
+                <button type="button" onClick={() => setOrdering(true)} className="mt-3 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold">Order this product</button>
+              )}
+              {ordering && (
+                <div className="mt-3 space-y-2">
+                  {orderError && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{orderError}</div>}
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="text-[11px] font-bold text-slate-600 col-span-1">Quantity
+                      <input className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm" inputMode="decimal" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+                    </label>
+                    <label className="text-[11px] font-bold text-slate-600 col-span-2">Your name
+                      <input className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    </label>
+                  </div>
+                  <label className="block text-[11px] font-bold text-slate-600">Contact number
+                    <input className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  </label>
+                  <label className="block text-[11px] font-bold text-slate-600">Delivery address
+                    <textarea className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm min-h-[64px]" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                  </label>
+                  {picked.price != null && <div className="text-xs text-slate-600">Total: <b>{fmt((Number(form.qty) || 0) * Number(picked.price))}</b></div>}
+                  <div className="flex gap-2">
+                    <button type="button" disabled={orderBusy} onClick={placeOrder} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold disabled:opacity-60">{orderBusy ? 'Placing…' : 'Place order'}</button>
+                    <button type="button" onClick={() => setOrdering(false)} className="px-4 py-2 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700">Cancel</button>
+                  </div>
+                </div>
+              )}
               {bodyFailed && <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">A 3D body could not be built from this photo, so a box is shown. Use a straight-on photo of the product on a plain background, or give it a 3D model or 360° photos in BI → Digital Store.</div>}
               <div className="mt-auto pt-4 text-[11px] text-slate-400">Drag to turn it around{picked.shape === 'spin' ? '' : ' · scroll or pinch to zoom'}</div>
             </div>

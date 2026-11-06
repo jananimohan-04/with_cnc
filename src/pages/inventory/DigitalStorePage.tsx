@@ -12,8 +12,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 
 interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number }
 type Shape = 'box' | 'round' | 'model' | 'spin';
-interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null }
-type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[] };
+interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null; stock_qty?: number | null; unit?: string | null }
+interface Order { id: string; order_no: string; item_name: string; sku: string | null; qty: number; unit: string | null; total: number | null; customer_name: string; phone: string; address: string; notes: string | null; status: string; ordered_by_name: string | null; created_at: string }
+const ORDER_STATUSES = ['New', 'Confirmed', 'Dispatched', 'Delivered', 'Cancelled'];
+type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[]; stock: string; unit: string };
 const SHAPES: { id: Shape; label: string; hint: string }[] = [
   { id: 'round', label: 'Real product shape from the photo (recommended)', hint: 'The product itself turns, not a box. Best for round / turned parts (probes, bushes, shafts). Use a straight-on photo on a plain background; a 3D body is built from it.' },
   { id: 'box', label: 'Packed product (a box with the picture)', hint: 'Only for products sold in a box: the box turns, with your picture on it.' },
@@ -40,6 +42,21 @@ export function DigitalStorePage() {
   const [angleFiles, setAngleFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [tab, setTab] = useState<'racks' | 'orders'>('racks');
+  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [orderNote, setOrderNote] = useState<string | null>(null);
+  const loadOrders = useCallback(async () => {
+    const o = await supabase.from('digital_store_orders').select('*').order('created_at', { ascending: false }).limit(300);
+    if (o.error) { setOrderNote(/digital_store_orders/.test(o.error.message) ? 'Orders are not set up yet. Run the migration 20261109000000_digital_store_orders.sql in Supabase.' : o.error.message); setOrders([]); return; }
+    setOrderNote(null); setOrders((o.data as Order[]) ?? []);
+  }, []);
+  useEffect(() => { if (tab === 'orders') void loadOrders(); }, [tab, loadOrders]);
+  const setOrderStatus = async (o: Order, status: string) => {
+    if (status === 'Cancelled' && !window.confirm(`Cancel order ${o.order_no}? The stock goes back to the shelf.`)) return;
+    const res = await supabase.rpc('erp_digital_order_status', { p_id: o.id, p_status: status });
+    if (res.error) { setOrderNote(res.error.message); return; }
+    await loadOrders(); await load();
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,14 +111,16 @@ export function DigitalStorePage() {
     const it = byPlace.get(`${rack}:${row_no}:${slot}`);
     setFile(null); setModelFile(null); setAngleFiles([]); setFormError(null);
     setDraft(it
-      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path, shape: (it.shape ?? 'round') as Shape, model_path: it.model_path ?? null, angle_paths: it.angle_paths ?? [] }
-      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null, shape: 'round', model_path: null, angle_paths: [] });
+      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path, shape: (it.shape ?? 'round') as Shape, model_path: it.model_path ?? null, angle_paths: it.angle_paths ?? [], stock: String(it.stock_qty ?? 0), unit: it.unit ?? 'Nos' }
+      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null, shape: 'round', model_path: null, angle_paths: [], stock: '', unit: 'Nos' });
   };
 
   const saveItem = async () => {
     if (!draft || !store) return;
     if (!draft.name.trim()) { setFormError('Enter the product name.'); return; }
     const price = draft.price.trim() === '' ? null : Number(draft.price);
+    const stock = draft.stock.trim() === '' ? 0 : Number(draft.stock);
+    if (!Number.isFinite(stock) || stock < 0) { setFormError('Stock must be a number of zero or more.'); return; }
     if (price !== null && (!Number.isFinite(price) || price < 0)) { setFormError('Price must be a number of zero or more.'); return; }
     setBusy(true); setFormError(null);
     try {
@@ -123,7 +142,7 @@ export function DigitalStorePage() {
       if (draft.shape === 'model' && !model_path) throw new Error('Upload the .glb 3D model file for this product.');
       if (draft.shape === 'spin' && angle_paths.length < 4) throw new Error('Upload at least 4 photos taken around the product (8 to 36 is best).');
       if ((draft.shape === 'box' || draft.shape === 'round') && !image_path) throw new Error('Upload the product picture.');
-      const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, shape: draft.shape, model_path: draft.shape === 'model' ? model_path : null, angle_paths: draft.shape === 'spin' ? angle_paths : [], updated_at: new Date().toISOString() };
+      const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, stock_qty: stock, unit: draft.unit.trim() || 'Nos', shape: draft.shape, model_path: draft.shape === 'model' ? model_path : null, angle_paths: draft.shape === 'spin' ? angle_paths : [], updated_at: new Date().toISOString() };
       const res = draft.id ? await supabase.from('digital_store_items').update(row).eq('id', draft.id) : await supabase.from('digital_store_items').insert(row);
       if (res.error) throw res.error;
       setDraft(null);
@@ -166,7 +185,40 @@ export function DigitalStorePage() {
             <span className="text-slate-500">{store.racks} racks · {store.rows_per_rack} rows each · {store.slots_per_row} products per row · {items.length} of {store.racks * store.rows_per_rack * store.slots_per_row} places filled</span>
             {isAdmin && <Button variant="secondary" size="sm" icon={<Settings2 size={13} />} onClick={() => { setEditSize(true); setFormError(null); }}>Rack settings</Button>}
           </div>
-          <p className="text-xs text-slate-500">{isAdmin ? 'Click a place to add or change its product.' : 'Only an administrator can change the store.'} Row 1 is the bottom shelf.</p>
+          <div className="flex gap-1 border-b border-slate-200">
+            {([['racks', 'Racks & products'], ['orders', 'Orders']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === k ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}{k === 'orders' && orders ? ` (${orders.filter(o => o.status === 'New').length} new)` : ''}</button>
+            ))}
+          </div>
+          {tab === 'orders' ? (
+            <div className="space-y-2">
+              {orderNote && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{orderNote}</p>}
+              {orders && orders.length === 0 && !orderNote && <p className="text-sm text-slate-500 bg-white border border-slate-200 rounded-xl p-6 text-center">No orders yet. Orders placed from the Retail Store's Digital Store appear here.</p>}
+              {(orders ?? []).map(o => (
+                <div key={o.id} className="bg-white border border-slate-200 rounded-xl p-3 grid gap-2 md:grid-cols-[1.2fr_1.6fr_auto] items-start">
+                  <div>
+                    <div className="font-mono text-xs font-bold text-slate-700">{o.order_no} <span className="font-sans font-normal text-slate-400">· {new Date(o.created_at).toLocaleString('en-IN')}</span></div>
+                    <div className="text-sm font-semibold text-slate-900 mt-0.5">{o.item_name}{o.sku ? <span className="text-slate-400 font-normal"> · {o.sku}</span> : null}</div>
+                    <div className="text-sm text-slate-700">Qty <b>{Number(o.qty)}</b> {o.unit ?? ''}{o.total != null ? <> · <b>₹{Number(o.total).toLocaleString('en-IN')}</b></> : null}</div>
+                  </div>
+                  <div className="text-sm text-slate-700">
+                    <div><b>{o.customer_name}</b> · {o.phone}</div>
+                    <div className="text-slate-600 whitespace-pre-line">{o.address}</div>
+                    {o.notes && <div className="text-xs text-slate-500 mt-0.5">Note: {o.notes}</div>}
+                    {o.ordered_by_name && <div className="text-[11px] text-slate-400">Placed by {o.ordered_by_name}</div>}
+                  </div>
+                  <div>
+                    {isAdmin && o.status !== 'Cancelled' ? (
+                      <select className={inputClass} value={o.status} onChange={e => void setOrderStatus(o, e.target.value)}>
+                        {ORDER_STATUSES.map(st => <option key={st}>{st}</option>)}
+                      </select>
+                    ) : <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${o.status === 'Cancelled' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>{o.status}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (<>
+          <p className="text-xs text-slate-500">{isAdmin ? 'Click a place to add or change its product.' : 'Only an administrator can change the store.'} Row 1 is the bottom shelf. The small number on a product is its stock.</p>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: store.racks }, (_, r) => r + 1).map(rack => (
@@ -184,7 +236,12 @@ export function DigitalStorePage() {
                             <button key={slot} type="button" onClick={() => openSlot(rack, row, slot)} disabled={!isAdmin && !it}
                               title={it ? it.name : `Rack ${rack}, row ${row}, place ${slot} (empty)`}
                               className={`aspect-square rounded-md border text-[9px] leading-tight overflow-hidden flex items-center justify-center p-0.5 text-center ${it ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-dashed border-slate-300 text-slate-300 hover:border-brand-400 hover:text-brand-500'}`}>
-                              {it ? (img ? <img src={img} alt={it.name} className="w-full h-full object-cover rounded" /> : <span className="line-clamp-3">{it.name}</span>) : <Plus size={12} />}
+                              {it ? (
+                                <span className="relative block w-full h-full">
+                                  {img ? <img src={img} alt={it.name} className="w-full h-full object-cover rounded" /> : <span className="line-clamp-3">{it.name}</span>}
+                                  <span className={`absolute bottom-0 right-0 px-1 rounded-tl text-[8px] font-bold ${Number(it.stock_qty ?? 0) > 0 ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>{Number(it.stock_qty ?? 0) > 0 ? Number(it.stock_qty) : '0'}</span>
+                                </span>
+                              ) : <Plus size={12} />}
                             </button>
                           );
                         })}
@@ -195,6 +252,7 @@ export function DigitalStorePage() {
               </div>
             ))}
           </div>
+          </>)}
         </>
       )}
 
@@ -213,7 +271,9 @@ export function DigitalStorePage() {
             <FormField label="Product name" required><input className={inputClass} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></FormField>
             <FormField label="Code / SKU"><input className={inputClass} value={draft.sku} onChange={e => setDraft({ ...draft, sku: e.target.value })} /></FormField>
             <FormField label="Price (₹)"><input className={inputClass} inputMode="decimal" value={draft.price} onChange={e => setDraft({ ...draft, price: e.target.value })} /></FormField>
-            <FormField label="Picture" hint="PNG or JPG. It is shown on the product's box in the 3D store.">
+            <FormField label="Stock available" hint="How many can be ordered from the 3D store. 0 = sold out."><input className={inputClass} inputMode="decimal" value={draft.stock} onChange={e => setDraft({ ...draft, stock: e.target.value })} /></FormField>
+            <FormField label="Unit"><input className={inputClass} value={draft.unit} onChange={e => setDraft({ ...draft, unit: e.target.value })} placeholder="Nos" /></FormField>
+            <FormField label="Picture" hint="PNG or JPG. Use a straight-on photo on a plain background.">
               <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> {file ? file.name : draft.image_path ? 'Replace picture' : 'Upload picture'}
                 <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
             </FormField>

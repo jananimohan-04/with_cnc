@@ -169,8 +169,10 @@ function ProductOnShelf({ item, place, imgUrl, state, onPick }) {
   const tag = useMemo(() => canvasTexture(256, 64, (g, w, hh) => {
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, hh); g.fillStyle = '#0f172a'; g.textBaseline = 'middle';
     fitText(g, item.name, w - 16, 22); g.textAlign = 'left'; g.fillText(item.name, 8, 18);
-    g.fillStyle = '#dc2626'; g.font = 'bold 26px "Segoe UI", Arial, sans-serif'; g.fillText(item.price != null ? `Rs ${Number(item.price).toLocaleString('en-IN')}` : (item.sku || ''), 8, 46);
-  }), [item.name, item.price, item.sku]);
+    g.fillStyle = '#dc2626'; g.font = 'bold 26px "Segoe UI", Arial, sans-serif';
+    const soldOut = item.stock_qty !== undefined && Number(item.stock_qty) <= 0;
+    g.fillText(soldOut ? 'SOLD OUT' : item.price != null ? `Rs ${Number(item.price).toLocaleString('en-IN')}` : (item.sku || ''), 8, 46);
+  }), [item.name, item.price, item.sku, item.stock_qty]);
   useEffect(() => () => tag.dispose(), [tag]);
   useFrame(({ clock }) => { if (group.current) group.current.scale.setScalar(pulse ? 1 + Math.sin(clock.elapsedTime * 5) * 0.045 : 1); });
   return (
