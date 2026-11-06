@@ -901,7 +901,6 @@ export const Topbar = forwardRef(function Topbar(
     sales_referral_partner: 'Referral Partner (+5%)',
     sales_user: 'Sales'
   };
-  const roleLabel = me?.salesTier ? `${me.salesTier} (+${me.markupPct || 0}%)` : (ROLE_LABELS[me?.role] || 'Sales');
 
   return (
     <>
@@ -1057,13 +1056,10 @@ export const Topbar = forwardRef(function Topbar(
                 id="profileDropdownTriggerBtn"
                 onClick={() => setProfileDropdownOpen((prev) => !prev)}
                 className="flex items-center gap-2 bg-[#150A05] hover:bg-[#22120A] px-2.5 py-1.5 rounded-xl border border-[#2C160B] transition-all cursor-pointer group shadow-xs"
-                title={me?.name ? `${me.name} (${roleLabel}) — Profile & Settings` : 'User Profile'}
+                title={me?.name ? `${me.name} — Profile & Settings` : 'User Profile'}
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                 <span className="hidden sm:inline text-xs font-bold text-[#E8DDD5] truncate max-w-[120px]">{me?.name || 'User'}</span>
-                <span className="hidden sm:inline text-[10px] uppercase font-extrabold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded-md tracking-wider">
-                  {roleLabel}
-                </span>
                 <User className="w-4 h-4 text-[#A89080] group-hover:text-amber-400 transition-transform group-hover:scale-110" />
                 <ChevronDown className={`w-3 h-3 text-[#A89080] transition-transform duration-150 ${profileDropdownOpen ? 'rotate-180 text-amber-400' : ''}`} />
               </button>
@@ -1087,9 +1083,6 @@ export const Topbar = forwardRef(function Topbar(
                         <div className="text-xs font-bold text-white truncate">{me?.name}</div>
                         <div className="text-[10px] text-[#A89080] truncate">{me?.email}</div>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-400 border border-amber-800/60">
-                            {roleLabel}
-                          </span>
                           <span className="text-[9px] font-mono text-[#8C7A6B]">
                             {me?.companyId || 'PLATFORM'}
                           </span>
