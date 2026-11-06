@@ -99,13 +99,20 @@ export function AuthProvider({ children }) {
           const { data } = await client.auth.getSession();
           if (data && data.session) {
             setGoogleToken(data.session.access_token);
-            if (!resolved.current) { resolved.current = true; await resolveMe(data.session.access_token).catch(() => {}); }
+            if (!resolved.current) {
+              resolved.current = true;
+              // the signed-in BI user decides who this is; a stale/demo session must never survive a failed lookup
+              await resolveMe(data.session.access_token).catch(() => { setSession(null); setMe(null); });
+            }
+          } else {
+            const cur = getSession();
+            if (cur && !cur.google) { setSession(null); setMe(null); }   // leftover demo session while nobody is signed in
           }
           client.auth.onAuthStateChange(async (ev, sess) => {
             if ((ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION') && sess) {
               setGoogleToken(sess.access_token);
               resolved.current = true;
-              await resolveMe(sess.access_token).catch(() => {});
+              await resolveMe(sess.access_token).catch(() => { setSession(null); setMe(null); });
             }
             if (ev === 'SIGNED_OUT') {
               setGoogleToken(null); setSession(null); setMe(null); resolved.current = false;

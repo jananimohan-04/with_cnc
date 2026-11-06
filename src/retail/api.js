@@ -7,12 +7,9 @@ export function getSession() {
     const s = JSON.parse(localStorage.getItem(SES_KEY) || 'null');
     if (s && s.role) return s;
   } catch { /* noop */ }
-  return {
-    role: 'super_admin',
-    name: 'Janani Mohan',
-    companyId: null,
-    email: 'jananimohan44@gmail.com'
-  };
+  // No stored session: nobody is signed in. (This used to default to a hard-coded Super Admin, which is why every
+  // BI user who opened the Retail Store landed in the Super Admin account.)
+  return null;
 }
 export function setSession(s) {
   if (s) localStorage.setItem(SES_KEY, JSON.stringify(s));

@@ -518,6 +518,12 @@ app.use(async (req, _res, next) => {
       /* fall through to demo headers */
     }
   }
+  /* With Supabase on (production) the role comes only from a verified sign-in. Browser-supplied x-role / x-user-email
+     headers are demo-mode only; trusting them let anyone (or a stale browser session) act as Super Admin. */
+  if (SB.enabled) {
+    req.ctx = { role: 'pending', companyId: null, name: '', email: '', google: false };
+    return next();
+  }
   const userEmail = (req.headers['x-user-email'] || '').trim().toLowerCase();
   const userId = req.headers['x-user-id'] || '';
   let foundUser = null;
