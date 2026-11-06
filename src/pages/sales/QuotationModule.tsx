@@ -1,3 +1,4 @@
+import { nextDocNos } from '@/lib/docNumber';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
@@ -56,13 +57,9 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
     }
 
     // Fetch related Sales Order
-    const soFilters = [`quotation_id.eq.${quote.id}`];
-    if (quote.quote_no) soFilters.push(`quote_no.eq.${quote.quote_no}`);
-    const { data: so } = await supabase.from('cnc_sales_orders')
-      .select('id, order_no')
-      .or(soFilters.join(','))
-      .limit(1)
-      .maybeSingle();
+    // two plain lookups (an .or() filter breaks when a quote number contains a comma or bracket)
+    let { data: so } = await supabase.from('cnc_sales_orders').select('id, order_no').eq('quotation_id', quote.id).limit(1).maybeSingle();
+    if (!so && quote.quote_no) ({ data: so } = await supabase.from('cnc_sales_orders').select('id, order_no').eq('quote_no', quote.quote_no).limit(1).maybeSingle());
     
     if (so) setRelatedSO(so);
   };
@@ -71,8 +68,11 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    // Auto-generate SO number
-    const nextSO = `SO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+    // Auto-generate SO number (next in sequence, never a repeat)
+    const [nextSO] = await nextDocNos('cnc_sales_orders', 'order_no', `SO-${new Date().getFullYear()}-`);
+    // one sales order per quotation: a second click or a second tab must not create a duplicate
+    const dupe = await supabase.from('cnc_sales_orders').select('order_no').eq('quotation_id', soModalTarget.id).limit(1);
+    if (dupe.data && dupe.data.length) { alert(`A Sales Order (${dupe.data[0].order_no}) already exists for this quotation.`); return; }
     
     const qty = Number(formData.get('quantity')) || Number(soModalTarget.quantity) || 0;
     const unitPrice = Number(soModalTarget.unit_price) || 0;
@@ -113,8 +113,9 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
     } else {
       alert(`Sales Order ${nextSO} created successfully!`);
       // Update quote status
-      const { error: qErr } = await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', soModalTarget.id);
-      if (qErr) console.error('Failed to update quotation status:', qErr);
+      let { error: qErr } = await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', soModalTarget.id);
+      if (qErr) ({ error: qErr } = await supabase.from('cnc_quotations').update({ status: 'Converted' }).eq('id', soModalTarget.id));   // one retry
+      if (qErr) alert(`The Sales Order was created, but the quotation could not be marked Converted (${qErr.message}). Please mark it Converted so it is not converted twice.`);
 
       setSoModalOpen(false);
       setSoModalTarget(null);

@@ -1,3 +1,4 @@
+import { nextDocNos } from '@/lib/docNumber';
 import { workOrderTitle } from '@/lib/workOrderFormat';
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -381,9 +382,10 @@ function ActualScheduling() {
 
     // Create new job card, linked to its operation by (work_order, op_no).
     setSaving(true);
+    const [newJobNo] = await nextDocNos('cnc_job_cards', 'job_no', 'JC-');
     const { error } = await supabase.from('cnc_job_cards').insert([{
       id: crypto.randomUUID(),
-      job_no: `JC-${Math.floor(1000 + Math.random() * 9000)}`,
+      job_no: newJobNo,
       work_order: newJobForm.workOrder,
       part_name: newJobForm.partName || wo?.part_name || '',
       op_no: op ? opNoFor(op) : directOpNo,

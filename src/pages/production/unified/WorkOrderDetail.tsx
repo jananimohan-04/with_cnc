@@ -1,3 +1,4 @@
+import { nextDocNos } from '@/lib/docNumber';
 import { workOrderTitle } from '@/lib/workOrderFormat';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -155,6 +156,8 @@ export function WorkOrderDetail({
       const taken = new Set((existing ?? []).map((j: any) => Number(j.op_no)));
       let created = 0;
       let skipped = 0;
+      const jobNos = await nextDocNos('cnc_job_cards', 'job_no', 'JC-', ops.length);
+      let jobIdx = 0;
       for (const op of ops) {
         const opNo = (op.operation_sequence ?? 0) * 10;
         if (!op.machine || taken.has(opNo)) {
@@ -163,7 +166,7 @@ export function WorkOrderDetail({
         }
         const { error } = await supabase.from('cnc_job_cards').insert([{
           id: crypto.randomUUID(),
-          job_no: `JC-${Math.floor(1000 + Math.random() * 9000)}`,
+          job_no: jobNos[jobIdx++],
           work_order: wo.wo_no,
           part_name: wo.part_name ?? '',
           op_no: opNo,

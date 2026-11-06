@@ -131,6 +131,11 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
         payload.total_value = Number(totalVal.toFixed(2));
         payload.value = payload.total_value;
       }
+      // The company was renamed on this order: point customer_id at that company too (invoices, deliveries and costing join on it).
+      if (customer.trim() && customer.trim().toLowerCase() !== String(order?.customer ?? '').trim().toLowerCase()) {
+        const { data: cust } = await supabase.from('cnc_customers').select('id').eq('name', customer.trim()).limit(1);
+        payload.customer_id = cust && cust[0] ? cust[0].id : null;   // unknown company name: no link rather than a wrong one
+      }
       const { error: updErr } = await supabase.from('cnc_sales_orders').update(payload).eq('id', order.id);
       if (updErr) throw updErr;
       onSaved();

@@ -325,6 +325,7 @@ export function PartRoutingTab() {
         created_by: userName || null,
         updated_at: new Date().toISOString(),
       };
+      let oldSteps: any[] = [];
       if (!headerId) {
         const ins = await supabase.from('cnc_part_routings').insert([payload]).select('id').single();
         if (ins.error) throw ins.error;
@@ -332,11 +333,15 @@ export function PartRoutingTab() {
       } else {
         const upd = await supabase.from('cnc_part_routings').update(payload).eq('id', headerId);
         if (upd.error) throw upd.error;
+        const old = await supabase.from('cnc_part_routing_steps').select('*').eq('routing_id', headerId);
+        if (old.error) throw old.error;
+        oldSteps = old.data ?? [];
         const del = await supabase.from('cnc_part_routing_steps').delete().eq('routing_id', headerId);
         if (del.error) throw del.error;
       }
       if (opRows.length > 0) {
         const ordered = [...opRows].sort((a, b) => a.sequence - b.sequence);
+        try {
         await insertTolerant('cnc_part_routing_steps', ordered.map((r) => ({
           routing_id: headerId,
           sequence: Number(r.sequence),
@@ -351,6 +356,11 @@ export function PartRoutingTab() {
           standard_qty: num(r.standard_qty),
           instructions: r.instructions.trim() || null,
         })));
+        } catch (insErr) {
+          // the new steps were refused: put the previous ones back so the routing is not left empty
+          if (oldSteps.length > 0) { try { await supabase.from('cnc_part_routing_steps').insert(oldSteps); } catch { /* best effort */ } }
+          throw insErr;
+        }
       }
       if (targetStatus === 'Active') {
         await setActive(String(headerId), code);
@@ -386,15 +396,16 @@ export function PartRoutingTab() {
         setConfirmToggle(null);
         return;
       }
+      // activate the chosen revision first, so a failure part-way never leaves the product without an Active routing
+      const r = await supabase.from('cnc_part_routings').update({ status: 'Active', updated_at: new Date().toISOString() }).eq('id', headerId);
+      if (r.error) throw r.error;
       if (prodCode) {
         const others = headers.filter((x) => x.product_code === prodCode && x.status === 'Active' && String(x.id) !== String(headerId));
         for (const o of others) {
-          const r = await supabase.from('cnc_part_routings').update({ status: 'Inactive', updated_at: new Date().toISOString() }).eq('id', o.id);
-          if (r.error) throw r.error;
+          const r2 = await supabase.from('cnc_part_routings').update({ status: 'Inactive', updated_at: new Date().toISOString() }).eq('id', o.id);
+          if (r2.error) throw r2.error;
         }
       }
-      const r = await supabase.from('cnc_part_routings').update({ status: 'Active', updated_at: new Date().toISOString() }).eq('id', headerId);
-      if (r.error) throw r.error;
       await load();
       setEditorOpen(false);
       setConfirmToggle(null);
