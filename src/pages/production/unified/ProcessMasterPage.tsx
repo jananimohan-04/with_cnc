@@ -70,8 +70,6 @@ export function ProcessMasterPage() {
   const [loading, setLoading] = useState(true);
   const [tableMissing, setTableMissing] = useState(false);
 
-  const [categoryFilter, setCategoryFilter] = useState('All Categories');
-  const [machineFilter, setMachineFilter] = useState('All Machine Types');
 
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -109,23 +107,6 @@ export function ProcessMasterPage() {
     fetchData();
   }, []);
 
-  const categories = useMemo(
-    () => Array.from(new Set(processes.map((p) => p.processCategory).filter(Boolean))).sort(),
-    [processes]
-  );
-  const machineTypes = useMemo(
-    () => Array.from(new Set(processes.map((p) => p.machineType).filter(Boolean))).sort(),
-    [processes]
-  );
-
-  const filtered = useMemo(() => {
-    return processes.filter((p) => {
-      if (categoryFilter !== 'All Categories' && p.processCategory !== categoryFilter) return false;
-      if (machineFilter !== 'All Machine Types' && p.machineType !== machineFilter) return false;
-      return true;
-    });
-  }, [processes, categoryFilter, machineFilter]);
-
   const stats = useMemo(() => {
     const total = processes.length;
     const active = processes.filter((p) => p.status === 'Active').length;
@@ -133,11 +114,6 @@ export function ProcessMasterPage() {
     const avg = total === 0 ? 0 : processes.reduce((s, p) => s + p.costPerHour, 0) / total;
     return { total, active, inactive, avg };
   }, [processes]);
-
-  const clearFilters = () => {
-    setCategoryFilter('All Categories');
-    setMachineFilter('All Machine Types');
-  };
 
   const openAdd = useCallback(() => {
     setEditId(null);
@@ -350,18 +326,6 @@ export function ProcessMasterPage() {
       render: (r) => <span className="font-semibold text-slate-800">{r.processName}</span>,
     },
     {
-      key: 'processCategory',
-      label: 'Process Category',
-      sortable: true,
-      render: (r) => (r.processCategory ? <Badge variant="neutral">{r.processCategory}</Badge> : <span className="text-slate-300">—</span>),
-    },
-    {
-      key: 'machineType',
-      label: 'Machine Type',
-      sortable: true,
-      render: (r) => (r.machineType ? <span className="text-slate-600">{r.machineType}</span> : <span className="text-slate-300">—</span>),
-    },
-    {
       key: 'costPerHour',
       label: 'Cost / Hour',
       sortable: true,
@@ -462,47 +426,10 @@ export function ProcessMasterPage() {
         </div>
       ) : (
         <DataTable<ProcessMaster>
-          data={filtered}
+          data={processes}
           columns={columns}
           title="Processes"
-          searchKeys={['processCode', 'processName', 'processCategory', 'machineType', 'description']}
-          toolbarLeft={
-            <div className="flex items-center gap-2">
-              <select
-                aria-label="Process Category"
-                title="Process Category"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-brand-500"
-              >
-                <option>All Categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Machine Type"
-                title="Machine Type"
-                value={machineFilter}
-                onChange={(e) => setMachineFilter(e.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-brand-500"
-              >
-                <option>All Machine Types</option>
-                {machineTypes.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              {(categoryFilter !== 'All Categories' || machineFilter !== 'All Machine Types') && (
-                <button
-                  onClick={clearFilters}
-                  title="Clear filters"
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                >
-                  <X size={13} /> Clear
-                </button>
-              )}
-            </div>
-          }
+          searchKeys={['processCode', 'processName', 'description']}
           filterOptions={[
             { label: 'Active', value: 'Active' },
             { label: 'Inactive', value: 'Inactive' },
