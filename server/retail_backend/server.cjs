@@ -345,6 +345,10 @@ async function syncFromStorage(force = false) {
   syncPromise = (async () => {
     try {
       const { data, error } = await SB.admin.storage.from('retail-data').download('db.json');
+      if (error && /not found|does not exist|no such/i.test(String(error.message || ''))) {
+        try { await uploadDb(JSON.stringify(db, null, 2)); lastSyncTime = Date.now(); persist.ok = true; persist.error = null; persist.at = new Date().toISOString(); }
+        catch (e) { persist.ok = false; persist.error = e.message; persist.at = new Date().toISOString(); }
+      }
       if (data && !error) {
         const text = await data.text();
         const remoteDb = JSON.parse(text);
@@ -363,16 +367,27 @@ async function syncFromStorage(force = false) {
   return syncPromise;
 }
 
+/* Where the data really lives on Vercel: one file in Supabase storage. The upload call reports a failure by RETURNING an error (it does not
+   throw), which used to be ignored - so a missing bucket meant nothing was ever saved and each server copy kept its own private data. */
+const persist = { enabled: !!(SB.enabled && SB.admin), ok: null, error: null, at: null };
+async function uploadDb(content) {
+  const put = () => SB.admin.storage.from('retail-data').upload('db.json', content, { contentType: 'application/json', upsert: true });
+  let r = await put();
+  if (r.error && /bucket not found|not found/i.test(String(r.error.message || ''))) {
+    await SB.admin.storage.createBucket('retail-data', { public: false }).catch(() => {});   // private bucket for the data file
+    r = await put();
+  }
+  if (r.error) throw new Error(r.error.message || 'upload failed');
+}
 const save = () => {
   try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); } catch(e){}
   if (SB.enabled && SB.admin) {
     const content = JSON.stringify(db, null, 2);
-    pendingSave = SB.admin.storage.from('retail-data').upload('db.json', content, {
-      contentType: 'application/json',
-      upsert: true
-    }).then(() => {
+    pendingSave = uploadDb(content).then(() => {
       lastSyncTime = Date.now();
+      persist.ok = true; persist.error = null; persist.at = new Date().toISOString();
     }).catch(err => {
+      persist.ok = false; persist.error = err.message; persist.at = new Date().toISOString();
       console.warn('Failed to persist db to Supabase storage:', err.message);
     });
   }
@@ -495,10 +510,18 @@ async function syncPersonFromBI(person, email) {
   try {
     const { data: bi, error } = await SB.admin.from('company_users').select(BI_USER_COLS).eq('email', email).maybeSingle();
     if (error || !bi) return;   // no BI record (or BI unreachable): keep the Retail account as it is
-    let changed = false;
-    const set = (k, v) => { if (v !== undefined && person[k] !== v) { person[k] = v; changed = true; } };
     const role = retailRoleFromBI(bi);
     const companyActive = !bi.companies || bi.companies.status === 'Active';
+    const wantCo = role === 'super_admin' ? null : (bi.companies ? (bi.companies.code || ('C-' + String(bi.companies.company_name || 'CO').slice(0, 3).toUpperCase())) : person.companyId);
+    const differs = (p) => (role && (p.role !== role || p.companyId !== wantCo)) || (bi.full_name && p.name !== bi.full_name) || (p.mobile || '') !== (bi.mobile || '')
+      || p.active !== (bi.status === 'Active' && companyActive && !!role) || (bi.terms_accepted_at && !p.termsAccepted)
+      || (bi.companies && (!companyById(wantCo) || (companyById(wantCo).name !== bi.companies.company_name)));
+    if (!differs(person)) return;
+    // something must change: take the newest data first, so this save cannot overwrite what another server copy just saved
+    await syncFromStorage(true);
+    const fresh = (db.users || []).find(x => (x.email || '').toLowerCase() === email) || person;
+    let changed = false;
+    const set = (k, v) => { if (v !== undefined && fresh[k] !== v) { fresh[k] = v; changed = true; } };
     if (role) {
       set('role', role);
       set('companyId', role === 'super_admin' ? null : retailCompanyFromBI(bi.companies));
@@ -506,7 +529,8 @@ async function syncPersonFromBI(person, email) {
     if (bi.full_name) set('name', bi.full_name);
     set('mobile', bi.mobile || '');
     set('active', bi.status === 'Active' && companyActive && !!role);   // a BI user with no Retail role has no Retail access
-    if (bi.terms_accepted_at && !person.termsAccepted) { person.termsAccepted = true; person.termsAcceptedAt = bi.terms_accepted_at; changed = true; }
+    if (bi.terms_accepted_at && !fresh.termsAccepted) { fresh.termsAccepted = true; fresh.termsAcceptedAt = bi.terms_accepted_at; changed = true; }
+    Object.assign(person, fresh);   // this request keeps working with the updated account
     if (changed) save();
   } catch (e) { console.warn('BI sync failed:', e.message); }
 }
@@ -535,6 +559,9 @@ app.use(async (req, _res, next) => {
            (an admin, or a user that was given a Retail Store role in BI). The company is created from BI's company record when missing. */
         if (!person) {
           try {
+            await syncFromStorage(true);   // newest data first: a stale copy must not overwrite newer products when this account is saved
+            person = (db.users || []).find(x => (x.email || '').toLowerCase() === email);
+            if (person) throw new Error('__exists__');
             const { data: bi } = await SB.admin.from('company_users')
               .select('full_name, role, status, mobile, retail_role, terms_accepted_at, company_id, companies!company_users_company_id_fkey(company_name, code, status, industry, email, phone, address, city, state, pin, pan, cin, plan, description)')
               .eq('email', email).maybeSingle();
@@ -554,7 +581,7 @@ app.use(async (req, _res, next) => {
                 db.users.unshift(person); save();
               }
             }
-          } catch (e) { console.warn('BI user lookup failed:', e.message); }
+          } catch (e) { if (e.message !== '__exists__') console.warn('BI user lookup failed:', e.message); }
         }
         if (person && !isSuper) await syncPersonFromBI(person, email);
         const display = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || (person && person.name) || email;
@@ -776,7 +803,7 @@ function uid(prefix, list) {
   return id;
 }
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString(), storage: { enabled: persist.enabled, saved: persist.ok, error: persist.error, at: persist.at } }));
 app.get('/api/config', (_req, res) => res.json({ data: SB.publicConfig() }));
 app.get('/api/me', (req, res) => {
   const u = req.ctx.email ? db.users.find(x => (x.email || '').toLowerCase() === req.ctx.email) : null;
