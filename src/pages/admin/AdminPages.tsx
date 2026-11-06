@@ -832,7 +832,6 @@ function CompanyHub({ company, onBack, onEdit }: { company: CompanyRow; onBack: 
   const rows: [string, string | null | undefined][] = [
     ['GST No.', company.code], ['Status', company.status], ['Created', formatDate(company.created_at)],
     ['Industry', details.industry], ['Company email', details.email], ['Phone', details.phone], ['Plan', details.plan],
-    ['City', details.city], ['State', details.state], ['PIN code', details.pin], ['PAN', details.pan], ['CIN', details.cin],
     ['Address', details.address], ['Description', details.description],
   ];
   return (
@@ -876,7 +875,7 @@ const emptyCompanyForm = {
   // company details (the same ones the Retail Store company form asked for)
   industry: '', email: '', phone: '', address: '', city: '', state: '', pin: '', pan: '', cin: '', plan: 'Scale', description: '',
 };
-const COMPANY_DETAIL_KEYS = ['industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'pan', 'cin', 'plan', 'description'] as const;
+const COMPANY_DETAIL_KEYS = ['industry', 'email', 'phone', 'address', 'plan', 'description'] as const;
 
 export function CompaniesPage() {
   const navigate = useNavigate();
@@ -1513,13 +1512,8 @@ export function CompaniesPage() {
                 <option>Starter</option><option>Growth</option><option>Scale</option><option>Enterprise</option>
               </select>
             </FormField>
-            <FormField label="City"><input className={inputClass} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></FormField>
-            <FormField label="State"><input className={inputClass} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} /></FormField>
-            <FormField label="PIN Code"><input className={inputClass} value={form.pin} maxLength={6} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, '') })} /></FormField>
-            <FormField label="PAN"><input className={inputClass} value={form.pan} maxLength={10} onChange={(e) => setForm({ ...form, pan: e.target.value.replace(/\s+/g, '').toUpperCase() })} /></FormField>
-            <FormField label="CIN"><input className={inputClass} value={form.cin} maxLength={21} onChange={(e) => setForm({ ...form, cin: e.target.value.replace(/\s+/g, '').toUpperCase() })} /></FormField>
-            <div className="col-span-2"><FormField label="Address"><input className={inputClass} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></FormField></div>
-            <div className="col-span-2 sm:col-span-4"><FormField label="Short Description"><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></FormField></div>
+            <div className="col-span-2 sm:col-span-4"><FormField label="Address"><input className={inputClass} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Full company address" /></FormField></div>
+            <div className="col-span-2 sm:col-span-4"><FormField label="Short Description"><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief summary or tagline" /></FormField></div>
           </div>
 
           {/* Menu Access Header & Controls */}
