@@ -78,6 +78,10 @@ function ContentQueue() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
+  const [cat, setCat] = useState('all');
+  const [co, setCo] = useState('all');
+  const [cats, setCats] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(true);
   // administrators can remove products here (for example old, already-published test products)
@@ -92,11 +96,19 @@ function ContentQueue() {
     const stages = (TABS.find((t) => t.id === tab) || TABS[0]).stages;
     const p = new URLSearchParams({ page: String(page), limit: '10', stage: stages });
     if (q.trim()) p.set('q', q.trim());
+    if (cat !== 'all') p.set('cat', cat);
+    if (co !== 'all') p.set('companyId', co);
     return api.get('/api/workflow?' + p.toString())
       .then((d) => setData(d || { rows: [], total: 0, counts: {} }))
       .catch((e) => toast(e.message, '⚠️'))
       .finally(() => setBusy(false));
-  }, [page, tab, q]);
+  }, [page, tab, q, cat, co]);
+
+  // choices for the category and company filters
+  useEffect(() => {
+    api.get('/api/categories').then((c) => setCats(Array.isArray(c) ? c : (c?.rows || []))).catch(() => {});
+    if (me?.role === 'super_admin') api.get('/api/companies?limit=200').then((c) => setCompanies(Array.isArray(c) ? c : (c?.rows || []))).catch(() => {});
+  }, [me?.role]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -165,6 +177,28 @@ function ContentQueue() {
           </div>
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-2xs">
+        <input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(1); }}
+          placeholder="Search product name, SKU, brand…"
+          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+        />
+        <select value={cat} onChange={(e) => { setCat(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Category">
+          <option value="all">All categories</option>
+          {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {me?.role === 'super_admin' && (
+          <select value={co} onChange={(e) => { setCo(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white" aria-label="Company">
+            <option value="all">All companies</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
+          </select>
+        )}
+        {(q || cat !== 'all' || co !== 'all') && (
+          <button type="button" onClick={() => { setQ(''); setCat('all'); setCo('all'); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</button>
+        )}
+      </div>
 
       {busy && !data ? (
         <Skeleton h={72} count={4} />
