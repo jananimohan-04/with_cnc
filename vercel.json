@@ -15,6 +15,10 @@
       "destination": "/api/retail-sync"
     },
     {
+      "source": "/api/((?!retail-sync).*)",
+      "destination": "/api/retail"
+    },
+    {
       "source": "/download",
       "destination": "/download.html"
     },
