@@ -432,7 +432,39 @@ app.use(async (req, res, next) => {
 
 /* auth context: Google (Supabase Auth) Bearer token verified server-side;
    falls back to demo headers only when no token is supplied (offline demo) */
+/* Roles are kept in Business Intelligence (public.retail_roles); db.roles is a cache of them.
+   - read: refreshed from BI at most every 20 s; when BI has none yet, the roles held here are copied into BI once
+   - write: every role change made through this API is written to BI as well */
+const roleFromBI = x => ({ id: x.id, name: x.name, category: x.category || 'sales_partner', markupPct: Number(x.markup_pct) || 0, requireTerms: !!x.require_terms, terms: x.terms || '', description: x.description || '', isSystem: !!x.is_system, active: x.active !== false, menuPermissions: Array.isArray(x.menu_permissions) ? x.menu_permissions : [], updatedAt: x.updated_at });
+const roleToBI = x => ({ id: x.id, name: x.name, category: x.category || 'sales_partner', markup_pct: Math.max(0, Number(x.markupPct) || 0), require_terms: !!x.requireTerms, terms: x.terms || '', description: x.description || '', is_system: !!x.isSystem, active: x.active !== false, menu_permissions: Array.isArray(x.menuPermissions) ? x.menuPermissions : [], updated_at: new Date().toISOString() });
+let rolesSyncedAt = 0;
+async function syncRolesFromBI() {
+  if (!SB.enabled || Date.now() - rolesSyncedAt < 20000) return;
+  rolesSyncedAt = Date.now();
+  try {
+    const { data, error } = await SB.admin.from('retail_roles').select('*');
+    if (error) return; // table not created yet: keep working with the roles held here
+    if (!data.length) {
+      if ((db.roles || []).length) await SB.admin.from('retail_roles').upsert(db.roles.map(roleToBI));
+      return;
+    }
+    db.roles = data.map(roleFromBI);
+    ensureRolePermissions();
+  } catch (e) { console.warn('Roles sync from BI failed:', e.message); }
+}
+function pushRolesToBI(list) {
+  if (!SB.enabled) return;
+  rolesSyncedAt = Date.now();
+  Promise.resolve(SB.admin.from('retail_roles').upsert((list || []).map(roleToBI))).then(({ error }) => { if (error) console.warn('Role write to BI failed:', error.message); }).catch(() => {});
+}
+function deleteRoleFromBI(id) {
+  if (!SB.enabled) return;
+  rolesSyncedAt = Date.now();
+  Promise.resolve(SB.admin.from('retail_roles').delete().eq('id', id)).catch(() => {});
+}
+
 app.use(async (req, _res, next) => {
+  await syncRolesFromBI();
   const h = req.headers['authorization'] || '';
   if (h.startsWith('Bearer ') && SB.enabled) {
     try {
@@ -814,6 +846,7 @@ app.post('/api/roles', scopeCompany, (req, res) => {
   };
   db.roles.push(newRole);
   save();
+  pushRolesToBI([newRole]);
   audit(req, 'role.create', 'role', id, req.companyId, `Created role ${cleanName} (${newRole.markupPct}%)`);
   ok(res, newRole);
 });
@@ -830,6 +863,7 @@ app.patch('/api/roles/:id', scopeCompany, (req, res) => {
   if (req.body.description != null) r.description = req.body.description;
   if (req.body.active != null) r.active = !!req.body.active;
   save();
+  pushRolesToBI([r]);
   audit(req, 'role.update', 'role', r.id, req.companyId, `Updated role ${r.name}: markup ${r.markupPct}%`);
   ok(res, r);
 });
@@ -844,6 +878,7 @@ app.delete('/api/roles/:id', scopeCompany, (req, res) => {
   }
   const deleted = db.roles.splice(idx, 1)[0];
   save();
+  deleteRoleFromBI(deleted.id);
   audit(req, 'role.delete', 'role', deleted.id, req.companyId, `Deleted role ${deleted.name}`);
   ok(res, { ok: true, deleted: deleted.id });
 });
@@ -930,6 +965,7 @@ app.patch('/api/permissions/roles/:id', (req, res) => {
       }
     });
     save();
+    pushRolesToBI((db.roles || []).filter(r => PARTNER_ROLE_IDS.includes(r.id) || (r.id && r.id.startsWith('sales_')) || r.category === 'sales_partner'));
     audit(req, 'permissions.role_update', 'role', 'sales_user', req.companyId,
       `Updated role permissions for "Sales Partner" (applied to all partner roles): ${finalPerms.length} pages enabled`);
 
@@ -948,6 +984,7 @@ app.patch('/api/permissions/roles/:id', (req, res) => {
   role.menuPermissions = finalPerms;
   role.updatedAt = now;
   save();
+  pushRolesToBI([role]);
 
   audit(req, 'permissions.role_update', 'role', role.id, req.companyId,
     `Updated role permissions for "${role.name}": ${finalPerms.length} pages enabled (was ${prevCount})`);

@@ -18,6 +18,7 @@ import { isTauri } from '@/lib/desktop/isTauri';
 import { UpdatesSettingsPage } from '@/components/desktop/UpdatesSettingsPage';
 import { DocumentProfilePage } from '@/pages/quotation/CompanyProfilePage';
 import { ProfilesCreatedPanel } from '@/pages/admin/ProfilesCreatedPanel';
+import { RetailRolesPanel } from '@/pages/admin/RetailRolesPanel';
 import {
   ADMIN_RESERVED_MODULES, MODULE_CATALOG, PERM_CATEGORIES, VISIBLE_MODULES,
   emptyMatrix, fullMatrix, matrixToPayload, rowsToMatrix,
@@ -99,9 +100,18 @@ export function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [retailRoles, setRetailRoles] = useState<RetailRole[]>([]);
-  useEffect(() => {
-    retailApi.get('/api/roles').then((rows: RetailRole[]) => setRetailRoles((rows || []).filter(x => x.id !== 'super_admin' && x.id !== 'company_admin' && x.active !== false))).catch(() => setRetailRoles([]));
+  const [showRoles, setShowRoles] = useState(false);
+  const loadRetailRoles = useCallback(async () => {
+    const keep = (rows: RetailRole[]) => (rows || []).filter(x => x.id !== 'super_admin' && x.id !== 'company_admin' && x.active !== false);
+    const { data, error } = await supabase.from('retail_roles').select('id, name, category, markup_pct, require_terms, terms, active').order('name');
+    if (!error && data && data.length) {
+      setRetailRoles(keep((data as any[]).map(x => ({ id: x.id, name: x.name, category: x.category, markupPct: Number(x.markup_pct) || 0, requireTerms: !!x.require_terms, terms: x.terms, active: x.active }))));
+      return;
+    }
+    // table not created yet / still empty: the roles held by the Retail Store
+    retailApi.get('/api/roles').then((rows: RetailRole[]) => setRetailRoles(keep(rows))).catch(() => setRetailRoles([]));
   }, []);
+  useEffect(() => { void loadRetailRoles(); }, [loadRetailRoles]);
 
   // Job Description state
   const [allJds, setAllJds] = useState<JobDescription[]>([]);
@@ -478,6 +488,11 @@ export function UsersPage() {
         >
           EXPORT
         </Button>
+        {(isSuperAdmin || isCompanyAdmin) && (
+          <Button variant="secondary" size="sm" icon={<ShieldCheck size={13} />} onClick={() => setShowRoles(true)} className="h-7 py-1 text-xs px-2.5 shadow-sm font-semibold">
+            RETAIL ROLES
+          </Button>
+        )}
         <Button
           onClick={() => openCreateRef.current()}
           icon={<Plus size={14} />}
@@ -523,6 +538,8 @@ export function UsersPage() {
         emptyMessage={loading ? 'Loading…' : 'No users yet'}
         hideToolbar
       />
+
+      <RetailRolesPanel open={showRoles} onClose={() => setShowRoles(false)} onChanged={() => void loadRetailRoles()} canEdit={isSuperAdmin} />
 
       <Modal
         open={showForm}
