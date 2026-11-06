@@ -98,12 +98,18 @@ export function RetailSyncModal({
     setSyncingItemId(logOrItem.item_id || logOrItem.id);
     setBannerMsg(null);
     try {
+      // always the stock in the Retail Store warehouse right now, never the figure remembered from the last sync
+      const d = await retailSyncApi.resolveDesignation();
+      const kind = logOrItem.item_kind || 'PART';
+      const itemId = logOrItem.item_id || logOrItem.id;
+      let liveStock = logOrItem.erp_stock ?? logOrItem.current_stock ?? logOrItem.stock ?? 0;
+      if (d && itemId) { try { liveStock = await retailSyncApi.warehouseStock(kind, itemId, d.id, logOrItem.warehouse_id || null); } catch { /* keep */ } }
       const res = await retailSyncApi.syncItem({
         id: logOrItem.item_id || logOrItem.id,
         item_kind: logOrItem.item_kind || 'PART',
         code: logOrItem.item_code || logOrItem.code || logOrItem.part_number || logOrItem.part_no || logOrItem.product || '',
         name: logOrItem.item_name || logOrItem.name || logOrItem.part_name || logOrItem.product || '',
-        stock: logOrItem.erp_stock ?? logOrItem.current_stock ?? logOrItem.stock ?? 0,
+        stock: liveStock,
         warehouse_id: logOrItem.warehouse_id,
         warehouse_name: logOrItem.warehouse_name,
         specification: logOrItem.specification,
@@ -139,7 +145,12 @@ export function RetailSyncModal({
         return;
       }
 
-      const res = await retailSyncApi.syncBatch(qualifying.map(r => ({
+      const d = await retailSyncApi.resolveDesignation();
+      const stocks = await Promise.all(qualifying.map(async r => {
+        if (!d) return Number(r.current_stock ?? 0);
+        try { return await retailSyncApi.warehouseStock(r.kind || 'PART', r.id, d.id, r.warehouse_id || null); } catch { return Number(r.current_stock ?? 0); }
+      }));
+      const res = await retailSyncApi.syncBatch(qualifying.map((r, idx) => ({
         id: r.id,
         item_kind: r.kind || 'PART',
         code: r.code || r.part_number || r.part_no || r.item_code || r.product || '',
@@ -148,7 +159,7 @@ export function RetailSyncModal({
         category_name: r.category_name,
         specification: r.specification,
         unit: r.unit,
-        stock: r.current_stock ?? r.stock ?? 0,
+        stock: stocks[idx],
         rate: r.rate,
         warehouse_id: r.warehouse_id,
         warehouse_name: r.warehouse_name,

@@ -787,7 +787,8 @@ Cancel = Manufactured in-house (like Finished Goods)`);
             name: r.name,
             category_name: r.category_name ?? 'General',
             unit: r.unit ?? 'Nos',
-            stock: isRetail ? Number(r.current_stock || 0) : 0,
+            stock: isRetail ? await retailSyncApi.warehouseStock(r.kind, r.id, d.id, newWarehouseId).catch(() => Number(r.current_stock || 0)) : 0,
+            item_kind: r.kind as any,
             warehouse_id: newWarehouseId,
             warehouse_name: isRetail ? d.warehouse_name : undefined,
             status: isRetail ? 'Active' : 'Inactive',
@@ -2535,7 +2536,7 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
       const effectiveCode = item?.code || form.code.trim() || `${prefix}-${cleanName ? `${cleanName}-` : ''}${randomSuffix}`;
 
       const image_url = file ? await uploadItemImage(companyId, file) : removedImage ? null : (item?.image_url ?? null);
-      await inventoryApi.saveItem({
+      const saved = await inventoryApi.saveItem({
         id: item?.id ?? null,
         kind: item?.kind ?? null,
         code: effectiveCode,
@@ -2561,9 +2562,16 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
         const wasRetail = !!(d && item?.warehouse_id && item.warehouse_id === d.id);
         if (d && (isRetail || wasRetail)) {
           const catObj = categories.find(c => c.id === form.category_id);
-          const stock = Number(form.opening_qty || 0);
+          // what is physically in the Retail Store warehouse (not the item's total across all warehouses)
+          const itemId = saved?.id ?? item?.id ?? effectiveCode;
+          const itemKind = (saved?.kind ?? item?.kind) as string | undefined;
+          let stock = Number(form.opening_qty || 0);
+          if (isRetail && saved?.id && itemKind) {
+            try { stock = await retailSyncApi.warehouseStock(itemKind, saved.id, d.id, form.warehouse_id || null) || (isNew ? stock : 0); } catch { /* keep the opening qty */ }
+          }
           const res = await retailSyncApi.syncItem({
-            id: item?.id ?? effectiveCode,
+            id: itemId,
+            item_kind: itemKind as any,
             code: effectiveCode,
             name: form.name.trim() || item?.name || (item as any)?.part_name || '',
             category_name: catObj?.name ?? 'General',

@@ -426,9 +426,15 @@ async function handleRetailSyncRequest(req, res) {
 
       const result = storeJson.data || storeJson;
 
-      // Update sync logs for items
-      for (const it of items) {
-        const status = it.is_retail_warehouse !== false ? 'synced' : 'removed';
+      // Update sync logs for items (an item the Retail Store refused is logged as failed, not as synced)
+      const failedBy = {};
+      for (const e of (result.errors || [])) failedBy[e.index] = e.error;
+      const token = bearer(req);
+      const dbEntries = [];
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+        const failedMsg = failedBy[idx];
+        const status = failedMsg ? 'failed' : (it.is_retail_warehouse !== false ? 'synced' : 'removed');
         const existingIdx = syncLogs.findIndex(l => l.item_code === it.sku && l.companyId === companyId);
         const entry = {
           id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -440,16 +446,19 @@ async function handleRetailSyncRequest(req, res) {
           warehouse_id: it.warehouse_id || '',
           warehouse_name: it.warehouse || '',
           erp_stock: Number(it.stock || 0),
-          retail_stock: Number(it.stock || 0),
+          retail_stock: failedMsg ? null : Number(it.stock || 0),
           sync_status: status,
           last_sync_at: new Date().toISOString(),
-          error_message: null,
-          retry_count: 0
+          error_message: failedMsg || null,
+          retry_count: failedMsg ? 1 : 0
         };
         if (existingIdx >= 0) syncLogs[existingIdx] = { ...syncLogs[existingIdx], ...entry };
         else syncLogs.unshift(entry);
+        if (entry.item_id && entry.item_code) dbEntries.push(entry);
       }
       saveLogs();
+      // the sync log screen reads the database, so write each item there too (as the signed-in user)
+      if (token) await Promise.all(dbEntries.map(e => callSupabaseRpc('erp_record_retail_sync', { p_entry: e }, token)));
 
       return sendJson(res, 200, { ok: true, batchResult: result });
     } catch (err) {
