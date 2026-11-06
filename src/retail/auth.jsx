@@ -120,6 +120,8 @@ export function AuthProvider({ children }) {
             }
           });
         } else {
+          // Live site without Google/Supabase on the Retail server: a saved demo session must not pass for a real user
+          if (import.meta.env.PROD) { setSession(null); setMe(null); setReady(true); return; }
           // If in demo/local mode and we have a session, refresh permissions from server
           await refreshPermissions();
         }

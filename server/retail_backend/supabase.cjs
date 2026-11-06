@@ -4,9 +4,10 @@
 try { require('dotenv').config({ path: require('path').join(__dirname, '.env') }); } catch (_e) { /* not installed: use the process environment */ }
 const { createClient } = require('@supabase/supabase-js');
 
-const URL = process.env.SUPABASE_URL || '';
-const PUB = process.env.SUPABASE_PUBLISHABLE_KEY || '';
-const SECRET = process.env.SUPABASE_SECRET_KEY || '';
+/* also accept the names the Business Intelligence side uses, so one set of Vercel variables is enough */
+const URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const PUB = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+const SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const PLACEHOLDER = URL.includes('PASTE-YOUR');
 const enabled = URL.startsWith('http') && !PLACEHOLDER && !!SECRET;
 
