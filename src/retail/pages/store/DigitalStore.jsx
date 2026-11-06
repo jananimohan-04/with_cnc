@@ -6,6 +6,7 @@ import { signedImageUrls } from '@/lib/inventory';
 import { fmt } from '../../api';
 import { Skeleton } from '../../components/ui';
 import { computeLayout, placeOf } from '../../components/storeLayout';
+import SpinViewer from '../../components/SpinViewer';
 
 // three.js is large: load it only when this page is opened
 const Scene = lazy(() => import('../../components/StoreScene').then((m) => ({ default: m.StoreScene })));
@@ -21,6 +22,9 @@ export default function DigitalStore() {
   const [targetId, setTargetId] = useState(null);
   const [goTo, setGoTo] = useState(null);
   const [picked, setPicked] = useState(null);
+  const [companyName, setCompanyName] = useState('');
+  // the reflective floor and shadows look best but need a decent graphics card: phones and small laptops start on 'fast'
+  const [quality, setQuality] = useState(() => (typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 4) >= 6 && !/Mobi|Android/i.test(navigator.userAgent) ? 'high' : 'fast'));
   const [me, setMe] = useState({ x: 0, z: 0, yaw: 0 });
   const controlRef = useRef(null);
 
@@ -34,7 +38,9 @@ export default function DigitalStore() {
       if (it.error) { setError(it.error.message); setState('error'); return; }
       const list = it.data || [];
       setStore(s.data); setItems(list);
-      setUrls(await signedImageUrls(list.map((i) => i.image_path || '')));
+      const c = await supabase.from('companies').select('company_name').eq('id', s.data.company_id).maybeSingle();
+      setCompanyName(c.data?.company_name || '');
+      setUrls(await signedImageUrls(list.flatMap((i) => [i.image_path || '', i.model_path || '', ...(i.angle_paths || [])])));
       setState(list.length ? 'ready' : 'empty');
     })().catch((e) => { setError(e.message || 'Could not load the Digital Store.'); setState('error'); });
   }, []);
@@ -68,9 +74,18 @@ export default function DigitalStore() {
 
   return (
     <div className="space-y-3">
-      <div className="relative rounded-2xl overflow-hidden border border-slate-300 bg-slate-300" style={{ height: 'calc(100vh - 190px)', minHeight: 440 }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.25em] text-amber-700">Digital Store</div>
+          <h1 className="text-xl font-black text-slate-900">{companyName || store.name}</h1>
+        </div>
+        <button type="button" onClick={() => setQuality((v) => (v === 'high' ? 'fast' : 'high'))} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50" title="Switch if the store feels slow">
+          Graphics: {quality === 'high' ? 'High' : 'Fast'}
+        </button>
+      </div>
+      <div className="relative rounded-2xl overflow-hidden border border-slate-300 bg-slate-300" style={{ height: 'calc(100vh - 230px)', minHeight: 440 }}>
         <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">Opening the store…</div>}>
-          <Scene store={store} items={items} imageUrls={urls} matchIds={matchIds} targetId={targetId} goTo={goTo} controlRef={controlRef} onMove={setMe} onPick={(it) => setPicked(it)} />
+          <Scene store={store} items={items} imageUrls={urls} matchIds={matchIds} targetId={targetId} goTo={goTo} controlRef={controlRef} onMove={setMe} onPick={(it) => setPicked(it)} companyName={companyName} quality={quality} />
         </Suspense>
 
         {/* search */}
@@ -111,9 +126,13 @@ export default function DigitalStore() {
         <div className="fixed inset-0 z-[300] bg-slate-950/70 flex items-center justify-center p-4" onClick={() => setPicked(null)}>
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl grid md:grid-cols-2" onClick={(e) => e.stopPropagation()}>
             <div className="h-72 md:h-[420px] bg-slate-900">
-              <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400 text-sm">Loading 3D view…</div>}>
-                <Viewer name={picked.name} imgUrl={picked.image_path ? urls[picked.image_path] : ''} />
-              </Suspense>
+              {picked.shape === 'spin' && (picked.angle_paths || []).filter((x) => urls[x]).length >= 4 ? (
+                <SpinViewer name={picked.name} frames={picked.angle_paths.map((x) => urls[x]).filter(Boolean)} />
+              ) : (
+                <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400 text-sm">Loading 3D view…</div>}>
+                  <Viewer item={picked} imgUrl={picked.image_path ? urls[picked.image_path] : ''} modelUrl={picked.model_path ? urls[picked.model_path] : ''} />
+                </Suspense>
+              )}
             </div>
             <div className="p-5 flex flex-col">
               <div className="flex items-start justify-between gap-2">
@@ -124,7 +143,7 @@ export default function DigitalStore() {
               {picked.price != null && <div className="text-2xl font-black text-emerald-700 mt-3">{fmt(picked.price)}</div>}
               {picked.description && <p className="text-sm text-slate-600 mt-3 whitespace-pre-line">{picked.description}</p>}
               <div className="mt-3 text-xs text-slate-500">Found at Rack {picked.rack} · Row {picked.row_no} · Place {picked.slot}</div>
-              <div className="mt-auto pt-4 text-[11px] text-slate-400">Drag to turn it around · scroll or pinch to zoom</div>
+              <div className="mt-auto pt-4 text-[11px] text-slate-400">Drag to turn it around{picked.shape === 'spin' ? '' : ' · scroll or pinch to zoom'}</div>
             </div>
           </div>
         </div>

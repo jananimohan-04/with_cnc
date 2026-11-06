@@ -5,6 +5,7 @@ export const RACK_D = 0.5;       // depth of a rack
 const RACK_GAP = 2.4;     // walking space between racks on a line
 const LINE_GAP = 5.2;     // distance between lines of racks (the aisle)
 export const EYE = 1.6;
+export const CEILING = 5.6;
 
 /* Where everything stands, from the store set-up (racks, rows per rack, products per row). Also used by the minimap. */
 export function computeLayout(store) {
@@ -14,7 +15,7 @@ export function computeLayout(store) {
   const lines = Math.ceil(store.racks / perLine);
   const pitch = rackW + RACK_GAP;
   const width = Math.max(11, perLine * pitch + 2);
-  const zMax = 5;                                   // entrance wall
+  const zMax = 5.5;                                 // entrance wall
   const zMin = -((lines - 1) * LINE_GAP) - 1.5 - 3.5; // back wall
   const racks = [];
   for (let i = 0; i < store.racks; i++) {
@@ -30,7 +31,7 @@ export function placeOf(layout, store, item) {
   const rack = layout.racks[item.rack - 1];
   if (!rack) return null;
   const x = rack.x + (item.slot - (store.slots_per_row + 1) / 2) * SLOT_W;
-  const y = 0.12 + (item.row_no - 1) * ROW_H + 0.06;
+  const y = 0.1 + (item.row_no - 1) * ROW_H;   // top surface of the shelf board
   return { x, y, z: rack.z, rack };
 }
 

@@ -11,8 +11,15 @@ import { PageHeader } from '@/components/ui/PageHeader';
 // on a row, then puts a product (name + picture) in each place. The Retail Store shows this as a 3D store people walk through.
 
 interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number }
-interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null }
-type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null };
+type Shape = 'box' | 'round' | 'model' | 'spin';
+interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null }
+type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[] };
+const SHAPES: { id: Shape; label: string; hint: string }[] = [
+  { id: 'box', label: 'Packed product (box with the picture)', hint: 'The product is shown as a box with your picture on it.' },
+  { id: 'round', label: 'Round / turned product (3D from one photo)', hint: 'For probes, bushes, shafts, cylinders. Use a straight-on photo on a plain background; a real 3D body is built from it and turns.' },
+  { id: 'model', label: '3D model file (.glb)', hint: 'Upload a real 3D model. The product itself turns in the viewer. Best quality.' },
+  { id: 'spin', label: '360 degree photos (turntable)', hint: 'Upload photos taken all around the product (8 to 36, in order, e.g. 01.jpg, 02.jpg). Dragging turns through them.' },
+];
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e));
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || lo)));
@@ -29,6 +36,8 @@ export function DigitalStorePage() {
   const [editSize, setEditSize] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [modelFile, setModelFile] = useState<File | null>(null);
+  const [angleFiles, setAngleFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -83,10 +92,10 @@ export function DigitalStorePage() {
   const openSlot = (rack: number, row_no: number, slot: number) => {
     if (!isAdmin) return;
     const it = byPlace.get(`${rack}:${row_no}:${slot}`);
-    setFile(null); setFormError(null);
+    setFile(null); setModelFile(null); setAngleFiles([]); setFormError(null);
     setDraft(it
-      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path }
-      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null });
+      ? { id: it.id, rack, row_no, slot, name: it.name, sku: it.sku ?? '', price: it.price != null ? String(it.price) : '', description: it.description ?? '', image_path: it.image_path, shape: (it.shape ?? 'box') as Shape, model_path: it.model_path ?? null, angle_paths: it.angle_paths ?? [] }
+      : { rack, row_no, slot, name: '', sku: '', price: '', description: '', image_path: null, shape: 'box', model_path: null, angle_paths: [] });
   };
 
   const saveItem = async () => {
@@ -97,11 +106,24 @@ export function DigitalStorePage() {
     setBusy(true); setFormError(null);
     try {
       let image_path = draft.image_path;
-      if (file) {
-        if (!company?.id) throw new Error('Choose a company first (top bar), then upload the picture.');
-        image_path = await uploadItemImage(company.id, file);
+      let model_path = draft.model_path;
+      let angle_paths = draft.angle_paths;
+      if ((file || modelFile || angleFiles.length) && !company?.id) throw new Error('Choose a company first (top bar), then upload the files.');
+      if (file) image_path = await uploadItemImage(company!.id, file);
+      if (modelFile) {
+        if (!/\.glb$/i.test(modelFile.name)) throw new Error('The 3D model must be a .glb file.');
+        model_path = await uploadItemImage(company!.id, modelFile);
       }
-      const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, updated_at: new Date().toISOString() };
+      if (angleFiles.length) {
+        const sorted = [...angleFiles].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        angle_paths = [];
+        for (const f of sorted) angle_paths.push(await uploadItemImage(company!.id, f));
+        if (!image_path) image_path = angle_paths[0];
+      }
+      if (draft.shape === 'model' && !model_path) throw new Error('Upload the .glb 3D model file for this product.');
+      if (draft.shape === 'spin' && angle_paths.length < 4) throw new Error('Upload at least 4 photos taken around the product (8 to 36 is best).');
+      if ((draft.shape === 'box' || draft.shape === 'round') && !image_path) throw new Error('Upload the product picture.');
+      const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, shape: draft.shape, model_path: draft.shape === 'model' ? model_path : null, angle_paths: draft.shape === 'spin' ? angle_paths : [], updated_at: new Date().toISOString() };
       const res = draft.id ? await supabase.from('digital_store_items').update(row).eq('id', draft.id) : await supabase.from('digital_store_items').insert(row);
       if (res.error) throw res.error;
       setDraft(null);
@@ -195,6 +217,25 @@ export function DigitalStorePage() {
               <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> {file ? file.name : draft.image_path ? 'Replace picture' : 'Upload picture'}
                 <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
             </FormField>
+            <div className="sm:col-span-2">
+              <FormField label="How should it turn in 3D?" hint={SHAPES.find(x => x.id === draft.shape)?.hint}>
+                <select className={inputClass} value={draft.shape} onChange={e => setDraft({ ...draft, shape: e.target.value as Shape })}>
+                  {SHAPES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </select>
+              </FormField>
+            </div>
+            {draft.shape === 'model' && (
+              <div className="sm:col-span-2"><FormField label="3D model (.glb)" hint="Export it from your CAD / 3D software as GLB, or take one from the supplier.">
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><Box size={16} /> {modelFile ? modelFile.name : draft.model_path ? 'Replace the 3D model' : 'Upload the 3D model'}
+                  <input type="file" accept=".glb,model/gltf-binary" className="hidden" onChange={e => setModelFile(e.target.files?.[0] ?? null)} /></label>
+              </FormField></div>
+            )}
+            {draft.shape === 'spin' && (
+              <div className="sm:col-span-2"><FormField label="Photos around the product" hint={`${angleFiles.length ? angleFiles.length + ' new photos chosen' : draft.angle_paths.length ? draft.angle_paths.length + ' photos saved' : 'none yet'}. They are used in file-name order.`}>
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> Choose the photos
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={e => setAngleFiles(Array.from(e.target.files ?? []))} /></label>
+              </FormField></div>
+            )}
             <div className="sm:col-span-2"><FormField label="Description"><textarea className={`${inputClass} min-h-[70px]`} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></FormField></div>
           </div>
         </Modal>
