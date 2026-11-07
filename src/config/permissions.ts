@@ -76,6 +76,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'inventory', label: 'Inventory', category: 'Inventory & Purchasing', actions: [...VCEDX], pages: ['inventory/raw-materials', 'inventory/components', 'inventory/stock', 'inventory/movements', 'inventory/requests', 'inventory/warehouse', 'inventory/alerts'] },
   { key: 'stock-adjustment', label: 'Stock Adjustment', category: 'Inventory & Purchasing', actions: ['view', 'edit', 'export'], pages: ['inventory/stock-adjustment'] },
   { key: 'digital-store', label: 'Digital Store', category: 'Inventory & Purchasing', actions: ['view'], pages: ['inventory/digital-store'] },
+  { key: 'retail-orders', label: 'Retail Orders', category: 'Inventory & Purchasing', actions: ['view'], pages: ['inventory/retail-orders'] },
   { key: 'suppliers', label: 'Suppliers', category: 'Inventory & Purchasing', actions: [...VCEDX], pages: ['purchasing/suppliers', 'purchasing/supplier-performance'] },
   { key: 'purchase-requisitions', label: 'Purchase Requisitions', category: 'Inventory & Purchasing', actions: [...VCEDX], pages: ['purchasing/requisitions'] },
   { key: 'purchase-orders', label: 'Purchase Orders', category: 'Inventory & Purchasing', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['purchasing/orders'] },

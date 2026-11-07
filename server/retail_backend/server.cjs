@@ -1653,7 +1653,7 @@ app.get('/api/orders/:id', scopeCompany, (req, res) => {
   if (req.ctx.role !== 'super_admin' && o.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
   ok(res, o);
 });
-app.post('/api/orders', scopeCompany, (req, res) => {
+app.post('/api/orders', scopeCompany, async (req, res) => {
   const { customer, contact, companyName, mobile, address, city, poRef, items, generateInvoice } = req.body;
   if (!customer || !mobile || !address || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'customer, mobile, address, items[] required' });
   const cid = req.companyId;
@@ -1721,8 +1721,9 @@ app.post('/api/orders', scopeCompany, (req, res) => {
   for (const l of lines) { const p = db.products.find(x => x.id === l.pid); p.stock -= l.qty; p.sold = (p.sold || 0) + l.qty; } // single atomic write
   db.orders.unshift(order); save();
   if (typeof triggerErpOrderDeduction === 'function') {
-    triggerErpOrderDeduction(order, lines);
+    await triggerErpOrderDeduction(order, lines);   // awaited: on Vercel the work stops once the reply is sent
   }
+  await reportOrderToBI(order);
   if (invoiceNo) {
     audit(req, 'order.create_with_invoice', 'order', order.id, order.companyId, `Created order with Tax Invoice ${invoiceNo}`);
   }
@@ -1936,7 +1937,7 @@ app.get('/api/invoices', scopeCompany, (req, res) => {
   ok(res, list);
 });
 
-app.patch('/api/orders/:id/status', scopeCompany, (req, res) => {
+app.patch('/api/orders/:id/status', scopeCompany, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'admin only' });
   const o = db.orders.find(x => x.id === req.params.id);
   if (!o) return res.status(404).json({ error: 'not found' });
@@ -1948,6 +1949,7 @@ app.patch('/api/orders/:id/status', scopeCompany, (req, res) => {
     o.status = next; o.history.push([next, new Date().toLocaleString()]);
     if (next === 'Cancelled') for (const l of o.items) { const p = db.products.find(x => x.id === l.pid); if (p) p.stock += l.qty; } // restock policy
     save();
+    await reportOrderToBI(o);
     audit(req, 'order.status', 'order', o.id, o.companyId, `Status → ${next}`);
     return ok(res, o);
   }
@@ -2930,6 +2932,28 @@ function syncSingleErpProduct(item, companyId) {
 
   db.products.unshift(newProduct);
   return { action: 'created', product: newProduct };
+}
+
+/* Tell Business Intelligence about the order (who ordered, address, items, status) so it is listed there. Never blocks or fails the order. */
+async function reportOrderToBI(order) {
+  try {
+    const resp = await fetch(`${ERP_API_BASE_URL}/api/retail-sync/order-record`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-erp-api-key': ERP_INTEGRATION_KEY, 'x-company-id': order.companyId },
+      body: JSON.stringify({
+        company_id: order.companyId,
+        order: {
+          order_no: order.id, customer: order.customer, contact: order.contact, company_name: order.companyName, mobile: order.mobile,
+          city: order.city, address: order.address, po_ref: order.poRef, total: order.total, status: order.status,
+          placed_by: order.salesUser, partner_role: order.partnerRole, invoice_no: order.invoiceNo || null,
+          ordered_at: (order.date || '').replace(' ', 'T') ? new Date(String(order.date).replace(' ', 'T')).toISOString() : undefined,
+          items: (order.items || []).map(l => ({ name: l.name, sku: l.sku, qty: l.qty, uom: l.uom, price: l.price })),
+        },
+      }),
+    });
+    if (!resp.ok) { order.bi_order_error = (await resp.text()).slice(0, 300); } else { delete order.bi_order_error; order.bi_order_synced = true; }
+  } catch (e) { order.bi_order_error = e.message; }
+  save();
 }
 
 // Trigger ERP stock deduction when a sales order contains ERP-synced items

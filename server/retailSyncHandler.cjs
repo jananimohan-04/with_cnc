@@ -200,7 +200,7 @@ async function handleRetailSyncRequest(req, res) {
 
   // everything except the Retail Store's own order webhook needs a real BI sign-in
   let authCompany = null, authRole = null;
-  if (subpath !== '/order-deduct') {
+  if (subpath !== '/order-deduct' && subpath !== '/order-record') {
     const a = await authenticate(req);
     if (!a.ok) return sendJson(res, a.status, { ok: false, error: a.error });
     authCompany = a.companyCode; authRole = a.role;
@@ -562,6 +562,24 @@ async function handleRetailSyncRequest(req, res) {
     let msg = rpcRes.error || 'Stock could not be deducted';
     try { const j = JSON.parse(msg); msg = j.message || msg; } catch (e) { /* plain text */ }
     return sendJson(res, rpcRes.status && rpcRes.status < 500 ? 409 : 502, { success: false, order_id, error: msg, note: 'No ERP stock was changed.' });
+  }
+
+  // 7. POST /api/retail-sync/order-record (the Retail Store sends every order, with who ordered it, so Business Intelligence lists it)
+  if (method === 'POST' && subpath === '/order-record') {
+    if (!RETAIL_STORE_API_KEY) return sendJson(res, 503, { success: false, error: NOT_CONFIGURED });
+    if (!sameKey(req.headers['x-erp-api-key'], RETAIL_STORE_API_KEY)) return sendJson(res, 401, { success: false, error: 'Unauthorized: Invalid ERP integration key' });
+    if (!SUPABASE_SERVICE_ROLE_KEY) return sendJson(res, 503, { success: false, error: 'Set SUPABASE_SERVICE_ROLE_KEY on the server.' });
+    const body = await parseBody(req);
+    const retailCo = String(body.company_id || req.headers['x-company-id'] || '');
+    let erpCompany = await erpCompanyForRetailCode(retailCo);
+    if (!erpCompany && ERP_COMPANY_ID && (!retailCo || retailCo === RETAIL_COMPANY_ID)) erpCompany = ERP_COMPANY_ID;
+    if (!erpCompany) return sendJson(res, 404, { success: false, error: `No ERP company matches Retail company "${retailCo}".` });
+    if (!body.order || !body.order.order_no) return sendJson(res, 400, { success: false, error: 'order.order_no is required' });
+    const r = await callSupabaseRpc('erp_retail_record_order', { p_company: erpCompany, p_order: body.order }, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_ROLE_KEY);
+    if (r.ok && r.data?.success) return sendJson(res, 200, r.data);
+    let msg = r.error || 'Order could not be recorded';
+    try { const j = JSON.parse(msg); msg = j.message || msg; } catch (e) { /* plain text */ }
+    return sendJson(res, 502, { success: false, error: msg });
   }
 
   // 404 for unknown subpaths
