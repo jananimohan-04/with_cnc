@@ -9,14 +9,22 @@ import {
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
-import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, viewQuotation, viewTaxInvoice } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, generateQuotationHtml, generateTaxInvoiceHtml } from '../../utils/quotationInvoiceTemplates';
 import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
+import DocViewModal from '../../components/DocViewModal';
 import { asList } from './Home';
 
 export default function Quotes() {
   const [quotes, setQuotes] = useState(null);
   const [products, setProducts] = useState([]);
   const [raisingId, setRaisingId] = useState(null);
+  const [view, setView] = useState(null);
+  const openView = async (kind, data) => {
+    try {
+      const html = kind === 'invoice' ? await generateTaxInvoiceHtml(data) : await generateQuotationHtml(data);
+      setView({ title: kind === 'invoice' ? 'Tax Invoice ' + (data.invoiceNo || '') : 'Quotation ' + (data.quoteNo || ''), html });
+    } catch (e) { toast('Could not open the document', '⚠️'); }
+  };
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
   useEffect(() => {
@@ -130,6 +138,7 @@ export default function Quotes() {
 
   return (
     <div className="space-y-6 w-full">
+      <DocViewModal view={view} onClose={() => setView(null)} />
       <PageHero
         title={`Quotation Pipeline (${quotes.length})`}
         subtitle="Manage official commercial quotations, review approved pricing, and raise legal GST Tax Invoices."
@@ -269,7 +278,7 @@ export default function Quotes() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => viewQuotation(quoteData)}
+                        onClick={() => openView('quotation', quoteData)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" /> View
@@ -295,7 +304,7 @@ export default function Quotes() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
-                          onClick={() => viewTaxInvoice(prepareInvoiceData(q))}
+                          onClick={() => openView('invoice', prepareInvoiceData(q))}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" /> View

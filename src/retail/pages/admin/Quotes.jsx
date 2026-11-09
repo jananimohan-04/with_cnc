@@ -9,7 +9,8 @@ import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
 import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
-import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, viewQuotation, viewTaxInvoice } from '../../utils/quotationInvoiceTemplates';
+import DocViewModal from '../../components/DocViewModal';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, generateQuotationHtml, generateTaxInvoiceHtml } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
 
@@ -35,6 +36,13 @@ export default function Quotes() {
   const [rErr, setRErr] = useState('');
   const [rBusy, setRBusy] = useState(false);
   const [raisingId, setRaisingId] = useState(null);
+  const [view, setView] = useState(null);
+  const openView = async (kind, data) => {
+    try {
+      const html = kind === 'invoice' ? await generateTaxInvoiceHtml(data) : await generateQuotationHtml(data);
+      setView({ title: kind === 'invoice' ? 'Tax Invoice ' + (data.invoiceNo || '') : 'Quotation ' + (data.quoteNo || ''), html });
+    } catch (e) { toast('Could not open the document', '⚠️'); }
+  };
 
   function load() {
     const qs = new URLSearchParams({ page, limit: 8 });
@@ -173,6 +181,7 @@ export default function Quotes() {
 
   return (
     <div className="space-y-6">
+      <DocViewModal view={view} onClose={() => setView(null)} />
       <PageHero
         title="Quotation Requests (RFQs)"
         subtitle={`${data.total} active requests • Technical specifications, custom pricing & negotiations.`}
@@ -257,7 +266,7 @@ export default function Quotes() {
 
                   <td className="py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                      <button type="button" title="View the quotation" onClick={() => viewQuotation(prepareQuoteData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View</button>
+                      <button type="button" title="View the quotation" onClick={() => openView('quotation', prepareQuoteData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View</button>
                       <button 
                         type="button" 
                         title="Download Commercial Quotation (PDF)"
@@ -282,7 +291,7 @@ export default function Quotes() {
                       )}
                       {(q.invoiced || q.invoiceNo) && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
                       {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (<>
-                        <button type="button" title="View the tax invoice" onClick={() => viewTaxInvoice(prepareInvoiceData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View invoice</button>
+                        <button type="button" title="View the tax invoice" onClick={() => openView('invoice', prepareInvoiceData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View invoice</button>
                         <button
                           type="button"
                           title="Download Legal GST Tax Invoice (PDF)"
