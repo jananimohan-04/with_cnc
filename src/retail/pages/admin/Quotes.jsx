@@ -3,13 +3,13 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FileText, Filter, MessageSquare, Check, X, 
-  Send, Calendar, User, IndianRupee, Loader2, Download, Receipt
+  Send, Calendar, User, IndianRupee, Loader2, Download, Receipt, Eye
 } from 'lucide-react';
 import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
 import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
-import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, viewQuotation, viewTaxInvoice } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
 
@@ -257,6 +257,7 @@ export default function Quotes() {
 
                   <td className="py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                      <button type="button" title="View the quotation" onClick={() => viewQuotation(prepareQuoteData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View</button>
                       <button 
                         type="button" 
                         title="Download Commercial Quotation (PDF)"
@@ -280,7 +281,8 @@ export default function Quotes() {
                         </>
                       )}
                       {(q.invoiced || q.invoiceNo) && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
-                      {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (
+                      {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (<>
+                        <button type="button" title="View the tax invoice" onClick={() => viewTaxInvoice(prepareInvoiceData(q))} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-lg cursor-pointer"><Eye className="w-3.5 h-3.5" /> View invoice</button>
                         <button
                           type="button"
                           title="Download Legal GST Tax Invoice (PDF)"
@@ -292,7 +294,7 @@ export default function Quotes() {
                         >
                           <Receipt className="w-3.5 h-3.5" /> Invoice
                         </button>
-                      ) : (
+                      </>) : (
                         <button
                           type="button"
                           title="Confirm & Raise Legal GST Tax Invoice"

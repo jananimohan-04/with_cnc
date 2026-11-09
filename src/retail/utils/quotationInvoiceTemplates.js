@@ -754,3 +754,14 @@ export async function downloadTaxInvoicePdf(data) {
     }
   }, 400);
 }
+
+/* open the document on screen (no print dialog) */
+async function viewHtml(html) {
+  const win = window.open('', '_blank');
+  if (!win) { alert('Please allow popups to view the document.'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+export async function viewQuotation(data) { return viewHtml(await generateQuotationHtml(data)); }
+export async function viewTaxInvoice(data) { return viewHtml(await generateTaxInvoiceHtml(data)); }

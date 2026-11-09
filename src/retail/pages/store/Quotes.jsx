@@ -4,12 +4,12 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   FileText, ShoppingBag, Clock, ChevronRight, CheckCircle2, 
-  HelpCircle, AlertCircle, ArrowRight, Receipt, Download, Loader2, Check
+  HelpCircle, AlertCircle, ArrowRight, Receipt, Download, Loader2, Check, Eye
 } from 'lucide-react';
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
-import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, viewQuotation, viewTaxInvoice } from '../../utils/quotationInvoiceTemplates';
 import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
 import { asList } from './Home';
 
@@ -269,6 +269,13 @@ export default function Quotes() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
+                        onClick={() => viewQuotation(quoteData)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> View
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { downloadQuotationPdf(quoteData); toast('Commercial Quotation PDF opened', '📄'); }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
                       >
@@ -286,6 +293,13 @@ export default function Quotes() {
                     </div>
                     {isInvoiced ? (
                       <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => viewTaxInvoice(prepareInvoiceData(q))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
                         <button
                           type="button"
                           onClick={() => { downloadTaxInvoicePdf(prepareInvoiceData(q)); toast('GST Tax Invoice PDF opened', '🧾'); }}
