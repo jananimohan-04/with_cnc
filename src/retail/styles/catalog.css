@@ -191,43 +191,62 @@
   border-radius: 20px;
   background: #EDE1D3;
   border: 1px solid #BAA794;
-  padding: 14px 16px;
+  padding: 10px 14px;
   box-shadow: 0 4px 16px rgba(46, 21, 8, 0.05);
   margin-bottom: 20px;
+  overflow: hidden;
 }
 .ls-toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: flex !important;
+  flex-wrap: nowrap !important;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #baa794 transparent;
+  padding-bottom: 2px;
 }
+.ls-toolbar-row::-webkit-scrollbar {
+  height: 4px;
+}
+.ls-toolbar-row::-webkit-scrollbar-thumb {
+  background: #baa794;
+  border-radius: 4px;
+}
+form.ls-input-wrap,
 .ls-input-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  width: auto;
 }
 .ls-input-wrap svg {
   position: absolute;
   left: 11px;
   pointer-events: none;
   color: #6B503E;
+  z-index: 1;
 }
 .ls-search-input {
   height: 38px;
-  padding: 0 32px 0 34px;
+  width: 220px !important;
+  max-width: 240px;
+  flex: 0 0 220px;
+  padding: 0 30px 0 34px;
   font-size: 13px;
   font-weight: 600;
-  color: #1A0A03;
-  background: #fff;
-  border: 1px solid #BAA794;
+  color: #1A0A03 !important;
+  background: #fff !important;
+  border: 1px solid #BAA794 !important;
   border-radius: 11px;
-  min-width: 220px;
   transition: all 0.2s;
 }
 .ls-search-input:focus {
   outline: none;
-  border-color: #ea580c;
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18);
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18) !important;
 }
 .ls-search-clear {
   position: absolute;
@@ -243,40 +262,46 @@
   justify-content: center;
   font-size: 13px;
   cursor: pointer;
+  z-index: 1;
 }
 .ls-select {
   height: 38px;
-  padding: 0 30px 0 12px;
+  width: auto !important;
+  max-width: 185px;
+  flex: 0 0 auto;
+  padding: 0 28px 0 12px;
   font-size: 12.5px;
   font-weight: 700;
-  color: #2E1508;
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236B503E' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") no-repeat calc(100% - 10px) center;
-  border: 1px solid #BAA794;
+  color: #2E1508 !important;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236B503E' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") no-repeat calc(100% - 10px) center !important;
+  border: 1px solid #BAA794 !important;
   border-radius: 11px;
   cursor: pointer;
   appearance: none;
+  white-space: nowrap;
   transition: all 0.2s;
 }
 .ls-select:focus {
   outline: none;
-  border-color: #ea580c;
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18);
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18) !important;
 }
 .ls-price-input {
   height: 38px;
-  width: 105px;
-  padding: 0 10px 0 24px;
+  width: 88px !important;
+  flex: 0 0 88px;
+  padding: 0 8px 0 22px;
   font-size: 12.5px;
   font-weight: 700;
-  color: #1A0A03;
-  background: #fff;
-  border: 1px solid #BAA794;
+  color: #1A0A03 !important;
+  background: #fff !important;
+  border: 1px solid #BAA794 !important;
   border-radius: 11px;
 }
 .ls-price-input:focus {
   outline: none;
-  border-color: #ea580c;
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18);
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18) !important;
 }
 .ls-currency-tag {
   position: absolute;
@@ -285,9 +310,12 @@
   font-weight: 800;
   color: #6B503E;
   pointer-events: none;
+  z-index: 1;
 }
 .ls-reset-btn {
   height: 38px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 0 14px;
   font-size: 12px;
   font-weight: 800;
@@ -308,6 +336,8 @@
 }
 .ls-select-all {
   margin-left: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 8px;
