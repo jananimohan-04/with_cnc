@@ -174,6 +174,8 @@ function Gate({ children, noSide, roles, perm }) {
     );
   }
   if (loc.pathname === '/login' || loc.pathname === '/retail/login') return <>{children}</>;
+  // local development: the Retail server has no Supabase key, so it cannot check the BI login - use the demo login there
+  if (!me && !import.meta.env.PROD) return <Navigate to="/login" replace />;
   if (!me) {   // not signed in to the Retail Store: the BI sign-in is the only login, so say why instead of bouncing silently
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
