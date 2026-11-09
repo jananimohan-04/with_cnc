@@ -1597,7 +1597,7 @@
    ========================================================================== */
 
 .pd-sec {
-  margin-top: 24px;
+  margin-top: 28px;
   border-radius: 26px;
   background: #f7f0e8;
   border: 1px solid rgba(46, 21, 8, 0.14);
@@ -1607,8 +1607,8 @@
 .pd-tabs {
   position: relative;
   display: flex;
-  gap: 6px;
-  padding: 10px 14px 0;
+  gap: 8px;
+  padding: 12px 20px 0;
   background: #EDE1D3;
   border-bottom: 1px solid #BAA794;
   overflow-x: auto;
@@ -1618,9 +1618,9 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  font-size: 13px;
+  gap: 10px;
+  padding: 16px 24px;
+  font-size: 15px;
   font-weight: 800;
   color: #6b503e;
   background: transparent;
@@ -1628,6 +1628,11 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s;
+}
+.pd-tab svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
 }
 .pd-tab:hover {
   color: #2E1508;
@@ -1637,9 +1642,9 @@
 }
 .pd-tab em {
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 900;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 99px;
   background: rgba(46, 21, 8, 0.1);
   color: #2E1508;
@@ -1651,11 +1656,11 @@
 .pd-tab::after {
   content: '';
   position: absolute;
-  left: 14px;
-  right: 14px;
+  left: 18px;
+  right: 18px;
   bottom: 0;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
+  height: 3.5px;
+  border-radius: 4px 4px 0 0;
   background: #ff6500;
   transform: scaleX(0);
   transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -1665,42 +1670,46 @@
 }
 
 .pd-pane {
-  padding: 28px;
+  padding: 34px 38px;
   animation: pd-fade 0.45s ease both;
 }
 @media (max-width: 640px) {
-  .pd-pane { padding: 18px; }
+  .pd-pane { padding: 20px 18px; }
+  .pd-tabs { padding: 8px 12px 0; }
+  .pd-tab { padding: 13px 16px; font-size: 13.5px; }
 }
 .pd-h {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 900;
   color: #1a0a03;
-  margin: 0 0 4px;
-  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  letter-spacing: -0.015em;
 }
 .pd-sub {
-  font-size: 13px;
+  font-size: 15px;
   color: #6b503e;
-  margin: 0 0 20px;
+  margin: 0 0 24px;
+  line-height: 1.5;
 }
 
 /* Specifications Cards */
 .pd-specs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
 }
 .pd-spec {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  border-radius: 14px;
+  gap: 18px;
+  padding: 18px 24px;
+  border-radius: 16px;
   background: #fff;
   border: 1px solid rgba(46, 21, 8, 0.1);
   animation: pd-rise 0.5s both;
   transition: all 0.22s;
+  box-shadow: 0 2px 8px rgba(46, 21, 8, 0.03);
 }
 .pd-spec:hover {
   transform: translateY(-2px);
@@ -1708,43 +1717,45 @@
   box-shadow: 0 10px 22px -12px rgba(255, 101, 0, 0.7);
 }
 .pd-spec span {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   color: #6b503e;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .pd-spec b {
-  font-size: 14px;
+  font-size: 15.5px;
+  font-weight: 800;
   color: #1a0a03;
   text-align: right;
   font-family: ui-monospace, Menlo, monospace;
 }
 .pd-empty {
-  padding: 38px;
+  padding: 44px;
   text-align: center;
-  border-radius: 18px;
+  border-radius: 20px;
   border: 2px dashed rgba(46, 21, 8, 0.2);
   color: #8a6c58;
-  font-size: 13.5px;
+  font-size: 14.5px;
   background: rgba(255, 255, 255, 0.4);
 }
 
 /* Documents Cards */
 .pd-docs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 20px;
 }
 .pd-doc {
   display: flex;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 18px;
+  gap: 18px;
+  padding: 20px 22px;
+  border-radius: 20px;
   background: #fff;
   border: 1px solid rgba(46, 21, 8, 0.1);
   animation: pd-rise 0.5s both;
   transition: all 0.25s;
+  box-shadow: 0 4px 14px rgba(46, 21, 8, 0.04);
 }
 .pd-doc:hover {
   transform: translateY(-4px);
@@ -1752,111 +1763,136 @@
   border-color: #ff6500;
 }
 .pd-cover {
-  width: 64px;
-  height: 82px;
+  width: 76px;
+  height: 98px;
   flex: 0 0 auto;
-  border-radius: 8px 12px 12px 8px;
+  border-radius: 10px 14px 14px 10px;
   background: linear-gradient(145deg, #dc2626, #7f1d1d);
   color: #fff;
   font-weight: 900;
-  font-size: 13px;
+  font-size: 14.5px;
+  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 4px 6px 14px -4px rgba(127, 29, 29, 0.6);
-  border-left: 5px solid rgba(0, 0, 0, 0.25);
+  box-shadow: 4px 6px 16px -4px rgba(127, 29, 29, 0.6);
+  border-left: 6px solid rgba(0, 0, 0, 0.25);
 }
 .pd-doc h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   color: #1a0a03;
 }
 .pd-doc p {
-  margin: 3px 0 10px;
-  font-size: 12px;
+  margin: 4px 0 14px;
+  font-size: 13.5px;
   color: #6b503e;
+  line-height: 1.45;
 }
 .pd-open {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 800;
   color: #fff;
   background: #2E1508;
   border: 0;
-  padding: 7px 15px;
+  padding: 8px 18px;
   border-radius: 99px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
 .pd-open:hover {
   background: #ea580c;
+  transform: translateY(-1px);
 }
 
 /* Video Showcase Cards */
 .pd-vids {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 540px), 1fr));
+  gap: 24px;
 }
 .pd-vid {
-  border-radius: 20px;
+  border-radius: 22px;
   overflow: hidden;
   background: #fff;
-  border: 1px solid rgba(46, 21, 8, 0.1);
+  border: 1px solid rgba(46, 21, 8, 0.12);
   animation: pd-rise 0.5s both;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 24px -10px rgba(46, 21, 8, 0.15);
+  max-width: 820px;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+.pd-vid:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px -12px rgba(46, 21, 8, 0.25);
 }
 .pd-vid iframe,
 .pd-vid video {
   width: 100%;
   aspect-ratio: 16 / 9;
+  min-height: 280px;
   border: 0;
   background: #000;
   display: block;
 }
+@media (min-width: 640px) {
+  .pd-vid iframe,
+  .pd-vid video {
+    min-height: 360px;
+  }
+}
+@media (min-width: 1024px) {
+  .pd-vid iframe,
+  .pd-vid video {
+    min-height: 420px;
+  }
+}
 .pd-vid div {
-  padding: 14px 16px;
+  padding: 18px 22px;
 }
 .pd-vid b {
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 800;
   color: #1a0a03;
+  display: block;
 }
 .pd-vid p {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: 6px 0 0;
+  font-size: 14px;
   color: #6b503e;
+  line-height: 1.5;
 }
 
 .pd-desc {
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: 16.5px;
+  line-height: 1.85;
   color: #2E1508;
   white-space: pre-wrap;
-  max-width: 860px;
+  max-width: 1100px;
 }
 
 /* Related Products */
 .pd-rel {
-  margin-top: 36px;
+  margin-top: 42px;
 }
 .pd-rel .head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .pd-rel h2 {
-  font-size: 21px;
+  font-size: 24px;
   font-weight: 900;
   color: #1a0a03;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 .pd-rel a.all {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 800;
   color: #ea580c;
   display: inline-flex;

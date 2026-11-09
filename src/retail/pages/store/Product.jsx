@@ -505,7 +505,7 @@ export default function Product() {
                   role="tab"
                   aria-selected={activeTab === tab.id}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-5 h-5" />
                   <span>{tab.label}</span>
                   {tab.count !== undefined && <em>{tab.count}</em>}
                 </button>
