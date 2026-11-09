@@ -6,6 +6,7 @@ import { signedImageUrls, uploadItemImage } from '@/lib/inventory';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import './digitalStore3d.css';
 
 // Digital Store setup. The administrator says how many racks, how many rows (shelves) on each rack and how many products fit
 // on a row, then puts a product (name + picture) in each place. The Retail Store shows this as a 3D store people walk through.
@@ -220,32 +221,36 @@ export function DigitalStorePage() {
           ) : (<>
           <p className="text-xs text-slate-500">{isAdmin ? 'Click a place to add or change its product.' : 'Only an administrator can change the store.'} Row 1 is the bottom shelf. The small number on a product is its stock.</p>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="ds3-stage">
             {Array.from({ length: store.racks }, (_, r) => r + 1).map(rack => (
-              <div key={rack} className="bg-white border border-slate-200 rounded-xl p-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Rack {rack}</div>
-                <div className="space-y-1.5">
+              <div key={rack} className="ds3-rack" style={{ animationDelay: `${(rack - 1) * 0.06}s` }}>
+                <div className="ds3-plate">RACK {rack}</div>
+                <div className="ds3-frame">
+                  <div className="ds3-back" />
                   {Array.from({ length: store.rows_per_rack }, (_, i) => store.rows_per_rack - i).map(row => (
-                    <div key={row} className="flex items-center gap-1.5">
-                      <span className="w-10 text-[10px] text-slate-400 shrink-0">Row {row}</span>
-                      <div className="grid gap-1.5 flex-1" style={{ gridTemplateColumns: `repeat(${store.slots_per_row}, minmax(0, 1fr))` }}>
-                        {Array.from({ length: store.slots_per_row }, (_, s) => s + 1).map(slot => {
+                    <div key={row} className="ds3-shelf">
+                      <span className="ds3-row">Row {row}</span>
+                      <div className="ds3-slots" style={{ gridTemplateColumns: `repeat(${store.slots_per_row}, minmax(0, 1fr))` }}>
+                        {Array.from({ length: store.slots_per_row }, (_, sl) => sl + 1).map(slot => {
                           const it = byPlace.get(`${rack}:${row}:${slot}`);
                           const img = it?.image_path ? urls[it.image_path] : '';
+                          const stock = Number(it?.stock_qty ?? 0);
                           return (
                             <button key={slot} type="button" onClick={() => openSlot(rack, row, slot)} disabled={!isAdmin && !it}
-                              title={it ? it.name : `Rack ${rack}, row ${row}, place ${slot} (empty)`}
-                              className={`aspect-square rounded-md border text-[9px] leading-tight overflow-hidden flex items-center justify-center p-0.5 text-center ${it ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-dashed border-slate-300 text-slate-300 hover:border-brand-400 hover:text-brand-500'}`}>
+                              title={it ? `${it.name} · stock ${stock}` : `Rack ${rack}, row ${row}, place ${slot} (empty)`}
+                              className={`ds3-slot ${it ? 'has' : ''}`}>
                               {it ? (
-                                <span className="relative block w-full h-full">
-                                  {img ? <img src={img} alt={it.name} className="w-full h-full object-cover rounded" /> : <span className="line-clamp-3">{it.name}</span>}
-                                  <span className={`absolute bottom-0 right-0 px-1 rounded-tl text-[8px] font-bold ${Number(it.stock_qty ?? 0) > 0 ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>{Number(it.stock_qty ?? 0) > 0 ? Number(it.stock_qty) : '0'}</span>
-                                </span>
-                              ) : <Plus size={12} />}
+                                <>
+                                  {img ? <img src={img} alt={it.name} className="ds3-img" /> : <span className="ds3-txt">{it.name}</span>}
+                                  <span className={`ds3-stock ${stock > 0 ? 'in' : 'out'}`}>{stock > 0 ? stock : '0'}</span>
+                                  <span className="ds3-tag">{it.name}</span>
+                                </>
+                              ) : <span className="ds3-empty"><Plus size={14} /></span>}
                             </button>
                           );
                         })}
                       </div>
+                      <div className="ds3-board" />
                     </div>
                   ))}
                 </div>
