@@ -627,7 +627,7 @@ app.use(async (req, _res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail') return next();   // the mail route checks the sign-in token itself
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -805,6 +805,92 @@ function uid(prefix, list) {
 
 /* ---- Digital Store: e-mail the customer their order (product, amount, payment link set in Business Intelligence) ----
    Needs an outgoing mail account on the server: SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_PASS, SMTP_FROM (and optionally SMTP_BCC). */
+/* ---- each company links its OWN mail account (stored encrypted; the password never goes back to a browser) ---- */
+const MAIL_KEY = require('crypto').createHash('sha256').update('digital-mail:' + (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || 'local')).digest();
+const mailEnc = (text) => { const c = require('crypto'); const iv = c.randomBytes(12); const k = c.createCipheriv('aes-256-gcm', MAIL_KEY, iv); const d = Buffer.concat([k.update(String(text), 'utf8'), k.final()]); return [iv, k.getAuthTag(), d].map(b => b.toString('base64')).join('.'); };
+const mailDec = (blob) => { const c = require('crypto'); const [iv, tag, d] = String(blob).split('.').map(x => Buffer.from(x, 'base64')); const k = c.createDecipheriv('aes-256-gcm', MAIL_KEY, iv); k.setAuthTag(tag); return Buffer.concat([k.update(d), k.final()]).toString('utf8'); };
+function mailProblem(e) {
+  const m = String((e && e.message) || e || '');
+  if ((e && (e.code === 'EAUTH' || e.responseCode === 535)) || /invalid login|authentication|username and password|535/i.test(m)) return 'The mail provider did not accept the sign-in. Check the e-mail address and the app password (Gmail needs an App Password, not your normal password).';
+  if (e && /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNECTION|ESOCKET/.test(String(e.code || m))) return 'Could not reach the mail server. Check the server name and port.';
+  return m.slice(0, 250) || 'The mail account could not be used.';
+}
+const mailTransport = (cfg) => require('nodemailer').createTransport({ host: cfg.host, port: cfg.port, secure: cfg.port === 465, auth: { user: cfg.user, pass: cfg.pass }, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 12000 });
+async function loadMailCfg(companyId) {
+  const { data } = await SB.admin.from('digital_store_mail').select('*').eq('company_id', companyId).maybeSingle();
+  if (data && data.smtp_pass_enc) {
+    try { return { host: data.smtp_host, port: Number(data.smtp_port) || 587, user: data.smtp_user, pass: mailDec(data.smtp_pass_enc), fromName: data.from_name || '', bcc: data.bcc || '', own: true }; } catch { /* unreadable: treated as not linked */ }
+  }
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {   // optional server-wide fallback
+    return { host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), user: process.env.SMTP_USER, pass: process.env.SMTP_PASS, fromName: '', bcc: process.env.SMTP_BCC || '', own: false };
+  }
+  return null;
+}
+/* only an administrator of the company may link or change its mail account */
+async function mailAdminFor(req, res) {
+  if (!SB.enabled) { res.status(503).json({ ok: false, error: 'The server is not connected to Supabase.' }); return null; }
+  const h = String(req.headers.authorization || '');
+  const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
+  if (!user) { res.status(401).json({ ok: false, error: 'Please sign in again.' }); return null; }
+  const { data: bi } = await SB.admin.from('company_users').select('role, status, company_id').eq('email', String(user.email || '').toLowerCase()).maybeSingle();
+  const role = String((bi && bi.role) || '').toUpperCase();
+  if (!bi || bi.status !== 'Active' || !['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(role)) { res.status(403).json({ ok: false, error: 'Only an administrator can set up the company e-mail.' }); return null; }
+  const wanted = String((req.body || {}).company_id || '');
+  const companyId = role === 'SUPER_ADMIN' ? (wanted || bi.company_id) : bi.company_id;
+  if (!companyId) { res.status(400).json({ ok: false, error: 'Choose a company first.' }); return null; }
+  return { user, companyId };
+}
+app.post('/api/digital-mail/status', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    const { data } = await SB.admin.from('digital_store_mail').select('provider, smtp_host, smtp_port, smtp_user, from_name, bcc, verified_at, last_error').eq('company_id', a.companyId).maybeSingle();
+    res.json({ ok: true, configured: !!data, mail: data || null, fallback: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+app.post('/api/digital-mail/save', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    const b = req.body || {};
+    const host = String(b.host || '').trim(), user = String(b.user || '').trim(), port = Number(b.port) || 587;
+    let pass = String(b.pass || '').replace(/\s+/g, '');   // app passwords are often shown with spaces
+    if (!host || /\s/.test(host)) return res.status(400).json({ ok: false, error: 'Enter the mail server name (for example smtp.gmail.com).' });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user)) return res.status(400).json({ ok: false, error: 'Enter the e-mail address you want to send from.' });
+    if (!pass) {   // blank = keep the saved password
+      const old = await loadMailCfg(a.companyId);
+      if (old && old.own && old.user === user) pass = old.pass;
+    }
+    if (!pass) return res.status(400).json({ ok: false, error: 'Enter the app password.' });
+    try { await mailTransport({ host, port, user, pass }).verify(); }   // prove the sign-in works before saving it
+    catch (e) { return res.status(400).json({ ok: false, error: mailProblem(e) }); }
+    const row = { company_id: a.companyId, provider: String(b.provider || '').slice(0, 30) || null, smtp_host: host, smtp_port: port, smtp_user: user, smtp_pass_enc: mailEnc(pass),
+      from_name: String(b.from_name || '').trim().slice(0, 80) || null, bcc: String(b.bcc || '').trim().slice(0, 120) || null, verified_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() };
+    const { error } = await SB.admin.from('digital_store_mail').upsert(row, { onConflict: 'company_id' });
+    if (error) return res.status(500).json({ ok: false, error: /digital_store_mail/.test(error.message) ? 'Run the migration 20261110030000_digital_store_mail_accounts.sql in Supabase first.' : error.message });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: mailProblem(e) }); }
+});
+app.post('/api/digital-mail/test', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    const to = String((req.body || {}).to || a.user.email || '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ ok: false, error: 'Enter an e-mail address to send the test to.' });
+    const cfg = await loadMailCfg(a.companyId);
+    if (!cfg) return res.status(400).json({ ok: false, error: 'Link the e-mail account first.' });
+    try {
+      await mailTransport(cfg).sendMail({ from: `"${cfg.fromName || 'Digital Store'}" <${cfg.user}>`, to, subject: 'Test e-mail from your Digital Store', text: 'This is a test. Your Digital Store can now e-mail order confirmations to customers from this address.',
+        html: '<div style="font-family:Segoe UI,Arial,sans-serif"><h3 style="color:#ea580c">It works ✅</h3><p>Your Digital Store can now e-mail order confirmations to customers from this address.</p></div>' });
+    } catch (e) { return res.status(502).json({ ok: false, error: mailProblem(e) }); }
+    res.json({ ok: true, to });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+app.post('/api/digital-mail/remove', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    await SB.admin.from('digital_store_mail').delete().eq('company_id', a.companyId);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+
 const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const inr = (n) => '\u20B9' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 app.post('/api/digital-order-mail', async (req, res) => {
@@ -817,9 +903,9 @@ app.post('/api/digital-order-mail', async (req, res) => {
     if (!o || o.ordered_by !== user.id) return res.status(404).json({ ok: false, error: 'Order not found.' });
     if (o.mail_sent_at) return res.json({ ok: true, already: true, to: o.customer_email });
     const note = async (patch) => { await SB.admin.from('digital_store_orders').update(patch).eq('id', o.id); };
-    const host = process.env.SMTP_HOST, smtpUser = process.env.SMTP_USER, smtpPass = process.env.SMTP_PASS;
-    if (!host || !smtpUser || !smtpPass) {
-      const msg = 'E-mail is not set up on the server (SMTP_HOST, SMTP_USER, SMTP_PASS).';
+    const mailCfg = await loadMailCfg(o.company_id);
+    if (!mailCfg) {
+      const msg = 'This company has not linked its e-mail account yet (Business Intelligence > Digital Store > E-mail setup).';
       await note({ mail_error: msg });
       return res.status(503).json({ ok: false, error: msg });
     }
@@ -852,18 +938,16 @@ app.post('/api/digital-order-mail', async (req, res) => {
       <p style="margin:4px 0;font-size:13px;color:#555">Contact: ${escHtml(o.phone)}</p>
       <p style="margin-top:24px;font-size:12px;color:#888">${escHtml(company)}${co && co.phone ? ' \u00B7 ' + escHtml(co.phone) : ''}${co && co.email ? ' \u00B7 ' + escHtml(co.email) : ''}</p>
     </div>`;
-    const nodemailer = require('nodemailer');
-    const port = Number(process.env.SMTP_PORT || 587);
-    const tx = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user: smtpUser, pass: smtpPass } });
+    const tx = mailTransport(mailCfg);
     try {
       await tx.sendMail({
-        from: process.env.SMTP_FROM || `"${company}" <${smtpUser}>`, to: o.customer_email, bcc: process.env.SMTP_BCC || undefined,
+        from: `"${mailCfg.fromName || company}" <${mailCfg.user}>`, to: o.customer_email, bcc: mailCfg.bcc || undefined,
         subject: `Your order ${o.order_no} - ${o.item_name}`, html,
         text: `Order ${o.order_no}\n${o.item_name} x ${Number(o.qty)} ${o.unit || ''}\nTotal: ${o.total != null ? inr(o.total) : 'to be confirmed'}\n${link ? 'Pay here: ' + link : 'We will contact you with payment details.'}\nDelivery: ${o.address}`,
       });
     } catch (e) {
-      await note({ mail_error: String(e.message || e).slice(0, 300) });
-      return res.status(502).json({ ok: false, error: 'The e-mail could not be sent: ' + (e.message || e) });
+      await note({ mail_error: mailProblem(e) });
+      return res.status(502).json({ ok: false, error: 'The e-mail could not be sent: ' + mailProblem(e) });
     }
     await note({ mail_sent_at: new Date().toISOString(), mail_error: null });
     return res.json({ ok: true, to: o.customer_email, paymentLink: !!link });
