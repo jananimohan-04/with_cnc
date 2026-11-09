@@ -1,0 +1,97 @@
+/* Glass look for the quotation / invoice / checkout pages: frosted panels over floating colour, soft glow, gentle motion. Class prefix gl- */
+
+.gl-page { position: relative; isolation: isolate; }
+.gl-page::before,
+.gl-page::after {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(70px); opacity: .75;
+}
+.gl-page::before {
+  width: 520px; height: 520px; top: -120px; left: -80px;
+  background: radial-gradient(circle at 30% 30%, rgba(251,146,60,.65), rgba(251,146,60,0) 70%);
+  animation: gl-float-a 16s ease-in-out infinite;
+}
+.gl-page::after {
+  width: 600px; height: 600px; top: 160px; right: -140px;
+  background: radial-gradient(circle at 60% 40%, rgba(45,212,191,.5), rgba(99,102,241,.25) 55%, rgba(99,102,241,0) 75%);
+  animation: gl-float-b 20s ease-in-out infinite;
+}
+@keyframes gl-float-a { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(60px,50px) scale(1.12); } }
+@keyframes gl-float-b { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-70px,40px) scale(1.08); } }
+
+/* frosted surfaces */
+.gl-card, .gl-hero {
+  background: linear-gradient(135deg, rgba(255,255,255,.62), rgba(255,255,255,.30)) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%);
+  border: 1px solid rgba(255,255,255,.65) !important;
+  box-shadow: 0 10px 40px -12px rgba(120,53,15,.28), inset 0 1px 0 rgba(255,255,255,.8);
+  border-radius: 24px;
+}
+.gl-card { transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s; position: relative; overflow: hidden; }
+.gl-card:hover { transform: translateY(-3px); box-shadow: 0 22px 50px -14px rgba(234,88,12,.38), inset 0 1px 0 rgba(255,255,255,.9); }
+.gl-card::before { /* light sweep on hover */
+  content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform: skewX(-18deg); transition: left .9s ease;
+}
+.gl-card:hover::before { left: 130%; }
+.gl-card > * { position: relative; }
+
+.gl-hero { position: relative; overflow: hidden; }
+.gl-hero::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.5) 50%, transparent 70%); transform: translateX(-100%);
+  animation: gl-shimmer 6s ease-in-out infinite;
+}
+@keyframes gl-shimmer { 0%,55% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+/* the two documents */
+.gl-doc { border-radius: 20px; padding: 14px; border: 1px solid rgba(255,255,255,.7); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transition: transform .3s, box-shadow .3s; }
+.gl-doc:hover { transform: translateY(-2px); }
+.gl-doc-q { background: linear-gradient(145deg, rgba(255,237,213,.75), rgba(255,255,255,.35)); box-shadow: 0 8px 26px -14px rgba(234,88,12,.55); }
+.gl-doc-i { background: linear-gradient(145deg, rgba(209,250,229,.75), rgba(255,255,255,.35)); box-shadow: 0 8px 26px -14px rgba(5,150,105,.55); }
+.gl-doc-i.gl-doc-off { background: linear-gradient(145deg, rgba(226,232,240,.65), rgba(255,255,255,.3)); box-shadow: 0 8px 26px -16px rgba(71,85,105,.4); }
+
+/* glass buttons */
+.gl-btn {
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s, background-color .2s !important;
+  box-shadow: 0 4px 14px -6px rgba(15,23,42,.35), inset 0 1px 0 rgba(255,255,255,.55);
+}
+.gl-btn:hover:not(:disabled) { transform: translateY(-2px) scale(1.03); box-shadow: 0 10px 22px -8px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.7); }
+.gl-btn:active:not(:disabled) { transform: translateY(0) scale(.98); }
+.gl-btn-dark { background: linear-gradient(135deg, #1e293b, #0f172a) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.12) !important; }
+.gl-btn-green { background: linear-gradient(135deg, #10b981, #0d9488) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.25) !important; }
+.gl-btn-blue { background: linear-gradient(135deg, #3b82f6, #6366f1) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.25) !important; }
+.gl-btn-glass { background: rgba(255,255,255,.55) !important; border: 1px solid rgba(255,255,255,.8) !important; color: #334155 !important; }
+
+/* inputs */
+.gl-input {
+  background: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 2px rgba(15,23,42,.06); transition: box-shadow .25s, border-color .25s, background-color .25s;
+}
+.gl-input:focus { background: rgba(255,255,255,.9); border-color: #fb923c; box-shadow: 0 0 0 4px rgba(251,146,60,.2), inset 0 1px 2px rgba(15,23,42,.04); }
+
+/* status pulse on the invoice badge */
+.gl-pulse { position: relative; }
+.gl-pulse::after { content: ''; position: absolute; inset: -2px; border-radius: inherit; border: 2px solid rgba(16,185,129,.55); animation: gl-ring 2.4s ease-out infinite; pointer-events: none; }
+@keyframes gl-ring { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(1.18); opacity: 0; } }
+
+/* popup */
+.gl-overlay { background: radial-gradient(circle at 30% 20%, rgba(251,146,60,.35), rgba(15,23,42,.65) 60%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); animation: gl-fade .25s ease-out; }
+.gl-modal {
+  background: linear-gradient(135deg, rgba(255,255,255,.82), rgba(255,255,255,.62));
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  border: 1px solid rgba(255,255,255,.8); box-shadow: 0 30px 80px -20px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9);
+  animation: gl-pop .35s cubic-bezier(.2,.9,.25,1.1);
+}
+.gl-modal-head { background: linear-gradient(90deg, rgba(255,237,213,.8), rgba(255,255,255,.4)); border-bottom: 1px solid rgba(255,255,255,.7); }
+@keyframes gl-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gl-pop { from { opacity: 0; transform: translateY(24px) scale(.94); } to { opacity: 1; transform: none; } }
+
+/* entrance for anything not animated by framer */
+.gl-rise { animation: gl-rise .6s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes gl-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-page::before, .gl-page::after, .gl-hero::after, .gl-pulse::after, .gl-rise, .gl-modal, .gl-overlay { animation: none !important; }
+  .gl-card, .gl-btn, .gl-doc { transition: none !important; }
+}

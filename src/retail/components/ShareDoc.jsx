@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Loader2, Mail, MessageCircle } from 'lucide-react';
 import { api } from '../api';
 import { toast } from './ui';
+import '../styles/glass.css';
 import { askInvoiceDiscount } from '../utils/quotationInvoiceTemplates';
 
 const WaIcon = (props) => <MessageCircle className="w-3.5 h-3.5" {...props} />;
@@ -38,7 +39,7 @@ export default function ShareDoc({ q, kind: kindProp }) {
     setBusy('');
   };
 
-  const cls = 'inline-flex items-center gap-1 px-2 py-1 text-xs font-bold rounded-lg border transition-colors cursor-pointer disabled:opacity-50';
+  const cls = 'gl-btn inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl border cursor-pointer disabled:opacity-50';
   return (
     <>
       <button type="button" disabled={!!busy} onClick={() => go('whatsapp')} title={kind === 'invoice' ? 'Send the payment link on WhatsApp' : 'Send the quotation on WhatsApp'} className={`${cls} text-green-700 bg-green-50 hover:bg-green-100 border-green-200`}>

@@ -11,6 +11,7 @@ import { api, fmt, getCart, setCart } from '../../api';
 import { Empty, Skeleton, toast } from '../../components/ui';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, discountAmountOf } from '../../utils/quotationInvoiceTemplates';
 import { asList } from './Home';
+import '../../styles/glass.css';
 
 export default function Checkout() {
   const nav = useNavigate();
@@ -43,7 +44,7 @@ export default function Checkout() {
 
   if (!cart.length) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center max-w-lg mx-auto shadow-xs">
+      <div className="gl-card p-12 text-center max-w-lg mx-auto shadow-xs">
         <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
           <ShoppingBag className="w-8 h-8" />
         </div>
@@ -183,7 +184,7 @@ export default function Checkout() {
   };
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="gl-page space-y-6 w-full">
       {/* Header & Back Link */}
       <div className="flex items-center justify-between gap-4 flex-wrap pb-2 border-b border-slate-200">
         <div>
@@ -205,8 +206,8 @@ export default function Checkout() {
           onClick={() => goStep(1)}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold transition-all border ${
             step === 1 
-              ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
-              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              ? 'gl-btn gl-btn-dark shadow-sm' 
+              : 'gl-btn gl-btn-glass'
           }`}
         >
           <Building2 className="w-4 h-4" />
@@ -217,8 +218,8 @@ export default function Checkout() {
           onClick={() => goStep(2)}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold transition-all border ${
             step === 2 
-              ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
-              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              ? 'gl-btn gl-btn-dark shadow-sm' 
+              : 'gl-btn gl-btn-glass'
           }`}
         >
           <PackageCheck className="w-4 h-4" />
@@ -235,7 +236,7 @@ export default function Checkout() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2 }}
-            className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 shadow-xs"
+            className="gl-card p-6 sm:p-8 shadow-xs"
           >
             <div className="flex items-center gap-3 pb-5 mb-6 border-b border-slate-100">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -257,7 +258,7 @@ export default function Checkout() {
                   value={company} 
                   onChange={(e) => setCompany(e.target.value)} 
                   placeholder="e.g. Acme Precision Tools Pvt Ltd"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -270,7 +271,7 @@ export default function Checkout() {
                   value={name} 
                   onChange={(e) => setName(e.target.value)} 
                   placeholder="Authorized officer name"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -283,7 +284,7 @@ export default function Checkout() {
                   value={mobile} 
                   onChange={(e) => setMobile(e.target.value)} 
                   placeholder="+91 98765 43210"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -296,7 +297,7 @@ export default function Checkout() {
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                   placeholder="procurement@company.in"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -309,7 +310,7 @@ export default function Checkout() {
                   value={po} 
                   onChange={(e) => setPo(e.target.value)} 
                   placeholder="e.g. PO/ARGUS/26/108"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -322,7 +323,7 @@ export default function Checkout() {
                   value={pin} 
                   onChange={(e) => setPin(e.target.value)} 
                   placeholder="411026"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -335,7 +336,7 @@ export default function Checkout() {
                   value={addr} 
                   onChange={(e) => setAddr(e.target.value)} 
                   placeholder="Plot number, industrial area, street, landmark"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all resize-y"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden resize-y"
                 />
               </div>
 
@@ -345,7 +346,7 @@ export default function Checkout() {
                   type="text" 
                   value={city} 
                   onChange={(e) => setCity(e.target.value)} 
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -355,7 +356,7 @@ export default function Checkout() {
                   type="text" 
                   value={state} 
                   onChange={(e) => setState(e.target.value)} 
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
 
@@ -383,7 +384,7 @@ export default function Checkout() {
                   value={notes} 
                   onChange={(e) => setNotes(e.target.value)} 
                   placeholder="e.g. Unloading Bay 2, call stores incharge before arrival"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-hidden transition-all"
+                  className="w-full px-3.5 py-2.5 text-sm gl-input rounded-xl outline-hidden"
                 />
               </div>
             </div>
@@ -405,14 +406,14 @@ export default function Checkout() {
               <button 
                 type="button" 
                 onClick={handleDownloadQuotation}
-                className="inline-flex items-center gap-2 px-5 py-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold text-sm rounded-xl transition-all shadow-xs cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-3 gl-btn gl-btn-glass font-bold text-sm rounded-xl cursor-pointer"
               >
                 <FileText className="w-4 h-4 text-blue-600" /> Download Quotation (PDF)
               </button>
               <button 
                 type="button" 
                 onClick={() => goStep(2)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition-all shadow-sm hover:shadow-md cursor-pointer ml-auto"
+                className="inline-flex items-center gap-2 px-6 py-3 gl-btn gl-btn-blue font-bold text-sm rounded-xl cursor-pointer ml-auto"
               >
                 Review Line Items <ArrowRight className="w-4 h-4" />
               </button>
@@ -428,7 +429,7 @@ export default function Checkout() {
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
           >
             {/* Line Items List */}
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+            <div className="lg:col-span-2 gl-card p-6 shadow-xs space-y-5">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-bold text-slate-900">Line Items Review ({cart.length})</h2>
@@ -499,7 +500,7 @@ export default function Checkout() {
 
             {/* Payable / Submit Card */}
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+              <div className="gl-card p-6 shadow-xs space-y-5">
                 <h3 className="font-bold text-slate-900 text-sm pb-3 border-b border-slate-100 flex items-center justify-between">
                   <span>Requisition Summary</span>
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -555,7 +556,7 @@ export default function Checkout() {
                   type="button"
                   disabled={busy}
                   onClick={sendQuotation}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white font-black text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-5 gl-btn gl-btn-green disabled:opacity-50 font-black text-sm rounded-xl cursor-pointer"
                 >
                   {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Working…</> : <><Send className="w-4 h-4" /> Generate & E-mail Quotation</>}
                 </button>
@@ -563,14 +564,14 @@ export default function Checkout() {
                   type="button"
                   disabled={busy}
                   onClick={shareQuotationWhatsApp}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 gl-btn gl-btn-green disabled:opacity-50 font-extrabold text-xs rounded-xl cursor-pointer"
                 >
                   Share Quotation on WhatsApp
                 </button>
                 <button
                   type="button"
                   onClick={handleDownloadQuotation}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 gl-btn gl-btn-glass font-bold text-xs rounded-xl cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-blue-600" /> Download Quotation (PDF)
                 </button>

@@ -12,6 +12,7 @@ import { PaymentBadge } from '../../components/PaymentModal';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount, generateQuotationHtml, generateTaxInvoiceHtml } from '../../utils/quotationInvoiceTemplates';
 import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
 import DocViewModal from '../../components/DocViewModal';
+import '../../styles/glass.css';
 import { asList } from './Home';
 
 export default function Quotes() {
@@ -137,9 +138,10 @@ export default function Quotes() {
   };
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="gl-page space-y-6 w-full">
       <DocViewModal view={view} onClose={() => setView(null)} />
       <PageHero
+        className="gl-hero"
         title={`Quotation Pipeline (${quotes.length})`}
         subtitle="Manage official commercial quotations, review approved pricing, and raise legal GST Tax Invoices."
         icon={FileText}
@@ -157,7 +159,7 @@ export default function Quotes() {
       />
 
       {quotes.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center max-w-md mx-auto shadow-xs">
+        <div className="gl-card p-12 text-center max-w-md mx-auto">
           <div className="w-14 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <FileText className="w-7 h-7" />
           </div>
@@ -174,7 +176,7 @@ export default function Quotes() {
         </div>
       ) : (
         <div className="space-y-4">
-          {quotes.map((q) => {
+          {quotes.map((q, qi) => {
             const hasMultipleItems = Array.isArray(q.items) && q.items.length > 0;
             const p = prodById(q.pid || (hasMultipleItems ? q.items[0].pid : ''));
             const isInvoiced = q.invoiced || !!q.invoiceNo || q.status === 'Accepted';
@@ -183,10 +185,10 @@ export default function Quotes() {
             return (
               <motion.div
                 key={q.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.15 }}
-                className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-2xs hover:shadow-xs transition-all space-y-4"
+                initial={{ opacity: 0, y: 28, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.55, delay: Math.min(qi, 8) * 0.09, ease: [0.2, 0.8, 0.2, 1] }}
+                className="gl-card p-5 sm:p-6 space-y-4"
               >
                 <div className="flex items-start gap-4 flex-wrap sm:flex-nowrap">
                   <img 
@@ -204,7 +206,7 @@ export default function Quotes() {
                         {hasMultipleItems ? `${q.items.length} Commercial Indent Items` : p.name}
                       </span>
                       {isInvoiced && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <span className="gl-pulse inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
                           <Check className="w-3 h-3" /> Invoiced: {q.invoiceNo || 'INV-Generated'}
                         </span>
                       )}
@@ -224,7 +226,7 @@ export default function Quotes() {
                     </div>
 
                     {hasMultipleItems ? (
-                      <div className="mt-2 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
+                      <div className="mt-2 text-xs text-slate-600 bg-white/40 backdrop-blur-sm p-2.5 rounded-xl border border-white/70 space-y-1">
                         <div className="font-bold text-slate-700">Line Items in Quotation:</div>
                         <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
                           {q.items.slice(0, 3).map((it, idx) => (
@@ -270,7 +272,7 @@ export default function Quotes() {
 
                 {/* Quotation and Tax Invoice are TWO separate documents, each with its own discount */}
                 <div className="pt-3 border-t border-slate-100 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-2">
+                  <div className="gl-doc gl-doc-q space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="text-xs font-black uppercase tracking-wider text-orange-700">① Quotation <span className="font-mono normal-case text-slate-500">{q.id}</span></div>
                       <DiscountChip q={q} target="quotation" onChanged={onDisc} />
@@ -279,14 +281,14 @@ export default function Quotes() {
                       <button
                         type="button"
                         onClick={() => openView('quotation', quoteData)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 gl-btn gl-btn-dark font-bold text-xs rounded-xl cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" /> View
                       </button>
                       <button
                         type="button"
                         onClick={() => { downloadQuotationPdf(quoteData); toast('Commercial Quotation PDF opened', '📄'); }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 gl-btn gl-btn-glass font-bold text-xs rounded-xl cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5 text-blue-600" /> Quotation (PDF)
                       </button>
@@ -295,7 +297,7 @@ export default function Quotes() {
                     <div className="text-[11px] text-slate-500">Send this first. When the customer confirms it, the invoice is raised.</div>
                   </div>
 
-                  <div className={`rounded-xl border p-3 space-y-2 ${isInvoiced ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
+                  <div className={`gl-doc gl-doc-i space-y-2 ${isInvoiced ? '' : 'gl-doc-off'}`}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className={`text-xs font-black uppercase tracking-wider ${isInvoiced ? 'text-emerald-700' : 'text-slate-500'}`}>② Tax Invoice {isInvoiced && <span className="font-mono normal-case text-slate-500">{q.invoiceNo}</span>}</div>
                       {isInvoiced && <DiscountChip q={q} target="invoice" onChanged={onDisc} />}
@@ -305,14 +307,14 @@ export default function Quotes() {
                         <button
                           type="button"
                           onClick={() => openView('invoice', prepareInvoiceData(q))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 gl-btn gl-btn-dark font-bold text-xs rounded-xl cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" /> View
                         </button>
                         <button
                           type="button"
                           onClick={() => { downloadTaxInvoicePdf(prepareInvoiceData(q)); toast('GST Tax Invoice PDF opened', '🧾'); }}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 gl-btn gl-btn-green font-bold text-xs rounded-xl cursor-pointer"
                         >
                           <Receipt className="w-3.5 h-3.5" /> Tax Invoice (PDF)
                         </button>
@@ -325,7 +327,7 @@ export default function Quotes() {
                           type="button"
                           disabled={raisingId === q.id}
                           onClick={() => handleRaiseInvoice(q)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all shadow-xs hover:shadow-md cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 gl-btn gl-btn-blue disabled:opacity-50 font-bold text-xs rounded-xl cursor-pointer"
                         >
                           {raisingId === q.id ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> Raising Invoice…</>) : (<><Receipt className="w-3.5 h-3.5" /> Customer confirmed → Raise Invoice</>)}
                         </button>
