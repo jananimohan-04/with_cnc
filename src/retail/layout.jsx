@@ -1515,7 +1515,7 @@ export function Shell({ counts, noSide, children }) {
         <div className={`flex-1 min-w-0 flex flex-col justify-between w-full transition-colors duration-200 bg-[#DAC8B8] ${
           menuPosition === 'bottom' ? 'pb-24 sm:pb-28' : ''
         }`}>
-          <main className="w-full flex-1 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2.5">
+          <main className="w-full flex-1 px-3 py-2 sm:px-5 sm:py-3 lg:px-5 lg:py-3">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 8, scale: 0.998 }}
