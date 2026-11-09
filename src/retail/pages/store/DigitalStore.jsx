@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Search, X, MapPin, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Footprints } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { signedImageUrls } from '@/lib/inventory';
-import { fmt } from '../../api';
+import { fmt, API_BASE } from '../../api';
 import { Skeleton } from '../../components/ui';
 import { computeLayout, placeOf } from '../../components/storeLayout';
 import SpinViewer from '../../components/SpinViewer';
@@ -54,8 +54,15 @@ export default function DigitalStore() {
     const left = Number(res.data?.stock_left ?? 0);
     setItems((list) => list.map((i) => (i.id === picked.id ? { ...i, stock_qty: left } : i)));
     setPicked((p) => (p ? { ...p, stock_qty: left } : p));
-    setPlaced({ order_no: res.data?.order_no, total: res.data?.total, qty });
+    setPlaced({ order_no: res.data?.order_no, total: res.data?.total, qty, mail: 'sending' });
     setOrdering(false);
+    // e-mail the customer: product, amount and the payment link
+    try {
+      const sess = await supabase.auth.getSession();
+      const r = await fetch(`${API_BASE || ''}/api/digital-order-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data?.session?.access_token || '') }, body: JSON.stringify({ order_id: res.data?.id }) });
+      const j = await r.json().catch(() => ({}));
+      setPlaced((p) => (p ? { ...p, mail: j.ok ? 'sent' : 'failed', mailTo: form.email.trim(), mailError: j.error } : p));
+    } catch { setPlaced((p) => (p ? { ...p, mail: 'failed', mailTo: form.email.trim() } : p)); }
   };
   const [companyName, setCompanyName] = useState('');
   // the reflective floor and shadows look best but need a decent graphics card: phones and small laptops start on 'fast'
@@ -188,6 +195,9 @@ export default function DigitalStore() {
                   <div className="font-black">Order placed ✓</div>
                   <div>Order no. <b className="font-mono">{placed.order_no}</b> · {placed.qty} × {picked.name}{placed.total != null ? ` · ${fmt(placed.total)}` : ''}</div>
                   <div className="text-xs mt-1">We will contact you on the number you gave to confirm and arrange delivery.</div>
+                  {placed.mail === 'sending' && <div className="text-xs mt-1 text-slate-600">Sending the details to your e-mail…</div>}
+                  {placed.mail === 'sent' && <div className="text-xs mt-1 font-bold">📧 Order details and the payment link were sent to {placed.mailTo}.</div>}
+                  {placed.mail === 'failed' && <div className="text-xs mt-1 text-amber-800">We could not e-mail {placed.mailTo} right now ({placed.mailError || 'try again later'}). Your order is saved; we will contact you.</div>}
                 </div>
               )}
               {!placed && !ordering && picked.stock_qty !== undefined && Number(picked.stock_qty) > 0 && (

@@ -627,7 +627,7 @@ app.use(async (req, _res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/')) return next();
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail') return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -802,6 +802,75 @@ function uid(prefix, list) {
   do { id = prefix + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1296).toString(36).toUpperCase(); } while (list.some(x => x.id === id));
   return id;
 }
+
+/* ---- Digital Store: e-mail the customer their order (product, amount, payment link set in Business Intelligence) ----
+   Needs an outgoing mail account on the server: SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_PASS, SMTP_FROM (and optionally SMTP_BCC). */
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const inr = (n) => '\u20B9' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+app.post('/api/digital-order-mail', async (req, res) => {
+  try {
+    if (!SB.enabled) return res.status(503).json({ ok: false, error: 'The server is not connected to Supabase.' });
+    const h = String(req.headers.authorization || '');
+    const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
+    if (!user) return res.status(401).json({ ok: false, error: 'Please sign in again.' });
+    const { data: o } = await SB.admin.from('digital_store_orders').select('*').eq('id', String((req.body || {}).order_id || '')).maybeSingle();
+    if (!o || o.ordered_by !== user.id) return res.status(404).json({ ok: false, error: 'Order not found.' });
+    if (o.mail_sent_at) return res.json({ ok: true, already: true, to: o.customer_email });
+    const note = async (patch) => { await SB.admin.from('digital_store_orders').update(patch).eq('id', o.id); };
+    const host = process.env.SMTP_HOST, smtpUser = process.env.SMTP_USER, smtpPass = process.env.SMTP_PASS;
+    if (!host || !smtpUser || !smtpPass) {
+      const msg = 'E-mail is not set up on the server (SMTP_HOST, SMTP_USER, SMTP_PASS).';
+      await note({ mail_error: msg });
+      return res.status(503).json({ ok: false, error: msg });
+    }
+    if (!o.customer_email) { await note({ mail_error: 'No e-mail address on the order.' }); return res.status(400).json({ ok: false, error: 'No e-mail address on the order.' }); }
+    const [{ data: store }, { data: co }] = await Promise.all([
+      SB.admin.from('digital_stores').select('name, payment_link, payment_note').eq('company_id', o.company_id).maybeSingle(),
+      SB.admin.from('companies').select('company_name, email, phone').eq('id', o.company_id).maybeSingle(),
+    ]);
+    const company = (co && co.company_name) || (store && store.name) || 'Our store';
+    let link = String((store && store.payment_link) || '').trim();
+    if (link) link = link.replace(/\{amount\}/g, encodeURIComponent(o.total != null ? String(o.total) : '')).replace(/\{order_no\}/g, encodeURIComponent(o.order_no));
+    if (link && !/^https?:\/\//i.test(link)) link = '';   // only web links are put in the e-mail
+    const note2 = store && store.payment_note ? `<p style="margin:14px 0;color:#444">${escHtml(store.payment_note)}</p>` : '';
+    const pay = link
+      ? `<p style="margin:22px 0"><a href="${escHtml(link)}" style="background:#ea580c;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px;display:inline-block">Pay ${o.total != null ? escHtml(inr(o.total)) : ''} now</a></p>`
+      : `<p style="margin:18px 0;color:#444">We will contact you on ${escHtml(o.phone)} with the payment details.</p>`;
+    const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;color:#1f2937">
+      <h2 style="margin:0 0 4px;color:#ea580c">${escHtml(company)}</h2>
+      <p style="margin:0 0 18px;color:#555">Thank you, ${escHtml(o.customer_name)}. We have received your order <b>${escHtml(o.order_no)}</b>.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr style="background:#f3ece3"><th align="left" style="padding:9px">Product</th><th align="right" style="padding:9px">Qty</th><th align="right" style="padding:9px">Price</th><th align="right" style="padding:9px">Amount</th></tr>
+        <tr><td style="padding:9px;border-bottom:1px solid #eee">${escHtml(o.item_name)}${o.sku ? `<br><span style="color:#888;font-size:12px">${escHtml(o.sku)}</span>` : ''}</td>
+            <td align="right" style="padding:9px;border-bottom:1px solid #eee">${escHtml(Number(o.qty))} ${escHtml(o.unit || '')}</td>
+            <td align="right" style="padding:9px;border-bottom:1px solid #eee">${o.unit_price != null ? escHtml(inr(o.unit_price)) : '-'}</td>
+            <td align="right" style="padding:9px;border-bottom:1px solid #eee"><b>${o.total != null ? escHtml(inr(o.total)) : '-'}</b></td></tr>
+        <tr><td colspan="3" align="right" style="padding:10px"><b>Total to pay</b></td><td align="right" style="padding:10px;font-size:16px"><b>${o.total != null ? escHtml(inr(o.total)) : 'To be confirmed'}</b></td></tr>
+      </table>
+      ${note2}${pay}
+      <p style="margin:18px 0 4px;font-size:13px;color:#555"><b>Delivery address</b><br>${escHtml(o.address).replace(/\n/g, '<br>')}</p>
+      <p style="margin:4px 0;font-size:13px;color:#555">Contact: ${escHtml(o.phone)}</p>
+      <p style="margin-top:24px;font-size:12px;color:#888">${escHtml(company)}${co && co.phone ? ' \u00B7 ' + escHtml(co.phone) : ''}${co && co.email ? ' \u00B7 ' + escHtml(co.email) : ''}</p>
+    </div>`;
+    const nodemailer = require('nodemailer');
+    const port = Number(process.env.SMTP_PORT || 587);
+    const tx = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user: smtpUser, pass: smtpPass } });
+    try {
+      await tx.sendMail({
+        from: process.env.SMTP_FROM || `"${company}" <${smtpUser}>`, to: o.customer_email, bcc: process.env.SMTP_BCC || undefined,
+        subject: `Your order ${o.order_no} - ${o.item_name}`, html,
+        text: `Order ${o.order_no}\n${o.item_name} x ${Number(o.qty)} ${o.unit || ''}\nTotal: ${o.total != null ? inr(o.total) : 'to be confirmed'}\n${link ? 'Pay here: ' + link : 'We will contact you with payment details.'}\nDelivery: ${o.address}`,
+      });
+    } catch (e) {
+      await note({ mail_error: String(e.message || e).slice(0, 300) });
+      return res.status(502).json({ ok: false, error: 'The e-mail could not be sent: ' + (e.message || e) });
+    }
+    await note({ mail_sent_at: new Date().toISOString(), mail_error: null });
+    return res.json({ ok: true, to: o.customer_email, paymentLink: !!link });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString(), storage: { enabled: persist.enabled, saved: persist.ok, error: persist.error, at: persist.at } }));
 app.get('/api/config', (_req, res) => res.json({ data: SB.publicConfig() }));

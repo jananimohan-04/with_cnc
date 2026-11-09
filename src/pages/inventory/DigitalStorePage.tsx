@@ -11,10 +11,10 @@ import './digitalStore3d.css';
 // Digital Store setup. The administrator says how many racks, how many rows (shelves) on each rack and how many products fit
 // on a row, then puts a product (name + picture) in each place. The Retail Store shows this as a 3D store people walk through.
 
-interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number }
+interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number; payment_link?: string | null; payment_note?: string | null }
 type Shape = 'box' | 'round' | 'model' | 'spin';
 interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null; stock_qty?: number | null; unit?: string | null }
-interface Order { id: string; order_no: string; item_name: string; sku: string | null; qty: number; unit: string | null; total: number | null; customer_name: string; phone: string; customer_email?: string | null; address: string; notes: string | null; status: string; ordered_by_name: string | null; created_at: string }
+interface Order { id: string; order_no: string; item_name: string; sku: string | null; qty: number; unit: string | null; total: number | null; customer_name: string; phone: string; customer_email?: string | null; mail_sent_at?: string | null; mail_error?: string | null; address: string; notes: string | null; status: string; ordered_by_name: string | null; created_at: string }
 const ORDER_STATUSES = ['New', 'Confirmed', 'Dispatched', 'Delivered', 'Cancelled'];
 type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[]; stock: string; unit: string };
 const SHAPES: { id: Shape; label: string; hint: string }[] = [
@@ -43,7 +43,7 @@ export function DigitalStorePage() {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [size, setSize] = useState({ name: 'Digital Store', racks: 4, rows: 4, slots: 4 });
+  const [size, setSize] = useState({ name: 'Digital Store', racks: 4, rows: 4, slots: 4, payLink: '', payNote: '' });
   const [editSize, setEditSize] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -75,7 +75,7 @@ export function DigitalStorePage() {
     const st = (s.data as Store | null) ?? null;
     setStore(st);
     if (st) {
-      setSize({ name: st.name, racks: st.racks, rows: st.rows_per_rack, slots: st.slots_per_row });
+      setSize({ name: st.name, racks: st.racks, rows: st.rows_per_rack, slots: st.slots_per_row, payLink: st.payment_link ?? '', payNote: st.payment_note ?? '' });
       const it = await supabase.from('digital_store_items').select('*').eq('store_id', st.id).order('rack').order('row_no').order('slot');
       if (it.error) setError(it.error.message);
       const list = (it.data as Item[] | null) ?? [];
@@ -94,7 +94,7 @@ export function DigitalStorePage() {
 
   const saveStore = async () => {
     setBusy(true); setFormError(null);
-    const payload = { name: size.name.trim() || 'Digital Store', racks: clamp(size.racks, 1, 40), rows_per_rack: clamp(size.rows, 1, 8), slots_per_row: clamp(size.slots, 1, 8), updated_at: new Date().toISOString() };
+    const payload = { name: size.name.trim() || 'Digital Store', racks: clamp(size.racks, 1, 40), rows_per_rack: clamp(size.rows, 1, 8), slots_per_row: clamp(size.slots, 1, 8), payment_link: size.payLink.trim() || null, payment_note: size.payNote.trim() || null, updated_at: new Date().toISOString() };
     try {
       if (store) {
         const outside = items.filter(i => i.rack > payload.racks || i.row_no > payload.rows_per_rack || i.slot > payload.slots_per_row);
@@ -215,7 +215,7 @@ export function DigitalStorePage() {
                   </div>
                   <div className="text-sm text-slate-700">
                     <div><b>{o.customer_name}</b> · {o.phone}</div>
-                    {o.customer_email && <div className="text-slate-600">{o.customer_email}</div>}
+                    {o.customer_email && <div className="text-slate-600">{o.customer_email} {o.mail_sent_at ? <span className="text-emerald-700 text-[11px] font-bold">· e-mail sent</span> : <span className="text-amber-700 text-[11px] font-bold">· e-mail not sent{o.mail_error ? ` (${o.mail_error})` : ''}</span>}</div>}
                     <div className="text-slate-600 whitespace-pre-line">{o.address}</div>
                     {o.notes && <div className="text-xs text-slate-500 mt-0.5">Note: {o.notes}</div>}
                     {o.ordered_by_name && <div className="text-[11px] text-slate-400">Placed by {o.ordered_by_name}</div>}
@@ -321,7 +321,8 @@ export function DigitalStorePage() {
   );
 }
 
-function SizeForm({ size, setSize }: { size: { name: string; racks: number; rows: number; slots: number }; setSize: (s: { name: string; racks: number; rows: number; slots: number }) => void }) {
+type SizeState = { name: string; racks: number; rows: number; slots: number; payLink: string; payNote: string };
+function SizeForm({ size, setSize }: { size: SizeState; setSize: (s: SizeState) => void }) {
   const num = (k: 'racks' | 'rows' | 'slots') => (e: React.ChangeEvent<HTMLInputElement>) => setSize({ ...size, [k]: Number(e.target.value) });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -329,6 +330,8 @@ function SizeForm({ size, setSize }: { size: { name: string; racks: number; rows
       <FormField label="Number of racks" hint="1 to 40"><input className={inputClass} type="number" min={1} max={40} value={size.racks} onChange={num('racks')} /></FormField>
       <FormField label="Rows on each rack" hint="1 to 8 shelves"><input className={inputClass} type="number" min={1} max={8} value={size.rows} onChange={num('rows')} /></FormField>
       <FormField label="Products on each row" hint="1 to 8"><input className={inputClass} type="number" min={1} max={8} value={size.slots} onChange={num('slots')} /></FormField>
+      <div className="sm:col-span-2"><FormField label="Payment link (sent to the customer by e-mail)" hint="Your payment page address, starting with https://. You can use {amount} and {order_no}; they are filled in for each order. Leave empty to say 'we will contact you'."><input className={inputClass} placeholder="https://pay.example.com/your-page?amount={amount}&ref={order_no}" value={size.payLink} onChange={e => setSize({ ...size, payLink: e.target.value })} /></FormField></div>
+      <div className="sm:col-span-2"><FormField label="Message in the e-mail (optional)"><input className={inputClass} placeholder="e.g. Pay within 24 hours to confirm your order." value={size.payNote} onChange={e => setSize({ ...size, payNote: e.target.value })} /></FormField></div>
     </div>
   );
 }
