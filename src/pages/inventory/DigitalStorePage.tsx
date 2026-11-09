@@ -14,7 +14,7 @@ import './digitalStore3d.css';
 interface Store { id: string; name: string; racks: number; rows_per_rack: number; slots_per_row: number }
 type Shape = 'box' | 'round' | 'model' | 'spin';
 interface Item { id: string; store_id: string; rack: number; row_no: number; slot: number; name: string; sku: string | null; price: number | null; description: string | null; image_path: string | null; shape?: Shape | null; model_path?: string | null; angle_paths?: string[] | null; stock_qty?: number | null; unit?: string | null }
-interface Order { id: string; order_no: string; item_name: string; sku: string | null; qty: number; unit: string | null; total: number | null; customer_name: string; phone: string; address: string; notes: string | null; status: string; ordered_by_name: string | null; created_at: string }
+interface Order { id: string; order_no: string; item_name: string; sku: string | null; qty: number; unit: string | null; total: number | null; customer_name: string; phone: string; customer_email?: string | null; address: string; notes: string | null; status: string; ordered_by_name: string | null; created_at: string }
 const ORDER_STATUSES = ['New', 'Confirmed', 'Dispatched', 'Delivered', 'Cancelled'];
 type Draft = { id?: string; rack: number; row_no: number; slot: number; name: string; sku: string; price: string; description: string; image_path: string | null; shape: Shape; model_path: string | null; angle_paths: string[]; stock: string; unit: string };
 const SHAPES: { id: Shape; label: string; hint: string }[] = [
@@ -215,6 +215,7 @@ export function DigitalStorePage() {
                   </div>
                   <div className="text-sm text-slate-700">
                     <div><b>{o.customer_name}</b> · {o.phone}</div>
+                    {o.customer_email && <div className="text-slate-600">{o.customer_email}</div>}
                     <div className="text-slate-600 whitespace-pre-line">{o.address}</div>
                     {o.notes && <div className="text-xs text-slate-500 mt-0.5">Note: {o.notes}</div>}
                     {o.ordered_by_name && <div className="text-[11px] text-slate-400">Placed by {o.ordered_by_name}</div>}

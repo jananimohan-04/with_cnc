@@ -102,11 +102,10 @@ export default function Quotes() {
       ...quoteData,
       invoiceNo: q.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`,
       paidAmount: q.invoicePayment?.paidAmount || 0,
-      paymentStatus: q.invoicePayment?.paymentStatus || '',
+      paymentStatus: q.invoicePayment?.paymentStatus || 'Pending (Net 15)',
       date: q.invoiceDate || new Date().toISOString().slice(0, 10),
       dueDate: q.invoiceDueDate || new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
       orderId: q.orderId || q.id,
-      paymentStatus: 'Pending (Net 15)',
       paymentMethod: 'Bank Wire / RTGS'
     };
   };

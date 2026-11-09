@@ -27,13 +27,13 @@ export default function DigitalStore() {
   const { me: user } = useAuth();
   // ordering from the popup
   const [ordering, setOrdering] = useState(false);
-  const [form, setForm] = useState({ qty: '1', name: '', phone: '', address: '', notes: '' });
+  const [form, setForm] = useState({ qty: '1', name: '', phone: '', email: '', address: '', notes: '' });
   const [orderBusy, setOrderBusy] = useState(false);
   const [orderError, setOrderError] = useState('');
   const [placed, setPlaced] = useState(null);
   useEffect(() => {
     setBodyFailed(false); setOrdering(false); setOrderError(''); setPlaced(null);
-    setForm((f) => ({ qty: '1', name: f.name || user?.name || '', phone: f.phone || user?.mobile || '', address: f.address, notes: '' }));
+    setForm((f) => ({ qty: '1', name: f.name || user?.name || '', phone: f.phone || user?.mobile || '', email: f.email || user?.email || '', address: f.address, notes: '' }));
   }, [picked]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const placeOrder = async () => {
@@ -45,9 +45,10 @@ export default function DigitalStore() {
     if (qty > stock) return setOrderError(`Only ${stock} available in stock.`);
     if (!form.name.trim()) return setOrderError('Enter your name.');
     if (form.phone.replace(/\D/g, '').length < 7) return setOrderError('Enter a valid contact number.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return setOrderError('Enter a valid e-mail address.');
     if (form.address.trim().length < 8) return setOrderError('Enter the full delivery address.');
     setOrderBusy(true);
-    const res = await supabase.rpc('erp_place_digital_order', { p_item: picked.id, p_qty: qty, p_name: form.name, p_phone: form.phone, p_address: form.address, p_notes: form.notes });
+    const res = await supabase.rpc('erp_place_digital_order', { p_item: picked.id, p_qty: qty, p_name: form.name, p_phone: form.phone, p_address: form.address, p_notes: form.notes, p_email: form.email.trim() });
     setOrderBusy(false);
     if (res.error) return setOrderError(res.error.message);
     const left = Number(res.data?.stock_left ?? 0);
@@ -205,6 +206,9 @@ export default function DigitalStore() {
                   </div>
                   <label className="block text-[11px] font-bold text-slate-600">Contact number
                     <input className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  </label>
+                  <label className="block text-[11px] font-bold text-slate-600">E-mail address
+                    <input className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                   </label>
                   <label className="block text-[11px] font-bold text-slate-600">Delivery address
                     <textarea className="mt-0.5 w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm min-h-[64px]" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />

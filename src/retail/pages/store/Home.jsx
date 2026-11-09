@@ -1,7 +1,7 @@
 /* Store home — mirrors legacy vHome: hero, category cards, conditional sections. */
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Share2, Check } from 'lucide-react';
+import { Share2, Check, ArrowRight, ShoppingCart, Sparkles } from 'lucide-react';
 import { api, fmt, getCart, setCart } from '../../api';
 import { useAuth } from '../../auth';
 import { Field, Modal, Skeleton, toast } from '../../components/ui';
@@ -75,13 +75,44 @@ export function RfqModal({ p, me, onClose, onDone }) {
 }
 
 export function ProdCard({ p, catName, onAdd, onRfq, selected, onToggleSelect, onShare }) {
-  const action = p.price == null
-    ? <button className="btn btn-dark btn-sm" onClick={() => onRfq(p)}>Request Quote</button>
-    : p.stock <= 0
-      ? <button className="btn btn-ghost btn-sm" onClick={() => onRfq(p)}>Check Availability</button>
-      : <button className="btn btn-primary btn-sm" onClick={() => onAdd(p)}>Add to Cart</button>;
+  const isQuotation = p.price == null;
+  const isOutOfStock = !isQuotation && p.stock <= 0;
+
+  const action = isQuotation
+    ? (
+      <button
+        type="button"
+        className="prod-btn-dark"
+        onClick={(e) => { e.preventDefault(); onRfq(p); }}
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        Request Quote
+      </button>
+    )
+    : isOutOfStock
+      ? (
+        <button
+          type="button"
+          className="prod-btn-ghost"
+          onClick={(e) => { e.preventDefault(); onRfq(p); }}
+        >
+          Check Availability
+        </button>
+      )
+      : (
+        <button
+          type="button"
+          className="prod-btn-primary"
+          onClick={(e) => { e.preventDefault(); onAdd(p); }}
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          Add to Cart
+        </button>
+      );
+
   return (
-    <div className={`prod relative ${selected ? 'ring-2 ring-[#2E1508] bg-[#FAF6F1]' : ''}`}>
+    <div className={`prod ${selected ? 'selected' : ''}`}>
+      {/* Floating Multi-select Checkbox */}
       {onToggleSelect && (
         <button
           type="button"
@@ -90,41 +121,75 @@ export function ProdCard({ p, catName, onAdd, onRfq, selected, onToggleSelect, o
             e.stopPropagation();
             onToggleSelect(p);
           }}
-          className={`absolute top-2.5 left-2.5 z-30 w-7 h-7 rounded-lg flex items-center justify-center transition-all shadow-md border cursor-pointer ${
-            selected
-              ? 'bg-[#2E1508] text-white border-[#2E1508] ring-2 ring-white/90 scale-105'
-              : 'bg-white hover:bg-[#FAF6F1] border-[#8C7A6B] text-transparent hover:border-[#2E1508]'
-          }`}
+          className={`prod-select-box ${selected ? 'on' : ''}`}
           title={selected ? 'Deselect product' : 'Select product to share / export'}
           aria-label={selected ? 'Deselect product' : 'Select product'}
         >
-          <Check className={`w-4 h-4 stroke-[3] transition-opacity ${selected ? 'text-white opacity-100' : 'opacity-0'}`} />
+          <Check className="w-4 h-4 stroke-[3]" />
         </button>
       )}
-      <Link className="prod-img" to={`/store/product/${p.id}`}>
-        <img loading="lazy" src={(p.images || [])[0] || ''} alt={p.name} onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${p.id}/700/525`; }} />
-        {availBadge(p, onToggleSelect ? { left: 44 } : undefined)}<span className="badge cat">{catName(p.category)}</span>
+
+      {/* Floating Stock & Category Badges */}
+      <div className={`prod-badge-stack ${onToggleSelect ? '' : '!left-2.5'}`}>
+        {isQuotation ? (
+          <span className="prod-badge-stock rfq">Quotation</span>
+        ) : isOutOfStock ? (
+          <span className="prod-badge-stock out">Out of stock</span>
+        ) : (
+          <span className="prod-badge-stock in"><i />In stock</span>
+        )}
+      </div>
+      <span className="prod-badge-cat" title={catName(p.category)}>
+        {catName(p.category)}
+      </span>
+
+      {/* Product Image Link */}
+      <Link className="prod-img" to={`/store/product/${p.id}`} title={`View details for ${p.name}`}>
+        <img
+          loading="lazy"
+          src={(p.images || [])[0] || ''}
+          alt={p.name}
+          onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${p.id}/700/525`; }}
+        />
       </Link>
+
+      {/* Card Content */}
       <div className="prod-body">
-        <div className="prod-name">{p.name}</div>
-        <div className="prod-desc">{p.short || ''}</div>
-        <div className="prod-meta">{p.brand || ''}{p.mpn ? ' • MPN ' + p.mpn : ''}{p.uom ? ' • per ' + p.uom : ''}</div>
-        <div className="prod-row">{priceHtml(p)}<span className="hint">{p.warehouse || ''}</span></div>
+        <div className="prod-meta-chip">
+          <span>{p.brand || 'ArgusCNC'}</span>
+          {p.mpn ? <span>MPN {p.mpn}</span> : p.sku ? <span>SKU {p.sku.slice(0, 14)}</span> : null}
+        </div>
+
+        <Link to={`/store/product/${p.id}`} className="prod-name" title={p.name}>
+          {p.name}
+        </Link>
+
+        <div className="prod-desc" title={p.short || ''}>
+          {p.short || ''}
+        </div>
+
+        <div className="prod-row">
+          {priceHtml(p)}
+          <span className="prod-wh-tag">{p.warehouse || 'Central'}</span>
+        </div>
+
         <div className="prod-actions">
-          <Link className="btn btn-ghost btn-sm" to={`/store/product/${p.id}`}>Details</Link>
+          <Link className="prod-btn-details" to={`/store/product/${p.id}`} title="View product specifications and media">
+            Details <ArrowRight className="w-3 h-3" />
+          </Link>
           {onShare && (
             <button
               type="button"
-              className="btn btn-ghost btn-sm text-[#2E1508] hover:bg-[#DECDBE] border border-[#BAA794]/60 font-semibold flex items-center justify-center gap-1 cursor-pointer"
+              className="prod-btn-share"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 onShare(p);
               }}
-              title="Share or Export this product (PDF / WhatsApp / Email)"
+              title="Share / Export (PDF, WhatsApp, Email)"
+              aria-label="Share product"
             >
               <Share2 className="w-3.5 h-3.5" />
-              Share
             </button>
           )}
           {action}
