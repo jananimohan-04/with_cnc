@@ -8,7 +8,7 @@ import {
 import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
-import ShareDoc from '../../components/ShareDoc';
+import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
@@ -103,6 +103,8 @@ export default function Quotes() {
     const quoteData = prepareQuoteData(q);
     return {
       ...quoteData,
+      discountType: q.invDiscountType ?? q.discountType ?? 'percent',
+      discountValue: q.invDiscountValue ?? q.discountValue ?? 0,
       invoiceNo: q.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`,
       paidAmount: q.invoicePayment?.paidAmount || 0,
       paymentStatus: q.invoicePayment?.paymentStatus || 'Pending (Net 15)',
@@ -267,7 +269,16 @@ export default function Quotes() {
                         <Download className="w-3.5 h-3.5" />
                       </button>
 
-                      <ShareDoc q={q} />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-orange-700">Quotation</span>
+                      <DiscountChip q={q} target="quotation" onChanged={() => load()} />
+                      <ShareDoc q={q} kind="quotation" />
+                      {(q.invoiced || q.invoiceNo) && (
+                        <>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 ml-1">Invoice</span>
+                          <DiscountChip q={q} target="invoice" onChanged={() => load()} />
+                          <ShareDoc q={q} kind="invoice" />
+                        </>
+                      )}
                       {(q.invoiced || q.invoiceNo) && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
                       {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (
                         <button

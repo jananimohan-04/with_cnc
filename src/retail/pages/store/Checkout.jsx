@@ -89,29 +89,6 @@ export default function Checkout() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const placeOrder = async () => {
-    setBusy(true);
-    const payload = {
-      customer: name, 
-      contact: name, 
-      companyName: company, 
-      mobile, 
-      address: addr || '—',
-      city, 
-      poRef: po, 
-      items: cart.map((c) => ({ pid: c.pid, qty: c.qty }))
-    };
-    try {
-      const o = await api.post('/api/orders', payload);
-      setCart([]);
-      toast('Order ' + o.id + ' submitted • stock reserved', '🏭');
-      nav('/store/confirmation/' + o.id);
-    } catch (e) {
-      toast(e.message || 'Failed to place order', '⚠️');
-      setBusy(false);
-    }
-  };
-
   const quoteItems = () => cart.map((c) => {
     const p = prodById(c.pid) || { name: c.pid, sku: c.pid, price: 0, uom: 'Pc' };
     return { pid: c.pid, name: p.name, sku: p.sku || c.pid, price: p.price || 0, qty: c.qty, uom: p.uom || 'Pc', hsn: p.hsn || '8466.93.90', brand: p.brand || '' };
@@ -122,20 +99,29 @@ export default function Checkout() {
     items: quoteItems(), discountType: dType, discountValue: Number(dVal) || 0,
   });
 
-  /* Step 1: save the quotation (with the discount) and e-mail it to the customer */
+  /* the quotation is created once per set of details; changing a detail or the discount makes a fresh one */
+  const makeQuote = async () => {
+    const payload = quotePayload();
+    const key = JSON.stringify(payload);
+    if (quote && quote.key === key) return quote.id;
+    const q = await api.post('/api/quotations', payload);
+    setQuote({ id: q.id, key });
+    return q.id;
+  };
+
+  /* generate the quotation and e-mail it to the customer (the invoice follows only after the customer confirms) */
   const sendQuotation = async () => {
     const m = missingDetail();
     if (m) { toast(m, '⚠️'); return; }
     setBusy(true); setMailMsg(null);
     try {
-      const q = await api.post('/api/quotations', quotePayload());
-      setQuote({ id: q.id, discKey: dType + ':' + (Number(dVal) || 0) });
+      const qid = await makeQuote();
       try {
-        await api.post(`/api/quotations/${q.id}/send-mail`, {});
-        setMailMsg({ ok: true, text: `Quotation ${q.id} was e-mailed to ${email.trim()}. When the customer presses "Confirm", the tax invoice and payment link are e-mailed automatically.` });
+        await api.post(`/api/quotations/${qid}/send-mail`, {});
+        setMailMsg({ ok: true, text: `Quotation ${qid} was e-mailed to ${email.trim()}. When the customer presses "Confirm", the tax invoice and payment link are e-mailed automatically.` });
         toast('Quotation e-mailed to ' + email.trim(), '📧');
       } catch (e) {
-        setMailMsg({ ok: false, text: `Quotation ${q.id} was saved, but the e-mail could not be sent: ${e.message || e}` });
+        setMailMsg({ ok: false, text: `Quotation ${qid} was saved, but the e-mail could not be sent: ${e.message || e}` });
       }
     } catch (e) {
       toast(e.message || 'Could not create the quotation', '⚠️');
@@ -143,37 +129,23 @@ export default function Checkout() {
     setBusy(false);
   };
 
-  /* Step 2: confirm -> tax invoice (discount can still be changed here) + e-mail with the payment link */
-  const placeOrderAndGenerateInvoice = async () => {
+  /* share the quotation on WhatsApp (opens WhatsApp with the message and the customer's Confirm link) */
+  const shareQuotationWhatsApp = async () => {
     const m = missingDetail();
-    if (m) { toast(m + ' to generate the Tax Invoice', '⚠️'); setStep(1); return; }
+    if (m) { toast(m, '⚠️'); return; }
     setBusy(true);
     try {
-      let qid = quote && quote.id;
-      if (!qid) { const q = await api.post('/api/quotations', quotePayload()); qid = q.id; }
-      const res = await api.post(`/api/quotations/${qid}/raise-invoice`, { discountType: dType, discountValue: Number(dVal) || 0, sendMail: true });
-      setCart([]);
-      const invoiceData = {
-        invoiceNo: res.invoiceNo,
-        orderId: res.orderId,
-        date: res.invoiceDate || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        dueDate: res.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        poRef: po || '',
-        customer: { name, companyName: company, mobile, email: email.trim(), address: fullAddress(), city, state, pin },
-        items: quoteItems(),
-        notes: notes || '',
-        discountType: dType,
-        discountValue: Number(dVal) || 0,
-      };
-      downloadTaxInvoicePdf(invoiceData);
-      const mailed = res.mail && res.mail.ok;
-      toast(mailed ? `Tax Invoice ${res.invoiceNo} e-mailed to ${email.trim()} with the payment link` : `Tax Invoice ${res.invoiceNo} created` + (res.mail ? ` (e-mail not sent: ${res.mail.error})` : ''), mailed ? '📧' : '🧾');
-      nav('/store/confirmation/' + res.orderId);
+      const qid = await makeQuote();
+      const res = await api.post(`/api/quotations/${qid}/share`, { channel: 'whatsapp', kind: 'quotation' });
+      window.open(res.whatsapp, '_blank', 'noopener');
+      setMailMsg({ ok: true, text: `Quotation ${qid} is ready to send on WhatsApp. The invoice follows after the customer confirms.` });
     } catch (e) {
-      toast(e.message || 'Failed to confirm and generate the invoice', '⚠️');
-      setBusy(false);
+      toast(e.message || 'Could not prepare the WhatsApp message', '⚠️');
     }
+    setBusy(false);
   };
+
+  const finish = () => { setCart([]); nav('/store/quotes'); };
 
   const handleDownloadQuotation = async () => {
     const quoteData = {
@@ -215,8 +187,8 @@ export default function Checkout() {
       {/* Header & Back Link */}
       <div className="flex items-center justify-between gap-4 flex-wrap pb-2 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Checkout — Purchase Order</h1>
-          <p className="text-xs text-slate-500 mt-1">Official B2B procurement requisition with inventory lock</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Checkout — Quotation</h1>
+          <p className="text-xs text-slate-500 mt-1">Generate, e-mail or share the quotation. The invoice comes after the customer confirms.</p>
         </div>
         <Link 
           to="/store/cart" 
@@ -569,50 +541,38 @@ export default function Checkout() {
                 </div>
 
                 <div className="bg-blue-50/60 rounded-xl p-3 border border-blue-100 text-[11px] text-blue-900 leading-relaxed">
-                  <p className="font-bold mb-0.5">🏭 B2B Commercial Requisition</p>
-                  Order status will be set to <b>Pending</b>. Inventory is instantaneously deducted in real-time.
+                  <p className="font-bold mb-0.5">① Quotation first</p>
+                  Send the quotation to the customer. The <b>tax invoice and payment link</b> are sent only after the customer confirms it.
                 </div>
 
-                <button 
-                  type="button" 
-                  disabled={busy} 
-                  onClick={placeOrderAndGenerateInvoice}
+                {mailMsg && (
+                  <div className={`rounded-xl border p-3 text-xs font-semibold ${mailMsg.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                    {mailMsg.ok ? '✅ ' : '⚠️ '}{mailMsg.text}
+                    {mailMsg.ok && <button type="button" onClick={finish} className="block mt-2 font-extrabold underline cursor-pointer">Done — view my quotations →</button>}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={sendQuotation}
                   className="w-full flex items-center justify-center gap-2 py-3 px-5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white font-black text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer"
                 >
-                  {busy ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Sending Tax Invoice…
-                    </>
-                  ) : (
-                    <>
-                      <Receipt className="w-4 h-4 text-emerald-200" /> Confirm & E-mail Tax Invoice + Payment Link
-                    </>
-                  )}
+                  {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Working…</> : <><Send className="w-4 h-4" /> Generate & E-mail Quotation</>}
                 </button>
-
-                <button 
-                  type="button" 
-                  disabled={busy} 
-                  onClick={placeOrder}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs hover:shadow-md cursor-pointer"
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={shareQuotationWhatsApp}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
                 >
-                  {busy ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Submitting Indent…
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" /> Place Standard Indent Order ({fmt(sub)})
-                    </>
-                  )}
+                  Share Quotation on WhatsApp
                 </button>
-
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleDownloadQuotation}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
                 >
-                  <FileText className="w-4 h-4 text-blue-600" /> Download Proforma Quotation (PDF)
+                  <FileText className="w-4 h-4 text-blue-600" /> Download Quotation (PDF)
                 </button>
 
                 <p className="text-[11px] text-slate-400 text-center flex items-center justify-center gap-1">

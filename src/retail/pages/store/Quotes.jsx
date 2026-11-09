@@ -10,7 +10,7 @@ import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
-import ShareDoc from '../../components/ShareDoc';
+import ShareDoc, { DiscountChip } from '../../components/ShareDoc';
 import { asList } from './Home';
 
 export default function Quotes() {
@@ -25,6 +25,7 @@ export default function Quotes() {
   }, []);
 
   if (quotes === null) return <Skeleton h={280} />;
+  const onDisc = (u) => setQuotes((prev) => prev.map((x) => (x.id === u.id ? { ...x, ...u, invoicePayment: x.invoicePayment && u.invoiceTotal != null ? { ...x.invoicePayment, total: u.invoiceTotal, balance: Math.max(0, u.invoiceTotal - (x.invoicePayment.paidAmount || 0)) } : x.invoicePayment } : x)));
   const prodById = (pid) => products.find((p) => p.id === pid) || { name: pid, sku: pid, images: [] };
 
   const prepareQuoteData = (q) => {
@@ -88,6 +89,8 @@ export default function Quotes() {
     const quoteData = prepareQuoteData(q);
     return {
       ...quoteData,
+      discountType: q.invDiscountType ?? q.discountType ?? 'percent',
+      discountValue: q.invDiscountValue ?? q.discountValue ?? 0,
       invoiceNo: q.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`,
       paidAmount: q.invoicePayment?.paidAmount || 0,
       paymentStatus: q.invoicePayment?.paymentStatus || 'Pending (Net 15)',
@@ -256,62 +259,55 @@ export default function Quotes() {
                   </div>
                 )}
 
-                {/* Quotation & Invoice Action Toolbar */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="text-xs text-slate-500">
-                    {isInvoiced ? (
-                      <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Confirmed Order & Tax Invoice Generated
-                      </span>
-                    ) : (
-                      <span>Quotation ready for confirmation & legal invoice raising</span>
-                    )}
+                {/* Quotation and Tax Invoice are TWO separate documents, each with its own discount */}
+                <div className="pt-3 border-t border-slate-100 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-xs font-black uppercase tracking-wider text-orange-700">① Quotation <span className="font-mono normal-case text-slate-500">{q.id}</span></div>
+                      <DiscountChip q={q} target="quotation" onChanged={onDisc} />
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => { downloadQuotationPdf(quoteData); toast('Commercial Quotation PDF opened', '📄'); }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-600" /> Quotation (PDF)
+                      </button>
+                      <ShareDoc q={q} kind="quotation" />
+                    </div>
+                    <div className="text-[11px] text-slate-500">Send this first. When the customer confirms it, the invoice is raised.</div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Always allow downloading official quotation PDF */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        downloadQuotationPdf(quoteData);
-                        toast('Commercial Quotation PDF opened', '📄');
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5 text-blue-600" /> Quotation (PDF)
-                    </button>
-
-                    <ShareDoc q={q} />
-                    {/* If already invoiced, provide Tax Invoice Download */}
+                  <div className={`rounded-xl border p-3 space-y-2 ${isInvoiced ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className={`text-xs font-black uppercase tracking-wider ${isInvoiced ? 'text-emerald-700' : 'text-slate-500'}`}>② Tax Invoice {isInvoiced && <span className="font-mono normal-case text-slate-500">{q.invoiceNo}</span>}</div>
+                      {isInvoiced && <DiscountChip q={q} target="invoice" onChanged={onDisc} />}
+                    </div>
                     {isInvoiced ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          downloadTaxInvoicePdf(prepareInvoiceData(q));
-                          toast('GST Tax Invoice PDF opened', '🧾');
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
-                      >
-                        <Receipt className="w-3.5 h-3.5" /> Tax Invoice (PDF)
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => { downloadTaxInvoicePdf(prepareInvoiceData(q)); toast('GST Tax Invoice PDF opened', '🧾'); }}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-all shadow-2xs cursor-pointer"
+                        >
+                          <Receipt className="w-3.5 h-3.5" /> Tax Invoice (PDF)
+                        </button>
+                        <ShareDoc q={q} kind="invoice" />
+                        {q.invoicePayment && <span className="text-xs font-bold text-slate-700">Payable: <span className="font-mono text-emerald-700">{fmt(q.invoicePayment.total)}</span></span>}
+                      </div>
                     ) : (
-                      /* If not yet invoiced, allow Confirm & Raise Tax Invoice */
-                      <button
-                        type="button"
-                        disabled={raisingId === q.id}
-                        onClick={() => handleRaiseInvoice(q)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all shadow-xs hover:shadow-md cursor-pointer"
-                      >
-                        {raisingId === q.id ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Raising Invoice…
-                          </>
-                        ) : (
-                          <>
-                            <Receipt className="w-3.5 h-3.5" /> Confirm & Raise Invoice
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={raisingId === q.id}
+                          onClick={() => handleRaiseInvoice(q)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all shadow-xs hover:shadow-md cursor-pointer"
+                        >
+                          {raisingId === q.id ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> Raising Invoice…</>) : (<><Receipt className="w-3.5 h-3.5" /> Customer confirmed → Raise Invoice</>)}
+                        </button>
+                        <span className="text-[11px] text-slate-500">Raised automatically when the customer presses Confirm in the quotation.</span>
+                      </div>
                     )}
                   </div>
                 </div>

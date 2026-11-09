@@ -141,9 +141,9 @@ export function discountAmountOf(subtotal, type, value) {
   return Math.round(a * 100) / 100;
 }
 /* asks the user for an optional discount: "10%" (percent) or "500" (rupees); empty = none; returns undefined when cancelled */
-export function askInvoiceDiscount(q) {
+export function askInvoiceDiscount(q, label = 'invoice') {
   const cur = Number(q && q.discountValue) > 0 ? (q.discountType === 'amount' ? String(q.discountValue) : q.discountValue + '%') : '';
-  const a = window.prompt('Discount on this invoice (optional)\nType 10% for a percentage, or 500 for a rupee amount. Leave empty for no discount.', cur);
+  const a = window.prompt('Discount on this ' + label + ' (optional)\nType 10% for a percentage, or 500 for a rupee amount. Leave empty for no discount.', cur);
   if (a === null) return undefined;
   const t = a.trim();
   const v = parseFloat(t.replace(/[^\d.]/g, ''));

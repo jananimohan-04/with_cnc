@@ -994,14 +994,15 @@ app.post('/api/digital-order-mail', async (req, res) => {
       : `<p style="margin:18px 0;color:#444">We will contact you on ${escHtml(o.phone)} with the payment details.</p>`;
     const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;color:#1f2937">
       <h2 style="margin:0 0 4px;color:#ea580c">${escHtml(company)}</h2>
-      <p style="margin:0 0 18px;color:#555">Thank you, ${escHtml(o.customer_name)}. We have received your order <b>${escHtml(o.order_no)}</b>.</p>
+      <p style="margin:0 0 4px;color:#555">Thank you, ${escHtml(o.customer_name)}. Your order is confirmed.</p>
+      <p style="margin:0 0 18px;color:#555"><b style="color:#ea580c">INVOICE</b> &nbsp;No. <b>${escHtml(o.order_no)}</b> &nbsp;&middot;&nbsp; ${escHtml(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }))}</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
         <tr style="background:#f3ece3"><th align="left" style="padding:9px">Product</th><th align="right" style="padding:9px">Qty</th><th align="right" style="padding:9px">Price</th><th align="right" style="padding:9px">Amount</th></tr>
         <tr><td style="padding:9px;border-bottom:1px solid #eee">${escHtml(o.item_name)}${o.sku ? `<br><span style="color:#888;font-size:12px">${escHtml(o.sku)}</span>` : ''}</td>
             <td align="right" style="padding:9px;border-bottom:1px solid #eee">${escHtml(Number(o.qty))} ${escHtml(o.unit || '')}</td>
             <td align="right" style="padding:9px;border-bottom:1px solid #eee">${o.unit_price != null ? escHtml(inr(o.unit_price)) : '-'}</td>
             <td align="right" style="padding:9px;border-bottom:1px solid #eee"><b>${o.total != null ? escHtml(inr(o.total)) : '-'}</b></td></tr>
-        <tr><td colspan="3" align="right" style="padding:10px"><b>Total to pay</b></td><td align="right" style="padding:10px;font-size:16px"><b>${o.total != null ? escHtml(inr(o.total)) : 'To be confirmed'}</b></td></tr>
+        <tr><td colspan="3" align="right" style="padding:10px"><b>Invoice total</b></td><td align="right" style="padding:10px;font-size:16px"><b>${o.total != null ? escHtml(inr(o.total)) : 'To be confirmed'}</b></td></tr>
       </table>
       ${note2}${pay}
       <p style="margin:18px 0 4px;font-size:13px;color:#555"><b>Delivery address</b><br>${escHtml(o.address).replace(/\n/g, '<br>')}</p>
@@ -1012,8 +1013,8 @@ app.post('/api/digital-order-mail', async (req, res) => {
     try {
       await tx.sendMail({
         from: `"${mailCfg.fromName || company}" <${mailCfg.user}>`, to: o.customer_email, bcc: mailCfg.bcc || undefined,
-        subject: `Your order ${o.order_no} - ${o.item_name}`, html,
-        text: `Order ${o.order_no}\n${o.item_name} x ${Number(o.qty)} ${o.unit || ''}\nTotal: ${o.total != null ? inr(o.total) : 'to be confirmed'}\n${link ? 'Pay here: ' + link : 'We will contact you with payment details.'}\nDelivery: ${o.address}`,
+        subject: `Invoice ${o.order_no} - ${o.item_name}`, html,
+        text: `Invoice ${o.order_no}\n${o.item_name} x ${Number(o.qty)} ${o.unit || ''}\nTotal: ${o.total != null ? inr(o.total) : 'to be confirmed'}\n${link ? 'Pay here: ' + link : 'We will contact you with payment details.'}\nDelivery: ${o.address}`,
       });
     } catch (e) {
       await note({ mail_error: mailProblem(e) });
@@ -1042,6 +1043,7 @@ function totalsOf(items, type, value) {
   const gst = r2(taxable * 0.18);
   return { subtotal, discount: d, taxable, gst, total: r2(taxable + gst) };
 }
+const invDiscOf = (q) => (q.invDiscountType !== undefined ? { type: q.invDiscountType, value: q.invDiscountValue } : { type: q.discountType, value: q.discountValue });
 const quoteSign = (id) => require('crypto').createHmac('sha256', MAIL_KEY).update('quote-confirm:' + id).digest('hex').slice(0, 32);
 const publicBase = (req) => (process.env.PUBLIC_BASE_URL || ERP_API_BASE_URL || (req ? `${req.protocol}://${req.get('host')}` : '')).replace(/\/+$/, '');
 
@@ -1105,7 +1107,8 @@ async function sendDocMail({ kind, doc, req }) {
   const cfg = co ? await loadMailCfg(co.id) : null;
   if (!cfg) return { ok: false, error: 'This company has not linked its e-mail account yet (Business Intelligence > Digital Store > E-mail setup).' };
   const items = Array.isArray(doc.items) ? doc.items : [];
-  const t = totalsOf(items, doc.discountType, doc.discountValue);
+  const dsc = kind === 'invoice' ? invDiscOf(doc) : { type: doc.discountType, value: doc.discountValue };
+  const t = totalsOf(items, dsc.type, dsc.value);
   const docNo = kind === 'invoice' ? doc.invoiceNo : doc.id;
   let link = '', note = '';
   if (kind === 'invoice') ({ link, note } = await getPayLink({ biCompanyId: co.id, amount: t.total, ref: docNo, name: doc.contact || doc.customer, email: to, phone: doc.mobile, desc: `Invoice ${docNo}`, req }));
@@ -1131,6 +1134,31 @@ app.post('/api/quotations/:id/send-mail', scopeCompany, async (req, res) => {
   if (!out.ok) return res.status(502).json({ error: out.error });
   ok(res, { sent: true, to: out.to });
 });
+/* change the discount of the quotation, or (separately) of its invoice, before any payment is recorded */
+app.patch('/api/quotations/:id/discount', scopeCompany, (req, res) => {
+  const q = db.quotations.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Quotation not found' });
+  if (req.ctx.role !== 'super_admin' && q.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
+  const b = req.body || {};
+  const items = Array.isArray(q.items) ? q.items : [];
+  const sub = totalsOf(items, 'none', 0).subtotal;
+  const d = discountOf(sub, b.type, b.value);
+  if (b.target === 'invoice') {
+    if (!q.invoiceNo) return res.status(400).json({ error: 'There is no invoice yet.' });
+    if (Array.isArray(q.payments) && q.payments.length) return res.status(400).json({ error: 'A payment is already recorded on this invoice.' });
+    q.invDiscountType = d.type; q.invDiscountValue = d.value; q.invDiscountAmount = d.amount;
+    const tot = totalsOf(items, d.type, d.value); q.invoiceTotal = tot.total;
+    const o = q.orderId ? db.orders.find(x => x.id === q.orderId) : null;
+    if (o) { o.discountType = d.type; o.discountValue = d.value; o.discountAmount = d.amount; o.total = tot.total; }
+  } else {
+    if (q.invoiceNo) return res.status(400).json({ error: 'The invoice is already raised; change the discount on the invoice instead.' });
+    q.discountType = d.type; q.discountValue = d.value; q.discountAmount = d.amount;
+    q.total = totalsOf(items, d.type, d.value).total;
+  }
+  save();
+  audit(req, 'quote.discount', 'quotation', q.id, q.companyId, `${b.target === 'invoice' ? 'Invoice' : 'Quotation'} discount set to ${d.amount}`);
+  ok(res, q);
+});
 /* Share a quotation (with its Confirm link) or an invoice (with its payment link) by WhatsApp or e-mail */
 app.post(['/api/quotations/:id/share', '/api/invoices/:id/share'], scopeCompany, async (req, res) => {
   const paramId = req.params.id;
@@ -1151,7 +1179,8 @@ app.post(['/api/quotations/:id/share', '/api/invoices/:id/share'], scopeCompany,
   if (!q) return res.status(404).json({ error: 'Quotation or invoice not found' });
   if (req.ctx.role !== 'super_admin' && q.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
   const b = req.body || {};
-  const kind = q.invoiceNo ? 'invoice' : 'quotation';
+  const kind = b.kind ? (b.kind === 'invoice' ? 'invoice' : 'quotation') : (q.invoiceNo ? 'invoice' : 'quotation');
+  if (kind === 'invoice' && !q.invoiceNo) return res.status(400).json({ error: 'The invoice is raised only after the customer confirms the quotation.' });
   if (b.email) {
     q.email = String(b.email).trim();
     if (order) { order.email = q.email; save(); }
@@ -1159,11 +1188,13 @@ app.post(['/api/quotations/:id/share', '/api/invoices/:id/share'], scopeCompany,
   if (b.channel === 'mail') {
     const out = await sendDocMail({ kind, doc: q, req });
     if (!out.ok) return res.status(502).json({ error: out.error });
+    if (kind === 'invoice' && q.id) q.invoiceMailedAt = new Date().toISOString();
     return ok(res, { sent: true, to: out.to, kind });
   }
   const co = await biCompanyOf(q.companyId);
   const items = Array.isArray(q.items) ? q.items : [];
-  const t = totalsOf(items, q.discountType, q.discountValue);
+  const dsc2 = kind === 'invoice' ? invDiscOf(q) : { type: q.discountType, value: q.discountValue };
+  const t = totalsOf(items, dsc2.type, dsc2.value);
   let link = '', err = '';
   if (kind === 'invoice') {
     const pay = co ? await getPayLink({ biCompanyId: co.id, amount: t.total, ref: q.invoiceNo, name: q.contact || q.customer, email: q.email, phone: q.mobile, desc: `Invoice ${q.invoiceNo}`, req }) : { link: '', error: '' };
@@ -1195,7 +1226,7 @@ app.get('/api/quote-confirm/:id', async (req, res) => {
     const done = raiseQuotationInvoice(q, { name: q.contact || 'Customer', role: 'customer' }, null);
     save();
     if (!q.invoiceMailedAt) {
-      const out = await sendDocMail({ kind: 'invoice', doc: { ...q, id: q.id, invoiceNo: done.invoiceNo, items: done.items, discountType: q.discountType, discountValue: q.discountValue, email: q.email }, req });
+      const out = await sendDocMail({ kind: 'invoice', doc: { ...q, id: q.id, invoiceNo: done.invoiceNo, items: done.items, email: q.email }, req });
       if (out.ok) { q.invoiceMailedAt = new Date().toISOString(); q.mailError = ''; } else { q.mailError = out.error; }
       save();
     }
@@ -2540,9 +2571,11 @@ app.patch('/api/quotations/:id', scopeCompany, (req, res) => {
 
 /* Convert confirmed quotation into a Tax Invoice & Order */
 function raiseQuotationInvoice(q, actor, discountOverride) {
-  if (discountOverride) {   // a discount can also be added or changed when the quotation becomes an invoice
+  if (discountOverride) {   // the invoice has its OWN discount (can differ from the quotation's)
     const d = discountOf(totalsOf(q.items || [], 'none', 0).subtotal, discountOverride.type, discountOverride.value);
-    q.discountType = d.type; q.discountValue = d.value; q.discountAmount = d.amount;
+    q.invDiscountType = d.type; q.invDiscountValue = d.value; q.invDiscountAmount = d.amount;
+  } else if (q.invDiscountType === undefined) {   // first time: start from the quotation's discount
+    q.invDiscountType = q.discountType || 'none'; q.invDiscountValue = q.discountValue || 0; q.invDiscountAmount = q.discountAmount || 0;
   }
   const year = new Date().getFullYear();
   const nextNum = Math.floor(1000 + Math.random() * 9000);
@@ -2583,9 +2616,9 @@ function raiseQuotationInvoice(q, actor, discountOverride) {
     }
   }
 
-  const tot = totalsOf(orderItems, q.discountType, q.discountValue);
+  const tot = totalsOf(orderItems, q.invDiscountType, q.invDiscountValue);
   const grandTotal = tot.total;
-  q.total = grandTotal; q.discountAmount = tot.discount.amount;
+  q.invoiceTotal = grandTotal; q.invDiscountAmount = tot.discount.amount;
 
   let orderId = q.orderId;
   if (!orderId) {
@@ -2604,7 +2637,7 @@ function raiseQuotationInvoice(q, actor, discountOverride) {
       address: q.address || '—',
       poRef: q.poRef || '',
       email: q.email || '',
-      discountType: q.discountType, discountValue: q.discountValue, discountAmount: q.discountAmount,
+      discountType: q.invDiscountType, discountValue: q.invDiscountValue, discountAmount: q.invDiscountAmount,
       total: grandTotal,
       status: 'Confirmed',
       invoiceNo,
@@ -2618,7 +2651,7 @@ function raiseQuotationInvoice(q, actor, discountOverride) {
   } else {
     const existingOrder = db.orders.find(o => o.id === orderId);
     if (existingOrder) {
-      existingOrder.discountType = q.discountType; existingOrder.discountValue = q.discountValue; existingOrder.discountAmount = q.discountAmount; existingOrder.total = grandTotal;
+      existingOrder.discountType = q.invDiscountType; existingOrder.discountValue = q.invDiscountValue; existingOrder.discountAmount = q.invDiscountAmount; existingOrder.total = grandTotal;
       existingOrder.invoiceNo = invoiceNo;
       existingOrder.status = 'Confirmed';
       existingOrder.history.push(['Confirmed', new Date().toLocaleString()]);
@@ -2657,7 +2690,7 @@ app.post('/api/quotations/:id/raise-invoice', scopeCompany, async (req, res) => 
     dueDate,
     orderId,
     total: grandTotal,
-    discountAmount: q.discountAmount || 0,
+    discountAmount: q.invDiscountAmount || 0,
     mail,
     items: orderItems
   });

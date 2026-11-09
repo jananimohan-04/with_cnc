@@ -194,15 +194,15 @@ export default function DigitalStore() {
               <div className="mt-3 text-xs text-slate-500">Found at Rack {picked.rack} · Row {picked.row_no} · Place {picked.slot}</div>
               {placed && (
                 <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
-                  <div className="font-black">Order placed ✓</div>
+                  <div className="font-black">Order confirmed ✓</div>
                   <div>Order no. <b className="font-mono">{placed.order_no}</b> · {placed.qty} × {picked.name}{placed.total != null ? ` · ${fmt(placed.total)}` : ''}</div>
                   <div className="text-xs mt-1">We will contact you on the number you gave to confirm and arrange delivery.</div>
                   {placed.payUrl && (
                     <a href={placed.payUrl} className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm no-underline">Pay {placed.total != null ? fmt(placed.total) : ''} now →</a>
                   )}
                   {placed.payUrl && <div className="text-[11px] mt-1 text-slate-600">Taking you to the secure payment page…</div>}
-                  {placed.mail === 'sending' && <div className="text-xs mt-1 text-slate-600">Sending the details to your e-mail…</div>}
-                  {placed.mail === 'sent' && <div className="text-xs mt-1 font-bold">📧 Order details and the payment link were sent to {placed.mailTo}.</div>}
+                  {placed.mail === 'sending' && <div className="text-xs mt-1 text-slate-600">Sending your invoice to your e-mail…</div>}
+                  {placed.mail === 'sent' && <div className="text-xs mt-1 font-bold">📧 Your invoice and the payment link were e-mailed to {placed.mailTo}.</div>}
                   {placed.mail === 'failed' && <div className="text-xs mt-1 text-amber-800">We could not e-mail {placed.mailTo} right now ({placed.mailError || 'try again later'}). Your order is saved; we will contact you.</div>}
                 </div>
               )}
