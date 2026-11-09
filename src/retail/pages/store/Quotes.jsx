@@ -10,6 +10,7 @@ import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
+import ShareDoc from '../../components/ShareDoc';
 import { asList } from './Home';
 
 export default function Quotes() {
@@ -280,6 +281,7 @@ export default function Quotes() {
                       <Download className="w-3.5 h-3.5 text-blue-600" /> Quotation (PDF)
                     </button>
 
+                    <ShareDoc q={q} />
                     {/* If already invoiced, provide Tax Invoice Download */}
                     {isInvoiced ? (
                       <button

@@ -8,6 +8,7 @@ import {
 import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
+import ShareDoc from '../../components/ShareDoc';
 import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
@@ -266,6 +267,7 @@ export default function Quotes() {
                         <Download className="w-3.5 h-3.5" />
                       </button>
 
+                      <ShareDoc q={q} />
                       {(q.invoiced || q.invoiceNo) && q.invoicePayment && <PaymentBadge status={q.invoicePayment.paymentStatus} balance={q.invoicePayment.balance} />}
                       {q.invoiced || q.invoiceNo || q.status === 'Accepted' ? (
                         <button

@@ -627,7 +627,7 @@ app.use(async (req, _res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/quote-confirm/')) return next();   // the mail route checks the sign-in token itself
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/quote-confirm/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -893,6 +893,76 @@ app.post('/api/digital-mail/remove', async (req, res) => {
 
 const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const inr = (n) => '\u20B9' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+/* ---- each company links its OWN Razorpay account; payment links are created with it ---- */
+async function loadPayCfg(biCompanyId) {
+  try {
+    const { data } = await SB.admin.from('digital_store_payment').select('*').eq('company_id', biCompanyId).maybeSingle();
+    if (data && data.key_secret_enc) return { keyId: data.key_id, secret: mailDec(data.key_secret_enc) };
+  } catch { /* not linked */ }
+  return null;
+}
+const rzpAuth = (c) => 'Basic ' + Buffer.from(c.keyId + ':' + c.secret).toString('base64');
+function rzpProblem(j, status) {
+  const d = j && j.error && (j.error.description || j.error.reason);
+  if (status === 401) return 'Razorpay did not accept these keys. Check the Key ID and Key Secret (and that they are from the same mode, Test or Live).';
+  return d ? 'Razorpay: ' + String(d).slice(0, 200) : 'Razorpay could not be reached (' + status + ').';
+}
+async function rzpCall(cfg, method, path, body) {
+  const resp = await fetch('https://api.razorpay.com/v1' + path, { method, headers: { Authorization: rzpAuth(cfg), 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const j = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, j };
+}
+/* a payment link for an amount: the company's Razorpay if linked, otherwise its fixed link from Digital Store setup */
+async function getPayLink({ biCompanyId, amount, ref, name, email, phone, desc, req }) {
+  const amt = r2(amount);
+  const manual = await payLinkFor(biCompanyId, amt, ref);
+  const cfg = await loadPayCfg(biCompanyId);
+  if (!cfg || !(amt >= 1)) return { link: manual.link, note: manual.note, source: manual.link ? 'manual' : '', error: cfg ? '' : '' };
+  const digits = String(phone || '').replace(/\D/g, '');
+  const contact = digits.length === 10 ? '+91' + digits : (digits.length > 10 && digits.length <= 15 ? '+' + digits : '');
+  const base = publicBase(req);
+  const body = { amount: Math.round(amt * 100), currency: 'INR', accept_partial: false, reference_id: (String(ref).replace(/[^\w-]/g, '').slice(0, 28) + '-' + Date.now().toString(36)).slice(0, 40),
+    description: String(desc || ('Payment ' + ref)).slice(0, 200), customer: { name: String(name || '').slice(0, 60) || undefined, email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email || '')) ? String(email) : undefined, contact: contact || undefined },
+    notify: { sms: false, email: false }, reminder_enable: false };
+  if (/^https:\/\//.test(base)) { body.callback_url = base; body.callback_method = 'get'; }
+  try {
+    const out = await rzpCall(cfg, 'POST', '/payment_links', body);
+    if (out.ok && out.j.short_url) return { link: out.j.short_url, note: manual.note, source: 'razorpay', error: '' };
+    return { link: manual.link, note: manual.note, source: manual.link ? 'manual' : '', error: rzpProblem(out.j, out.status) };
+  } catch (e) { return { link: manual.link, note: manual.note, source: manual.link ? 'manual' : '', error: 'Razorpay could not be reached.' }; }
+}
+app.post('/api/digital-pay/status', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    const { data } = await SB.admin.from('digital_store_payment').select('provider, key_id, verified_at').eq('company_id', a.companyId).maybeSingle();
+    res.json({ ok: true, configured: !!data, payment: data || null });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+app.post('/api/digital-pay/save', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    const b = req.body || {};
+    const keyId = String(b.key_id || '').trim();
+    let secret = String(b.key_secret || '').trim();
+    if (!/^rzp_(test|live)_\w+$/.test(keyId)) return res.status(400).json({ ok: false, error: 'The Key ID looks like rzp_live_xxxxxxxx or rzp_test_xxxxxxxx. Copy it from Razorpay → Settings → API Keys.' });
+    if (!secret) { const old = await loadPayCfg(a.companyId); if (old && old.keyId === keyId) secret = old.secret; }
+    if (!secret) return res.status(400).json({ ok: false, error: 'Enter the Key Secret.' });
+    let out;
+    try { out = await rzpCall({ keyId, secret }, 'GET', '/payment_links?count=1'); } catch { return res.status(502).json({ ok: false, error: 'Razorpay could not be reached. Try again in a moment.' }); }
+    if (!out.ok) return res.status(400).json({ ok: false, error: rzpProblem(out.j, out.status) });
+    const { error } = await SB.admin.from('digital_store_payment').upsert({ company_id: a.companyId, provider: 'razorpay', key_id: keyId, key_secret_enc: mailEnc(secret), verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
+    if (error) return res.status(500).json({ ok: false, error: /digital_store_payment/.test(error.message) ? 'Run the migration 20261110040000_digital_store_payment_gateway.sql in Supabase first.' : error.message });
+    res.json({ ok: true, mode: keyId.startsWith('rzp_live_') ? 'live' : 'test' });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+app.post('/api/digital-pay/remove', async (req, res) => {
+  try {
+    const a = await mailAdminFor(req, res); if (!a) return;
+    await SB.admin.from('digital_store_payment').delete().eq('company_id', a.companyId);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+
 app.post('/api/digital-order-mail', async (req, res) => {
   try {
     if (!SB.enabled) return res.status(503).json({ ok: false, error: 'The server is not connected to Supabase.' });
@@ -901,23 +971,23 @@ app.post('/api/digital-order-mail', async (req, res) => {
     if (!user) return res.status(401).json({ ok: false, error: 'Please sign in again.' });
     const { data: o } = await SB.admin.from('digital_store_orders').select('*').eq('id', String((req.body || {}).order_id || '')).maybeSingle();
     if (!o || o.ordered_by !== user.id) return res.status(404).json({ ok: false, error: 'Order not found.' });
-    if (o.mail_sent_at) return res.json({ ok: true, already: true, to: o.customer_email });
+    const payRes = await getPayLink({ biCompanyId: o.company_id, amount: o.total, ref: o.order_no, name: o.customer_name, email: o.customer_email, phone: o.phone, desc: `${o.item_name} x ${Number(o.qty)} (${o.order_no})`, req });
+    const payUrl = payRes.link || '';
+    if (o.mail_sent_at) return res.json({ ok: true, already: true, to: o.customer_email, payUrl });
     const note = async (patch) => { await SB.admin.from('digital_store_orders').update(patch).eq('id', o.id); };
     const mailCfg = await loadMailCfg(o.company_id);
     if (!mailCfg) {
       const msg = 'This company has not linked its e-mail account yet (Business Intelligence > Digital Store > E-mail setup).';
       await note({ mail_error: msg });
-      return res.status(503).json({ ok: false, error: msg });
+      return res.status(503).json({ ok: false, error: msg, payUrl });
     }
-    if (!o.customer_email) { await note({ mail_error: 'No e-mail address on the order.' }); return res.status(400).json({ ok: false, error: 'No e-mail address on the order.' }); }
+    if (!o.customer_email) { await note({ mail_error: 'No e-mail address on the order.' }); return res.status(400).json({ ok: false, error: 'No e-mail address on the order.', payUrl }); }
     const [{ data: store }, { data: co }] = await Promise.all([
       SB.admin.from('digital_stores').select('name, payment_link, payment_note').eq('company_id', o.company_id).maybeSingle(),
       SB.admin.from('companies').select('company_name, email, phone').eq('id', o.company_id).maybeSingle(),
     ]);
     const company = (co && co.company_name) || (store && store.name) || 'Our store';
-    let link = String((store && store.payment_link) || '').trim();
-    if (link) link = link.replace(/\{amount\}/g, encodeURIComponent(o.total != null ? String(o.total) : '')).replace(/\{order_no\}/g, encodeURIComponent(o.order_no));
-    if (link && !/^https?:\/\//i.test(link)) link = '';   // only web links are put in the e-mail
+    const link = payUrl;
     const note2 = store && store.payment_note ? `<p style="margin:14px 0;color:#444">${escHtml(store.payment_note)}</p>` : '';
     const pay = link
       ? `<p style="margin:22px 0"><a href="${escHtml(link)}" style="background:#ea580c;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px;display:inline-block">Pay ${o.total != null ? escHtml(inr(o.total)) : ''} now</a></p>`
@@ -947,10 +1017,10 @@ app.post('/api/digital-order-mail', async (req, res) => {
       });
     } catch (e) {
       await note({ mail_error: mailProblem(e) });
-      return res.status(502).json({ ok: false, error: 'The e-mail could not be sent: ' + mailProblem(e) });
+      return res.status(502).json({ ok: false, error: 'The e-mail could not be sent: ' + mailProblem(e), payUrl });
     }
     await note({ mail_sent_at: new Date().toISOString(), mail_error: null });
-    return res.json({ ok: true, to: o.customer_email, paymentLink: !!link });
+    return res.json({ ok: true, to: o.customer_email, paymentLink: !!link, payUrl });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
@@ -1038,7 +1108,7 @@ async function sendDocMail({ kind, doc, req }) {
   const t = totalsOf(items, doc.discountType, doc.discountValue);
   const docNo = kind === 'invoice' ? doc.invoiceNo : doc.id;
   let link = '', note = '';
-  if (kind === 'invoice') ({ link, note } = await payLinkFor(co.id, t.total, docNo));
+  if (kind === 'invoice') ({ link, note } = await getPayLink({ biCompanyId: co.id, amount: t.total, ref: docNo, name: doc.contact || doc.customer, email: to, phone: doc.mobile, desc: `Invoice ${docNo}`, req }));
   const confirmUrl = kind === 'quotation' ? `${publicBase(req)}/api/quote-confirm/${encodeURIComponent(doc.id)}?t=${quoteSign(doc.id)}` : '';
   const customer = doc.contact || doc.customer || doc.companyName || 'Customer';
   const html = docMailHtml({ kind, companyName: co.company_name || 'Our company', customer, docNo, items, t, link, note, confirmUrl, contact: co });
@@ -1060,6 +1130,40 @@ app.post('/api/quotations/:id/send-mail', scopeCompany, async (req, res) => {
   q.mailSentAt = out.ok ? new Date().toISOString() : q.mailSentAt; q.mailError = out.ok ? '' : out.error; save();
   if (!out.ok) return res.status(502).json({ error: out.error });
   ok(res, { sent: true, to: out.to });
+});
+/* Share a quotation (with its Confirm link) or an invoice (with its payment link) by WhatsApp or e-mail */
+app.post('/api/quotations/:id/share', scopeCompany, async (req, res) => {
+  const q = db.quotations.find(x => x.id === req.params.id);
+  if (!q) return res.status(404).json({ error: 'Quotation not found' });
+  if (req.ctx.role !== 'super_admin' && q.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
+  const b = req.body || {};
+  const kind = q.invoiceNo ? 'invoice' : 'quotation';
+  if (b.email) q.email = String(b.email).trim();
+  if (b.channel === 'mail') {
+    const out = await sendDocMail({ kind, doc: q, req });
+    if (!out.ok) return res.status(502).json({ error: out.error });
+    return ok(res, { sent: true, to: out.to, kind });
+  }
+  const co = await biCompanyOf(q.companyId);
+  const items = Array.isArray(q.items) ? q.items : [];
+  const t = totalsOf(items, q.discountType, q.discountValue);
+  let link = '', err = '';
+  if (kind === 'invoice') {
+    const pay = co ? await getPayLink({ biCompanyId: co.id, amount: t.total, ref: q.invoiceNo, name: q.contact || q.customer, email: q.email, phone: q.mobile, desc: `Invoice ${q.invoiceNo}`, req }) : { link: '', error: '' };
+    link = pay.link; err = pay.error;
+  } else {
+    link = `${publicBase(req)}/api/quote-confirm/${encodeURIComponent(q.id)}?t=${quoteSign(q.id)}`;
+  }
+  const who = q.contact || q.customer || 'Customer';
+  const coName = (co && co.company_name) || 'Our company';
+  const lines = [`Hello ${who},`, '',
+    kind === 'invoice' ? `Your tax invoice *${q.invoiceNo}* from ${coName} is ready.` : `Your quotation *${q.id}* from ${coName}.`,
+    ...(t.discount.amount > 0 ? [`Special discount: -${inr(t.discount.amount)}${t.discount.type === 'percent' ? ` (${t.discount.value}% off)` : ''}`] : []),
+    `${kind === 'invoice' ? 'Amount payable' : 'Total'} (incl. GST): *${inr(t.total)}*`, '',
+    link ? (kind === 'invoice' ? `Pay securely here: ${link}` : `Confirm the quotation here (your invoice and payment link follow): ${link}`) : 'We will share the payment details shortly.'];
+  const phone = String(b.phone || q.mobile || '').replace(/\D/g, '');
+  const wa = `https://wa.me/${phone.length === 10 ? '91' + phone : phone}?text=${encodeURIComponent(lines.join('\n'))}`;
+  ok(res, { kind, link, whatsapp: wa, warning: err || undefined });
 });
 /* the customer presses "Confirm" in the quotation e-mail: raise the invoice and e-mail it with the payment link */
 app.get('/api/quote-confirm/:id', async (req, res) => {

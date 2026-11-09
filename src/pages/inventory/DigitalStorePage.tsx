@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import './digitalStore3d.css';
 import { DigitalStoreMailSetup } from './DigitalStoreMailSetup';
+import { DigitalStorePayment } from './DigitalStorePayment';
 
 // Digital Store setup. The administrator says how many racks, how many rows (shelves) on each rack and how many products fit
 // on a row, then puts a product (name + picture) in each place. The Retail Store shows this as a 3D store people walk through.
@@ -52,7 +53,7 @@ export function DigitalStorePage() {
   const [angleFiles, setAngleFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'racks' | 'orders' | 'mail'>('racks');
+  const [tab, setTab] = useState<'racks' | 'orders' | 'mail' | 'pay'>('racks');
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [orderNote, setOrderNote] = useState<string | null>(null);
   const loadOrders = useCallback(async () => {
@@ -199,11 +200,13 @@ export function DigitalStorePage() {
             {isAdmin && <Button variant="secondary" size="sm" icon={<Settings2 size={13} />} onClick={() => { setEditSize(true); setFormError(null); }}>Rack settings</Button>}
           </div>
           <div className="flex gap-1 border-b border-slate-200">
-            {([['racks', 'Racks & products'], ['orders', 'Orders'], ...(isAdmin ? [['mail', 'E-mail setup'] as const] : [])] as const).map(([k, label]) => (
+            {([['racks', 'Racks & products'], ['orders', 'Orders'], ...(isAdmin ? [['pay', 'Payment'] as const, ['mail', 'E-mail setup'] as const] : [])] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === k ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}{k === 'orders' && orders ? ` (${orders.filter(o => o.status === 'New').length} new)` : ''}</button>
             ))}
           </div>
-          {tab === 'mail' ? (
+          {tab === 'pay' ? (
+            <DigitalStorePayment />
+          ) : tab === 'mail' ? (
             <DigitalStoreMailSetup storeId={store.id} payLink={store.payment_link ?? ''} payNote={store.payment_note ?? ''} onSaved={() => void load()} />
           ) : tab === 'orders' ? (
             <div className="space-y-2">
