@@ -24,7 +24,15 @@ const SHAPES: { id: Shape; label: string; hint: string }[] = [
   { id: 'spin', label: '360 degree photos (turntable)', hint: 'Upload photos taken all around the product (8 to 36, in order, e.g. 01.jpg, 02.jpg). Dragging turns through them.' },
 ];
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e));
+const errText = (e: unknown) => {
+  const m = e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e);
+  const col = m.match(/Could not find the '([^']+)' column/i);
+  if (col) {
+    const fix = ['stock_qty', 'unit'].includes(col[1]) ? '20261109000000_digital_store_orders.sql' : ['shape', 'model_path', 'angle_paths'].includes(col[1]) ? '20261108010000_digital_store_3d.sql' : '20261108000000_digital_store.sql';
+    return `The database is missing "${col[1]}". Run the migration ${fix} in the Supabase SQL editor, then try again.`;
+  }
+  return m;
+};
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || lo)));
 
 export function DigitalStorePage() {
@@ -144,8 +152,11 @@ export function DigitalStorePage() {
       if (draft.shape === 'spin' && angle_paths.length < 4) throw new Error('Upload at least 4 photos taken around the product (8 to 36 is best).');
       if ((draft.shape === 'box' || draft.shape === 'round') && !image_path) throw new Error('Upload the product picture.');
       const row = { store_id: store.id, rack: draft.rack, row_no: draft.row_no, slot: draft.slot, name: draft.name.trim(), sku: draft.sku.trim() || null, price, description: draft.description.trim() || null, image_path, stock_qty: stock, unit: draft.unit.trim() || 'Nos', shape: draft.shape, model_path: draft.shape === 'model' ? model_path : null, angle_paths: draft.shape === 'spin' ? angle_paths : [], updated_at: new Date().toISOString() };
-      const res = draft.id ? await supabase.from('digital_store_items').update(row).eq('id', draft.id) : await supabase.from('digital_store_items').insert(row);
+      const res = draft.id
+        ? await supabase.from('digital_store_items').update(row).eq('id', draft.id).select('id')
+        : await supabase.from('digital_store_items').insert(row).select('id');
       if (res.error) throw res.error;
+      if (!res.data || res.data.length === 0) throw new Error('The change was not saved: the database did not accept it. Check that you are signed in as an administrator of this company (pick the company in the top bar), then try again.');
       setDraft(null);
       await load();
     } catch (e) { setFormError(errText(e)); }
@@ -270,7 +281,7 @@ export function DigitalStorePage() {
 
       {draft && (
         <Modal open onClose={() => setDraft(null)} title={`Rack ${draft.rack} · Row ${draft.row_no} · Place ${draft.slot}`}
-          footer={<div className="flex justify-between w-full">{draft.id ? <Button variant="danger" icon={<Trash2 size={13} />} onClick={removeItem} disabled={busy}>Remove</Button> : <span />}<div className="flex gap-2"><Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button><Button onClick={saveItem} disabled={busy}>{busy ? 'Saving…' : 'Save product'}</Button></div></div>}>
+          footer={<div className="flex justify-between items-center gap-3 w-full">{draft.id ? <Button variant="danger" icon={<Trash2 size={13} />} onClick={removeItem} disabled={busy}>Remove</Button> : <span />}{formError && <span className="flex-1 text-xs font-semibold text-red-700 text-right">{formError}</span>}<div className="flex gap-2"><Button variant="secondary" onClick={() => setDraft(null)}>Cancel</Button><Button onClick={saveItem} disabled={busy}>{busy ? 'Saving…' : 'Save product'}</Button></div></div>}>
           {formError && <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Product name" required><input className={inputClass} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></FormField>
