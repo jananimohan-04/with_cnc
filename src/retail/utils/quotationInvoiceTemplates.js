@@ -133,6 +133,27 @@ const DEFAULT_COMPANY = {
 /* -------------------------------------------------------------
    1. COMMERCIAL PROFORMA QUOTATION TEMPLATE
    ------------------------------------------------------------- */
+/* optional discount on the taxable value: 'percent' (value = %) or 'amount' (value = rupees) */
+export function discountAmountOf(subtotal, type, value) {
+  const v = Number(value) || 0;
+  if (!(v > 0) || !(subtotal > 0)) return 0;
+  const a = type === 'amount' ? Math.min(v, subtotal) : subtotal * Math.min(v, 100) / 100;
+  return Math.round(a * 100) / 100;
+}
+/* asks the user for an optional discount: "10%" (percent) or "500" (rupees); empty = none; returns undefined when cancelled */
+export function askInvoiceDiscount(q) {
+  const cur = Number(q && q.discountValue) > 0 ? (q.discountType === 'amount' ? String(q.discountValue) : q.discountValue + '%') : '';
+  const a = window.prompt('Discount on this invoice (optional)\nType 10% for a percentage, or 500 for a rupee amount. Leave empty for no discount.', cur);
+  if (a === null) return undefined;
+  const t = a.trim();
+  const v = parseFloat(t.replace(/[^\d.]/g, ''));
+  if (!t || !(v > 0)) return { type: 'percent', value: 0 };
+  return { type: t.includes('%') ? 'percent' : 'amount', value: v };
+}
+const discountRowHtml = (amount, type, value) => amount > 0
+  ? `<tr style="background:#ecfdf5"><td class="t-lbl" style="color:#047857;font-weight:800">Discount${type === 'percent' ? ` (${Number(value)}%)` : ''}</td><td class="t-val" style="color:#047857">− ₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`
+  : '';
+
 export async function generateQuotationHtml({
   quoteNo,
   date,
@@ -140,7 +161,9 @@ export async function generateQuotationHtml({
   company = {},
   customer = {},
   items = [],
-  notes = ''
+  notes = '',
+  discountType = 'percent',
+  discountValue = 0
 }) {
   let co = { ...DEFAULT_COMPANY, ...company };
   if (!company || Object.keys(company).length === 0 || !company.gstin) {
@@ -188,9 +211,11 @@ export async function generateQuotationHtml({
     `;
   }).join('');
 
-  const cgst = subtotal * 0.09;
-  const sgst = subtotal * 0.09;
-  const total = subtotal + cgst + sgst;
+  const discAmt = discountAmountOf(subtotal, discountType, discountValue);
+  const taxableValue = subtotal - discAmt;
+  const cgst = taxableValue * 0.09;
+  const sgst = taxableValue * 0.09;
+  const total = taxableValue + cgst + sgst;
   const words = numberToWordsIndian(total);
 
   let qrDataUrl = null;
@@ -338,7 +363,8 @@ export async function generateQuotationHtml({
       </div>
       <div>
         <table class="totals-table">
-          <tr><td class="t-lbl">Subtotal (Taxable Value)</td><td class="t-val">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          <tr><td class="t-lbl">${discAmt > 0 ? 'Subtotal' : 'Subtotal (Taxable Value)'}</td><td class="t-val">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          ${discountRowHtml(discAmt, discountType, discountValue)}${discAmt > 0 ? `<tr><td class="t-lbl">Taxable Value</td><td class="t-val">₹${taxableValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
           <tr><td class="t-lbl">CGST (9.0%)</td><td class="t-val">₹${cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr><td class="t-lbl">SGST (9.0%)</td><td class="t-val">₹${sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr class="grand-total"><td class="t-lbl" style="font-weight:800">Grand Total (Incl. GST)</td><td class="t-val" style="font-size:13px;color:#8F2A0E">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
@@ -400,6 +426,8 @@ export async function generateTaxInvoiceHtml({
   customer = {},
   items = [],
   notes = '',
+  discountType = 'percent',
+  discountValue = 0,
   payments = [],
   paidAmount = 0,
   paymentStatus = ''
@@ -456,9 +484,11 @@ export async function generateTaxInvoiceHtml({
     `;
   }).join('');
 
-  const cgst = subtotal * 0.09;
-  const sgst = subtotal * 0.09;
-  const total = subtotal + cgst + sgst;
+  const discAmt = discountAmountOf(subtotal, discountType, discountValue);
+  const taxableValue = subtotal - discAmt;
+  const cgst = taxableValue * 0.09;
+  const sgst = taxableValue * 0.09;
+  const total = taxableValue + cgst + sgst;
   const words = numberToWordsIndian(total);
   const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const received = Math.min(total, Math.round((Number(paidAmount) || 0) * 100) / 100);
@@ -635,7 +665,8 @@ export async function generateTaxInvoiceHtml({
       </div>
       <div>
         <table class="totals-table">
-          <tr><td class="t-lbl">Total Taxable Value</td><td class="t-val">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          <tr><td class="t-lbl">${discAmt > 0 ? 'Subtotal' : 'Total Taxable Value'}</td><td class="t-val">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+          ${discountRowHtml(discAmt, discountType, discountValue)}${discAmt > 0 ? `<tr><td class="t-lbl">Total Taxable Value</td><td class="t-val">₹${taxableValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
           <tr><td class="t-lbl">Central GST (CGST @ 9%)</td><td class="t-val">₹${cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr><td class="t-lbl">State GST (SGST @ 9%)</td><td class="t-val">₹${sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
           <tr class="grand-total"><td class="t-lbl" style="font-weight:800">Net Invoice Amount Payable</td><td class="t-val" style="font-size:13px;color:#0369A1">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>${paymentRowsHtml}

@@ -9,7 +9,7 @@ import {
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, PageHero, toast } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
-import { downloadQuotationPdf, downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
 import { asList } from './Home';
 
 export default function Quotes() {
@@ -77,6 +77,8 @@ export default function Quotes() {
       items,
       taxableAmount: taxable,
       gstAmount: gst,
+      discountType: q.discountType || 'percent',
+      discountValue: q.discountValue || 0,
       total
     };
   };
@@ -97,11 +99,15 @@ export default function Quotes() {
 
   const handleRaiseInvoice = async (q) => {
     try {
+      const d = askInvoiceDiscount(q);
+      if (d === undefined) return;
       setRaisingId(q.id);
-      const res = await api.post(`/api/quotations/${q.id}/raise-invoice`);
+      const res = await api.post(`/api/quotations/${q.id}/raise-invoice`, { discountType: d.type, discountValue: d.value, sendMail: true });
       const invNo = res.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`;
       const updated = {
         ...q,
+        discountType: d.type,
+        discountValue: d.value,
         status: 'Accepted',
         invoiced: true,
         invoiceNo: invNo,
@@ -109,7 +115,7 @@ export default function Quotes() {
         orderId: res.orderId
       };
       setQuotes((prev) => prev.map((item) => (item.id === q.id ? updated : item)));
-      toast(`Tax Invoice ${invNo} raised & confirmed!`, '🧾');
+      toast(`Tax Invoice ${invNo} raised & confirmed!` + (res.mail ? (res.mail.ok ? ` E-mailed to ${res.mail.to} with the payment link.` : ` (e-mail not sent: ${res.mail.error})`) : ''), '🧾');
       downloadTaxInvoicePdf(prepareInvoiceData(updated));
     } catch (err) {
       toast(err.message || 'Failed to raise invoice', '⚠️');

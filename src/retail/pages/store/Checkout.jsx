@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, User, Phone, Mail, MapPin, FileText, 
   ArrowRight, ArrowLeft, CheckCircle2, ShoppingBag, ShieldCheck,
-  PackageCheck, Truck, AlertCircle, Loader2, Receipt
+  PackageCheck, Truck, AlertCircle, Loader2, Receipt, Send, BadgePercent
 } from 'lucide-react';
 import { api, fmt, getCart, setCart } from '../../api';
 import { Empty, Skeleton, toast } from '../../components/ui';
-import { downloadQuotationPdf, downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, discountAmountOf } from '../../utils/quotationInvoiceTemplates';
 import { asList } from './Home';
 
 export default function Checkout() {
@@ -17,16 +17,20 @@ export default function Checkout() {
   const [products, setProducts] = useState(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [company, setCompany] = useState('Sharma Auto Components Pvt Ltd');
-  const [name, setName] = useState('Priya Sharma');
-  const [mobile, setMobile] = useState('98765 43210');
-  const [email, setEmail] = useState('purchase@sharmaauto.in');
+  const [company, setCompany] = useState('');
+  const [name, setName] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
   const [po, setPo] = useState('');
-  const [pin, setPin] = useState('411026');
-  const [addr, setAddr] = useState('Plot 44, MIDC Bhosari, Pune');
-  const [city, setCity] = useState('Pune');
-  const [state, setState] = useState('Maharashtra');
+  const [pin, setPin] = useState('');
+  const [addr, setAddr] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [notes, setNotes] = useState('');
+  const [dType, setDType] = useState('percent');   // optional discount: percent | amount
+  const [dVal, setDVal] = useState('');
+  const [quote, setQuote] = useState(null);        // the quotation already created / e-mailed from this checkout
+  const [mailMsg, setMailMsg] = useState(null);    // { ok, text }
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
   useEffect(() => {
@@ -60,21 +64,26 @@ export default function Checkout() {
     return a + (p && p.price != null ? p.price * c.qty : 0); 
   }, 0);
 
+  const disc = discountAmountOf(sub, dType, dVal);
+  const taxable = sub - disc;
+  const gst = Math.round(taxable * 0.18 * 100) / 100;
+  const grand = Math.round((taxable + gst) * 100) / 100;
+
+  /* name, phone, e-mail and address are needed so the quotation / invoice can be e-mailed to the customer */
+  const missingDetail = () => {
+    const req = [
+      [name, 'Customer name'], [mobile, 'Phone number'], [email, 'E-mail address'], [addr, 'Address'],
+      [company, 'Company name'], [pin, 'PIN code'],
+    ];
+    for (const [v, l] of req) if (!String(v || '').trim()) return l + ' is required';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return 'Enter a valid e-mail address';
+    return '';
+  };
+
   const goStep = (n) => {
     if (n === 2) {
-      const req = [
-        [company, 'Company name'], 
-        [name, 'Contact person'], 
-        [mobile, 'Mobile number'], 
-        [pin, 'PIN code'], 
-        [addr, 'Delivery address']
-      ];
-      for (const [v, l] of req) {
-        if (!String(v || '').trim()) { 
-          toast(l + ' is required', '⚠️'); 
-          return; 
-        }
-      }
+      const m = missingDetail();
+      if (m) { toast(m, '⚠️'); return; }
     }
     setStep(n);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -103,99 +112,70 @@ export default function Checkout() {
     }
   };
 
-  const placeOrderAndGenerateInvoice = async () => {
-    const req = [
-      [company, 'Company name'], 
-      [name, 'Contact person'], 
-      [mobile, 'Mobile number'], 
-      [pin, 'PIN code'], 
-      [addr, 'Delivery address']
-    ];
-    for (const [v, l] of req) {
-      if (!String(v || '').trim()) { 
-        toast(l + ' is required to generate Tax Invoice', '⚠️'); 
-        setStep(1);
-        return; 
-      }
-    }
+  const quoteItems = () => cart.map((c) => {
+    const p = prodById(c.pid) || { name: c.pid, sku: c.pid, price: 0, uom: 'Pc' };
+    return { pid: c.pid, name: p.name, sku: p.sku || c.pid, price: p.price || 0, qty: c.qty, uom: p.uom || 'Pc', hsn: p.hsn || '8466.93.90', brand: p.brand || '' };
+  });
+  const fullAddress = () => (addr ? `${addr}${city ? ', ' + city : ''}${state ? ', ' + state : ''}${pin ? ' - ' + pin : ''}` : '');
+  const quotePayload = () => ({
+    contact: name, companyName: company, mobile, email: email.trim(), address: fullAddress(), city, state, pin, poRef: po, techReq: notes,
+    items: quoteItems(), discountType: dType, discountValue: Number(dVal) || 0,
+  });
 
-    setBusy(true);
-    const quoteItems = cart.map((c) => {
-      const p = prodById(c.pid) || { name: c.pid, sku: c.pid, price: 0, uom: 'Pc' };
-      return {
-        pid: c.pid,
-        name: p.name,
-        sku: p.sku || c.pid,
-        price: p.price || 0,
-        qty: c.qty,
-        uom: p.uom || 'Pc',
-        hsn: p.hsn || '8466.93.90',
-        brand: p.brand || ''
-      };
-    });
-
-    const payload = {
-      customer: name, 
-      contact: name, 
-      companyName: company, 
-      mobile, 
-      address: addr ? `${addr}, ${city}, ${state} - ${pin}` : (addr || '—'),
-      city, 
-      poRef: po, 
-      items: cart.map((c) => ({ pid: c.pid, qty: c.qty })),
-      generateInvoice: true
-    };
-
+  /* Step 1: save the quotation (with the discount) and e-mail it to the customer */
+  const sendQuotation = async () => {
+    const m = missingDetail();
+    if (m) { toast(m, '⚠️'); return; }
+    setBusy(true); setMailMsg(null);
     try {
-      const o = await api.post('/api/orders', payload);
-      setCart([]);
-
-      const invoiceData = {
-        invoiceNo: o.invoiceNo,
-        orderId: o.id,
-        date: o.invoiceDate || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        dueDate: o.invoiceDueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        poRef: po || '',
-        customer: {
-          name: name || o.customer,
-          companyName: company || o.companyName,
-          mobile: mobile || o.mobile,
-          email: email || '',
-          address: addr ? `${addr}, ${city}, ${state} - ${pin}` : (o.address || ''),
-          city: city || 'Pune',
-          state: state || 'Maharashtra',
-          pin: pin || ''
-        },
-        items: quoteItems,
-        notes: notes || '',
-        taxableAmount: sub,
-        gstAmount: Math.round(sub * 0.18),
-        total: Math.round(sub * 1.18)
-      };
-
-      downloadTaxInvoicePdf(invoiceData);
-      toast(`Tax Invoice ${o.invoiceNo} generated & Order #${o.id} confirmed!`, '🧾');
-      nav('/store/confirmation/' + o.id);
+      const q = await api.post('/api/quotations', quotePayload());
+      setQuote({ id: q.id, discKey: dType + ':' + (Number(dVal) || 0) });
+      try {
+        await api.post(`/api/quotations/${q.id}/send-mail`, {});
+        setMailMsg({ ok: true, text: `Quotation ${q.id} was e-mailed to ${email.trim()}. When the customer presses "Confirm", the tax invoice and payment link are e-mailed automatically.` });
+        toast('Quotation e-mailed to ' + email.trim(), '📧');
+      } catch (e) {
+        setMailMsg({ ok: false, text: `Quotation ${q.id} was saved, but the e-mail could not be sent: ${e.message || e}` });
+      }
     } catch (e) {
-      toast(e.message || 'Failed to place order and generate invoice', '⚠️');
+      toast(e.message || 'Could not create the quotation', '⚠️');
+    }
+    setBusy(false);
+  };
+
+  /* Step 2: confirm -> tax invoice (discount can still be changed here) + e-mail with the payment link */
+  const placeOrderAndGenerateInvoice = async () => {
+    const m = missingDetail();
+    if (m) { toast(m + ' to generate the Tax Invoice', '⚠️'); setStep(1); return; }
+    setBusy(true);
+    try {
+      let qid = quote && quote.id;
+      if (!qid) { const q = await api.post('/api/quotations', quotePayload()); qid = q.id; }
+      const res = await api.post(`/api/quotations/${qid}/raise-invoice`, { discountType: dType, discountValue: Number(dVal) || 0, sendMail: true });
+      setCart([]);
+      const invoiceData = {
+        invoiceNo: res.invoiceNo,
+        orderId: res.orderId,
+        date: res.invoiceDate || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        dueDate: res.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        poRef: po || '',
+        customer: { name, companyName: company, mobile, email: email.trim(), address: fullAddress(), city, state, pin },
+        items: quoteItems(),
+        notes: notes || '',
+        discountType: dType,
+        discountValue: Number(dVal) || 0,
+      };
+      downloadTaxInvoicePdf(invoiceData);
+      const mailed = res.mail && res.mail.ok;
+      toast(mailed ? `Tax Invoice ${res.invoiceNo} e-mailed to ${email.trim()} with the payment link` : `Tax Invoice ${res.invoiceNo} created` + (res.mail ? ` (e-mail not sent: ${res.mail.error})` : ''), mailed ? '📧' : '🧾');
+      nav('/store/confirmation/' + res.orderId);
+    } catch (e) {
+      toast(e.message || 'Failed to confirm and generate the invoice', '⚠️');
       setBusy(false);
     }
   };
 
   const handleDownloadQuotation = async () => {
-    const quoteItems = cart.map((c) => {
-      const p = prodById(c.pid) || { name: c.pid, sku: c.pid, price: 0, uom: 'Pc' };
-      return {
-        pid: c.pid,
-        name: p.name,
-        sku: p.sku || c.pid,
-        price: p.price || 0,
-        qty: c.qty,
-        uom: p.uom || 'Pc',
-        hsn: p.hsn || '8466'
-      };
-    });
-
     const quoteData = {
       customer: name || 'Valued Client',
       contact: name || 'Valued Client',
@@ -208,14 +188,16 @@ export default function Checkout() {
       pin: pin || '',
       poRef: po || '',
       notes: notes || '',
-      items: quoteItems,
-      taxableAmount: sub,
-      gstAmount: Math.round(sub * 0.18),
-      total: Math.round(sub * 1.18)
+      items: quoteItems(),
+      discountType: dType,
+      discountValue: Number(dVal) || 0,
+      taxableAmount: taxable,
+      gstAmount: gst,
+      total: grand
     };
 
     try {
-      const res = await api.post('/api/quotations', quoteData);
+      const res = await api.post('/api/quotations', { ...quoteData, items: quoteItems() });
       if (res && res.id) {
         quoteData.quoteNo = res.id;
         quoteData.id = res.id;
@@ -309,7 +291,7 @@ export default function Checkout() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-slate-400" /> Contact Person <span className="text-red-500">*</span>
+                  <User className="w-3.5 h-3.5 text-slate-400" /> Customer Name <span className="text-red-500">*</span>
                 </label>
                 <input 
                   type="text" 
@@ -322,7 +304,7 @@ export default function Checkout() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" /> Mobile Number <span className="text-red-500">*</span>
+                  <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Number <span className="text-red-500">*</span>
                 </label>
                 <input 
                   type="tel" 
@@ -335,7 +317,7 @@ export default function Checkout() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-slate-400" /> Official Email
+                  <Mail className="w-3.5 h-3.5 text-slate-400" /> E-mail ID <span className="text-red-500">*</span> <span className="font-medium text-slate-400">(quotation &amp; invoice are sent here)</span>
                 </label>
                 <input 
                   type="email" 
@@ -405,6 +387,23 @@ export default function Checkout() {
                 />
               </div>
 
+
+              <div className="sm:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <label className="text-xs font-bold text-emerald-900 flex items-center gap-1.5 mb-2">
+                  <BadgePercent className="w-4 h-4 text-emerald-600" /> Discount for this customer <span className="font-medium text-emerald-700">(optional — shown highlighted in the quotation, invoice and e-mail)</span>
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-xl overflow-hidden border border-emerald-300">
+                    <button type="button" onClick={() => setDType('percent')} className={`px-3 py-2 text-xs font-bold ${dType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-800'}`}>%</button>
+                    <button type="button" onClick={() => setDType('amount')} className={`px-3 py-2 text-xs font-bold ${dType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-800'}`}>₹ Amount</button>
+                  </div>
+                  <input type="number" min="0" step="any" value={dVal} onChange={(e) => setDVal(e.target.value)}
+                    placeholder={dType === 'percent' ? 'e.g. 5' : 'e.g. 500'}
+                    className="w-36 px-3 py-2 text-sm bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 rounded-xl outline-hidden" />
+                  {disc > 0 && <span className="text-xs font-extrabold text-emerald-700">Customer saves {fmt(disc)}</span>}
+                </div>
+              </div>
+
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="text-xs font-bold text-slate-700">Unloading / Security Instructions (Optional)</label>
                 <input 
@@ -417,7 +416,20 @@ export default function Checkout() {
               </div>
             </div>
 
+            {mailMsg && (
+              <div className={`mb-4 rounded-xl border p-3 text-xs font-semibold ${mailMsg.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                {mailMsg.ok ? '✅ ' : '⚠️ '}{mailMsg.text}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3 pt-5 border-t border-slate-100 flex-wrap">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={sendQuotation}
+                className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {quote ? 'E-mail Quotation Again' : 'E-mail Quotation to Customer'}
+              </button>
               <button 
                 type="button" 
                 onClick={handleDownloadQuotation}
@@ -526,9 +538,25 @@ export default function Checkout() {
                     <span>Taxable Subtotal</span>
                     <span className="font-bold text-slate-900 font-mono">{fmt(sub)}</span>
                   </div>
+                  {disc > 0 && (
+                    <div className="flex justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-emerald-800 font-extrabold">
+                      <span>Discount{dType === 'percent' ? ` (${Number(dVal)}%)` : ''}</span>
+                      <span className="font-mono">− {fmt(disc)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-600">
                     <span>GST (CGST + SGST 18%)</span>
-                    <span className="text-slate-500">Invoiced as per BI</span>
+                    <span className="font-bold text-slate-900 font-mono">{fmt(gst)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <BadgePercent className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[11px] text-slate-500">Discount</span>
+                    <div className="inline-flex rounded-lg overflow-hidden border border-slate-200 ml-auto">
+                      <button type="button" onClick={() => setDType('percent')} className={`px-2 py-1 text-[11px] font-bold ${dType === 'percent' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600'}`}>%</button>
+                      <button type="button" onClick={() => setDType('amount')} className={`px-2 py-1 text-[11px] font-bold ${dType === 'amount' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600'}`}>₹</button>
+                    </div>
+                    <input type="number" min="0" step="any" value={dVal} onChange={(e) => setDVal(e.target.value)} placeholder="0"
+                      className="w-20 px-2 py-1 text-xs border border-slate-200 rounded-lg outline-hidden focus:border-emerald-500" />
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Freight / Logistics</span>
@@ -536,7 +564,7 @@ export default function Checkout() {
                   </div>
                   <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
                     <span className="font-extrabold text-slate-900 text-sm">Estimated Total</span>
-                    <span className="font-black text-blue-600 text-xl font-mono">{fmt(sub)}</span>
+                    <span className="font-black text-blue-600 text-xl font-mono">{fmt(grand)}</span>
                   </div>
                 </div>
 
@@ -553,11 +581,11 @@ export default function Checkout() {
                 >
                   {busy ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Generating Tax Invoice…
+                      <Loader2 className="w-4 h-4 animate-spin" /> Sending Tax Invoice…
                     </>
                   ) : (
                     <>
-                      <Receipt className="w-4 h-4 text-emerald-200" /> Confirm & Generate Tax Invoice (PDF)
+                      <Receipt className="w-4 h-4 text-emerald-200" /> Confirm & E-mail Tax Invoice + Payment Link
                     </>
                   )}
                 </button>

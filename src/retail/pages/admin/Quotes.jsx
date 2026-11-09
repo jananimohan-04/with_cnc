@@ -8,7 +8,7 @@ import {
 import { api, fmt } from '../../api';
 import { statusBadge, Modal, Empty, Skeleton, Pager, toast, PageHero } from '../../components/ui';
 import { PaymentBadge } from '../../components/PaymentModal';
-import { downloadQuotationPdf, downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
+import { downloadQuotationPdf, downloadTaxInvoicePdf, askInvoiceDiscount } from '../../utils/quotationInvoiceTemplates';
 
 const STATUSES = ['all', 'Pending', 'Quoted', 'Accepted', 'Rejected', 'Cancelled'];
 
@@ -92,6 +92,8 @@ export default function Quotes() {
       items,
       taxableAmount: taxable,
       gstAmount: gst,
+      discountType: q.discountType || 'percent',
+      discountValue: q.discountValue || 0,
       total
     };
   };
@@ -112,13 +114,17 @@ export default function Quotes() {
 
   async function handleRaiseInvoice(q) {
     try {
+      const d = askInvoiceDiscount(q);
+      if (d === undefined) return;
       setRaisingId(q.id);
-      const res = await api.post(`/api/quotations/${q.id}/raise-invoice`);
+      const res = await api.post(`/api/quotations/${q.id}/raise-invoice`, { discountType: d.type, discountValue: d.value, sendMail: true });
       const invNo = res.invoiceNo || `INV/2026-27/${q.id.replace(/\D/g, '').slice(-4) || '1001'}`;
-      toast(`Tax Invoice ${invNo} raised successfully!`, '🧾');
+      toast(`Tax Invoice ${invNo} raised successfully!` + (res.mail ? (res.mail.ok ? ` E-mailed to ${res.mail.to} with the payment link.` : ` (e-mail not sent: ${res.mail.error})`) : ''), '🧾');
       load();
       downloadTaxInvoicePdf(prepareInvoiceData({
         ...q,
+        discountType: d.type,
+        discountValue: d.value,
         invoiceNo: invNo,
         status: 'Accepted',
         invoiced: true,
