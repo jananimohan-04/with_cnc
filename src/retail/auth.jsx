@@ -22,7 +22,7 @@ const DEMO = {
 
 export function AuthProvider({ children }) {
   const [me, setMe] = useState(() => getSession());
-  const [ready, setReady] = useState(true);
+  const [ready, setReady] = useState(false);   // not ready until the sign-in lookup has finished
   const [oauth, setOauth] = useState(null); // supabase client or null
   const resolved = useRef(false);
 
@@ -64,9 +64,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   const resolveMe = useCallback(async (token) => {
-    const r = await fetch(apiUrl('/api/me'), { headers: { Authorization: 'Bearer ' + (token || '') } });
-    const j = await r.json().catch(() => ({}));
-    const u = (j && j.data) || {};
+    // the Retail server can be busy or waking up on the first request after the page opens: try a few times before giving up
+    let u = {};
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const r = await fetch(apiUrl('/api/me'), { headers: { Authorization: 'Bearer ' + (token || '') } });
+        const j = await r.json().catch(() => ({}));
+        u = (j && j.data) || {};
+        if (u.role) break;
+      } catch { /* network hiccup: retry */ }
+      await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
+    }
     if (!u.role) throw new Error('no role');
     const s = {
       id: u.id,
@@ -102,7 +110,7 @@ export function AuthProvider({ children }) {
             if (!resolved.current) {
               resolved.current = true;
               // the signed-in BI user decides who this is; a stale/demo session must never survive a failed lookup
-              await resolveMe(data.session.access_token).catch(() => { setSession(null); setMe(null); });
+              await resolveMe(data.session.access_token).catch(() => { if (!getSession()?.google) { setSession(null); setMe(null); } });
             }
           } else {
             const cur = getSession();
@@ -111,8 +119,9 @@ export function AuthProvider({ children }) {
           client.auth.onAuthStateChange(async (ev, sess) => {
             if ((ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION') && sess) {
               setGoogleToken(sess.access_token);
+              if (resolved.current && ev === 'INITIAL_SESSION') return;   // already being resolved by the start-up lookup
               resolved.current = true;
-              await resolveMe(sess.access_token).catch(() => { setSession(null); setMe(null); });
+              await resolveMe(sess.access_token).catch(() => { if (!getSession()?.google) { setSession(null); setMe(null); } });
             }
             if (ev === 'TOKEN_REFRESHED' && sess) setGoogleToken(sess.access_token);   // the token expires hourly; keep the new one
             if (ev === 'SIGNED_OUT') {
