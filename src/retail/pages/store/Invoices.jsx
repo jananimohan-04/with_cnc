@@ -12,6 +12,7 @@ import { Empty, Skeleton, PageHero, toast } from '../../components/ui';
 import { downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
 import { useAuth } from '../../auth';
 import { PaymentBadge, PaymentModal } from '../../components/PaymentModal';
+import ShareDoc from '../../components/ShareDoc';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState(null);
@@ -338,6 +339,8 @@ export default function Invoices() {
                     >
                       <IndianRupee className="w-4 h-4" /> {canRecord && inv.paymentStatus !== 'Paid' ? 'Record payment' : 'Payments'}
                     </button>
+
+                    <ShareDoc q={inv} />
 
                     <button
                       type="button"

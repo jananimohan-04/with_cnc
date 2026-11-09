@@ -61,9 +61,9 @@ export default function DigitalStore() {
       const sess = await supabase.auth.getSession();
       const r = await fetch(`${API_BASE || ''}/api/digital-order-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data?.session?.access_token || '') }, body: JSON.stringify({ order_id: res.data?.id }) });
       const j = await r.json().catch(() => ({}));
-      const payUrl = j.payUrl || '';
+      const payUrl = j.payUrl || (store && store.payment_link) || '';
       setPlaced((p) => (p ? { ...p, mail: j.ok ? 'sent' : 'failed', mailTo: form.email.trim(), mailError: j.error, payUrl } : p));
-      if (payUrl) setTimeout(() => { window.location.href = payUrl; }, 2500);   // straight to the payment page
+      if (payUrl) setTimeout(() => { window.location.href = payUrl; }, 1500);   // straight to the payment page
     } catch { setPlaced((p) => (p ? { ...p, mail: 'failed', mailTo: form.email.trim() } : p)); }
   };
   const [companyName, setCompanyName] = useState('');

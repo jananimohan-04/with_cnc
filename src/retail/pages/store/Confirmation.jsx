@@ -4,11 +4,12 @@ import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   CheckCircle2, Printer, ArrowRight, Package, Clock, 
-  ShieldCheck, MapPin, Receipt, ArrowLeft, ShoppingBag 
+  ShieldCheck, MapPin, Receipt, ArrowLeft, ShoppingBag, IndianRupee 
 } from 'lucide-react';
 import { api, fmt } from '../../api';
 import { Empty, Skeleton, statusBadge, toast } from '../../components/ui';
 import { downloadTaxInvoicePdf } from '../../utils/quotationInvoiceTemplates';
+import ShareDoc from '../../components/ShareDoc';
 
 export default function Confirmation() {
   const { id } = useParams();
@@ -136,6 +137,19 @@ export default function Confirmation() {
 
         {/* Action Buttons */}
         <div className="flex items-center justify-center gap-3 flex-wrap pt-2 border-t border-slate-100">
+          {o.payUrl && (
+            <a 
+              href={o.payUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer"
+            >
+              <IndianRupee className="w-4 h-4 text-amber-200" /> Pay with Razorpay →
+            </a>
+          )}
+
+          <ShareDoc q={o} />
+
           {o.invoiceNo && (
             <button 
               type="button" 

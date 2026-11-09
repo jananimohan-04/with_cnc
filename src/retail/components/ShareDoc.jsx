@@ -8,7 +8,7 @@ const WaIcon = (props) => <MessageCircle className="w-3.5 h-3.5" {...props} />;
 
 export default function ShareDoc({ q }) {
   const [busy, setBusy] = useState('');
-  const kind = q.invoiceNo || q.invoiced ? 'invoice' : 'quotation';
+  const kind = q.invoiceNo || q.invoiced || q.isInvoice ? 'invoice' : 'quotation';
 
   const go = async (channel) => {
     let email = '', phone = '';
@@ -23,7 +23,9 @@ export default function ShareDoc({ q }) {
     }
     setBusy(channel);
     try {
-      const res = await api.post(`/api/quotations/${q.id}/share`, { channel, email, phone });
+      const shareId = q.invoiceNo || q.id;
+      const endpoint = kind === 'invoice' ? `/api/invoices/${encodeURIComponent(shareId)}/share` : `/api/quotations/${encodeURIComponent(shareId)}/share`;
+      const res = await api.post(endpoint, { channel, email, phone });
       if (channel === 'mail') toast(`${kind === 'invoice' ? 'Invoice and payment link' : 'Quotation'} e-mailed to ${res.to}`, '📧');
       else {
         if (res.warning) toast(res.warning, '⚠️');

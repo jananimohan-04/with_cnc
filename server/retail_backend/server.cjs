@@ -1132,13 +1132,30 @@ app.post('/api/quotations/:id/send-mail', scopeCompany, async (req, res) => {
   ok(res, { sent: true, to: out.to });
 });
 /* Share a quotation (with its Confirm link) or an invoice (with its payment link) by WhatsApp or e-mail */
-app.post('/api/quotations/:id/share', scopeCompany, async (req, res) => {
-  const q = db.quotations.find(x => x.id === req.params.id);
-  if (!q) return res.status(404).json({ error: 'Quotation not found' });
+app.post(['/api/quotations/:id/share', '/api/invoices/:id/share'], scopeCompany, async (req, res) => {
+  const paramId = req.params.id;
+  let q = (db.quotations || []).find(x => x.id === paramId || x.invoiceNo === paramId);
+  let order = null;
+  if (!q) {
+    order = (db.orders || []).find(x => x.id === paramId || x.invoiceNo === paramId);
+    if (order) {
+      q = {
+        ...order,
+        invoiceNo: order.invoiceNo || order.id,
+        items: order.items || [],
+        discountType: order.discountType || 'none',
+        discountValue: order.discountValue || 0,
+      };
+    }
+  }
+  if (!q) return res.status(404).json({ error: 'Quotation or invoice not found' });
   if (req.ctx.role !== 'super_admin' && q.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
   const b = req.body || {};
   const kind = q.invoiceNo ? 'invoice' : 'quotation';
-  if (b.email) q.email = String(b.email).trim();
+  if (b.email) {
+    q.email = String(b.email).trim();
+    if (order) { order.email = q.email; save(); }
+  }
   if (b.channel === 'mail') {
     const out = await sendDocMail({ kind, doc: q, req });
     if (!out.ok) return res.status(502).json({ error: out.error });
@@ -2030,14 +2047,32 @@ app.get('/api/orders', scopeCompany, (req, res) => {
   if (req.query.page || req.query.limit) { const pg = pageOf(list, req); pg.rows = withCo(pg.rows); return ok(res, pg); }
   ok(res, withCo(list));
 });
-app.get('/api/orders/:id', scopeCompany, (req, res) => {
+app.get('/api/orders/:id', scopeCompany, async (req, res) => {
   const o = db.orders.find(x => x.id === req.params.id);
   if (!o) return res.status(404).json({ error: 'not found' });
   if (req.ctx.role !== 'super_admin' && o.companyId !== req.companyId) return res.status(403).json({ error: 'denied' });
+  if (!o.payUrl) {
+    try {
+      const co = await biCompanyOf(o.companyId);
+      if (co) {
+        const pay = await getPayLink({
+          biCompanyId: co.id,
+          amount: o.total,
+          ref: o.invoiceNo || o.id,
+          name: o.contact || o.customer,
+          email: o.email || '',
+          phone: o.mobile,
+          desc: o.invoiceNo ? `Invoice ${o.invoiceNo}` : `Order ${o.id}`,
+          req
+        });
+        if (pay.link) o.payUrl = pay.link;
+      }
+    } catch {}
+  }
   ok(res, o);
 });
 app.post('/api/orders', scopeCompany, async (req, res) => {
-  const { customer, contact, companyName, mobile, address, city, poRef, items, generateInvoice } = req.body;
+  const { customer, contact, companyName, mobile, address, city, poRef, items, generateInvoice, email } = req.body;
   if (!customer || !mobile || !address || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'customer, mobile, address, items[] required' });
   const cid = req.companyId;
   let total = 0; const lines = [];
@@ -2088,6 +2123,7 @@ app.post('/api/orders', scopeCompany, async (req, res) => {
     customer,
     contact: contact || customer,
     companyName: companyName || '',
+    email: email || '',
     mobile,
     city: city || '',
     address,
@@ -2100,6 +2136,25 @@ app.post('/api/orders', scopeCompany, async (req, res) => {
     items: lines,
     history
   };
+
+  let payUrl = '';
+  try {
+    const co = await biCompanyOf(cid);
+    if (co) {
+      const p = await getPayLink({
+        biCompanyId: co.id,
+        amount: total,
+        ref: invoiceNo || order.id,
+        name: contact || customer,
+        email: order.email || '',
+        phone: mobile,
+        desc: invoiceNo ? `Invoice ${invoiceNo}` : `Order ${order.id}`,
+        req
+      });
+      payUrl = p.link || '';
+    }
+  } catch {}
+  order.payUrl = payUrl;
 
   for (const l of lines) { const p = db.products.find(x => x.id === l.pid); p.stock -= l.qty; p.sold = (p.sold || 0) + l.qty; } // single atomic write
   db.orders.unshift(order); save();
@@ -2241,6 +2296,7 @@ app.get('/api/invoices', scopeCompany, (req, res) => {
       customer: o.customer,
       contact: o.contact || o.customer,
       companyName: o.companyName || '',
+      email: o.email || o.customerEmail || '',
       mobile: o.mobile,
       address: o.address,
       city: o.city || '',
@@ -2287,6 +2343,7 @@ app.get('/api/invoices', scopeCompany, (req, res) => {
         customer: q.contact || q.requestedBy || 'Industrial Client',
         contact: q.contact || q.requestedBy || '',
         companyName: q.companyName || '',
+        email: q.email || '',
         mobile: q.mobile || '',
         address: q.address || '—',
         city: q.city || '',
