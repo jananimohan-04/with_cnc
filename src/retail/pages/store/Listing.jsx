@@ -60,15 +60,8 @@ export default function Listing() {
 
   const brands = useMemo(() => [...new Set((products || []).map((p) => p.brand).filter(Boolean))], [products]);
 
-  // Total and category counts
+  // Total counts
   const visibleProductsTotal = useMemo(() => (products || []).filter((p) => p.visible).length, [products]);
-  const catCounts = useMemo(() => {
-    const counts = {};
-    (products || []).filter((p) => p.visible).forEach((p) => {
-      counts[p.category] = (counts[p.category] || 0) + 1;
-    });
-    return counts;
-  }, [products]);
 
   const onAdd = (p) => {
     if (addToCart(p)) nav(loc.pathname + loc.search, { replace: true });
@@ -184,34 +177,6 @@ export default function Listing() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Quick Category Navigation Ribbon */}
-      <div className="ls-cat-ribbon" role="tablist" aria-label="Category filter">
-        <button
-          type="button"
-          onClick={() => handleCategorySelect('all')}
-          className={`ls-cat-btn ${cat === 'all' ? 'active' : ''}`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>All Products</span>
-          <em>{visibleProductsTotal}</em>
-        </button>
-
-        {cats.map((c) => {
-          const count = catCounts[c.id] || 0;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => handleCategorySelect(c.id)}
-              className={`ls-cat-btn ${cat === c.id ? 'active' : ''}`}
-            >
-              <span>{c.name}</span>
-              {count > 0 && <em>{count}</em>}
-            </button>
-          );
-        })}
       </div>
 
       {/* Filter Toolbar Card */}
