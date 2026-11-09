@@ -15,6 +15,9 @@ import '../../styles/catalog.css';
 
 // documents open inside the application (no download); the PDF engine loads only when one is opened
 const PdfViewer = lazy(() => import('../../components/PdfViewer'));
+// the 3D engine is a separate download that only loads when the 3D view is shown
+const Viewer3D = lazy(() => import('../../components/StoreScene').then((m) => ({ default: m.ProductViewer3D })));
+const hasWebGL = () => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } };
 
 /* youtube watch/shorts/embed url → video id (null when not a YouTube link) */
 const ytId = (u) => {
@@ -65,6 +68,8 @@ export default function Product() {
   const [activeTab, setActiveTab] = useState('specs'); // 'specs' | 'docs' | 'videos' | 'overview'
   const [shareOpen, setShareOpen] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [view3d, setView3d] = useState(() => hasWebGL());
+  const [bodyFailed, setBodyFailed] = useState(false);
   const [stuck, setStuck] = useState(false);
   const buyRef = useRef(null);
 
@@ -152,7 +157,9 @@ export default function Product() {
     e.currentTarget.style.setProperty('--zx', `${((e.clientX - r.left) / r.width) * 100}%`);
     e.currentTarget.style.setProperty('--zy', `${((e.clientY - r.top) / r.height) * 100}%`);
   };
-  const embed = activeMedia && (activeMedia.type === 'video' || (activeMedia.type === 'youtube' && ytId(activeMedia.url)));
+  const photo3d = (images[0] && images[0].url) || '';
+  const show3d = view3d && !!photo3d;
+  const embed = show3d || activeMedia && (activeMedia.type === 'video' || (activeMedia.type === 'youtube' && ytId(activeMedia.url)));
 
   const buyBox = p.price == null
     ? (
@@ -209,7 +216,7 @@ export default function Product() {
                     const isYt = m.type === 'youtube'; const yid = isYt ? ytId(m.url) : null;
                     const thumb = isYt && yid ? `https://img.youtube.com/vi/${yid}/hqdefault.jpg` : m.url;
                     return (
-                      <button key={m.id || idx} type="button" className={`pd-th ${idx === activeMediaIndex ? 'on' : ''}`} onClick={() => setActiveMediaIndex(idx)} title={m.title || ''}>
+                      <button key={m.id || idx} type="button" className={`pd-th ${idx === activeMediaIndex && !show3d ? 'on' : ''}`} onClick={() => { setActiveMediaIndex(idx); setView3d(false); }} title={m.title || ''}>
                         {m.type === 'video' ? <div className="pd-vth"><Film className="w-5 h-5" />VIDEO</div> : <img src={thumb} alt="" />}
                         {isYt && <span className="pd-tag">▶ YT</span>}
                       </button>
@@ -218,12 +225,22 @@ export default function Product() {
                 </div>
               )}
               <div>
+                {photo3d && (
+                  <div className="pd-switch" role="tablist" aria-label="View mode">
+                    <button type="button" className={!show3d ? 'on' : ''} onClick={() => setView3d(false)}>📷 Photos</button>
+                    <button type="button" className={show3d ? 'on' : ''} onClick={() => setView3d(true)}>🧊 3D view <i>NEW</i></button>
+                  </div>
+                )}
                 <div
-                  className={`pd-stage ${embed ? 'is-embed' : ''}`}
+                  className={`pd-stage ${embed ? 'is-embed' : ''} ${show3d ? 'is-3d' : ''}`}
                   onMouseMove={embed ? undefined : zoomMove}
-                  onClick={() => { if (activeMedia?.type === 'image' && activeMedia.url) setLightbox(true); }}
+                  onClick={() => { if (!show3d && activeMedia?.type === 'image' && activeMedia.url) setLightbox(true); }}
                 >
-                  {activeMedia?.type === 'youtube' && ytId(activeMedia.url) ? (
+                  {show3d ? (
+                    <Suspense fallback={<div className="pd-3dload"><span />Loading 3D view…</div>}>
+                      <Viewer3D item={{ name: p.name, shape: 'round' }} imgUrl={photo3d} modelUrl="" onFail={() => setBodyFailed(true)} />
+                    </Suspense>
+                  ) : activeMedia?.type === 'youtube' && ytId(activeMedia.url) ? (
                     <iframe key={activeMedia.url} src={`https://www.youtube.com/embed/${ytId(activeMedia.url)}?autoplay=1`} title={activeMedia.title || 'Product video'} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                   ) : activeMedia?.type === 'video' ? (
                     <video key={activeMedia.url} src={activeMedia.url} controls autoPlay />
@@ -235,14 +252,20 @@ export default function Product() {
                       <div style={{ fontWeight: 800, marginTop: 8 }}>Photo coming soon</div>
                     </div>
                   )}
-                  {allVisualMedia.length > 1 && <span className="pd-count">{activeMediaIndex + 1} / {allVisualMedia.length}</span>}
+                  {show3d && (
+                    <div className="pd-how">
+                      <span>👆 Drag to turn it</span><span>🔍 Scroll to zoom</span><span>🔄 Spins by itself</span>
+                    </div>
+                  )}
+                  {show3d && bodyFailed && <div className="pd-warn">A true 3D shape could not be built from this photo, so a boxed view is shown. Use a straight-on photo on a plain background.</div>}
+                  {!show3d && allVisualMedia.length > 1 && <span className="pd-count">{activeMediaIndex + 1} / {allVisualMedia.length}</span>}
                   {allVisualMedia.length > 1 && (
                     <>
                       <button type="button" className="pd-nav l" onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="Previous">‹</button>
                       <button type="button" className="pd-nav r" onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="Next">›</button>
                     </>
                   )}
-                  {!embed && activeMedia?.url && <span className="pd-hint">Hover to zoom · click for full screen</span>}
+                  {!embed && !show3d && activeMedia?.url && <span className="pd-hint">Hover to zoom · click for full screen</span>}
                 </div>
                 {activeMedia && (activeMedia.title || activeMedia.description) && (
                   <div className="pd-cap" key={activeMedia.url}>

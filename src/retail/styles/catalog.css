@@ -148,3 +148,19 @@
 @keyframes pd-grow { to { width: var(--w, 60%); } }
 @keyframes pd-shine { 0% { left: -80%; } 55%, 100% { left: 140%; } }
 @media (prefers-reduced-motion: reduce) { .pd-wrap *, .pd-hero, .pd-hero::before, .pd-hero::after { animation: none !important; transition: none !important; } .pd-rv { opacity: 1; transform: none; } .pd-meter span { width: var(--w, 60%); } }
+
+/* 3D view */
+.pd-switch { display: inline-flex; padding: 4px; margin-bottom: 12px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); }
+.pd-switch button { border: 0; background: transparent; color: #f1dccb; font-size: 12.5px; font-weight: 800; padding: 8px 16px; border-radius: 999px; cursor: pointer; transition: all .25s; display: inline-flex; align-items: center; gap: 6px; }
+.pd-switch button.on { background: linear-gradient(135deg, #ff7a1a, #ea4a00); color: #fff; box-shadow: 0 8px 18px -8px rgba(255,101,0,.9); }
+.pd-switch i { font-style: normal; font-size: 8.5px; font-weight: 900; background: #fff; color: #ea4a00; padding: 1px 6px; border-radius: 99px; animation: pd-ping2 1.6s infinite; }
+@keyframes pd-ping2 { 50% { transform: scale(1.12); } }
+.pd-stage.is-3d { cursor: grab; background: #0b1220; }
+.pd-stage.is-3d:active { cursor: grabbing; }
+.pd-how { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; pointer-events: none; }
+.pd-how span { font-size: 11.5px; font-weight: 700; color: #fff; background: rgba(255,255,255,.14); backdrop-filter: blur(6px); padding: 5px 12px; border-radius: 99px; animation: pd-rise .6s both; }
+.pd-how span:nth-child(2) { animation-delay: .15s; } .pd-how span:nth-child(3) { animation-delay: .3s; }
+.pd-warn { position: absolute; top: 12px; left: 12px; right: 12px; font-size: 11.5px; color: #fde68a; background: rgba(120,53,15,.85); padding: 8px 12px; border-radius: 12px; pointer-events: none; }
+.pd-3dload { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #cbd5e1; font-size: 13px; font-weight: 700; }
+.pd-3dload span { width: 18px; height: 18px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #ff6500; animation: pd-spin .8s linear infinite; }
+@keyframes pd-spin { to { transform: rotate(360deg); } }
