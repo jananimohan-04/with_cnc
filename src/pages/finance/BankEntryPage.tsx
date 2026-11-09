@@ -319,7 +319,7 @@ export function BankEntryPage() {
 
   return (
     <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="space-y-2 max-w-[1500px] mx-auto">
+      <div className="space-y-2">
         {/* ---------- header (mobile/tablet fallback; desktop is unified in topbar) ---------- */}
         <div className="flex lg:hidden flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">

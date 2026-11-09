@@ -248,7 +248,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
 
   return (
     <div className={embedded ? '' : 'p-4 lg:p-6 bg-grid min-h-full'}>
-      <div className="space-y-5 max-w-[1500px] mx-auto">
+      <div className="space-y-5">
         {!embedded && (
           <div className="flex flex-nowrap items-center gap-3 overflow-x-auto scrollbar-thin">
             <div className="flex items-center gap-3 shrink-0">

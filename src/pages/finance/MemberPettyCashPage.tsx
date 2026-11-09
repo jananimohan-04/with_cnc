@@ -89,7 +89,7 @@ export function MemberPettyCashPage({ onPay }: { onPay?: (member: string, amount
   }, [memberTxns, spentRows]);
   return (
     <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
-      <div className="max-w-[1500px] mx-auto flex flex-col gap-2.5">
+      <div className="w-full flex flex-col gap-2.5">
         {/* ---------- member wallets ---------- */}
         <section className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden" data-testid="petty-dues">
           <div className="flex flex-wrap items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-1.5">
