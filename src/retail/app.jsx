@@ -189,6 +189,17 @@ function Gate({ children, noSide, roles, perm }) {
     );
   }
   if (me.role === 'pending' || me.role === 'disabled') return <Pending />;
+  if (me.retailOff) {   // the company's Retail Store is switched off (Company Management)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
+          <h2 className="text-lg font-bold text-slate-800">Retail Store is turned off</h2>
+          <p className="mt-2 text-sm text-slate-600">The Retail Store is not enabled for your company. Please contact your administrator.</p>
+          {!me.biOff && <div className="mt-4"><button className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold" onClick={() => window.location.assign('/')}>Go to Business Intelligence</button></div>}
+        </div>
+      </div>
+    );
+  }
 
   /* global disabled killswitch check */
   const globalDisabled = me.globalDisabledMenus || [];

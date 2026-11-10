@@ -2,7 +2,7 @@ import { androidGoogleSignIn, isAndroidApp } from '@/lib/android/auth';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { applyDisabledModules, effectiveMatrix, type PermAction, type PermMatrix } from '@/config/permissions';
-import { fetchDisabledModules } from '@/lib/moduleSwitches';
+import { fetchDisabledModules, RETAIL_LINKED_MODULES } from '@/lib/moduleSwitches';
 import { isTauri } from '@/lib/desktop/isTauri';
 import { desktopGoogleSignIn } from '@/lib/desktop/auth';
 
@@ -53,6 +53,11 @@ interface AuthContextValue {
   permissions: PermMatrix | null;
   permsLoading: boolean;
   /** Module visible in navigation/views (dashboard is always visible). */
+  /** Platform switches of the company (Company Management). A Super Admin always has both. */
+  biEnabled: boolean;
+  retailEnabled: boolean;
+  /** False until the switches have been read, so a company with BI off never flashes the BI screens. */
+  platformsReady: boolean;
   canView: (moduleKey: string) => boolean;
   /** Action allowed within a module. */
   canDo: (moduleKey: string, action: PermAction) => boolean;
@@ -85,6 +90,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<PermMatrix | null>(null);
   const [permsLoading, setPermsLoading] = useState(false);
   const loadedForUser = useRef<string | null>(null);
+  const [platforms, setPlatforms] = useState({ bi: true, retail: true, ready: false });
+  const platformsRef = useRef({ bi: true, retail: true });
+
+  // Which platforms (BI / Retail Store) the user's company has switched on. Unknown or unreadable = on (nothing is hidden by mistake).
+  const loadPlatforms = useCallback(async (companyId: string | null | undefined, role: ErpRole | null | undefined) => {
+    let bi = true, retail = true;
+    if (role && role !== 'SUPER_ADMIN' && companyId) {
+      try {
+        const { data, error } = await supabase.from('companies').select('bi_enabled, retail_enabled').eq('id', companyId).maybeSingle();
+        if (!error && data) { bi = (data as { bi_enabled?: boolean | null }).bi_enabled !== false; retail = (data as { retail_enabled?: boolean | null }).retail_enabled !== false; }
+      } catch { /* the switches are optional until the database script is applied */ }
+    }
+    platformsRef.current = { bi, retail };
+    setPlatforms({ bi, retail, ready: true });
+  }, []);
 
   const clear = useCallback(() => {
     loadedForUser.current = null;
@@ -95,6 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPermissions(null);
     setPermsLoading(false);
     setErrorMessage(null);
+    platformsRef.current = { bi: true, retail: true };
+    setPlatforms({ bi: true, retail: true, ready: false });
   }, []);
 
   // Effective permissions always come from the database (erp_get_permissions),
@@ -111,6 +133,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const payload = data as { role?: ErpRole | null; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
       // modules switched fully off for the company (Access Management > Full off) are removed for everyone
       const off = await fetchDisabledModules();
+      // a company with the Retail Store switched off also loses the BI pages linked to it (Digital Store, Retail Orders, Partner & Online Sales)
+      if (!platformsRef.current.retail && (payload.role ?? role) !== 'SUPER_ADMIN') RETAIL_LINKED_MODULES.forEach((k) => { if (!off.includes(k)) off.push(k); });
       (window as unknown as { __fullOff?: string[] }).__fullOff = off;   // for support: type __fullOff in the browser console
       setPermissions(applyDisabledModules(effectiveMatrix(payload.role ?? role ?? null, payload.permissions), off));
     } catch (e) {
@@ -136,13 +160,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCompany(payload.company ?? null);
     setCompanies(payload.companies ?? []);
     setErrorMessage(null);
+    if (payload.status === 'authorized' && payload.user) await loadPlatforms(payload.company?.id, payload.user.role);
     setStatus(payload.status);
     if (payload.status === 'authorized' && payload.user) {
       void loadPermissions(payload.user.role);
     } else {
       setPermissions(null);
     }
-  }, [loadPermissions]);
+  }, [loadPermissions, loadPlatforms]);
 
   useEffect(() => {
     // The Retail Store keeps its own copy of "who is signed in" in this browser. It must never outlive the BI sign-in,
@@ -242,8 +267,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadErpSession]);
 
   const refreshPermissions = useCallback(async () => {
+    await loadPlatforms(company?.id, profile?.role);
     await loadPermissions(profile?.role ?? null);
-  }, [loadPermissions, profile?.role]);
+  }, [loadPermissions, loadPlatforms, company?.id, profile?.role]);
 
   const canView = useCallback((moduleKey: string) => {
     if (moduleKey === 'dashboard') return true;
@@ -274,6 +300,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     errorMessage,
     permissions,
     permsLoading,
+    biEnabled: platforms.bi,
+    retailEnabled: platforms.retail,
+    platformsReady: platforms.ready,
     canView,
     canDo,
     refreshPermissions,

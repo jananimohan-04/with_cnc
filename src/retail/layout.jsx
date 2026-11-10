@@ -920,14 +920,16 @@ export const Topbar = forwardRef(function Topbar(
               <img src="/assets/argus-logo.png" alt="ARGUSCNC" className="h-7 sm:h-8 w-auto object-contain" />
             </Link>
 
+            {!me?.biOff && (
             <Link
-              to="/sales/pipeline"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300 hover:text-white bg-[#1A0C06] hover:bg-[#2A1408] border border-[#4A2510] transition-colors shadow-xs"
-              title="Return to BI Pipeline & Manufacturing modules"
-            >
-              <span className="text-amber-400 font-extrabold text-sm leading-none">←</span>
-              <span>Back to BI</span>
-            </Link>
+                to="/sales/pipeline"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300 hover:text-white bg-[#1A0C06] hover:bg-[#2A1408] border border-[#4A2510] transition-colors shadow-xs"
+                title="Return to BI Pipeline & Manufacturing modules"
+              >
+                <span className="text-amber-400 font-extrabold text-sm leading-none">←</span>
+                <span>Back to BI</span>
+              </Link>
+            )}
 
             {/* Quick Full Page View Toggle for Left/Right sidebar layouts */}
             {!noSide && (menuPosition === 'left' || menuPosition === 'right') && (

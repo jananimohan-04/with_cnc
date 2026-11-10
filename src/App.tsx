@@ -380,9 +380,9 @@ function MainLayout() {
 }
 
 function ErpGate() {
-  const { status } = useAuth();
+  const { status, biEnabled, platformsReady, isSuperAdmin } = useAuth();
 
-  if (status === 'loading') {
+  if (status === 'loading' || (status === 'authorized' && !platformsReady)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -391,6 +391,8 @@ function ErpGate() {
   }
   if (status === 'signed_out') return <LoginScreen />;
   if (status !== 'authorized') return <AccessDenied />;
+  // Business Intelligence switched off for this company: its users go straight to the Retail Store
+  if (!biEnabled && !isSuperAdmin) return <Navigate to="/store/home" replace />;
   return <MainLayout />;
 }
 

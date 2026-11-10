@@ -2,6 +2,9 @@
 // the app removes those modules from the menu, pages, pipeline columns and KPI tiles of every user of that company.
 import { supabase } from './supabase';
 
+/** BI pages that belong to the Retail Store: hidden for a company whose Retail Store is switched off (Company Management). */
+export const RETAIL_LINKED_MODULES: readonly string[] = ['digital-store', 'retail-orders', 'partner-online-sales'];
+
 /** The modules that can never be switched off: they are how the others are switched back on. */
 export const NEVER_OFF: readonly string[] = ['dashboard', 'admin-access', 'settings'];
 

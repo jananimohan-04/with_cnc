@@ -624,6 +624,17 @@ app.use(async (req, _res, next) => {
   };
   next();
 });
+/* platform switches: a company can have the Retail Store (and the BI pages linked to it) or BI itself turned off */
+const retailOffFor = (companyId) => { const c = companyId ? (db.companies || []).find(x => x.id === companyId || x.code === companyId) : null; return !!c && c.retailEnabled === false; };
+const biOffFor = (companyId) => { const c = companyId ? (db.companies || []).find(x => x.id === companyId || x.code === companyId) : null; return !!c && c.biEnabled === false; };
+app.use((req, res, next) => {
+  if (req.ctx && req.ctx.role !== 'super_admin' && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)
+      && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/')
+      && retailOffFor(req.ctx.companyId)) {
+    return res.status(403).json({ error: 'The Retail Store is turned off for your company.', code: 'RETAIL_OFF' });
+  }
+  next();
+});
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
@@ -1255,7 +1266,10 @@ app.get('/api/me', (req, res) => {
       termsAccepted: (u && u.termsAccepted) || false,
       effectivePermissions,
       menuOverrides: (u && u.menuOverrides) || {},
-      globalDisabledMenus: db.globalDisabledMenus || []
+      globalDisabledMenus: db.globalDisabledMenus || [],
+      // platform switches of the company (Business Intelligence > Company Management): a Super Admin always sees everything
+      retailOff: roleId !== 'super_admin' && retailOffFor(req.ctx.companyId),
+      biOff: roleId !== 'super_admin' && biOffFor(req.ctx.companyId)
     }
   });
 });
@@ -1294,7 +1308,7 @@ app.get('/api/companies/:id', (req, res) => {
 });
 app.post('/api/companies', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
-  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan, menuPermissions, disabledMenus, gstin, pan, cin } = req.body;
+  const { name, code, city, industry, email, phone, address, state, pin, description, adminName, adminEmail, plan, menuPermissions, disabledMenus, gstin, pan, cin, retailEnabled, biEnabled } = req.body;
   if (!name || !city) return res.status(400).json({ error: 'name and city required' });
   const finalCode = (code || ('C-' + name.slice(0, 1).toUpperCase() + Math.floor(Math.random() * 90 + 10))).trim();
   if (db.companies.some(x => x.id === finalCode || x.code === finalCode)) return res.status(400).json({ error: 'company code already exists' });
@@ -1309,7 +1323,8 @@ app.post('/api/companies', (req, res) => {
     gstin: gstin || '', pan: pan || '', cin: cin || '',
     plan: plan || 'Starter', orders: 0, revenue: 0, products: 0, users: 1, createdAt: today, updatedAt: today,
     menuPermissions: Array.isArray(menuPermissions) ? menuPermissions : [],
-    disabledMenus: Array.isArray(disabledMenus) ? disabledMenus : []
+    disabledMenus: Array.isArray(disabledMenus) ? disabledMenus : [],
+    retailEnabled: retailEnabled !== false, biEnabled: biEnabled !== false
   };
   db.companies.unshift(c);
   // an admin email alone is enough — before, no admin was created unless a name was typed too
@@ -1322,7 +1337,7 @@ app.put('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
   const c = companyById(req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin', 'retailEnabled', 'biEnabled'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);
@@ -1334,7 +1349,7 @@ app.patch('/api/companies/:id', (req, res) => {
   if (req.ctx.role !== 'super_admin') return res.status(403).json({ error: 'super_admin only' });
   let c = db.companies.find(x => x.id === req.params.id || x.code === req.params.id);
   if (!c) return res.status(404).json({ error: 'not found' });
-  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin'];
+  const allow = ['name', 'logo', 'industry', 'email', 'phone', 'address', 'city', 'state', 'pin', 'description', 'plan', 'storeStatus', 'status', 'menuPermissions', 'disabledMenus', 'gstin', 'pan', 'cin', 'retailEnabled', 'biEnabled'];
   for (const k of allow) if (req.body[k] !== undefined) c[k] = req.body[k];
   if (c.storeStatus === 'suspended' || c.storeStatus === 'inactive') c.status = 'suspended'; else c.status = 'active';
   c.updatedAt = new Date().toISOString().slice(0, 10);

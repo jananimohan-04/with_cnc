@@ -896,6 +896,9 @@ export function CompaniesPage() {
 
   // Menu Access Configuration State (BI + Retail)
   const [accessTab, setAccessTab] = useState<'bi' | 'retail'>('bi');
+  // platform switches of the company: BI off -> its users go straight to the Retail Store; Retail off -> Retail Store and the pages linked to it are hidden
+  const [biOn, setBiOn] = useState(true);
+  const [retailOn, setRetailOn] = useState(true);
   const [accessSearch, setAccessSearch] = useState('');
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [globalDisabledBi, setGlobalDisabledBi] = useState<Set<string>>(new Set());
@@ -1071,6 +1074,7 @@ export function CompaniesPage() {
   }, [companies]);
 
   const openCreate = async () => {
+    setBiOn(true); setRetailOn(true);
     setForm(emptyCompanyForm);
     setFormError(null);
     setAccessTab('bi');
@@ -1119,6 +1123,10 @@ export function CompaniesPage() {
   };
 
   const openEdit = async (r: CompanyRow) => {
+    setBiOn(true); setRetailOn(true);
+    supabase.from('companies').select('bi_enabled, retail_enabled').eq('id', r.id).maybeSingle().then(({ data }) => {
+      if (data) { setBiOn((data as any).bi_enabled !== false); setRetailOn((data as any).retail_enabled !== false); }
+    });
     setForm({ ...emptyCompanyForm, id: r.id, company_name: r.company_name, code: r.code ?? '', status: r.status });
     // company details are read separately: a failed read (migration not applied yet) just leaves them empty
     supabase.from('companies').select(COMPANY_DETAIL_KEYS.join(',')).eq('id', r.id).maybeSingle().then(({ data }) => {
@@ -1267,6 +1275,8 @@ export function CompaniesPage() {
         status: form.status.toLowerCase(),
         menuPermissions: selectedRetailList,
         disabledMenus: unselectedRetailList,
+        retailEnabled: retailOn,
+        biEnabled: biOn,
       };
       try {
         const patchRes = await retailApi.patch('/api/companies/' + encodeURIComponent(coCode), retailPayload);
@@ -1287,6 +1297,12 @@ export function CompaniesPage() {
     } catch (err) {
       console.warn('Failed syncing to retail backend:', err);
     }
+
+    // 4. Platform switches (BI / Retail Store)
+    try {
+      const { error: pErr } = await supabase.rpc('erp_set_company_platforms', { p_company_id: targetCompanyId, p_bi: biOn, p_retail: retailOn });
+      if (pErr && (!biOn || !retailOn || !/erp_set_company_platforms|schema cache/i.test(pErr.message))) window.alert('The company was saved, but the BI / Retail platform switches were not: ' + pErr.message + ' (If it mentions a missing function, run 20261110060000_company_platforms.sql in Supabase.)');
+    } catch { /* the company is saved; the switches can be set again */ }
 
     setSaving(false);
     setShowForm(false);
@@ -1597,6 +1613,32 @@ export function CompaniesPage() {
               </div>
             </div>
 
+            {/* Platform switches: whole BI app / whole Retail Store for this company */}
+            <div className="grid gap-2 sm:grid-cols-2 px-3 py-2.5 border-b border-slate-200 bg-white">
+              {([
+                { key: 'bi', title: 'Business Intelligence (BI)', on: biOn, set: setBiOn, other: retailOn, icon: Building2, tone: 'brand',
+                  hint: biOn ? 'On: users of this company can open BI.' : 'Off: users cannot open BI. When they sign in they go straight to the Retail Store.' },
+                { key: 'retail', title: 'Retail Store', on: retailOn, set: setRetailOn, other: biOn, icon: Store, tone: 'emerald',
+                  hint: retailOn ? 'On: users of this company can open the Retail Store.' : 'Off: the Retail Store is hidden, and so are the pages linked to it (Digital Store, Retail Orders, Partner & Online Sales).' },
+              ] as const).map((p) => (
+                <label key={p.key} className={`flex items-start gap-3 rounded-lg border px-3 py-2 cursor-pointer select-none transition-colors ${p.on ? (p.tone === 'brand' ? 'border-brand-200 bg-brand-50/50' : 'border-emerald-200 bg-emerald-50/50') : 'border-red-200 bg-red-50/60'}`}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={p.on}
+                    onClick={() => { if (p.on && !p.other) { setFormError('Keep at least one platform (BI or Retail Store) on for the company.'); return; } setFormError(null); p.set(!p.on); }}
+                    className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${p.on ? (p.tone === 'brand' ? 'bg-brand-600' : 'bg-emerald-600') : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${p.on ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800"><p.icon size={13} />{p.title}<span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${p.on ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-red-600 text-white'}`}>{p.on ? 'ON' : 'OFF'}</span></span>
+                    <span className={`block text-[11px] leading-snug ${p.on ? 'text-slate-500' : 'text-red-700 font-semibold'}`}>{p.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
             {/* Note banner: project-wide disabled excluded */}
             <div className="flex items-center justify-between px-3 py-1 bg-amber-50/60 border-b border-amber-100 text-[11px] text-amber-800">
               <span className="flex items-center gap-1.5">
@@ -1613,7 +1655,7 @@ export function CompaniesPage() {
             </div>
 
             {/* Scrollable list of categories and items */}
-            <div className="max-h-[380px] overflow-y-auto p-3 space-y-3">
+            <div className={`max-h-[380px] overflow-y-auto p-3 space-y-3 ${(accessTab === 'bi' ? !biOn : !retailOn) ? 'opacity-40 pointer-events-none' : ''}`}>
               {loadingAccess ? (
                 <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
                   <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />

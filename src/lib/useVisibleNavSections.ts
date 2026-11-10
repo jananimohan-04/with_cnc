@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
  * BottomNav so all four menu positions show the exact same entries.
  */
 export function useVisibleNavSections(): NavSection[] {
-  const { profile, canView, permissions } = useAuth();
+  const { profile, canView, permissions, retailEnabled } = useAuth();
   return useMemo(() => {
     // One permission system: role gates (legacy) AND module view access.
     if (permissions === null) return [];
@@ -19,11 +19,12 @@ export function useVisibleNavSections(): NavSection[] {
         items: s.items.filter(
           (i) =>
             (!i.roles || (profile && i.roles.includes(profile.role))) &&
-            (!i.module || canView(i.module)),
+            (!i.module || canView(i.module)) &&
+            (retailEnabled || i.page !== 'store/home'),
         ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [permissions, profile, canView]);
+  }, [permissions, profile, canView, retailEnabled]);
 }
 
 /** True when a nav entry reads as "current" for the given route. */
