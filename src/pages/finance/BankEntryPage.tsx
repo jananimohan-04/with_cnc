@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { SortLabel, useSort } from '@/components/ui/SortHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
@@ -119,6 +120,18 @@ export function BankEntryPage() {
   const [dataError, setDataError] = useState('');
   const [fBank, setFBank] = useState('');
   const [fKind, setFKind] = useState('');
+  // sorting and filtering in the column headers of the saved-data table (like the other list pages)
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const colGet: Record<string, (r: BankRow) => string> = {
+    date: r => r.txn_date ?? '', cheque: r => r.reference_no ?? '', description: r => r.description ?? '',
+    bank: r => r.account_name ?? '', type: r => r.kind ?? '', company: r => r.party_name ?? '', status: r => r.status ?? '',
+  };
+  const sort = useSort<BankRow>({
+    ...Object.fromEntries(Object.entries(colGet).map(([k, g]) => [k, g])),
+    debit: r => (r.direction === 'OUT' ? Number(r.amount) : 0),
+    credit: r => (r.direction === 'IN' ? Number(r.amount) : 0),
+    balance: r => Number(r.balance ?? 0),
+  });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
@@ -321,8 +334,16 @@ export function BankEntryPage() {
 
   const clearText = () => { setText(''); setRows([]); setShowTable(false); setExisting([]); setMsg(null); if (fileRef.current) fileRef.current.value = ''; };
 
-  const shownData = data;
-  const kinds = useMemo(() => Array.from(new Set(data.map(r => r.kind).filter(Boolean))).sort(), [data]);
+  const shownData = sort.apply(data.filter(r => Object.entries(colFilters).every(([k, v]) => {
+    if (!v) return true;
+    const val = (colGet[k]?.(r) ?? '');
+    return ['bank', 'type', 'company', 'status'].includes(k) ? val === v : val.toLowerCase().includes(v.toLowerCase());
+  })));
+  const colValues = useMemo(() => {
+    const uniq = (f: (r: BankRow) => string) => Array.from(new Set(data.map(f).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return { bank: uniq(colGet.bank), type: uniq(colGet.type), company: uniq(colGet.company), status: uniq(colGet.status) } as Record<string, string[]>;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
   const shownRows = rows;
 
   // A ready-to-fill sample in the usual bank-statement layout; the importer reads it as is.
@@ -369,7 +390,7 @@ export function BankEntryPage() {
       setTo(todayISO());
     }
   };
-  const clearFilters = () => { setFBank(''); setFKind(''); setFrom(''); setTo(''); };
+  const clearFilters = () => { setFBank(''); setFKind(''); setFrom(''); setTo(''); setColFilters({}); sort.set?.(null); };
 
   const issueBadge = (is: RowIssue[]) => is.length === 0
     ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><CheckCircle2 size={12} /> OK</span>
@@ -534,15 +555,6 @@ export function BankEntryPage() {
 
             {/* Filters */}
             <div className="flex items-center gap-2 shrink-0">
-              <Filter size={13} className="text-slate-400 shrink-0" />
-              <select aria-label="Filter bank" className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400 w-44 truncate cursor-pointer" value={fBank} onChange={e => setFBank(e.target.value)}>
-                <option value="">-- All Banks / Types --</option>
-                {(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-              <select aria-label="Filter ledger type" className="h-7 px-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400 w-40 truncate cursor-pointer" value={fKind} onChange={e => setFKind(e.target.value)}>
-                <option value="">-- All Ledger Types --</option>
-                {kinds.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
               <div className="flex items-center gap-1">
                 {quick(3, 'Last 3 Months')}
                 {quick(6, 'Last 6 Months')}
@@ -558,7 +570,31 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
               <table className="w-full text-xs min-w-[1000px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['Date', 'Cheque No.', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Bank', 'Type', 'Company', 'Status', 'Action'].map((h, i) => <th key={h} className={`${th} ${i >= 3 && i <= 5 ? 'text-right' : i === 10 ? 'text-center' : ''}`}>{h}</th>)}
+                  {([
+                    ['date', 'Date', 'none'], ['cheque', 'Cheque No.', 'text'], ['description', 'Description', 'text'],
+                    ['debit', 'Debit (out)', 'none'], ['credit', 'Credit (in)', 'none'], ['balance', 'Balance', 'none'],
+                    ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'], ['status', 'Status', 'list'],
+                  ] as const).map(([key, label, kind], i) => (
+                    <th key={key} className={`${th} align-top ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
+                      <div className={`flex flex-col gap-1 ${i >= 3 && i <= 5 ? 'items-end' : 'items-start'}`}>
+                        <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer" />
+                        {kind === 'list' && (
+                          <select aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
+                            onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
+                            className={`h-6 max-w-[130px] rounded border bg-white px-1 text-[11px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+                            <option value="">All</option>
+                            {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        )}
+                        {kind === 'text' && (
+                          <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder="Filter…" onClick={e => e.stopPropagation()}
+                            onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
+                            className={`h-6 w-28 rounded border bg-white px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                  <th className={`${th} align-top text-center`}>Action</th>
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
@@ -740,6 +776,11 @@ export function BankEntryPage() {
   );
 }
 
+const isUniqueAccount = (name: string) => {
+  const n = (name || '').trim().toLowerCase();
+  return n.includes('cash payment') || n.includes('tds adjust') || n.includes('debit note');
+};
+
 /** Banks are accounts under "Bank Balances" in the chart of accounts, so adding one here adds a real ledger account
  *  (code assigned automatically). "Delete" takes a bank out of the lists (inactive); its history stays in the books. */
 function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
@@ -782,6 +823,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
   const update = (id: string) => {
     const acc = chart.find(a => a.id === id);
     if (!acc) return setErr('Account not found.');
+    if (isUniqueAccount(acc.name)) return setErr('This unique account cannot be edited.');
     if (!draft.trim()) return setErr('Enter a bank name.');
     if (taken(draft, id)) return setErr('A bank or account with that name already exists.');
     void run(async () => { await accountingApi.saveAccount({ id, parentId: acc.parent_id, code: acc.code, name: draft.trim(), isGroup: false, status: 'Active' }); setEditing(null); });
@@ -789,6 +831,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
   const remove = (id: string) => {
     const acc = chart.find(a => a.id === id);
     if (!acc) return setErr('Account not found.');
+    if (isUniqueAccount(acc.name)) return setErr('This unique account cannot be deleted.');
     void run(async () => { await accountingApi.saveAccount({ id, parentId: acc.parent_id, code: acc.code, name: acc.name, isGroup: false, status: 'Inactive' }); setConfirmDel(null); });
   };
 
@@ -804,15 +847,24 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
         {accounts.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No bank or cash accounts yet.</p>}
         {accounts.map(a => {
           const system = !!a.system_key;
+          const isUnique = isUniqueAccount(a.name);
           return (
-            <div key={a.id} data-testid="bank-row" className="py-2 text-sm">
-              {editing === a.id ? (
+            <div
+              key={a.id}
+              data-testid="bank-row"
+              className={`py-2 text-sm transition-all ${
+                isUnique
+                  ? 'my-1.5 rounded-xl bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-purple-50/60 border border-purple-200/90 px-3 py-2.5 shadow-2xs'
+                  : ''
+              }`}
+            >
+              {editing === a.id && !isUnique ? (
                 <div className="flex items-center gap-2">
                   <input aria-label="Edit bank name" className={`${inp} flex-1 !h-8`} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') update(a.id); }} />
                   <button className={`${btn} !h-8`} data-testid="bank-update" disabled={busy} onClick={() => update(a.id)}>Update</button>
                   <button className={`${btn} !h-8`} onClick={() => { setEditing(null); setErr(''); }}>Cancel</button>
                 </div>
-              ) : confirmDel === a.id ? (
+              ) : confirmDel === a.id && !isUnique ? (
                 <div className="flex items-center gap-2 text-red-700">
                   <span className="flex-1 text-xs">Remove <b>{a.name}</b> from your banks? Past entries stay in the books.</span>
                   <button className={`${btn} !h-8 !text-red-700`} data-testid="bank-confirm-delete" disabled={busy} onClick={() => remove(a.id)}>Yes, delete</button>
@@ -821,11 +873,32 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="flex-1 min-w-0">
-                    <span className="font-medium text-slate-800 break-words">{a.name}</span>
-                    <span className="ml-2 text-[11px] text-slate-400">{a.code} · {a.type} · ₹{formatINR(a.balance, { decimals: 'always', symbol: false })}</span>
+                    <span className={`font-medium break-words ${isUnique ? 'font-semibold text-purple-950' : 'text-slate-800'}`}>{a.name}</span>
+                    {isUnique && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200/80 shadow-2xs">
+                        Unique
+                      </span>
+                    )}
+                    <span className={`ml-2 text-[11px] ${isUnique ? 'text-purple-600/80' : 'text-slate-400'}`}>{a.code} · {a.type} · ₹{formatINR(a.balance, { decimals: 'always', symbol: false })}</span>
                   </span>
-                  <button className={`${btn} !h-8`} aria-label={`Edit ${a.name}`} disabled={!canManage || busy} onClick={() => { setEditing(a.id); setDraft(a.name); setErr(''); }}>Edit</button>
-                  <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${a.name}`} disabled={!canManage || busy || system} title={system ? 'System account: used by automatic postings' : ''} onClick={() => { setConfirmDel(a.id); setErr(''); }}>Delete</button>
+                  <button
+                    className={`${btn} !h-8`}
+                    aria-label={`Edit ${a.name}`}
+                    disabled={!canManage || busy || isUnique}
+                    title={isUnique ? 'Unique account: cannot be edited' : ''}
+                    onClick={() => { if (!isUnique) { setEditing(a.id); setDraft(a.name); setErr(''); } }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={`${btn} !h-8 hover:!text-red-600`}
+                    aria-label={`Delete ${a.name}`}
+                    disabled={!canManage || busy || system || isUnique}
+                    title={isUnique ? 'Unique account: cannot be deleted' : system ? 'System account: used by automatic postings' : ''}
+                    onClick={() => { if (!isUnique) { setConfirmDel(a.id); setErr(''); } }}
+                  >
+                    Delete
+                  </button>
                 </div>
               )}
             </div>
