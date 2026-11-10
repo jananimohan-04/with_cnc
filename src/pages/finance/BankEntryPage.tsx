@@ -12,7 +12,7 @@ import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { xlsxToTsv } from '@/lib/xlsxRead';
 import { supabase } from '@/lib/supabase';
-import { suggestRows, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
+import { suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
   applyTypeDefaults, loadOthers, loadTypes, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
@@ -99,7 +99,21 @@ export function BankEntryPage() {
     })();
     return () => { off = true; };
   }, [cid]);
-  const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name });
+  // What you saved before is the training data: the same payer / payee gets the same Type, Ledger and Party next time.
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const loadHistory = useCallback(async () => {
+    try {
+      const all: HistoryItem[] = [];
+      for (let page = 1; page <= 10; page++) {
+        const r = await financeApi.bankTransactions({ page, pageSize: 200 });
+        all.push(...r.rows.filter(x => x.description).map(x => ({ description: x.description ?? '', party: x.party_name || undefined, direction: x.direction })));
+        if (all.length >= r.total || !r.rows.length) break;
+      }
+      setHistory(all);
+    } catch { /* suggestions still work from names, keywords and the bank's wording */ }
+  }, []);
+  useEffect(() => { void loadHistory(); }, [loadHistory, cid]);
+  const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name, history });
 
   // Bank Data
   const [data, setData] = useState<BankRow[]>([]);
@@ -254,6 +268,7 @@ export function BankEntryPage() {
     setMsg({ kind: failed.length ? 'err' : 'ok', text: `Saved ${savedIds.size} entr${savedIds.size === 1 ? 'y' : 'ies'}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} with errors left in the table` : ''}${failed.length ? ` · ${failed.length} failed: ${failed.slice(0, 3).join('; ')}` : ''}.` });
     if (!list.some(r => !savedIds.has(r.id))) setText('');
     void loadData(full);
+    void loadHistory();
   };
 
   const clearText = () => { setText(''); setRows([]); setShowTable(false); setExisting([]); setMsg(null); if (fileRef.current) fileRef.current.value = ''; };
