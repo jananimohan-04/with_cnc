@@ -519,7 +519,7 @@ export function BankEntryPage() {
                     <tr key={r.id} data-testid="data-row" className="border-t border-slate-100 hover:bg-slate-50 transition">
                       <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td><td className="px-3 py-2.5">{r.account_name}</td>
                       <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{r.kind}</span></td>
-                      <td className="px-3 py-2.5">{r.party_name ?? ''}</td><td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td><td className="px-3 py-2.5 max-w-[240px] truncate text-slate-600" title={r.description ?? ''}>{r.description ?? ''}</td>
+                      <td className="px-3 py-2.5">{r.party_name ?? ''}</td><td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td><td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td><td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td><td className="px-3 py-2.5">{statusPill(r.status)}</td>
                     </tr>
