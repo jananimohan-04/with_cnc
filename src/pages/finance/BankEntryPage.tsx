@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -122,8 +122,55 @@ export function BankEntryPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
-  const [editRow, setEditRow] = useState<BankRow | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editKind, setEditKind] = useState('');
+  const [editParty, setEditParty] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
+
+  const startEditing = (r: BankRow) => {
+    setEditingId(r.id);
+    setEditKind(r.kind || '');
+    setEditParty(r.party_name || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditKind('');
+    setEditParty('');
+  };
+
+  const handleSaveInline = async (r: BankRow) => {
+    setSavingId(r.id);
+    try {
+      const trimmedKind = editKind.trim() || (r.direction === 'IN' ? 'Receipt' : 'Payment');
+      const trimmedParty = editParty.trim() || null;
+      const t = types.find(x => x.name.toLowerCase() === trimmedKind.toLowerCase());
+      const contraId = t?.ledgerId || undefined;
+
+      const patch: Record<string, unknown> = {
+        kind: trimmedKind,
+        party_name: trimmedParty,
+        ...(contraId ? { contra_account_id: contraId } : {}),
+      };
+
+      await financeApi.updateBankEntry(r.id, patch);
+
+      setData(prev => prev.map(item => item.id === r.id ? {
+        ...item,
+        kind: trimmedKind,
+        party_name: trimmedParty ?? undefined,
+        ...(contraId ? { contra_account_id: contraId } : {}),
+      } : item));
+
+      setEditingId(null);
+      setMsg({ kind: 'ok', text: `Transaction ${r.txn_no} updated successfully.` });
+    } catch (e) {
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save changes.' });
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   const loadOptions = useCallback(async () => {
     try {
@@ -515,39 +562,124 @@ export function BankEntryPage() {
                   {['Date', 'Cheque No.', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Bank', 'Type', 'Company', 'Status', 'Action'].map((h, i) => <th key={h} className={`${th} ${i >= 3 && i <= 5 ? 'text-right' : i === 10 ? 'text-center' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {shownData.map(r => (
-                    <tr key={r.id} data-testid="data-row" className="border-t border-slate-100 hover:bg-slate-50 transition">
-                      <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
-                      <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
-                      <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td><td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
-                      <td className="px-3 py-2.5">{r.account_name}</td>
-                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{r.kind}</span></td>
-                      <td className="px-3 py-2.5">{r.party_name ?? ''}</td>
-                      <td className="px-3 py-2.5">{statusPill(r.status)}</td>
-                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setEditRow(r)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                            title={`Edit transaction ${r.txn_no}`}
-                          >
-                            <Pencil size={11} /> Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingRow(r)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                            title={`Delete transaction ${r.txn_no}`}
-                          >
-                            <Trash2 size={11} /> Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {shownData.map(r => {
+                    const isEditing = editingId === r.id;
+                    return (
+                      <tr
+                        key={r.id}
+                        data-testid="data-row"
+                        className={`border-t border-slate-100 transition ${isEditing ? 'bg-orange-50/50 ring-1 ring-inset ring-orange-200' : 'hover:bg-slate-50'}`}
+                      >
+                        <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
+                        <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
+                        <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
+                        <td className="px-3 py-2.5">{r.account_name}</td>
+                        <td className="px-3 py-2">
+                          {isEditing ? (
+                            <select
+                              autoFocus
+                              aria-label="Edit Type"
+                              className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-orange-400 rounded-md shadow-2xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 w-32 cursor-pointer"
+                              value={editKind}
+                              onChange={e => setEditKind(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') void handleSaveInline(r);
+                                if (e.key === 'Escape') cancelEditing();
+                              }}
+                            >
+                              <option value="">-- Type --</option>
+                              {types.filter(t => t.direction === 'ANY' || t.direction === r.direction).map(t => (
+                                <option key={t.id} value={t.name}>{t.name}</option>
+                              ))}
+                              {editKind && !types.some(t => t.name === editKind) && (
+                                <option value={editKind}>{editKind}</option>
+                              )}
+                            </select>
+                          ) : (
+                            <span
+                              className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold cursor-pointer hover:bg-slate-200 transition"
+                              title="Click Edit or double-click to change"
+                              onDoubleClick={() => startEditing(r)}
+                            >
+                              {r.kind}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              list="inline-party-datalist"
+                              aria-label="Edit Company"
+                              placeholder="Company / party"
+                              className="h-7 px-2 text-xs text-slate-800 bg-white border border-orange-400 rounded-md shadow-2xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 w-48 font-medium"
+                              value={editParty}
+                              onChange={e => setEditParty(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') void handleSaveInline(r);
+                                if (e.key === 'Escape') cancelEditing();
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="cursor-pointer hover:text-slate-900"
+                              title="Click Edit or double-click to change"
+                              onDoubleClick={() => startEditing(r)}
+                            >
+                              {r.party_name ?? ''}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">{statusPill(r.status)}</td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          {isEditing ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={savingId === r.id}
+                                onClick={() => void handleSaveInline(r)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-40"
+                                title="Save changes (Enter)"
+                              >
+                                <Check size={11} /> {savingId === r.id ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingId === r.id}
+                                onClick={cancelEditing}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 rounded-md transition-colors cursor-pointer"
+                                title="Cancel (Esc)"
+                              >
+                                <X size={11} /> Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => startEditing(r)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
+                                title={`Edit Type & Company for ${r.txn_no}`}
+                              >
+                                <Pencil size={11} /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingRow(r)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-md transition-colors cursor-pointer shadow-2xs"
+                                title={`Delete transaction ${r.txn_no}`}
+                              >
+                                <Trash2 size={11} /> Delete
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {!loadingData && shownData.length === 0 && (
                     <tr><td colSpan={11} className="px-3 py-8 text-center">
                       <Inbox size={30} className="mx-auto text-slate-300 mb-2" />
@@ -557,6 +689,11 @@ export function BankEntryPage() {
                   )}
                 </tbody>
               </table>
+              <datalist id="inline-party-datalist">
+                {parties.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </datalist>
             </div>
           </div>
         </section>
@@ -574,26 +711,6 @@ export function BankEntryPage() {
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
         onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Others saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
-
-      <EditBankEntryModal
-        open={!!editRow}
-        row={editRow}
-        onClose={() => setEditRow(null)}
-        accounts={options?.accounts ?? []}
-        types={types}
-        partyRefs={partyRefs}
-        incomeOpts={incomeOpts}
-        expenseOpts={expenseOpts}
-        onSaved={(updatedRow) => {
-          setData(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-          setMsg({ kind: 'ok', text: `Transaction ${updatedRow.txn_no} updated successfully.` });
-          void loadData(full);
-          void loadOptions();
-        }}
-        onDelete={(r) => {
-          setDeletingRow(r);
-        }}
-      />
 
       <DeleteBankEntryModal
         open={!!deletingRow}
@@ -938,354 +1055,6 @@ function ManualEntryModal({ open, onClose, bankId, bankName, types, incomeOpts, 
                   <td className="px-3 py-2 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td><td className="px-3 py-2 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td></tr>
               ))}</tbody></table>
           </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-function parseDateOk(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime()); }
-
-function EditBankEntryModal({
-  open,
-  onClose,
-  row,
-  accounts,
-  types,
-  partyRefs,
-  incomeOpts,
-  expenseOpts,
-  onSaved,
-  onDelete,
-}: {
-  open: boolean;
-  onClose: () => void;
-  row: BankRow | null;
-  accounts: BankAccount[];
-  types: EntryType[];
-  partyRefs: PartyRef[];
-  incomeOpts: { id: string; code: string; name: string }[];
-  expenseOpts: { id: string; code: string; name: string }[];
-  onSaved: (updatedRow: BankRow) => void;
-  onDelete?: (row: BankRow) => void;
-}) {
-  const [date, setDate] = useState('');
-  const [refNo, setRefNo] = useState('');
-  const [desc, setDesc] = useState('');
-  const [direction, setDirection] = useState<'IN' | 'OUT'>('IN');
-  const [amount, setAmount] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [kind, setKind] = useState('');
-  const [partyName, setPartyName] = useState('');
-  const [status, setStatus] = useState('Cleared');
-  const [contraId, setContraId] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    if (row) {
-      setDate(row.txn_date ? row.txn_date.slice(0, 10) : todayISO());
-      setRefNo(row.reference_no ?? '');
-      setDesc(row.description ?? '');
-      setDirection(row.direction);
-      setAmount(String(row.amount ?? ''));
-      setAccountId(row.account_id ?? '');
-      setKind(row.kind ?? '');
-      setPartyName(row.party_name ?? '');
-      setStatus(row.status ?? 'Cleared');
-      setContraId((row as any).contra_account_id ?? '');
-      setErr('');
-    }
-  }, [row]);
-
-  if (!row) return null;
-
-  const num = (v: string) => {
-    const n = Number(v.replace(/,/g, '').trim());
-    return v.trim() === '' ? 0 : Number.isFinite(n) && n >= 0 ? n : NaN;
-  };
-  const amtNum = num(amount);
-  const ledgers = direction === 'IN' ? incomeOpts : expenseOpts;
-  const fits = types.filter(t => t.direction === 'ANY' || t.direction === direction);
-
-  const submit = async () => {
-    setErr('');
-    if (!date || !parseDateOk(date)) return setErr('Please choose a valid date (YYYY-MM-DD).');
-    if (Number.isNaN(amtNum) || amtNum <= 0) return setErr('Please enter an amount greater than zero.');
-    if (!accountId) return setErr('Please select a bank account.');
-
-    setBusy(true);
-    try {
-      const patch: Record<string, unknown> = {
-        txn_date: date,
-        reference_no: refNo.trim() || null,
-        description: desc.trim() || null,
-        direction,
-        amount: amtNum.toFixed(2),
-        account_id: accountId,
-        kind: kind.trim() || (direction === 'IN' ? 'Receipt' : 'Payment'),
-        party_name: partyName.trim() || null,
-        status,
-        ...(contraId ? { contra_account_id: contraId } : {}),
-      };
-
-      await financeApi.updateBankEntry(row.id, patch);
-
-      const targetAcc = accounts.find(a => a.id === accountId);
-      const updated: BankRow = {
-        ...row,
-        txn_date: date,
-        reference_no: refNo.trim() || undefined,
-        description: desc.trim() || undefined,
-        direction,
-        amount: String(amtNum),
-        account_id: accountId,
-        account_name: targetAcc?.name ?? row.account_name,
-        kind: kind.trim() || (direction === 'IN' ? 'Receipt' : 'Payment'),
-        party_name: partyName.trim() || undefined,
-        status,
-        contra_account_id: contraId || undefined,
-      };
-
-      onSaved(updated);
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not save the transaction.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={() => !busy && onClose()}
-      title="Edit Bank Entry"
-      subtitle={`Txn No: ${row.txn_no} · ${row.account_name}`}
-      size="xl"
-      footer={
-        <div className="w-full flex items-center justify-between gap-2">
-          {onDelete ? (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-[13px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-lg transition cursor-pointer"
-              disabled={busy}
-              onClick={() => {
-                onClose();
-                onDelete(row);
-              }}
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-          ) : <div />}
-          <div className="flex items-center gap-2">
-            <button className={btn} onClick={onClose} disabled={busy}>Cancel</button>
-            <button className={btnPrimary} disabled={busy} onClick={() => void submit()}>
-              <Save size={14} />{busy ? 'Saving…' : 'Save Changes'}
-            </button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-4 text-xs">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-800 shadow-2xs">
-              {row.txn_no}
-            </span>
-            <span className="text-slate-500 font-medium">
-              Originally recorded on {dmy(row.txn_date)}
-            </span>
-          </div>
-          {row.balance !== null && row.balance !== undefined && (
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Balance at txn</span>
-              <span className="font-mono font-bold text-slate-700 text-xs">₹{money(row.balance)}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Date
-            <input
-              type="date"
-              aria-label="Transaction date"
-              className={`${inp} w-full mt-1 normal-case font-normal`}
-              value={date}
-              onChange={e => setDate(e.target.value)}
-            />
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Cheque No. / Reference
-            <input
-              type="text"
-              aria-label="Reference number"
-              placeholder="e.g. 000888600896 or IMPS/UPI ref"
-              className={`${inp} w-full mt-1 normal-case font-normal`}
-              value={refNo}
-              onChange={e => setRefNo(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Flow Direction
-            <div className="flex gap-2 mt-1">
-              <button
-                type="button"
-                className={`flex-1 h-9 rounded-lg border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  direction === 'IN'
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-                onClick={() => setDirection('IN')}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Credit (Money In)
-              </button>
-              <button
-                type="button"
-                className={`flex-1 h-9 rounded-lg border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  direction === 'OUT'
-                    ? 'bg-red-50 border-red-300 text-red-800 shadow-xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-                onClick={() => setDirection('OUT')}
-              >
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                Debit (Money Out)
-              </button>
-            </div>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Amount (₹)
-            <input
-              type="text"
-              inputMode="decimal"
-              aria-label="Transaction amount"
-              placeholder="0.00"
-              className={`${inp} w-full mt-1 normal-case font-semibold text-slate-900`}
-              value={amount}
-              onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-            />
-          </label>
-        </div>
-
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Description
-          <input
-            type="text"
-            aria-label="Transaction description"
-            placeholder="Narration or statement description"
-            className={`${inp} w-full mt-1 normal-case font-normal`}
-            value={desc}
-            onChange={e => setDesc(e.target.value)}
-          />
-        </label>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Bank Account
-            <select
-              aria-label="Bank account"
-              className={`${sel} w-full mt-1 normal-case font-normal`}
-              value={accountId}
-              onChange={e => setAccountId(e.target.value)}
-            >
-              <option value="">-- Choose Bank Account --</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.type})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Type
-            <select
-              aria-label="Transaction type"
-              className={`${sel} w-full mt-1 normal-case font-normal`}
-              value={kind}
-              onChange={e => {
-                setKind(e.target.value);
-                const t = types.find(x => x.name === e.target.value || x.id === e.target.value);
-                if (t?.ledgerId) setContraId(t.ledgerId);
-              }}
-            >
-              <option value="">-- Choose Type --</option>
-              {fits.map(t => (
-                <option key={t.id} value={t.name}>
-                  {t.name}
-                </option>
-              ))}
-              {kind && !fits.some(t => t.name === kind) && (
-                <option value={kind}>{kind} (Custom)</option>
-              )}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Company / Party Name
-            <input
-              type="text"
-              list="edit-party-options"
-              aria-label="Company or Party name"
-              placeholder="e.g. AADHIGURU ENGINEERING"
-              className={`${inp} w-full mt-1 normal-case font-normal`}
-              value={partyName}
-              onChange={e => setPartyName(e.target.value)}
-            />
-            <datalist id="edit-party-options">
-              {partyRefs.map(p => (
-                <option key={p.id} value={p.name}>
-                  {p.kind}: {p.name}
-                </option>
-              ))}
-            </datalist>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Status
-            <select
-              aria-label="Transaction status"
-              className={`${sel} w-full mt-1 normal-case font-semibold`}
-              value={status}
-              onChange={e => setStatus(e.target.value)}
-            >
-              <option value="Cleared">Cleared</option>
-              <option value="Pending">Pending</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </label>
-        </div>
-
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Ledger Account (Contra)
-          <select
-            aria-label="Contra ledger"
-            className={`${sel} w-full mt-1 normal-case font-normal`}
-            value={contraId}
-            onChange={e => setContraId(e.target.value)}
-          >
-            <option value="">— Default / None —</option>
-            {ledgers.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.code} {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {err && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2"
-          >
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            {err}
-          </p>
         )}
       </div>
     </Modal>
