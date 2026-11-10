@@ -278,15 +278,31 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               className="shrink-0 whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50/60 px-2 py-1 text-[11px] font-bold text-amber-800 hover:shadow-sm transition">
               PAYABLE <b className="tabular-nums" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</b> <span className="font-medium text-amber-600">({recPay.suppliers})</span>
             </button>
-            <span className="ml-auto flex gap-2 shrink-0">
-              <button className={btn} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={14} />Preview</button>
-              <button className={btn} data-testid="ledger-print" onClick={printReport}><Printer size={14} />Print</button>
-              <button className={btn} data-testid="ledger-pdf" title="Download PDF" onClick={() => void downloadPdf()}><FileDown size={14} />PDF</button>
-              <button className={btn} title="Export CSV" onClick={exportRows}><Upload size={14} />CSV</button>
+
+            <span className="h-4 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 whitespace-nowrap">
+              Show
+              <select aria-label="Entries per page" className={`${sel} !h-7 !py-0 !px-1.5 text-xs`} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}<option value={0}>All</option>
+              </select>
+              entries
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 whitespace-nowrap">
+              Search:
+              <input aria-label="Search ledger" placeholder="Search ledger…" className={`${inp} !h-7 !py-0 !px-2 text-xs w-36 sm:w-48`} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+            </label>
+
+            <span className="ml-auto flex gap-1.5 shrink-0">
+              <button className={`${btn} !h-7 !px-2.5 text-xs`} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={13} />Preview</button>
+              <button className={`${btn} !h-7 !px-2.5 text-xs`} data-testid="ledger-print" onClick={printReport}><Printer size={13} />Print</button>
+              <button className={`${btn} !h-7 !px-2.5 text-xs`} data-testid="ledger-pdf" title="Download PDF" onClick={() => void downloadPdf()}><FileDown size={13} />PDF</button>
+              <button className={`${btn} !h-7 !px-2.5 text-xs`} title="Export CSV" onClick={exportRows}><Upload size={13} />CSV</button>
             </span>
             <div className="relative shrink-0" ref={menuRef}>
-              <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !px-2.5`} onClick={() => setMenuOpen(o => !o)}>
-                <MoreVertical size={18} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />
+              <button type="button" aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} data-testid="ledger-menu" className={`${btn} !h-7 !px-1.5`} onClick={() => setMenuOpen(o => !o)}>
+                <MoreVertical size={16} className={anyLoading ? 'animate-pulse text-orange-500' : ''} />
               </button>
               {menuOpen && (
                 <div role="menu" className="absolute right-0 mt-2 w-60 z-30 rounded-xl border border-slate-200 bg-white shadow-xl py-1.5">
@@ -302,14 +318,6 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                 </div>
               )}
             </div>
-          </div>
-
-          <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <label className="flex items-center gap-2 text-slate-600">Show
-              <select aria-label="Entries per page" className={`${sel} !h-8`} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
-                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}<option value={0}>All</option></select> entries</label>
-            <label className="flex items-center gap-2 text-slate-600">Search:
-              <input aria-label="Search ledger" className={`${inp} !h-8 w-56`} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></label>
           </div>
 
           <div className="overflow-auto max-h-[560px] border-t border-slate-200">
