@@ -58,7 +58,7 @@ export function BankEntryPage() {
     });
     setTabActions(
       <div className="flex items-center gap-1.5">
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Manage Banks</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Transaction Types</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Manage Types</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Others</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('manual')}><PenLine size={13} className="text-slate-500" /> Manual Entry</button>
@@ -400,7 +400,7 @@ export function BankEntryPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {topBtn(<Landmark size={14} />, 'Manage Banks', () => setModal('banks'))}
+            {topBtn(<Landmark size={14} />, 'Transaction Types', () => setModal('banks'))}
             {topBtn(<Tags size={14} />, 'Manage Types', () => setModal('types'))}
             {topBtn(<Layers size={14} />, 'Manage Others', () => { setOthers(loadOthers(cid)); setModal('others'); })}
             {topBtn(<PenLine size={14} />, 'Manual Entry', () => setModal('manual'))}
@@ -793,7 +793,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title="Manage Banks" subtitle="Bank and cash accounts in your books" size="md"
+    <Modal open={open} onClose={() => !busy && onClose()} title="Transaction Types" subtitle="Bank and cash accounts in your books" size="md"
       footer={<button className={btn} data-testid="banks-close" onClick={onClose}>Close</button>}>
       <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New bank name" className={`${inp} flex-1`} placeholder="New bank name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />

@@ -353,7 +353,6 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k: keyof OpeningDraft, v: string) => setF(p => ({ ...p, [k]: v }));
-  const bank = lookups.banks.find(b => b.id === f.account_id);
   const partyList = type === 'CUSTOMER' ? lookups.customers : lookups.suppliers;
   const itemKey = f.item_id ? `${f.item_kind}:${f.item_id}` : '';
   const item = lookups.items.find(i => `${i.kind}:${i.id}` === itemKey);
@@ -383,7 +382,7 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Draft'}</Button></div>}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-        <FormField label="Company"><input className={`${inputClass} bg-slate-50`} readOnly value={lookups.company?.company_name ?? ''} /></FormField>
+        {type !== 'BANK' && <FormField label="Company"><input className={`${inputClass} bg-slate-50`} readOnly value={lookups.company?.company_name ?? ''} /></FormField>}
         <FormField label="Opening Date" required><input type="date" className={inputClass} value={f.opening_date ?? ''} max={todayISO()} onChange={e => set('opening_date', e.target.value)} /></FormField>
 
         {type === 'BANK' && (<>
@@ -392,8 +391,6 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
               <option value="">Select account…</option>
               {lookups.banks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.type})</option>)}
             </select></FormField>
-          <FormField label="Account Name"><input className={`${inputClass} bg-slate-50`} readOnly value={bank?.name ?? ''} /></FormField>
-          <FormField label="Account Number" hint="Account code from the chart of accounts; bank numbers are not stored"><input className={`${inputClass} bg-slate-50`} readOnly value={bank ? `••••${bank.code.slice(-4)}` : ''} /></FormField>
           <FormField label="Balance Type"><select className={inputClass} value={f.balance_type ?? 'Debit'} onChange={e => set('balance_type', e.target.value)}>
             <option value="Debit">Money in the account (Dr)</option><option value="Overdraft">Overdraft (Cr)</option></select></FormField>
         </>)}
@@ -435,8 +432,8 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
           <FormField label="Total Opening Value"><input className={`${inputClass} bg-slate-50 font-bold`} readOnly value={money(stockValue(f.qty, f.unit_cost))} /></FormField>
         </>)}
 
-        <FormField label="Currency"><select className={inputClass} value={f.currency ?? 'INR'} onChange={e => set('currency', e.target.value)}><option>INR</option></select></FormField>
-        <div className="sm:col-span-2"><FormField label="Remarks"><textarea rows={2} className={inputClass} value={f.remarks ?? ''} onChange={e => set('remarks', e.target.value)} /></FormField></div>
+        {type !== 'BANK' && <FormField label="Currency"><select className={inputClass} value={f.currency ?? 'INR'} onChange={e => set('currency', e.target.value)}><option>INR</option></select></FormField>}
+        {type !== 'BANK' && <div className="sm:col-span-2"><FormField label="Remarks"><textarea rows={2} className={inputClass} value={f.remarks ?? ''} onChange={e => set('remarks', e.target.value)} /></FormField></div>}
         <FormField label="Status"><input className={`${inputClass} bg-slate-50`} readOnly value={entry?.status ?? 'Draft'} /></FormField>
       </div>
     </Modal>
