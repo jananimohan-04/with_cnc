@@ -343,27 +343,27 @@ export function BankEntryPage() {
   useEffect(() => { void loadOptions(); setTypes(loadTypes(cid)); setOthers(loadOthers(cid)); }, [cid, loadOptions]);
 
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
-  const loadData = useCallback(async (everything = false) => {
+  // how many saved rows to show: the page loads that many (newest first); "All" loads everything
+  const [loadLimit, setLoadLimit] = useState<'50' | '100' | '200' | '500' | 'all'>('100');
+  const loadData = useCallback(async (_everything = false) => {
     setLoadingData(true); setDataError('');
     try {
       // Global Topbar range intersects the page's own From/To.
       const eff = intersectRange(from, to, globalFrom, globalTo);
       const args = { account: fBank || null, kind: fKind || null, from: eff.from || undefined, to: eff.to || undefined };
-      if (!everything) {
-        const r = await financeApi.bankTransactions({ ...args, page: 1, pageSize: 50 });
-        setData(r.rows); setDataTotal(r.total); setFull(r.rows.length >= r.total);
-      } else {
-        const all: BankRow[] = []; let total = 0;
-        for (let page = 1; page <= 25; page++) {
-          const r = await financeApi.bankTransactions({ ...args, page, pageSize: 200 });
-          total = r.total; all.push(...r.rows);
-          if (all.length >= total || r.rows.length === 0) break;
-        }
-        setData(all); setDataTotal(total); setFull(all.length >= total);
+      const limit = loadLimit === 'all' ? Infinity : Number(loadLimit);
+      const pageSize = Math.min(200, limit);
+      const all: BankRow[] = []; let total = 0;
+      for (let page = 1; page <= 50; page++) {
+        const r = await financeApi.bankTransactions({ ...args, page, pageSize });
+        total = r.total; all.push(...r.rows);
+        if (all.length >= Math.min(total, limit) || r.rows.length === 0) break;
       }
+      const rowsShown = all.slice(0, limit);
+      setData(rowsShown); setDataTotal(total); setFull(rowsShown.length >= total);
     } catch (e) { setData([]); setDataTotal(0); setDataError(e instanceof Error ? e.message : 'Could not load bank data.'); }
     finally { setLoadingData(false); }
-  }, [fBank, fKind, from, to, globalFrom, globalTo]);
+  }, [fBank, fKind, from, to, globalFrom, globalTo, loadLimit]);
   useEffect(() => { void loadData(false); }, [loadData, cid]);
 
   const bank = options?.accounts.find(a => a.id === bankId);
@@ -415,6 +415,7 @@ export function BankEntryPage() {
     let t: string;
     try { t = /\.xlsx$/i.test(f.name) ? await xlsxToTsv(await f.arrayBuffer()) : await f.text(); }
     catch (e) { setMsg({ kind: 'err', text: (e as Error).message || 'Could not read this file.' }); return; }
+    lastParsed.current = t;
     setText(t);
     await parseNow(t);   // open the table straight away: no need to click “View full Table”
   };
@@ -485,7 +486,15 @@ export function BankEntryPage() {
     void loadHistory();
   };
 
-  const clearText = () => { setText(''); setRows([]); setShowTable(false); setExisting([]); setMsg(null); if (fileRef.current) fileRef.current.value = ''; };
+  // pasting rows opens the table by itself (a chosen file already does)
+  const lastParsed = useRef('');
+  useEffect(() => {
+    if (!text.trim() || text === lastParsed.current) return;
+    const t = window.setTimeout(() => { lastParsed.current = text; void parseNow(text); }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  const clearText = () => { lastParsed.current = ''; setText(''); setRows([]); setShowTable(false); setExisting([]); setMsg(null); if (fileRef.current) fileRef.current.value = ''; };
 
   const shownData = sort.apply(data.filter(r => Object.entries(colFilters).every(([k, v]) => {
     if (!v) return true;
@@ -664,20 +673,11 @@ export function BankEntryPage() {
                 </button>
                 <button
                   className={btnCompact}
-                  disabled={busy}
-                  onClick={() => void parseNow()}
-                  title="View full Table"
-                >
-                  <Table2 size={12} />
-                  <span>View <span className="hidden xl:inline">full </span>Table</span>
-                </button>
-                <button
-                  className={btnCompact}
-                  onClick={clearText}
-                  title="Clear Text"
+                  onClick={() => { clearText(); clearFilters(); }}
+                  title="Clear the pasted text, the import table and all filters"
                 >
                   <Eraser size={12} />
-                  <span>Clear<span className="hidden xl:inline"> Text</span></span>
+                  <span>Clear</span>
                 </button>
                 <span className="w-px h-3.5 bg-slate-200 mx-0.5 shrink-0" />
                 <button
@@ -696,15 +696,6 @@ export function BankEntryPage() {
                   <FileDown size={12} />
                   <span><span className="hidden xl:inline">Download </span>PDF</span>
                 </button>
-                <button
-                  className={btnCompact}
-                  disabled={busy}
-                  onClick={() => void updateEntries()}
-                  title="Update entries"
-                >
-                  <Wand2 size={12} />
-                  <span>Update<span className="hidden xl:inline"> entries</span></span>
-                </button>
               </div>
 
               <div className="flex items-center gap-1 shrink-0 ml-auto">
@@ -720,13 +711,20 @@ export function BankEntryPage() {
                 <span className="h-3.5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
 
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    className="h-7 px-1.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition disabled:opacity-40 whitespace-nowrap shrink-0 cursor-pointer"
+                  <select
+                    aria-label="Rows to load"
+                    title="How many saved rows to show"
+                    className="h-7 px-1.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white text-slate-700 shadow-2xs focus:outline-none focus:border-orange-400 cursor-pointer"
+                    value={loadLimit}
                     disabled={loadingData}
-                    onClick={() => void loadData(true)}
+                    onChange={e => setLoadLimit(e.target.value as typeof loadLimit)}
                   >
-                    {loadingData ? 'Loading…' : 'Load Full Data'}
-                  </button>
+                    <option value="50">Show 50</option>
+                    <option value="100">Show 100</option>
+                    <option value="200">Show 200</option>
+                    <option value="500">Show 500</option>
+                    <option value="all">Show all</option>
+                  </select>
                   <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap shrink-0" data-testid="data-count">
                     {loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal}` : ''}`}
                   </span>
@@ -740,12 +738,6 @@ export function BankEntryPage() {
                     {quick(6, '6 Months')}
                     {quick(12, '1 Year')}
                   </div>
-                  <button
-                    className="h-7 px-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                    onClick={clearFilters}
-                  >
-                    Clear Filters
-                  </button>
                 </div>
               </div>
             </div>
