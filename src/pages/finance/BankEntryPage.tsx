@@ -573,10 +573,10 @@ export function BankEntryPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 bg-grid min-h-full">
-      <div className="space-y-2">
+    <div className="px-2 pt-1 pb-3 lg:px-4 lg:pt-1 lg:pb-4 bg-grid min-h-full">
+      <div className="flex flex-col gap-1.5">
         {/* ---------- header (mobile/tablet fallback; desktop is unified in topbar) ---------- */}
-        <div className="flex lg:hidden flex-wrap items-center justify-between gap-4">
+        <div className="flex lg:hidden flex-wrap items-center justify-between gap-4 pb-1">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/25"><Landmark size={22} /></div>
             <div>
@@ -593,7 +593,7 @@ export function BankEntryPage() {
 
         {/* ---------- import ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-3">
+          <div className="p-2 sm:p-2.5">
             <div className="flex flex-wrap xl:flex-nowrap items-stretch gap-2">
               <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-2.5 py-1.5 cursor-pointer shrink-0">
                 <div className="min-w-0">
@@ -625,7 +625,7 @@ export function BankEntryPage() {
             </div>
 
             {/* ---------- single line: import actions + data filters (compact view) ---------- */}
-            <div className="mt-2 flex items-center justify-between gap-1 border-t border-slate-100 pt-2 flex-nowrap w-full overflow-hidden">
+            <div className="mt-1.5 flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 flex-nowrap w-full overflow-hidden">
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   className={btnCompactPrimary}
@@ -783,7 +783,7 @@ export function BankEntryPage() {
 
         {/* ---------- bank data ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 space-y-4">
+          <div className="p-2.5 sm:p-3 space-y-2.5">
             {dataError && <div data-testid="data-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{dataError}</div>}
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-[11px] leading-tight">
