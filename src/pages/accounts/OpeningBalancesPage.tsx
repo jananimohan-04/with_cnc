@@ -434,7 +434,7 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
 
         {type !== 'BANK' && <FormField label="Currency"><select className={inputClass} value={f.currency ?? 'INR'} onChange={e => set('currency', e.target.value)}><option>INR</option></select></FormField>}
         {type !== 'BANK' && <div className="sm:col-span-2"><FormField label="Remarks"><textarea rows={2} className={inputClass} value={f.remarks ?? ''} onChange={e => set('remarks', e.target.value)} /></FormField></div>}
-        <FormField label="Status"><input className={`${inputClass} bg-slate-50`} readOnly value={entry?.status ?? 'Draft'} /></FormField>
+        {type !== 'BANK' && <FormField label="Status"><input className={`${inputClass} bg-slate-50`} readOnly value={entry?.status ?? 'Draft'} /></FormField>}
       </div>
     </Modal>
   );
