@@ -40,5 +40,21 @@ export const financeApi={
    if(error)throw new Error(error.message||(rpcErr instanceof Error?rpcErr.message:String(rpcErr)));
    return data;
   }
+ },
+ deleteBankEntry:async(id:string)=>{
+  try{
+   return await call<{id:string;ok:boolean}>('erp_delete_bank_entry',{p_id:id});
+  }catch(rpcErr:unknown){
+   const {data,error}=await supabase.from('cnc_bank_transactions').delete().eq('id',id).select();
+   if(error){
+    try{
+     await call<void>('erp_bank_set_status',{p_id:id,p_status:'Cancelled'});
+     return {id,ok:true,cancelled:true};
+    }catch{
+     throw new Error(error.message||(rpcErr instanceof Error?rpcErr.message:String(rpcErr)));
+    }
+   }
+   return data;
+  }
  }
 };

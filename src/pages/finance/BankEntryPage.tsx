@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -127,6 +127,7 @@ export function BankEntryPage() {
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
   const [editRow, setEditRow] = useState<BankRow | null>(null);
+  const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -531,14 +532,24 @@ export function BankEntryPage() {
                       <td className="px-3 py-2.5">{r.party_name ?? ''}</td>
                       <td className="px-3 py-2.5">{statusPill(r.status)}</td>
                       <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setEditRow(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                          title={`Edit transaction ${r.txn_no}`}
-                        >
-                          <Pencil size={11} /> Edit
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditRow(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
+                            title={`Edit transaction ${r.txn_no}`}
+                          >
+                            <Pencil size={11} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingRow(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-md transition-colors cursor-pointer shadow-2xs"
+                            title={`Delete transaction ${r.txn_no}`}
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -591,6 +602,26 @@ export function BankEntryPage() {
           setData(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
           setMsg({ kind: 'ok', text: `Transaction ${updatedRow.txn_no} updated successfully.` });
           void loadData(full);
+          void loadOptions();
+        }}
+        onDelete={(r) => {
+          setDeletingRow(r);
+        }}
+      />
+
+      <DeleteBankEntryModal
+        open={!!deletingRow}
+        row={deletingRow}
+        onClose={() => setDeletingRow(null)}
+        onDeleted={(deletedId, transferGroup) => {
+          setData(prev => prev.filter(item => {
+            if (item.id === deletedId) return false;
+            if (transferGroup && item.transfer_group === transferGroup) return false;
+            return true;
+          }));
+          setMsg({ kind: 'ok', text: 'Transaction deleted successfully.' });
+          void loadData(full);
+          void loadOptions();
         }}
       />
     </div>
@@ -938,6 +969,7 @@ function EditBankEntryModal({
   incomeOpts,
   expenseOpts,
   onSaved,
+  onDelete,
 }: {
   open: boolean;
   onClose: () => void;
@@ -948,6 +980,7 @@ function EditBankEntryModal({
   incomeOpts: { id: string; code: string; name: string }[];
   expenseOpts: { id: string; code: string; name: string }[];
   onSaved: (updatedRow: BankRow) => void;
+  onDelete?: (row: BankRow) => void;
 }) {
   const [date, setDate] = useState('');
   const [refNo, setRefNo] = useState('');
@@ -1044,12 +1077,27 @@ function EditBankEntryModal({
       subtitle={`Txn No: ${row.txn_no} · ${row.account_name}`}
       size="xl"
       footer={
-        <>
-          <button className={btn} onClick={onClose} disabled={busy}>Cancel</button>
-          <button className={btnPrimary} disabled={busy} onClick={() => void submit()}>
-            <Save size={14} />{busy ? 'Saving…' : 'Save Changes'}
-          </button>
-        </>
+        <div className="w-full flex items-center justify-between gap-2">
+          {onDelete ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-[13px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-lg transition cursor-pointer"
+              disabled={busy}
+              onClick={() => {
+                onClose();
+                onDelete(row);
+              }}
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          ) : <div />}
+          <div className="flex items-center gap-2">
+            <button className={btn} onClick={onClose} disabled={busy}>Cancel</button>
+            <button className={btnPrimary} disabled={busy} onClick={() => void submit()}>
+              <Save size={14} />{busy ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
       }
     >
       <div className="space-y-4 text-xs">
@@ -1243,6 +1291,135 @@ function EditBankEntryModal({
             ))}
           </select>
         </label>
+
+        {err && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2"
+          >
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            {err}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DeleteBankEntryModal({
+  open,
+  onClose,
+  row,
+  onDeleted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  row: BankRow | null;
+  onDeleted: (deletedId: string, transferGroup?: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  if (!row) return null;
+
+  const handleDelete = async () => {
+    setErr('');
+    setBusy(true);
+    try {
+      const res = await financeApi.deleteBankEntry(row.id);
+      const tg = (res as { transfer_group?: string | null } | undefined)?.transfer_group ?? row.transfer_group ?? null;
+      onDeleted(row.id, tg);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not delete the transaction.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isContra = !!row.transfer_group;
+  const isCredit = row.direction === 'IN';
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => !busy && onClose()}
+      title="Delete Bank Entry"
+      subtitle={`Are you sure you want to delete transaction ${row.txn_no}?`}
+      size="md"
+      footer={
+        <div className="w-full flex items-center justify-end gap-2">
+          <button className={btn} onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleDelete()}
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-[13px] font-bold text-white bg-red-600 hover:bg-red-700 active:scale-[0.98] rounded-lg shadow-md shadow-red-600/20 transition cursor-pointer disabled:opacity-40"
+          >
+            <Trash2 size={14} />
+            {busy ? 'Deleting…' : 'Delete Transaction'}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4 text-xs">
+        <div className="p-3.5 rounded-xl border border-red-200/80 bg-red-50/50 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white border border-red-200 text-red-900 shadow-2xs">
+              {row.txn_no}
+            </span>
+            <span className="text-slate-500 font-medium">
+              {dmy(row.txn_date)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 border-t border-red-100">
+            <span className="text-slate-600 font-medium">{row.account_name}</span>
+            <span className={`font-mono text-sm font-bold ${isCredit ? 'text-emerald-700' : 'text-red-700'}`}>
+              {isCredit ? '+ ' : '- '}₹{money(row.amount)}
+            </span>
+          </div>
+
+          {row.reference_no && (
+            <div className="text-slate-500 font-mono text-[11px]">
+              Ref / Cheque: <span className="font-medium text-slate-700">{row.reference_no}</span>
+            </div>
+          )}
+
+          {row.description && (
+            <p className="text-slate-600 break-words leading-relaxed pt-1 border-t border-red-100 text-[11px]">
+              {row.description}
+            </p>
+          )}
+
+          {(row.kind || row.party_name) && (
+            <div className="flex items-center gap-2 pt-1 text-slate-500 text-[11px]">
+              {row.kind && <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 font-semibold text-slate-700">{row.kind}</span>}
+              {row.party_name && <span className="font-medium text-slate-700">{row.party_name}</span>}
+            </div>
+          )}
+        </div>
+
+        {isContra && (
+          <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs flex items-start gap-2">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-bold">Bank Transfer (Contra Entry)</p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                This transaction is linked to a transfer between bank accounts. Deleting it will automatically delete both legs of the transfer.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 text-xs">
+          <p className="font-semibold text-slate-700">Ledger Impact:</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Deleting this transaction will automatically remove its associated journal entry from the general ledger and update your account balance.
+          </p>
+        </div>
 
         {err && (
           <p

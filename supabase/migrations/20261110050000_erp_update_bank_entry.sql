@@ -1,4 +1,4 @@
--- Migration: Add erp_update_bank_entry RPC for editing saved bank transactions
+-- Migration: Add erp_update_bank_entry and erp_delete_bank_entry RPCs for bank transactions
 create or replace function public.erp_update_bank_entry(p_id text, p_entry jsonb)
 returns jsonb
 language plpgsql volatile security definer set search_path = ''
@@ -65,3 +65,39 @@ $$;
 
 revoke all on function public.erp_update_bank_entry(text, jsonb) from public, anon;
 grant execute on function public.erp_update_bank_entry(text, jsonb) to authenticated;
+
+-- Delete bank transaction RPC
+create or replace function public.erp_delete_bank_entry(p_id text)
+returns jsonb
+language plpgsql volatile security definer set search_path = ''
+as $$
+declare
+  me public.company_users := public.erp_current_user();
+  v_company uuid := public.erp_report_company();
+  v_grp text;
+  v_deleted int := 0;
+begin
+  if me.role not in ('SUPER_ADMIN', 'COMPANY_ADMIN') then 
+    raise exception 'Only administrators can delete bank transactions' using errcode='42501'; 
+  end if;
+
+  -- If this transaction is part of a transfer group, delete all legs in the transfer
+  select transfer_group into v_grp from public.cnc_bank_transactions where id::text = p_id and company_id = v_company;
+  if v_grp is not null then
+    delete from public.cnc_bank_transactions where transfer_group = v_grp and company_id = v_company;
+    return jsonb_build_object('id', p_id, 'ok', true, 'transfer_group', v_grp);
+  end if;
+
+  delete from public.cnc_bank_transactions where id::text = p_id and company_id = v_company;
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    raise exception 'Transaction not found or access denied';
+  end if;
+
+  return jsonb_build_object('id', p_id, 'ok', true);
+end;
+$$;
+
+revoke all on function public.erp_delete_bank_entry(text) from public, anon;
+grant execute on function public.erp_delete_bank_entry(text) to authenticated;
