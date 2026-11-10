@@ -24,6 +24,8 @@ import {
 
 const btn = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none';
 const btnPrimary = 'inline-flex items-center justify-center gap-1.5 h-9 px-5 text-[13px] font-bold text-white bg-gradient-to-b from-orange-500 to-orange-600 rounded-lg shadow-md shadow-orange-500/25 hover:from-orange-500 hover:to-orange-700 active:scale-[0.98] transition disabled:opacity-40 disabled:shadow-none';
+const btnCompact = 'inline-flex items-center justify-center gap-1 h-7 px-2 text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-md shadow-2xs hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none whitespace-nowrap shrink-0 cursor-pointer';
+const btnCompactPrimary = 'inline-flex items-center justify-center gap-1 h-7 px-2.5 text-xs font-bold text-white bg-gradient-to-b from-orange-500 to-orange-600 rounded-md shadow-xs shadow-orange-500/20 hover:from-orange-500 hover:to-orange-700 active:scale-[0.98] transition disabled:opacity-40 disabled:shadow-none whitespace-nowrap shrink-0 cursor-pointer';
 const sel = 'h-9 px-3 text-[13px] font-medium text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15';
 const inp = 'h-9 px-3 text-[13px] text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15';
 const th = 'px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500';
@@ -110,6 +112,41 @@ export function extractRowTypeAndDesc(
   }
 
   return { type: finalType, description: desc };
+}
+
+function TableCompanyCell({
+  initialValue,
+  onSave,
+}: {
+  initialValue: string;
+  onSave: (val: string) => void;
+}) {
+  const [val, setVal] = useState(initialValue);
+  useEffect(() => {
+    setVal(initialValue);
+  }, [initialValue]);
+
+  return (
+    <input
+      type="text"
+      list="inline-party-datalist"
+      aria-label="Company / party"
+      placeholder="Company / party"
+      className="h-7 px-2 text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-44 font-medium"
+      value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={() => {
+        if (val.trim() !== (initialValue ?? '').trim()) {
+          onSave(val.trim());
+        }
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
 }
 
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
@@ -219,57 +256,54 @@ export function BankEntryPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editKind, setEditKind] = useState('');
-  const [editParty, setEditParty] = useState('');
-  const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
 
-  const startEditing = (r: BankRow) => {
+  const handleUpdateType = async (r: BankRow, newTypeName: string) => {
+    const trimmed = newTypeName.trim();
     const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
-    setEditingId(r.id);
-    setEditKind(parsed.type || r.kind || '');
-    setEditParty(r.party_name || '');
-  };
+    const t = types.find(x => x.name.toLowerCase() === trimmed.toLowerCase());
+    const contraId = t?.ledgerId || undefined;
 
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditKind('');
-    setEditParty('');
-  };
+    setData(prev => prev.map(item => item.id === r.id ? {
+      ...item,
+      kind: trimmed,
+      description: parsed.description,
+      ...(contraId ? { contra_account_id: contraId } : {}),
+    } : item));
 
-  const handleSaveInline = async (r: BankRow) => {
-    setSavingId(r.id);
     try {
-      const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
-      const trimmedKind = editKind.trim() || parsed.type || (r.direction === 'IN' ? 'Receipt' : 'Payment');
-      const trimmedParty = editParty.trim() || null;
-      const t = types.find(x => x.name.toLowerCase() === trimmedKind.toLowerCase());
-      const contraId = t?.ledgerId || undefined;
-
-      const patch: Record<string, unknown> = {
-        kind: trimmedKind,
-        party_name: trimmedParty,
+      await financeApi.updateBankEntry(r.id, {
+        kind: trimmed,
         description: parsed.description,
         ...(contraId ? { contra_account_id: contraId } : {}),
-      };
-
-      await financeApi.updateBankEntry(r.id, patch);
-
-      setData(prev => prev.map(item => item.id === r.id ? {
-        ...item,
-        kind: trimmedKind,
-        description: parsed.description,
-        party_name: trimmedParty ?? undefined,
-        ...(contraId ? { contra_account_id: contraId } : {}),
-      } : item));
-
-      setEditingId(null);
-      setMsg({ kind: 'ok', text: 'Transaction updated successfully.' });
+      });
+      setMsg({ kind: 'ok', text: 'Type updated successfully.' });
     } catch (e) {
-      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save changes.' });
-    } finally {
-      setSavingId(null);
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update type.' });
+      void loadData(full);
+    }
+  };
+
+  const handleUpdateCompany = async (r: BankRow, newParty: string) => {
+    const trimmed = newParty.trim() || null;
+    if ((r.party_name ?? '') === (trimmed ?? '')) return;
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+
+    setData(prev => prev.map(item => item.id === r.id ? {
+      ...item,
+      party_name: trimmed ?? undefined,
+      description: parsed.description,
+    } : item));
+
+    try {
+      await financeApi.updateBankEntry(r.id, {
+        party_name: trimmed,
+        description: parsed.description,
+      });
+      setMsg({ kind: 'ok', text: 'Company updated successfully.' });
+    } catch (e) {
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update company.' });
+      void loadData(full);
     }
   };
 
@@ -525,7 +559,17 @@ export function BankEntryPage() {
   const outTotal = shownData.filter(r => r.status !== 'Cancelled' && r.direction === 'OUT').reduce((n, r) => n + Number(r.amount || 0), 0);
   const quick = (months: number, label: string) => {
     const active = from === isoDaysAgo(months) && to === todayISO();
-    return <button key={label} type="button" className={`h-7 px-2 text-[11px] font-semibold rounded-md border transition whitespace-nowrap cursor-pointer ${active ? 'bg-orange-500 text-white border-orange-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`} onClick={() => range(months)}>{label}</button>;
+    return (
+      <button
+        key={label}
+        type="button"
+        title={`Last ${label}`}
+        className={`h-7 px-1.5 text-[11px] font-semibold rounded-md border transition whitespace-nowrap cursor-pointer shrink-0 ${active ? 'bg-orange-500 text-white border-orange-500 shadow-2xs' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+        onClick={() => range(months)}
+      >
+        {label}
+      </button>
+    );
   };
 
   return (
@@ -580,44 +624,100 @@ export function BankEntryPage() {
                 className="flex-1 min-w-[12rem] p-2 text-xs font-mono leading-relaxed text-slate-800 bg-slate-50/60 border border-slate-200 rounded-lg resize-y focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15" />
             </div>
 
-            {/* ---------- one line: import actions + data filters (previously two separate bars) ---------- */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button className={btnPrimary} disabled={busy} onClick={() => void save()}><Save size={14} />{busy ? 'Saving…' : 'Save'}</button>
-                <button className={btn} disabled={busy} onClick={() => void parseNow()}><Table2 size={14} />View full Table</button>
-                <button className={btn} onClick={clearText}><Eraser size={14} />Clear Text</button>
-                <span className="w-px h-6 bg-slate-200 mx-1" />
-                <button className={btn} onClick={downloadCsv}><FileSpreadsheet size={14} />Download CSV</button>
-                <button className={btn} onClick={() => void downloadPdf()}><FileDown size={14} />Download PDF</button>
-                <button className={btn} disabled={busy} onClick={() => void updateEntries()}><Wand2 size={14} />Update entries</button>
+            {/* ---------- single line: import actions + data filters (compact view) ---------- */}
+            <div className="mt-2 flex items-center justify-between gap-1 border-t border-slate-100 pt-2 flex-nowrap w-full overflow-hidden">
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  className={btnCompactPrimary}
+                  disabled={busy}
+                  onClick={() => void save()}
+                  title="Save Statement (Enter)"
+                >
+                  <Save size={12} />
+                  <span>{busy ? 'Saving…' : 'Save'}</span>
+                </button>
+                <button
+                  className={btnCompact}
+                  disabled={busy}
+                  onClick={() => void parseNow()}
+                  title="View full Table"
+                >
+                  <Table2 size={12} />
+                  <span>View <span className="hidden xl:inline">full </span>Table</span>
+                </button>
+                <button
+                  className={btnCompact}
+                  onClick={clearText}
+                  title="Clear Text"
+                >
+                  <Eraser size={12} />
+                  <span>Clear<span className="hidden xl:inline"> Text</span></span>
+                </button>
+                <span className="w-px h-3.5 bg-slate-200 mx-0.5 shrink-0" />
+                <button
+                  className={btnCompact}
+                  onClick={downloadCsv}
+                  title="Download CSV"
+                >
+                  <FileSpreadsheet size={12} />
+                  <span><span className="hidden xl:inline">Download </span>CSV</span>
+                </button>
+                <button
+                  className={btnCompact}
+                  onClick={() => void downloadPdf()}
+                  title="Download PDF"
+                >
+                  <FileDown size={12} />
+                  <span><span className="hidden xl:inline">Download </span>PDF</span>
+                </button>
+                <button
+                  className={btnCompact}
+                  disabled={busy}
+                  onClick={() => void updateEntries()}
+                  title="Update entries"
+                >
+                  <Wand2 size={12} />
+                  <span>Update<span className="hidden xl:inline"> entries</span></span>
+                </button>
               </div>
 
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold tabular-nums whitespace-nowrap">In ₹{money(inTotal)}</span>
-                  <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold tabular-nums whitespace-nowrap">Out ₹{money(outTotal)}</span>
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold tabular-nums whitespace-nowrap">
+                    In ₹{money(inTotal)}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold tabular-nums whitespace-nowrap">
+                    Out ₹{money(outTotal)}
+                  </span>
                 </div>
 
-                <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+                <span className="h-3.5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
 
-                <div className="flex items-center gap-1.5">
-                  <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition disabled:opacity-40 whitespace-nowrap cursor-pointer" disabled={loadingData} onClick={() => void loadData(true)}>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    className="h-7 px-1.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition disabled:opacity-40 whitespace-nowrap shrink-0 cursor-pointer"
+                    disabled={loadingData}
+                    onClick={() => void loadData(true)}
+                  >
                     {loadingData ? 'Loading…' : 'Load Full Data'}
                   </button>
-                  <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap" data-testid="data-count">
+                  <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap shrink-0" data-testid="data-count">
                     {loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal}` : ''}`}
                   </span>
                 </div>
 
-                <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+                <span className="h-3.5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    {quick(3, 'Last 3 Months')}
-                    {quick(6, 'Last 6 Months')}
-                    {quick(12, 'Last 1 Year')}
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {quick(3, '3 Months')}
+                    {quick(6, '6 Months')}
+                    {quick(12, '1 Year')}
                   </div>
-                  <button className="h-7 px-2 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap cursor-pointer" onClick={clearFilters}>
+                  <button
+                    className="h-7 px-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    onClick={clearFilters}
+                  >
                     Clear Filters
                   </button>
                 </div>
@@ -716,13 +816,12 @@ export function BankEntryPage() {
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
-                    const isEditing = editingId === r.id;
                     const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
                     return (
                       <tr
                         key={r.id}
                         data-testid="data-row"
-                        className={`border-t border-slate-100 transition ${isEditing ? 'bg-orange-50/50 ring-1 ring-inset ring-orange-200' : 'hover:bg-slate-50'}`}
+                        className="border-t border-slate-100 transition hover:bg-slate-50"
                       >
                         <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
                         <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
@@ -731,104 +830,38 @@ export function BankEntryPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
                         <td className="px-3 py-2.5">{r.account_name}</td>
-                        <td className="px-3 py-2">
-                          {isEditing ? (
-                            <select
-                              autoFocus
-                              aria-label="Edit Type"
-                              className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-orange-400 rounded-md shadow-2xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 w-32 cursor-pointer"
-                              value={editKind}
-                              onChange={e => setEditKind(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') void handleSaveInline(r);
-                                if (e.key === 'Escape') cancelEditing();
-                              }}
-                            >
-                              <option value="">-- Type --</option>
-                              {types.filter(t => t.direction === 'ANY' || t.direction === r.direction).map(t => (
-                                <option key={t.id} value={t.name}>{t.name}</option>
-                              ))}
-                              {editKind && !types.some(t => t.name === editKind) && (
-                                <option value={editKind}>{editKind}</option>
-                              )}
-                            </select>
-                          ) : (
-                            <span
-                              className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold cursor-pointer hover:bg-slate-200 transition"
-                              title="Click Edit or double-click to change"
-                              onDoubleClick={() => startEditing(r)}
-                            >
-                              {parsed.type || r.kind}
-                            </span>
-                          )}
+                        <td className="px-3 py-1.5">
+                          <select
+                            aria-label="Type"
+                            className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-32 cursor-pointer shadow-2xs"
+                            value={parsed.type || r.kind || ''}
+                            onChange={e => void handleUpdateType(r, e.target.value)}
+                          >
+                            <option value="">-- Type --</option>
+                            {types.filter(t => t.direction === 'ANY' || t.direction === r.direction).map(t => (
+                              <option key={t.id} value={t.name}>{t.name}</option>
+                            ))}
+                            {parsed.type && !types.some(t => t.name.toLowerCase() === parsed.type.toLowerCase()) && (
+                              <option value={parsed.type}>{parsed.type}</option>
+                            )}
+                          </select>
                         </td>
-                        <td className="px-3 py-2">
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              list="inline-party-datalist"
-                              aria-label="Edit Company"
-                              placeholder="Company / party"
-                              className="h-7 px-2 text-xs text-slate-800 bg-white border border-orange-400 rounded-md shadow-2xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 w-48 font-medium"
-                              value={editParty}
-                              onChange={e => setEditParty(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') void handleSaveInline(r);
-                                if (e.key === 'Escape') cancelEditing();
-                              }}
-                            />
-                          ) : (
-                            <span
-                              className="cursor-pointer hover:text-slate-900"
-                              title="Click Edit or double-click to change"
-                              onDoubleClick={() => startEditing(r)}
-                            >
-                              {r.party_name ?? ''}
-                            </span>
-                          )}
+                        <td className="px-3 py-1.5">
+                          <TableCompanyCell
+                            initialValue={r.party_name ?? ''}
+                            onSave={val => void handleUpdateCompany(r, val)}
+                          />
                         </td>
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          {isEditing ? (
-                            <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={savingId === r.id}
-                                onClick={() => void handleSaveInline(r)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-40"
-                                title="Save changes (Enter)"
-                              >
-                                <Check size={11} /> {savingId === r.id ? 'Saving…' : 'Save'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingId === r.id}
-                                onClick={cancelEditing}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 rounded-md transition-colors cursor-pointer"
-                                title="Cancel (Esc)"
-                              >
-                                <X size={11} /> Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => startEditing(r)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                                title="Edit Type & Company"
-                              >
-                                <Pencil size={11} /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeletingRow(r)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                                title="Delete transaction"
-                              >
-                                <Trash2 size={11} /> Delete
-                              </button>
-                            </div>
-                          )}
+                        <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setDeletingRow(r)}
+                            className="p-1.5 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                            title="Delete transaction"
+                            aria-label="Delete"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </td>
                       </tr>
                     );
