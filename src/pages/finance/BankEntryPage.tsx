@@ -994,7 +994,8 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
         }
       }
     }
-    return list;
+    // the fixed (unique) accounts come first, the rest keep their order
+    return list.sort((x, y) => Number(isUniqueAccount(y.name)) - Number(isUniqueAccount(x.name)));
   }, [accounts, chart]);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -1042,11 +1043,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
             <div
               key={a.id}
               data-testid="bank-row"
-              className={`py-2 text-sm transition-all ${
-                isUnique
-                  ? 'my-1.5 rounded-xl bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-purple-50/60 border border-purple-200/90 px-3 py-2.5 shadow-2xs'
-                  : ''
-              }`}
+              className={`px-3 py-2 text-sm transition-all ${isUnique ? 'bg-purple-50' : ''}`}
             >
               {editing === a.id && !isUnique ? (
                 <div className="flex items-center gap-2">
