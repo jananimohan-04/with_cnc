@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, Filter, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, X, MoreVertical, Printer, Eye, Upload } from 'lucide-react';
+import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, MoreVertical, Printer, Eye, Upload } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,14 +42,12 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const { company } = useAuth();
   const cid = company?.id ?? null;
   const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource(), Opening: emptySource() });
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [part, setPart] = useState('');
   // ?party=Name (from Opening Balances > View Ledger) opens the ledger already filtered to that company.
   const [urlParams] = useSearchParams();
   const initParty = urlParams.get('party') ?? '';
-  const [party, setParty] = useState(initParty);
-  const [applied, setApplied] = useState({ from: '', to: '', part: '', party: initParty });
+  // Read-only now: the toolbar's own Start/End/Particulars/Company filters were removed, so `applied` only
+  // carries the company picked up from the ?party= link (the Topbar date range still applies via effFrom/effTo).
+  const applied = useMemo(() => ({ from: '', to: '', part: '', party: initParty }), [initParty]);
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(100);
   const [page, setPage] = useState(1);
@@ -168,8 +166,6 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const errors = (Object.entries(src) as [LedgerSource, SourceState][]).filter(([, s]) => s.state === 'error');
   const filtersActive = !!(applied.from || applied.to || applied.part || applied.party || search);
 
-  const apply = () => { if (from && to && from > to) { setNote('Start date is after the end date.'); return; } setApplied({ from, to, part, party }); setPage(1); setNote(''); };
-  const clear = () => { setFrom(''); setTo(''); setPart(''); setParty(''); setSearch(''); setApplied({ from: '', to: '', part: '', party: '' }); setPage(1); setNote(''); };
   const sortBy = (key: SortKey) => setSort(s => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'debit' || key === 'credit' ? 'desc' : 'asc' }));
 
   const exportRows = () => {
@@ -282,16 +278,6 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               className="shrink-0 whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50/60 px-2 py-1 text-[11px] font-bold text-amber-800 hover:shadow-sm transition">
               PAYABLE <b className="tabular-nums" data-testid="payable-total">₹{money(recPay.payable) || '0.00'}</b> <span className="font-medium text-amber-600">({recPay.suppliers})</span>
             </button>
-            <span className="h-6 w-px bg-slate-200 shrink-0" aria-hidden="true" />
-            <Filter size={14} className="text-slate-400 shrink-0" />
-            <Filter size={14} className="text-slate-400" />
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Start <input type="date" aria-label="Start date" className={inp} value={from} onChange={e => setFrom(e.target.value)} /></label>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">End <input type="date" aria-label="End date" className={inp} value={to} onChange={e => setTo(e.target.value)} /></label>
-            <input aria-label="Filter particulars" className={`${inp} w-40 shrink min-w-0`} placeholder="Filter: Particulars" value={part} onChange={e => setPart(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') apply(); }} />
-            <select aria-label="Company" className={`${sel} w-48 shrink min-w-0`} value={party} onChange={e => { setParty(e.target.value); setApplied(a => ({ ...a, party: e.target.value })); setPage(1); }}>
-              <option value="">Company (all)</option>{parties.map(p => <option key={p} value={p}>{p}</option>)}</select>
-            <button className={btnPrimary} onClick={apply}>Apply</button>
-            <button className={btn} onClick={clear}><X size={14} />Clear</button>
             <span className="ml-auto flex gap-2 shrink-0">
               <button className={btn} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={14} />Preview</button>
               <button className={btn} data-testid="ledger-print" onClick={printReport}><Printer size={14} />Print</button>
