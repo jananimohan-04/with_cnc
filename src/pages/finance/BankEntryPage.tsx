@@ -314,7 +314,28 @@ export function BankEntryPage() {
 
   const loadOptions = useCallback(async () => {
     try {
-      const o = await financeApi.bankFilters();
+      const [o, chart] = await Promise.all([
+        financeApi.bankFilters(),
+        accountingApi.chartOfAccounts().catch(() => [] as Account[]),
+      ]);
+      const seenIds = new Set(o.accounts.map(a => a.id));
+      const seenNames = new Set(o.accounts.map(a => a.name.trim().toLowerCase()));
+      for (const c of chart) {
+        if (c.status === 'Active' && !c.is_group && isUniqueAccount(c.name)) {
+          if (!seenIds.has(c.id) && !seenNames.has(c.name.trim().toLowerCase())) {
+            o.accounts.push({
+              id: c.id,
+              code: c.code,
+              name: c.name,
+              type: c.system_key === 'CASH' || c.name.toLowerCase().includes('cash') ? 'Cash' : 'Bank',
+              balance: '0.00',
+              system_key: c.system_key,
+            });
+            seenIds.add(c.id);
+            seenNames.add(c.name.trim().toLowerCase());
+          }
+        }
+      }
       setOptions(o);
       setBankId(b => (b && o.accounts.some(a => a.id === b) ? b : ''));
     } catch (e) { setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not load bank accounts.' }); }
@@ -933,11 +954,6 @@ export function BankEntryPage() {
   );
 }
 
-const isUniqueAccount = (name: string) => {
-  const n = (name || '').trim().toLowerCase();
-  return n.includes('cash payment') || n.includes('tds adjust') || n.includes('debit note');
-};
-
 /** Banks are accounts under "Bank Balances" in the chart of accounts, so adding one here adds a real ledger account
  *  (code assigned automatically). "Delete" takes a bank out of the lists (inactive); its history stays in the books. */
 function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
@@ -964,6 +980,31 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
     for (let n = base + 1; n < base + 400; n++) if (!used.has(String(n))) return String(n);
     return `${base}-${Date.now() % 1000}`;
   };
+
+  const displayedAccounts = useMemo(() => {
+    const list = [...accounts];
+    const seenIds = new Set(list.map(a => a.id));
+    const seenNames = new Set(list.map(a => a.name.trim().toLowerCase()));
+
+    for (const a of chart) {
+      if (a.status === 'Active' && !a.is_group && isUniqueAccount(a.name)) {
+        if (!seenIds.has(a.id) && !seenNames.has(a.name.trim().toLowerCase())) {
+          list.push({
+            id: a.id,
+            code: a.code,
+            name: a.name,
+            type: a.system_key === 'CASH' || a.name.toLowerCase().includes('cash') ? 'Cash' : 'Bank',
+            balance: '0.00',
+            system_key: a.system_key,
+          });
+          seenIds.add(a.id);
+          seenNames.add(a.name.trim().toLowerCase());
+        }
+      }
+    }
+    return list;
+  }, [accounts, chart]);
+
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setErr('');
     try { await fn(); setChart(await accountingApi.chartOfAccounts()); await onChanged(); } catch (e) { setErr(e instanceof Error ? e.message : 'That did not work.'); }
@@ -974,7 +1015,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
     if (!canManage) return setErr('Only administrators can add banks.');
     if (!name.trim()) return setErr('Enter a bank name.');
     if (!group) return setErr('The Bank Balances group was not found in your chart of accounts.');
-    if (taken(name)) return setErr('A bank or account with that name already exists.');
+    if (taken(name)) return setErr(`An account named "${name.trim()}" already exists in your books.`);
     void run(async () => { await accountingApi.saveAccount({ id: null, parentId: group.id, code: nextCode(), name: name.trim(), isGroup: false, status: 'Active' }); setName(''); });
   };
   const update = (id: string) => {
@@ -1001,8 +1042,8 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
       </div>
       {err && <p role="alert" data-testid="banks-error" className="mt-2 text-xs text-red-600">{err}</p>}
       <div className="mt-1 max-h-80 overflow-y-auto divide-y divide-slate-100">
-        {accounts.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No bank or cash accounts yet.</p>}
-        {accounts.map(a => {
+        {displayedAccounts.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No bank or cash accounts yet.</p>}
+        {displayedAccounts.map(a => {
           const system = !!a.system_key;
           const isUnique = isUniqueAccount(a.name);
           return (
