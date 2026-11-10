@@ -194,9 +194,10 @@ export function BankEntryPage() {
     if (!p.rows.length) { setRows([]); setMsg({ kind: 'err', text: 'Nothing to read. Paste rows (TAB or comma separated) or choose a file first.' }); return []; }
     const withTypes = suggestRows(applyTypeDefaults(p.rows, types), suggestCtx());
     const auto = withTypes.filter(r => r.auto).length;
+    const notFound = withTypes.filter(r => !r.typeId && !r.ledgerId).length;
     setRows(withTypes); setShowTable(true);
     await readExisting(withTypes);
-    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${auto ? ` · ${auto} filled in automatically (marked ✨ — check them)` : ''}${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
+    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${auto ? ` · ${auto} filled in automatically (marked ✨ — check them)` : ''}${notFound ? ` · ${notFound} could not be worked out: shown in RED, choose a Type or Ledger for them` : ''}${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
     return withTypes;
   };
 
@@ -426,17 +427,18 @@ export function BankEntryPage() {
                 <tbody>
                   {shownRows.map(r => {
                     const is = issues.get(r.id) ?? [];
+                    const notFound = is.includes('No type or ledger');   // nothing could be worked out for this row: shown in strong red
                     return (
-                      <tr key={r.id} data-testid="import-row" className={`border-t border-slate-100 transition ${is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
+                      <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-100 hover:[&>td]:!bg-red-200 [&>td:first-child]:shadow-[inset_5px_0_0_#dc2626]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{r.date ? dmy(r.date) : <span className="text-red-600">{r.rawDate || '—'}</span>}</td>
                         <td className="px-3 py-2 max-w-[260px] truncate text-slate-700" title={r.description}>{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
                         <td className="px-3 py-2 font-mono text-slate-500">{r.reference}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{Number.isNaN(r.debit) ? '?' : r.debit ? money(r.debit) : ''}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{Number.isNaN(r.credit) ? '?' : r.credit ? money(r.credit) : ''}</td>
-                        <td className="px-3 py-1.5"><select aria-label={`Type row ${r.line}`} className={`${sel} !h-8 w-40`} value={r.typeId} onChange={e => patchRow(r.id, { typeId: e.target.value })}>
+                        <td className="px-3 py-1.5"><select aria-label={`Type row ${r.line}`} className={`${sel} !h-8 w-40 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.typeId} onChange={e => patchRow(r.id, { typeId: e.target.value })}>
                           <option value="">—</option>{types.filter(t => typeFitsRow(t, r)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
-                        <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
+                        <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
                           {ledgerOptions(r)}</select></td>
                         <td className="px-3 py-1.5"><input aria-label={`Company row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
                         <td className="px-3 py-2">{issueBadge(is)}</td>
