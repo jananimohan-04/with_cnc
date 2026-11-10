@@ -515,16 +515,20 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
               <table className="w-full text-xs min-w-[1000px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 6 && i <= 8 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['Date', 'Cheque No.', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Bank', 'Type', 'Company', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => (
                     <tr key={r.id} data-testid="data-row" className="border-t border-slate-100 hover:bg-slate-50 transition">
-                      <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td><td className="px-3 py-2.5">{r.account_name}</td>
-                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{r.kind}</span></td>
-                      <td className="px-3 py-2.5">{r.party_name ?? ''}</td><td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td><td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
+                      <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
+                      <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td><td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td><td className="px-3 py-2.5">{statusPill(r.status)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
+                      <td className="px-3 py-2.5">{r.account_name}</td>
+                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{r.kind}</span></td>
+                      <td className="px-3 py-2.5">{r.party_name ?? ''}</td>
+                      <td className="px-3 py-2.5">{statusPill(r.status)}</td>
                     </tr>
                   ))}
                   {!loadingData && shownData.length === 0 && (
