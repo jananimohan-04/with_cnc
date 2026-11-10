@@ -4,8 +4,8 @@ import path from 'path';
 const TOKEN = process.env.GITHUB_TOKEN || '';
 const OWNER = 'jananimohan-04';
 const REPO = 'with_cnc';
-const TAG = 'v1.0.6';
-const VERSION = '1.0.6';
+const TAG = 'v1.0.7';
+const VERSION = '1.0.7';
 
 const headers = {
   'Authorization': `token ${TOKEN}`,
@@ -30,7 +30,12 @@ async function main() {
         tag_name: TAG,
         target_commitish: 'main',
         name: `Business Intelligence v${VERSION}`,
-        body: `## Business Intelligence v${VERSION}\n\n- Quotation-first checkout with e-mail, WhatsApp and Razorpay payment links; Digital Store per-company setup\n- Smarter bank-statement import, glass look for the whole app, BI / Retail Store on-off per company\n- Cryptographically signed desktop installer with instant auto-update support`,
+        body: `## Business Intelligence v${VERSION}
+
+- Bank Entry: edit Type and Company directly in the bank table
+- Cleaner statement upload box and simpler Bank Entry toolbar
+- Includes all v1.0.6 features (quotation-first checkout, Razorpay/e-mail/WhatsApp, glass UI, BI / Retail switches)
+- Cryptographically signed desktop installer with instant auto-update support`,
         draft: false,
         prerelease: false,
       }),
@@ -120,7 +125,7 @@ async function main() {
   // Generate latest.json
   const latestJson = {
     version: VERSION,
-    notes: `Business Intelligence v${VERSION} update: Digital Store, quotation-first checkout with e-mail / WhatsApp / Razorpay, smarter bank import, glass UI, BI / Retail platform switches.`,
+    notes: `Business Intelligence v${VERSION} update: Bank Entry inline editing of Type and Company, cleaner statement upload and toolbar.`,
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': {

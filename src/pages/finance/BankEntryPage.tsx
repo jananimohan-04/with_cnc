@@ -176,7 +176,7 @@ export function BankEntryPage() {
     try {
       const o = await financeApi.bankFilters();
       setOptions(o);
-      setBankId(b => b || o.accounts.find(a => a.type === 'Bank')?.id || o.accounts[0]?.id || '');
+      setBankId(b => (b && o.accounts.some(a => a.id === b) ? b : ''));
     } catch (e) { setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not load bank accounts.' }); }
   }, []);
   useEffect(() => { void loadOptions(); setTypes(loadTypes(cid)); setOthers(loadOthers(cid)); }, [cid, loadOptions]);
@@ -698,9 +698,19 @@ export function BankEntryPage() {
         </section>
       </div>
 
-      <ManualEntryModal open={modal === 'manual'} onClose={() => setModal(null)} bankId={bankId} bankName={bank?.name ?? ''} types={types}
-        incomeOpts={incomeOpts} expenseOpts={expenseOpts} onTypes={() => setModal('types')}
-        onSaved={() => { setMsg({ kind: 'ok', text: 'Manual entry saved.' }); void loadData(full); }} />
+      <ManualEntryModal
+        open={modal === 'manual'}
+        onClose={() => setModal(null)}
+        bankId={bankId}
+        accounts={options?.accounts ?? []}
+        types={types}
+        onTypes={() => setModal('types')}
+        onSaved={() => {
+          setMsg({ kind: 'ok', text: 'Manual entry saved.' });
+          void loadData(full);
+          void loadOptions();
+        }}
+      />
       <ManageBanks open={modal === 'banks'} onClose={() => setModal(null)} accounts={options?.accounts ?? []} canManage={!!options?.can_manage} onChanged={() => loadOptions()} />
       <ManageTypes open={modal === 'types'} onClose={() => setModal(null)} types={types} ledgers={[...incomeOpts, ...expenseOpts]}
         onChange={(t, renamed) => {
@@ -958,101 +968,295 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
   );
 }
 
+const parseDateOk = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime());
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Manual Entry: one debit OR credit line against the selected bank, tagged with a Type. Lists the manual entries
  *  already saved for that bank underneath. Saving uses the same erp_add_bank_entry as the statement import. */
-function ManualEntryModal({ open, onClose, bankId, bankName, types, incomeOpts, expenseOpts, onTypes, onSaved }: {
-  open: boolean; onClose: () => void; bankId: string; bankName: string; types: EntryType[];
-  incomeOpts: { id: string; code: string; name: string }[]; expenseOpts: { id: string; code: string; name: string }[]; onTypes: () => void; onSaved: () => void;
+function ManualEntryModal({
+  open,
+  onClose,
+  bankId,
+  accounts,
+  types,
+  onTypes,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  bankId: string;
+  accounts: BankAccount[];
+  types: EntryType[];
+  onTypes: () => void;
+  onSaved: () => void;
 }) {
   const [date, setDate] = useState(today());
+  const [selectedBankId, setSelectedBankId] = useState(bankId || '');
   const [debit, setDebit] = useState('');
   const [credit, setCredit] = useState('');
   const [desc, setDesc] = useState('');
   const [typeId, setTypeId] = useState('');
-  const [ledgerId, setLedgerId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [list, setList] = useState<BankRow[]>([]);
   const [listState, setListState] = useState('');
 
-  const num = (v: string) => { const n = Number(v.replace(/,/g, '').trim()); return v.trim() === '' ? 0 : Number.isFinite(n) && n >= 0 ? n : NaN; };
+  useEffect(() => {
+    if (open) {
+      setErr('');
+      setDate(today());
+      setSelectedBankId(bankId || accounts.find(a => a.type === 'Bank')?.id || accounts[0]?.id || '');
+    }
+  }, [open, bankId, accounts]);
+
+  const num = (v: string) => {
+    const n = Number(v.replace(/,/g, '').trim());
+    return v.trim() === '' ? 0 : Number.isFinite(n) && n >= 0 ? n : NaN;
+  };
   const d = num(debit), c = num(credit);
   const dir: 'IN' | 'OUT' | null = c > 0 && !(d > 0) ? 'IN' : d > 0 && !(c > 0) ? 'OUT' : null;
   const type = types.find(t => t.id === typeId);
-  const ledgers = dir === 'IN' ? incomeOpts : dir === 'OUT' ? expenseOpts : [...incomeOpts, ...expenseOpts];
   const fits = types.filter(t => dir === null || t.direction === 'ANY' || t.direction === dir);
 
+  // If user typed in "credit (in)", debit is disabled; if user typed in "debit (out)", credit is disabled.
+  const hasIn = Boolean(credit.trim());
+  const hasOut = Boolean(debit.trim());
+
+  const selectedBank = accounts.find(a => a.id === selectedBankId);
+
   const loadList = useCallback(async () => {
-    if (!bankId) { setList([]); setListState('Select a bank first.'); return; }
+    if (!selectedBankId) {
+      setList([]);
+      setListState('Select a bank first.');
+      return;
+    }
     setListState('Loading…');
     try {
       const all: BankRow[] = [];
       for (let page = 1; page <= 10; page++) {
-        const r = await financeApi.bankTransactions({ account: bankId, page, pageSize: 200 });
-        all.push(...r.rows); if (all.length >= r.total || !r.rows.length) break;
+        const r = await financeApi.bankTransactions({ account: selectedBankId, page, pageSize: 200 });
+        all.push(...r.rows);
+        if (all.length >= r.total || !r.rows.length) break;
       }
       const manual = all.filter(r => /manual/i.test(r.mode ?? ''));
-      setList(manual); setListState(`Loaded ${manual.length} manual entr${manual.length === 1 ? 'y' : 'ies'}`);
-    } catch (e) { setList([]); setListState(e instanceof Error ? e.message : 'Could not load manual entries.'); }
-  }, [bankId]);
-  useEffect(() => { if (open) { setErr(''); setDate(today()); void loadList(); } }, [open, loadList]);
+      setList(manual);
+      setListState(`Loaded ${manual.length} manual entr${manual.length === 1 ? 'y' : 'ies'}`);
+    } catch (e) {
+      setList([]);
+      setListState(e instanceof Error ? e.message : 'Could not load manual entries.');
+    }
+  }, [selectedBankId]);
+
+  useEffect(() => {
+    if (open && selectedBankId) {
+      void loadList();
+    }
+  }, [open, selectedBankId, loadList]);
 
   const submit = async () => {
     setErr('');
-    if (!bankId) return setErr('Select a bank first (on the Bank Entry page).');
-    if (!parseDateOk(date)) return setErr('Enter a valid date.');
+    if (!selectedBankId) return setErr('Select a bank first.');
+    if (!date || !parseDateOk(date)) return setErr('Enter a valid date.');
     if (Number.isNaN(d) || Number.isNaN(c)) return setErr('Debit and credit must be numbers of 0 or more.');
-    if (!dir) return setErr(d > 0 && c > 0 ? 'Enter either a debit or a credit, not both.' : 'Enter a debit or a credit amount.');
-    if (!typeId && !ledgerId) return setErr('Choose a Type or a Ledger.');
-    if (type && !(type.direction === 'ANY' || type.direction === dir)) return setErr(`Type “${type.name}” is for ${type.direction === 'IN' ? 'money in (credit)' : 'money out (debit)'}.`);
+    if (!dir) return setErr('Enter either a debit (money out) or credit (money in) amount.');
+    if (!typeId) return setErr('Choose a Type.');
+    if (type && !(type.direction === 'ANY' || type.direction === dir)) {
+      return setErr(`Type “${type.name}” is for ${type.direction === 'IN' ? 'money in (credit)' : 'money out (debit)'}.`);
+    }
+
     setBusy(true);
     try {
       await financeApi.addBankEntry({
-        direction: dir, account_id: bankId, contra_account_id: ledgerId || type?.ledgerId || '', amount: String(dir === 'IN' ? c : d), txn_date: date,
-        mode: 'Manual entry', description: [type?.name, desc.trim()].filter(Boolean).join(' - '), status: 'Cleared', source_type: 'manual_entry',
+        direction: dir,
+        account_id: selectedBankId,
+        contra_account_id: type?.ledgerId || '',
+        amount: String(dir === 'IN' ? c : d),
+        txn_date: date,
+        mode: 'Manual entry',
+        description: [type?.name, desc.trim()].filter(Boolean).join(' - '),
+        status: 'Cleared',
+        source_type: 'manual_entry',
       });
-      setDebit(''); setCredit(''); setDesc(''); setTypeId(''); setLedgerId('');
-      onSaved(); await loadList();
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save the entry.'); }
-    finally { setBusy(false); }
+      setDebit('');
+      setCredit('');
+      setDesc('');
+      setTypeId('');
+      onSaved();
+      await loadList();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the entry.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title="Manual Entry" subtitle={bankName ? `Posting to ${bankName}` : 'Select a bank on the Bank Entry page first'} size="xl"
-      footer={<><button className={btn} onClick={onClose}>Close</button><button className={btnPrimary} data-testid="manual-save" disabled={busy} onClick={() => void submit()}><Save size={14} />{busy ? 'Saving…' : 'Save'}</button></>}>
-      <div className="flex justify-end -mt-1 mb-2"><button className={btn} onClick={onTypes}><Tags size={14} />Types</button></div>
+    <Modal
+      open={open}
+      onClose={() => !busy && onClose()}
+      title="Manual Entry"
+      subtitle={selectedBank ? `Posting to ${selectedBank.name}` : 'Select a bank account'}
+      size="xl"
+      footer={
+        <>
+          <button className={btn} onClick={onClose}>Close</button>
+          <button className={btnPrimary} data-testid="manual-save" disabled={busy} onClick={() => void submit()}>
+            <Save size={14} />{busy ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="flex justify-end -mt-1 mb-2">
+        <button className={btn} onClick={onTypes}><Tags size={14} />Types</button>
+      </div>
       <div className="grid sm:grid-cols-3 gap-3">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date
-          <input type="date" aria-label="Manual date" className={`${inp} w-full mt-1 normal-case font-normal`} value={date} onChange={e => setDate(e.target.value)} /></label>
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Debit (money out)
-          <input aria-label="Manual debit" inputMode="decimal" placeholder="0.00" className={`${inp} w-full mt-1 normal-case font-normal`} value={debit} onChange={e => setDebit(e.target.value.replace(/[^0-9.,]/g, ''))} /></label>
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Credit (money in)
-          <input aria-label="Manual credit" inputMode="decimal" placeholder="0.00" className={`${inp} w-full mt-1 normal-case font-normal`} value={credit} onChange={e => setCredit(e.target.value.replace(/[^0-9.,]/g, ''))} /></label>
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Date
+          <input
+            type="date"
+            aria-label="Manual date"
+            className={`${inp} w-full mt-1 normal-case font-normal`}
+            value={date}
+            onChange={e => setDate(e.target.value)}
+          />
+        </label>
+
+        <label className={`text-xs font-bold uppercase tracking-wider ${hasIn ? 'text-slate-300' : 'text-slate-500'}`}>
+          Debit (money out)
+          <div className="relative mt-1">
+            <input
+              aria-label="Manual debit"
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={hasIn}
+              className={`${inp} w-full normal-case font-normal ${hasIn ? '!bg-slate-100 !text-slate-400 cursor-not-allowed border-slate-200' : ''}`}
+              value={debit}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                setDebit(val);
+                if (val) setCredit('');
+              }}
+            />
+            {debit && (
+              <button
+                type="button"
+                onClick={() => setDebit('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs px-1 font-bold cursor-pointer"
+                title="Clear"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </label>
+
+        <label className={`text-xs font-bold uppercase tracking-wider ${hasOut ? 'text-slate-300' : 'text-slate-500'}`}>
+          Credit (money in)
+          <div className="relative mt-1">
+            <input
+              aria-label="Manual credit"
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={hasOut}
+              className={`${inp} w-full normal-case font-normal ${hasOut ? '!bg-slate-100 !text-slate-400 cursor-not-allowed border-slate-200' : ''}`}
+              value={credit}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                setCredit(val);
+                if (val) setDebit('');
+              }}
+            />
+            {credit && (
+              <button
+                type="button"
+                onClick={() => setCredit('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs px-1 font-bold cursor-pointer"
+                title="Clear"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </label>
       </div>
-      <label className="block mt-3 text-xs font-bold uppercase tracking-wider text-slate-500">Description
-        <input aria-label="Manual description" className={`${inp} w-full mt-1 normal-case font-normal`} placeholder="Description" value={desc} onChange={e => setDesc(e.target.value)} /></label>
+
+      <label className="block mt-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+        Description
+        <input
+          aria-label="Manual description"
+          className={`${inp} w-full mt-1 normal-case font-normal`}
+          placeholder="Description"
+          value={desc}
+          onChange={e => setDesc(e.target.value)}
+        />
+      </label>
+
       <div className="grid sm:grid-cols-2 gap-3 mt-3">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Type
-          <select aria-label="Manual type" className={`${sel} w-full mt-1 normal-case font-normal`} value={typeId} onChange={e => { setTypeId(e.target.value); const t = types.find(x => x.id === e.target.value); if (t?.ledgerId) setLedgerId(t.ledgerId); }}>
-            <option value="">-- Select Type --</option>{fits.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ledger {type?.ledgerId ? '' : '(if the Type has no default)'}
-          <select aria-label="Manual ledger" className={`${sel} w-full mt-1 normal-case font-normal`} value={ledgerId} onChange={e => setLedgerId(e.target.value)}>
-            <option value="">{type?.ledgerId ? 'Type default' : '—'}</option>{ledgers.map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</select></label>
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Type
+          <select
+            aria-label="Manual type"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={typeId}
+            onChange={e => setTypeId(e.target.value)}
+          >
+            <option value="">-- Select Type --</option>
+            {fits.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Bank
+          <select
+            aria-label="Manual bank"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={selectedBankId}
+            onChange={e => setSelectedBankId(e.target.value)}
+          >
+            <option value="">-- Select Bank --</option>
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.name}{a.type === 'Cash' ? ' (Cash)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      {err && <p role="alert" data-testid="manual-error" className="mt-3 flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />{err}</p>}
+
+      {err && (
+        <p role="alert" data-testid="manual-error" className="mt-3 flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          {err}
+        </p>
+      )}
 
       <div className="mt-5 pt-4 border-t border-slate-200">
         <h3 className="text-base font-bold text-slate-900">Manual Entry Details</h3>
         <p className="text-sm text-emerald-700 mt-0.5" data-testid="manual-count">{listState}</p>
         {list.length > 0 && (
           <div className="mt-2 overflow-auto max-h-56 border border-slate-200 rounded-xl">
-            <table className="w-full text-xs"><thead className="bg-slate-50 sticky top-0"><tr className="text-left">{['Txn No', 'Date', 'Description', 'Debit', 'Credit'].map((h, i) => <th key={h} className={`${th} ${i >= 3 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
-              <tbody>{list.map(r => (
-                <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100"><td className="px-3 py-2 font-mono">{r.txn_no}</td><td className="px-3 py-2">{dmy(r.txn_date)}</td><td className="px-3 py-2 max-w-[260px] truncate">{r.description ?? ''}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td><td className="px-3 py-2 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td></tr>
-              ))}</tbody></table>
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr className="text-left">
+                  {['Txn No', 'Date', 'Description', 'Debit', 'Credit'].map((h, i) => (
+                    <th key={h} className={`${th} ${i >= 3 ? 'text-right' : ''}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map(r => (
+                  <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100">
+                    <td className="px-3 py-2 font-mono">{r.txn_no}</td>
+                    <td className="px-3 py-2">{dmy(r.txn_date)}</td>
+                    <td className="px-3 py-2 max-w-[260px] truncate">{r.description ?? ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

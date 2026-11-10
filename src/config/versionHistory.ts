@@ -21,7 +21,7 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.6';
+export const CURRENT_APP_VERSION = '1.0.7';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
@@ -29,11 +29,30 @@ export const CURRENT_APP_VERSION = '1.0.6';
  */
 export const VERSION_HISTORY: VersionRelease[] = [
   {
+    version: '1.0.7',
+    releaseDate: 'November 10, 2026',
+    title: 'Business Intelligence v1.0.7 — Bank Entry Inline Editing',
+    isLatest: true,
+    isCurrent: true,
+    highlights: [
+      'Bank Entry: edit Type and Company directly in the saved bank table',
+      'Cleaner statement upload box and simpler Bank Entry toolbar',
+    ],
+    sections: [
+      {
+        title: 'Finance',
+        type: 'improvement',
+        items: [
+          'Inline editing of Type and Company in the Bank Data table (Enter to save, Esc to cancel).',
+          'Removed Ledger Details and the extra filter inputs; removed the file icon from the statement upload box.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.6',
     releaseDate: 'November 10, 2026',
     title: 'Business Intelligence v1.0.6 — Store, Payments, Bank Import & Glass UI',
-    isLatest: true,
-    isCurrent: true,
     highlights: [
       'Quotation first: checkout generates, e-mails and WhatsApp-shares the quotation; the invoice and Razorpay payment link follow when the customer confirms',
       'Digital Store: per-company e-mail and Razorpay setup, invoice e-mail and pay-now redirect',
