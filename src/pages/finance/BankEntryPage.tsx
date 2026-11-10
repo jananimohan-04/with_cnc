@@ -14,7 +14,7 @@ import { xlsxToTsv } from '@/lib/xlsxRead';
 import { supabase } from '@/lib/supabase';
 import { suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
-  applyTypeDefaults, loadOthers, loadTypes, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
+  applyTypeDefaults, loadOthers, loadTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
 } from '@/lib/bankImport';
 
@@ -423,9 +423,9 @@ export function BankEntryPage() {
               <span className="text-xs text-slate-500">Choose a Type or a Ledger for every row, then Save. Rows with errors are not saved.</span>
             </div>
             <div className="overflow-auto max-h-[440px]">
-              <table className="w-full text-xs min-w-[1100px]">
+              <table className="w-full text-xs min-w-[1500px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['#', 'Date', 'Description', 'Reference', 'Debit', 'Credit', 'Type', 'Ledger', 'Company / Other', 'Status'].map((h, i) => <th key={h} className={`${th} ${i === 4 || i === 5 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['#', 'Txn Date', 'Value Date', 'Cheque No.', 'Description', 'Branch Code', 'Debit', 'Credit', 'Balance', 'Type', 'Ledger', 'Company / Other', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 6 && i <= 8 ? 'text-right' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownRows.map(r => {
@@ -435,10 +435,13 @@ export function BankEntryPage() {
                       <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-300 hover:[&>td]:!bg-red-400 [&>td]:!text-red-950 [&>td]:!border-y [&>td]:!border-red-500 [&>td:first-child]:shadow-[inset_8px_0_0_#b91c1c] [&>td:last-child]:shadow-[inset_-8px_0_0_#b91c1c]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{r.date ? dmy(r.date) : <span className="text-red-600">{r.rawDate || '—'}</span>}</td>
-                        <td className="px-3 py-2 min-w-[300px] max-w-[460px] whitespace-normal break-words leading-snug text-slate-700">{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">{r.valueDate ? (parseDate(r.valueDate) ? dmy(parseDate(r.valueDate)!) : r.valueDate) : ''}</td>
                         <td className="px-3 py-2 font-mono text-slate-500">{r.reference}</td>
+                        <td className="px-3 py-2 min-w-[300px] max-w-[460px] whitespace-normal break-words leading-snug text-slate-700">{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
+                        <td className="px-3 py-2 font-mono text-slate-500">{r.branch ?? ''}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{Number.isNaN(r.debit) ? '?' : r.debit ? money(r.debit) : ''}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{Number.isNaN(r.credit) ? '?' : r.credit ? money(r.credit) : ''}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-700">{r.balance === null || r.balance === undefined ? '' : money(r.balance)}</td>
                         <td className="px-3 py-1.5"><select aria-label={`Type row ${r.line}`} className={`${sel} !h-8 w-40 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.typeId} onChange={e => patchRow(r.id, { typeId: e.target.value })}>
                           <option value="">—</option>{types.filter(t => typeFitsRow(t, r)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                         <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>

@@ -8,6 +8,9 @@ export interface ImportRow {
   rawDate: string;
   description: string;
   reference: string;
+  /** Other columns of the bank's own statement, shown in the bank's order. */
+  valueDate?: string;
+  branch?: string;
   debit: number;             // money out
   credit: number;            // money in
   balance: number | null;
@@ -82,6 +85,8 @@ const HEADERS: Record<string, RegExp> = {
   reference: /^(ref(erence)?(\s*no\.?)?|chq\.?\s*\/?\s*ref\.?\s*no\.?|cheque(\s*no\.?)?|utr(\s*no\.?)?|txn\s*id|transaction\s*id)$/i,
   debit: /^(debit|withdrawal(s)?(\s*amt\.?)?|withdrawal\s*amount|dr\.?|paid\s*out|money\s*out)$/i,
   credit: /^(credit|deposit(s)?(\s*amt\.?)?|deposit\s*amount|cr\.?|paid\s*in|money\s*in)$/i,
+  valueDate: /^value\s*date$/i,
+  branch: /^(branch(\s*(code|name|no\.?))?|br\.?\s*code)$/i,
   balance: /^(balance|closing\s*balance|running\s*balance)$/i,
   amount: /^(amount|txn\s*amount|transaction\s*amount)$/i,
 };
@@ -132,7 +137,7 @@ export function parseStatement(text: string): Parsed {
     const bal = get('balance') === '' ? null : parseAmount(get('balance'));
     rows.push({
       id: `r${i}`, line: i + 1, date: parseDate(rawDate), rawDate,
-      description: get('description'), reference: cleanReference(get('reference')),
+      description: get('description'), reference: cleanReference(get('reference')), valueDate: get('valueDate').trim(), branch: get('branch').trim(),
       debit: debit === null ? NaN : Math.abs(debit), credit: credit === null ? NaN : Math.abs(credit),
       balance: bal, typeId: '', ledgerId: '', party: '',
     });
