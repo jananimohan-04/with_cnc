@@ -156,7 +156,21 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   // Global Topbar range intersects the page's own From/To.
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const { from: effFrom, to: effTo } = intersectRange(applied.from, applied.to, globalFrom, globalTo);
-  const filtered = useMemo(() => filterLines(all, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [all, applied, search, effFrom, effTo]);
+  const baseFiltered = useMemo(() => filterLines(all, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [all, applied, search, effFrom, effTo]);
+  // filters in the column headers (same as the other list pages)
+  const [colF, setColF] = useState<Record<string, string>>({});
+  const setCol = (k: string, v: string) => setColF(f => { const c = { ...f }; if (v) c[k] = v; else delete c[k]; return c; });
+  const filtered = useMemo(() => baseFiltered.filter(l => {
+    const has = (hay: string, q?: string) => !q || hay.toLowerCase().includes(q.toLowerCase());
+    return has(dmy(l.date), colF.date) && has(l.ref ?? '', colF.ref) && has(l.narration ?? '', colF.narration)
+      && (!colF.party || l.party === colF.party) && (!colF.particulars || l.particulars === colF.particulars) && (!colF.status || statusText(l.id) === colF.status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [baseFiltered, colF, settled]);
+  const colValues = useMemo(() => {
+    const uniq = (f: (l: LedgerLine) => string) => Array.from(new Set(baseFiltered.map(f).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return { party: uniq(l => l.party), particulars: uniq(l => l.particulars), status: uniq(l => statusText(l.id)) } as Record<string, string[]>;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseFiltered, settled]);
   const sorted = useMemo(() => sortLines(filtered, sort.key, sort.dir), [filtered, sort]);
   const pages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize));
   const cur = Math.min(page, pages);
@@ -164,7 +178,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const totals = useMemo(() => ({ debit: filtered.reduce((n, l) => n + l.debit, 0), credit: filtered.reduce((n, l) => n + l.credit, 0) }), [filtered]);
   const anyLoading = Object.values(src).some(s => s.state === 'loading');
   const errors = (Object.entries(src) as [LedgerSource, SourceState][]).filter(([, s]) => s.state === 'error');
-  const filtersActive = !!(applied.from || applied.to || applied.part || applied.party || search);
+  const filtersActive = !!(applied.from || applied.to || applied.part || applied.party || search || Object.keys(colF).length);
 
   const sortBy = (key: SortKey) => setSort(s => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'debit' || key === 'credit' ? 'desc' : 'asc' }));
 
@@ -320,27 +334,51 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
             </div>
           </div>
 
-          <div className="overflow-auto max-h-[560px] border-t border-slate-200">
-            <table className="w-full text-[13px] min-w-[1100px]">
-              <thead className="bg-slate-100/90 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                {COLS.map(c => (
-                  <th key={c.key} className={`${th} cursor-pointer hover:bg-slate-200/60 ${c.align === 'right' ? 'text-right' : ''}`} onClick={() => sortBy(c.key)} data-testid={`sort-${c.key}`} aria-sort={sort.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    <span className="inline-flex items-center gap-1">{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={11} className="text-slate-300" />}</span>
-                  </th>
-                ))}
-                <th className={th}>Status</th>
+          <div className="border-t border-slate-200 overflow-x-auto">
+            <table className="w-full text-[12px] leading-tight">
+              <thead className="bg-slate-100/90 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
+                {([
+                  ['date', 'Date', 'text'], ['ref', 'Reference No.', 'text'], ['party', 'Company Name', 'list'], ['particulars', 'Particulars', 'list'],
+                  ['narration', 'Narration', 'text'], ['debit', 'Debit', 'none'], ['credit', 'Credit', 'none'], ['status', 'Status', 'list'],
+                ] as const).map(([key, label, kind]) => {
+                  const sortable = key !== 'status';
+                  const right = key === 'debit' || key === 'credit';
+                  const active = sort.key === key;
+                  return (
+                    <th key={key} className={`px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 align-middle ${right ? 'text-right' : ''}`} data-testid={`sort-${key}`} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                      <div className={`flex flex-row flex-nowrap items-center gap-1 whitespace-nowrap ${right ? 'justify-end' : ''}`}>
+                        {sortable ? (
+                          <button type="button" onClick={() => sortBy(key as SortKey)} title={`Sort by ${label}`} className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-orange-600 cursor-pointer">
+                            {label}{active ? (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={10} className="text-slate-400" />}
+                          </button>
+                        ) : <span>{label}</span>}
+                        {kind === 'list' && (
+                          <select aria-label={`Filter ${label}`} value={colF[key] ?? ''} onChange={e => setCol(key, e.target.value)}
+                            className={`h-5 w-[64px] rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+                            <option value="">All</option>
+                            {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        )}
+                        {kind === 'text' && (
+                          <input aria-label={`Filter ${label}`} value={colF[key] ?? ''} placeholder="Filter…" onChange={e => setCol(key, e.target.value)}
+                            className={`h-5 w-[64px] rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr></thead>
               <tbody>
                 {shown.map(l => (
                   <tr key={l.id} data-testid="ledger-row" className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50 hover:bg-orange-50/40 transition">
-                    <td className="px-3 py-2 whitespace-nowrap">{dmy(l.date)}</td>
-                    <td className="px-3 py-2 font-mono text-slate-600">{l.ref}</td>
-                    <td className="px-3 py-2 uppercase font-medium text-slate-800">{l.party}</td>
-                    <td className="px-3 py-2 uppercase">{l.particulars}</td>
-                    <td className="px-3 py-2">{l.narration}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{money(l.debit)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{money(l.credit)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" data-testid="bill-status">{(() => {
+                    <td className="px-1.5 py-1 whitespace-nowrap">{dmy(l.date)}</td>
+                    <td className="px-1.5 py-1 font-mono text-slate-600">{l.ref}</td>
+                    <td className="px-1.5 py-1 uppercase font-medium text-slate-800">{l.party}</td>
+                    <td className="px-1.5 py-1 uppercase">{l.particulars}</td>
+                    <td className="px-1.5 py-1">{l.narration}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-red-600">{money(l.debit)}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-600">{money(l.credit)}</td>
+                    <td className="px-1.5 py-1 whitespace-nowrap" data-testid="bill-status">{(() => {
                       const s = settled.get(l.id);
                       if (!s) return null;
                       const cls = s.state === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : s.state === 'Part' ? 'bg-amber-50 text-amber-700 border-amber-200' : s.days > 30 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200';
@@ -349,7 +387,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                   </tr>
                 ))}
                 {!anyLoading && shown.length === 0 && (
-                  <tr><td colSpan={8} className="px-3 py-8 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
+                  <tr><td colSpan={8} className="px-3 py-6 text-center"><Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">{filtersActive ? 'No ledger rows match these filters' : 'No ledger entries yet'}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{filtersActive ? 'Change or clear the filters.' : 'Bank entries, invoices and inwards will appear here.'}</p></td></tr>
                 )}
@@ -357,10 +395,10 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               </tbody>
               {sorted.length > 0 && (
                 <tfoot className="sticky bottom-0 bg-slate-100 border-t border-slate-300 font-bold text-[13px]">
-                  <tr><td colSpan={5} className="px-3 py-2 text-right text-slate-600">Total ({sorted.length} rows)</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-red-600" data-testid="total-debit">{money(totals.debit) || '0.00'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600" data-testid="total-credit">{money(totals.credit) || '0.00'}</td>
-                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
+                  <tr><td colSpan={5} className="px-1.5 py-1 text-right text-slate-600">Total ({sorted.length} rows)</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums text-red-600" data-testid="total-debit">{money(totals.debit) || '0.00'}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums text-emerald-600" data-testid="total-credit">{money(totals.credit) || '0.00'}</td>
+                    <td className="px-1.5 py-1 text-slate-600 whitespace-nowrap">Balance <span data-testid="total-balance">{money(Math.abs(totals.debit - totals.credit)) || '0.00'} {drCr(totals.debit - totals.credit)}</span></td></tr>
                 </tfoot>
               )}
             </table>
