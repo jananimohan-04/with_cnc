@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
-import { financeApi, type BankFilters, type BankRow } from '@/lib/finance';
+import { financeApi, type BankAccount, type BankFilters, type BankRow } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
 import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
@@ -126,6 +126,7 @@ export function BankEntryPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
+  const [editRow, setEditRow] = useState<BankRow | null>(null);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -515,7 +516,7 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
               <table className="w-full text-xs min-w-[1000px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['Date', 'Cheque No.', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Bank', 'Type', 'Company', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['Date', 'Cheque No.', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Bank', 'Type', 'Company', 'Status', 'Action'].map((h, i) => <th key={h} className={`${th} ${i >= 3 && i <= 5 ? 'text-right' : i === 10 ? 'text-center' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => (
@@ -529,10 +530,20 @@ export function BankEntryPage() {
                       <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{r.kind}</span></td>
                       <td className="px-3 py-2.5">{r.party_name ?? ''}</td>
                       <td className="px-3 py-2.5">{statusPill(r.status)}</td>
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => setEditRow(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
+                          title={`Edit transaction ${r.txn_no}`}
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {!loadingData && shownData.length === 0 && (
-                    <tr><td colSpan={10} className="px-3 py-8 text-center">
+                    <tr><td colSpan={11} className="px-3 py-8 text-center">
                       <Inbox size={30} className="mx-auto text-slate-300 mb-2" />
                       <p className="text-sm font-semibold text-slate-600">No bank data for these filters</p>
                       <p className="text-xs text-slate-400 mt-0.5">Import a statement above or change the filters.</p>
@@ -566,6 +577,22 @@ export function BankEntryPage() {
         </div>
         <button className={`${btn} mt-4`} onClick={() => { setModal(null); navigate('/accounts/ledger'); }}><BookOpen size={14} />Open Ledger</button>
       </Modal>
+
+      <EditBankEntryModal
+        open={!!editRow}
+        row={editRow}
+        onClose={() => setEditRow(null)}
+        accounts={options?.accounts ?? []}
+        types={types}
+        partyRefs={partyRefs}
+        incomeOpts={incomeOpts}
+        expenseOpts={expenseOpts}
+        onSaved={(updatedRow) => {
+          setData(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
+          setMsg({ kind: 'ok', text: `Transaction ${updatedRow.txn_no} updated successfully.` });
+          void loadData(full);
+        }}
+      />
     </div>
   );
 }
@@ -900,3 +927,333 @@ function ManualEntryModal({ open, onClose, bankId, bankName, types, incomeOpts, 
   );
 }
 function parseDateOk(v: string) { return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime()); }
+
+function EditBankEntryModal({
+  open,
+  onClose,
+  row,
+  accounts,
+  types,
+  partyRefs,
+  incomeOpts,
+  expenseOpts,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  row: BankRow | null;
+  accounts: BankAccount[];
+  types: EntryType[];
+  partyRefs: PartyRef[];
+  incomeOpts: { id: string; code: string; name: string }[];
+  expenseOpts: { id: string; code: string; name: string }[];
+  onSaved: (updatedRow: BankRow) => void;
+}) {
+  const [date, setDate] = useState('');
+  const [refNo, setRefNo] = useState('');
+  const [desc, setDesc] = useState('');
+  const [direction, setDirection] = useState<'IN' | 'OUT'>('IN');
+  const [amount, setAmount] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [kind, setKind] = useState('');
+  const [partyName, setPartyName] = useState('');
+  const [status, setStatus] = useState('Cleared');
+  const [contraId, setContraId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (row) {
+      setDate(row.txn_date ? row.txn_date.slice(0, 10) : todayISO());
+      setRefNo(row.reference_no ?? '');
+      setDesc(row.description ?? '');
+      setDirection(row.direction);
+      setAmount(String(row.amount ?? ''));
+      setAccountId(row.account_id ?? '');
+      setKind(row.kind ?? '');
+      setPartyName(row.party_name ?? '');
+      setStatus(row.status ?? 'Cleared');
+      setContraId((row as any).contra_account_id ?? '');
+      setErr('');
+    }
+  }, [row]);
+
+  if (!row) return null;
+
+  const num = (v: string) => {
+    const n = Number(v.replace(/,/g, '').trim());
+    return v.trim() === '' ? 0 : Number.isFinite(n) && n >= 0 ? n : NaN;
+  };
+  const amtNum = num(amount);
+  const ledgers = direction === 'IN' ? incomeOpts : expenseOpts;
+  const fits = types.filter(t => t.direction === 'ANY' || t.direction === direction);
+
+  const submit = async () => {
+    setErr('');
+    if (!date || !parseDateOk(date)) return setErr('Please choose a valid date (YYYY-MM-DD).');
+    if (Number.isNaN(amtNum) || amtNum <= 0) return setErr('Please enter an amount greater than zero.');
+    if (!accountId) return setErr('Please select a bank account.');
+
+    setBusy(true);
+    try {
+      const patch: Record<string, unknown> = {
+        txn_date: date,
+        reference_no: refNo.trim() || null,
+        description: desc.trim() || null,
+        direction,
+        amount: amtNum.toFixed(2),
+        account_id: accountId,
+        kind: kind.trim() || (direction === 'IN' ? 'Receipt' : 'Payment'),
+        party_name: partyName.trim() || null,
+        status,
+        ...(contraId ? { contra_account_id: contraId } : {}),
+      };
+
+      await financeApi.updateBankEntry(row.id, patch);
+
+      const targetAcc = accounts.find(a => a.id === accountId);
+      const updated: BankRow = {
+        ...row,
+        txn_date: date,
+        reference_no: refNo.trim() || undefined,
+        description: desc.trim() || undefined,
+        direction,
+        amount: String(amtNum),
+        account_id: accountId,
+        account_name: targetAcc?.name ?? row.account_name,
+        kind: kind.trim() || (direction === 'IN' ? 'Receipt' : 'Payment'),
+        party_name: partyName.trim() || undefined,
+        status,
+        contra_account_id: contraId || undefined,
+      };
+
+      onSaved(updated);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the transaction.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => !busy && onClose()}
+      title="Edit Bank Entry"
+      subtitle={`Txn No: ${row.txn_no} · ${row.account_name}`}
+      size="xl"
+      footer={
+        <>
+          <button className={btn} onClick={onClose} disabled={busy}>Cancel</button>
+          <button className={btnPrimary} disabled={busy} onClick={() => void submit()}>
+            <Save size={14} />{busy ? 'Saving…' : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4 text-xs">
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-800 shadow-2xs">
+              {row.txn_no}
+            </span>
+            <span className="text-slate-500 font-medium">
+              Originally recorded on {dmy(row.txn_date)}
+            </span>
+          </div>
+          {row.balance !== null && row.balance !== undefined && (
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Balance at txn</span>
+              <span className="font-mono font-bold text-slate-700 text-xs">₹{money(row.balance)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Date
+            <input
+              type="date"
+              aria-label="Transaction date"
+              className={`${inp} w-full mt-1 normal-case font-normal`}
+              value={date}
+              onChange={e => setDate(e.target.value)}
+            />
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Cheque No. / Reference
+            <input
+              type="text"
+              aria-label="Reference number"
+              placeholder="e.g. 000888600896 or IMPS/UPI ref"
+              className={`${inp} w-full mt-1 normal-case font-normal`}
+              value={refNo}
+              onChange={e => setRefNo(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Flow Direction
+            <div className="flex gap-2 mt-1">
+              <button
+                type="button"
+                className={`flex-1 h-9 rounded-lg border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  direction === 'IN'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+                onClick={() => setDirection('IN')}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Credit (Money In)
+              </button>
+              <button
+                type="button"
+                className={`flex-1 h-9 rounded-lg border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  direction === 'OUT'
+                    ? 'bg-red-50 border-red-300 text-red-800 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+                onClick={() => setDirection('OUT')}
+              >
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                Debit (Money Out)
+              </button>
+            </div>
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Amount (₹)
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Transaction amount"
+              placeholder="0.00"
+              className={`${inp} w-full mt-1 normal-case font-semibold text-slate-900`}
+              value={amount}
+              onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+            />
+          </label>
+        </div>
+
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+          Description
+          <input
+            type="text"
+            aria-label="Transaction description"
+            placeholder="Narration or statement description"
+            className={`${inp} w-full mt-1 normal-case font-normal`}
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+          />
+        </label>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Bank Account
+            <select
+              aria-label="Bank account"
+              className={`${sel} w-full mt-1 normal-case font-normal`}
+              value={accountId}
+              onChange={e => setAccountId(e.target.value)}
+            >
+              <option value="">-- Choose Bank Account --</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.type})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Type
+            <select
+              aria-label="Transaction type"
+              className={`${sel} w-full mt-1 normal-case font-normal`}
+              value={kind}
+              onChange={e => {
+                setKind(e.target.value);
+                const t = types.find(x => x.name === e.target.value || x.id === e.target.value);
+                if (t?.ledgerId) setContraId(t.ledgerId);
+              }}
+            >
+              <option value="">-- Choose Type --</option>
+              {fits.map(t => (
+                <option key={t.id} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
+              {kind && !fits.some(t => t.name === kind) && (
+                <option value={kind}>{kind} (Custom)</option>
+              )}
+            </select>
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Company / Party Name
+            <input
+              type="text"
+              list="edit-party-options"
+              aria-label="Company or Party name"
+              placeholder="e.g. AADHIGURU ENGINEERING"
+              className={`${inp} w-full mt-1 normal-case font-normal`}
+              value={partyName}
+              onChange={e => setPartyName(e.target.value)}
+            />
+            <datalist id="edit-party-options">
+              {partyRefs.map(p => (
+                <option key={p.id} value={p.name}>
+                  {p.kind}: {p.name}
+                </option>
+              ))}
+            </datalist>
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Status
+            <select
+              aria-label="Transaction status"
+              className={`${sel} w-full mt-1 normal-case font-semibold`}
+              value={status}
+              onChange={e => setStatus(e.target.value)}
+            >
+              <option value="Cleared">Cleared</option>
+              <option value="Pending">Pending</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+          Ledger Account (Contra)
+          <select
+            aria-label="Contra ledger"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={contraId}
+            onChange={e => setContraId(e.target.value)}
+          >
+            <option value="">— Default / None —</option>
+            {ledgers.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.code} {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {err && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2"
+          >
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            {err}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}

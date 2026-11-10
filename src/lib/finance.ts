@@ -5,7 +5,7 @@ export interface InvoiceSummary { total_invoices:number; total_value:string; tot
 export interface InvoiceDetail extends InvoiceRow { taxable_value:string; round_off:string; billing_address?:string; customer_gstin?:string; payment_terms?:string; notes?:string; items:{id:string;description:string;hsn?:string;quantity:string;unit?:string;rate:string;gst_rate:string;discount_pct?:string;amount:string}[]; receipts:{id:string;txn_no:string;txn_date:string;amount:string;mode?:string;reference_no?:string;status:string}[] }
 export interface BankAccount { id:string; code:string; name:string; type:'Bank'|'Cash'; balance:string; system_key?:string|null }
 export interface BankFilters { accounts:BankAccount[]; expense_accounts:{id:string;code:string;name:string}[]; income_accounts:{id:string;code:string;name:string}[]; customers:{id:string;name:string}[]; suppliers:{id:string;name:string}[]; can_manage:boolean }
-export interface BankRow { id:string; txn_no:string; txn_date:string; kind:string; direction:'IN'|'OUT'; account_id:string; account_name:string; party_type?:string; party_name?:string; customer_id?:string; supplier_id?:string; invoice_id?:string; receipt?:string|null; payment?:string|null; amount:string; mode?:string; reference_no?:string; description?:string; status:string; transfer_group?:string|null; balance?:string|null }
+export interface BankRow { id:string; txn_no:string; txn_date:string; kind:string; direction:'IN'|'OUT'; account_id:string; account_name:string; contra_account_id?:string; party_type?:string; party_name?:string; customer_id?:string; supplier_id?:string; invoice_id?:string; receipt?:string|null; payment?:string|null; amount:string; mode?:string; reference_no?:string; description?:string; status:string; transfer_group?:string|null; balance?:string|null }
 export interface BankPageResult { total:number; page:number; page_size:number; rows:BankRow[] }
 export interface BankSummary { accounts:BankAccount[]; total_bank:string; total_cash:string; total_receipts:string; total_payments:string; pending_clearing:string; pending_count:number; receipts_vs_payments:{week:string;receipts:string;payments:string}[]; expense_by_category:{name:string;value:string}[] }
 async function call<T>(name:string,args?:Record<string,unknown>):Promise<T>{const {data,error}=await supabase.rpc(name,args as never);if(error)throw new Error(error.message);return data as T}
@@ -28,5 +28,17 @@ export const financeApi={
  bankSummary:(from?:string,to?:string)=>call<BankSummary>('erp_bank_summary',{p_from:from??null,p_to:to??null}),
  addBankEntry:(entry:Record<string,unknown>)=>call<{id:string;txn_no:string}>('erp_add_bank_entry',{p_entry:entry}),
  bankTransfer:(a:{from:string;to:string;amount:string;date:string;mode:string;reference:string;description:string})=>call<{txn_no:string;transfer_group:string}>('erp_bank_transfer',{p_from_account:a.from,p_to_account:a.to,p_amount:a.amount,p_date:a.date,p_mode:a.mode,p_reference:a.reference,p_description:a.description}),
- bankSetStatus:(id:string,status:string)=>call<void>('erp_bank_set_status',{p_id:id,p_status:status})
+ bankSetStatus:(id:string,status:string)=>call<void>('erp_bank_set_status',{p_id:id,p_status:status}),
+ updateBankEntry:async(id:string,entry:Record<string,unknown>)=>{
+  try{
+   return await call<{id:string;ok:boolean}>('erp_update_bank_entry',{p_id:id,p_entry:entry});
+  }catch(rpcErr:unknown){
+   if(entry.status && Object.keys(entry).length===1){
+    return await call<void>('erp_bank_set_status',{p_id:id,p_status:entry.status as string});
+   }
+   const {data,error}=await supabase.from('cnc_bank_transactions').update(entry).eq('id',id).select();
+   if(error)throw new Error(error.message||(rpcErr instanceof Error?rpcErr.message:String(rpcErr)));
+   return data;
+  }
+ }
 };
