@@ -209,7 +209,8 @@ export function BankEntryPage() {
     let t: string;
     try { t = /\.xlsx$/i.test(f.name) ? await xlsxToTsv(await f.arrayBuffer()) : await f.text(); }
     catch (e) { setMsg({ kind: 'err', text: (e as Error).message || 'Could not read this file.' }); return; }
-    setText(t); setMsg({ kind: 'info', text: `Loaded ${f.name}. Click “View full Table” to check the rows.` });
+    setText(t);
+    await parseNow(t);   // open the table straight away: no need to click “View full Table”
   };
 
   const patchRow = (id: string, patch: Partial<ImportRow>) => setRows(rs => rs.map(r => {
