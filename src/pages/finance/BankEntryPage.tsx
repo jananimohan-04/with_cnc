@@ -34,6 +34,11 @@ const dmy = (iso: string | null | undefined) => (iso ? String(iso).slice(0, 10).
 const isoDaysAgo = (months: number) => { const d = new Date(); d.setMonth(d.getMonth() - months); return d.toISOString().slice(0, 10); };
 const ERR_STATUS = /error|bounce|fail|reject/i;
 
+export function isUniqueAccount(name: string): boolean {
+  const n = (name || '').trim().toLowerCase();
+  return n.includes('cash payment') || n.includes('tds adjust') || n.includes('debit note');
+}
+
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1581,6 +1586,8 @@ function ManualEntryModal({
                       className="mt-1 h-6 w-24 text-[11px] font-normal normal-case px-1.5 bg-white border border-slate-200 rounded text-slate-700 focus:outline-none focus:border-orange-400"
                     />
                   </th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top"><div>Bank</div></th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top"><div>Type</div></th>
                   <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top">
                     <div>Description</div>
                     <input
@@ -1607,7 +1614,9 @@ function ManualEntryModal({
                   return (
                     <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100 hover:bg-slate-50/60 transition">
                       <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
-                      <td className="px-3 py-2.5 max-w-[280px] truncate" title={parsed.description || r.description || ''}>{parsed.description || r.description || '—'}</td>
+                      <td className="px-3 py-2.5">{r.account_name}</td>
+                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{parsed.type || r.kind || '—'}</span></td>
+                      <td className="px-3 py-2.5 whitespace-normal break-words">{parsed.description || r.description || '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                       <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1637,7 +1646,7 @@ function ManualEntryModal({
                 })}
                 {filteredList.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                    <td colSpan={7} className="py-6 text-center text-slate-400">
                       No matching manual entries.
                     </td>
                   </tr>
