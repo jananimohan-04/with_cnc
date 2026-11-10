@@ -429,7 +429,7 @@ export function BankEntryPage() {
                     const is = issues.get(r.id) ?? [];
                     const notFound = is.includes('No type or ledger');   // nothing could be worked out for this row: shown in strong red
                     return (
-                      <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-100 hover:[&>td]:!bg-red-200 [&>td:first-child]:shadow-[inset_5px_0_0_#dc2626]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
+                      <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-300 hover:[&>td]:!bg-red-400 [&>td]:!text-red-950 [&>td]:!border-y [&>td]:!border-red-500 [&>td:first-child]:shadow-[inset_8px_0_0_#b91c1c] [&>td:last-child]:shadow-[inset_-8px_0_0_#b91c1c]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{r.date ? dmy(r.date) : <span className="text-red-600">{r.rawDate || '—'}</span>}</td>
                         <td className="px-3 py-2 max-w-[260px] truncate text-slate-700" title={r.description}>{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
