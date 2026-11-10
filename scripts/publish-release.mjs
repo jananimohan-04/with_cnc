@@ -4,8 +4,8 @@ import path from 'path';
 const TOKEN = process.env.GITHUB_TOKEN || '';
 const OWNER = 'jananimohan-04';
 const REPO = 'with_cnc';
-const TAG = 'v1.0.5';
-const VERSION = '1.0.5';
+const TAG = 'v1.0.6';
+const VERSION = '1.0.6';
 
 const headers = {
   'Authorization': `token ${TOKEN}`,
@@ -30,7 +30,7 @@ async function main() {
         tag_name: TAG,
         target_commitish: 'main',
         name: `Business Intelligence v${VERSION}`,
-        body: `## Business Intelligence v${VERSION}\n\n- Multi-format invoice numbering & auto-generation per company\n- Full system rebrand to Business Intelligence with Powered by ARGUS CNC subtext\n- Cryptographically signed desktop installer with instant auto-update support`,
+        body: `## Business Intelligence v${VERSION}\n\n- Quotation-first checkout with e-mail, WhatsApp and Razorpay payment links; Digital Store per-company setup\n- Smarter bank-statement import, glass look for the whole app, BI / Retail Store on-off per company\n- Cryptographically signed desktop installer with instant auto-update support`,
         draft: false,
         prerelease: false,
       }),
@@ -120,7 +120,7 @@ async function main() {
   // Generate latest.json
   const latestJson = {
     version: VERSION,
-    notes: `Business Intelligence v${VERSION} update: Multi-format invoice numbering & full Business Intelligence rebranding.`,
+    notes: `Business Intelligence v${VERSION} update: Digital Store, quotation-first checkout with e-mail / WhatsApp / Razorpay, smarter bank import, glass UI, BI / Retail platform switches.`,
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': {

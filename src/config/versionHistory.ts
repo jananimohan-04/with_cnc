@@ -21,7 +21,7 @@ export interface VersionRelease {
 }
 
 /** Current build version of the application. */
-export const CURRENT_APP_VERSION = '1.0.5';
+export const CURRENT_APP_VERSION = '1.0.6';
 
 /**
  * Built-in version catalog. Whenever code is updated or released,
@@ -29,11 +29,49 @@ export const CURRENT_APP_VERSION = '1.0.5';
  */
 export const VERSION_HISTORY: VersionRelease[] = [
   {
+    version: '1.0.6',
+    releaseDate: 'November 10, 2026',
+    title: 'Business Intelligence v1.0.6 — Store, Payments, Bank Import & Glass UI',
+    isLatest: true,
+    isCurrent: true,
+    highlights: [
+      'Quotation first: checkout generates, e-mails and WhatsApp-shares the quotation; the invoice and Razorpay payment link follow when the customer confirms',
+      'Digital Store: per-company e-mail and Razorpay setup, invoice e-mail and pay-now redirect',
+      'Bank statement import learns from your entries, marks unknown rows in red and follows the bank column order',
+      'Glass look across the whole app, and BI / Retail Store on-off per company',
+    ],
+    sections: [
+      {
+        title: 'Store, Quotations & Payments',
+        type: 'feature',
+        items: [
+          'Separate Quotation and Tax Invoice with their own discount, View popup, WhatsApp and e-mail sharing.',
+          'Each company links its own e-mail account and Razorpay account (Digital Store > E-mail setup / Payment).',
+          'Digital Store orders e-mail the invoice with a payment link and send the customer straight to pay.',
+        ],
+      },
+      {
+        title: 'Finance',
+        type: 'improvement',
+        items: [
+          'Bank import reads NEFT / MB / UPI / IMPS / cheque narrations, learns from saved entries, and shows rows it cannot work out as UNKNOWN in red.',
+          'Preview and saved bank tables follow the statement column order with full descriptions.',
+        ],
+      },
+      {
+        title: 'Platform',
+        type: 'feature',
+        items: [
+          'Company Management: Business Intelligence and Retail Store can each be switched on or off per company.',
+          'New glass design with animations across Business Intelligence and the Retail Store.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.5',
     releaseDate: 'November 4, 2026',
     title: 'Business Intelligence v1.0.5 — Single-Page Invoices & Finished Goods Stock',
-    isLatest: true,
-    isCurrent: true,
     highlights: [
       'Single-Page Sales Invoice: Compact 2-column GST footer fits invoice entirely on 1 page',
       'Finished Goods Stock Entry: Dedicated tracking for unordered products and buffer stock',

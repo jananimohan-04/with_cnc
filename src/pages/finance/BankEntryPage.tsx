@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Landmark, Tags, Layers, BookOpen, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -37,7 +36,6 @@ type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 export function BankEntryPage() {
   const { company } = useAuth();
   const cid = company?.id ?? null;
-  const navigate = useNavigate();
 
   const [options, setOptions] = useState<BankFilters | null>(null);
   const [bankId, setBankId] = useState('');
@@ -49,7 +47,7 @@ export function BankEntryPage() {
   const [types, setTypes] = useState<EntryType[]>(() => loadTypes(cid));
   const [others, setOthers] = useState<Other[]>(() => loadOthers(cid));
   const [existing, setExisting] = useState<BankRow[]>([]);
-  const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'ledger' | 'manual'>(null);
+  const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'manual'>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { setHeader, setTabActions } = useHeaderKpis();
@@ -63,7 +61,6 @@ export function BankEntryPage() {
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Manage Banks</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Manage Types</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Others</button>
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('ledger')}><BookOpen size={13} className="text-slate-500" /> Ledger Details</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('manual')}><PenLine size={13} className="text-slate-500" /> Manual Entry</button>
       </div>
     );
@@ -122,7 +119,6 @@ export function BankEntryPage() {
   const [dataError, setDataError] = useState('');
   const [fBank, setFBank] = useState('');
   const [fKind, setFKind] = useState('');
-  const [onlyErr, setOnlyErr] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
@@ -278,9 +274,9 @@ export function BankEntryPage() {
 
   const clearText = () => { setText(''); setRows([]); setShowTable(false); setExisting([]); setMsg(null); if (fileRef.current) fileRef.current.value = ''; };
 
-  const shownData = data.filter(r => (!onlyErr || ERR_STATUS.test(r.status)));
+  const shownData = data;
   const kinds = useMemo(() => Array.from(new Set(data.map(r => r.kind).filter(Boolean))).sort(), [data]);
-  const shownRows = rows.filter(r => !onlyErr || (issues.get(r.id) ?? []).length > 0);
+  const shownRows = rows;
 
   // A ready-to-fill sample in the usual bank-statement layout; the importer reads it as is.
   const downloadSample = () => {
@@ -317,8 +313,16 @@ export function BankEntryPage() {
     } catch (e) { setMsg({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
   };
 
-  const range = (months: number) => { setFrom(isoDaysAgo(months)); setTo(todayISO()); };
-  const clearFilters = () => { setFBank(''); setFKind(''); setOnlyErr(false); setFrom(''); setTo(''); };
+  const range = (months: number) => {
+    if (from === isoDaysAgo(months) && to === todayISO()) {
+      setFrom('');
+      setTo('');
+    } else {
+      setFrom(isoDaysAgo(months));
+      setTo(todayISO());
+    }
+  };
+  const clearFilters = () => { setFBank(''); setFKind(''); setFrom(''); setTo(''); };
 
   const issueBadge = (is: RowIssue[]) => is.length === 0
     ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><CheckCircle2 size={12} /> OK</span>
@@ -352,7 +356,6 @@ export function BankEntryPage() {
             {topBtn(<Landmark size={14} />, 'Manage Banks', () => setModal('banks'))}
             {topBtn(<Tags size={14} />, 'Manage Types', () => setModal('types'))}
             {topBtn(<Layers size={14} />, 'Manage Others', () => { setOthers(loadOthers(cid)); setModal('others'); })}
-            {topBtn(<BookOpen size={14} />, 'Ledger Details', () => setModal('ledger'))}
             {topBtn(<PenLine size={14} />, 'Manual Entry', () => setModal('manual'))}
           </div>
         </div>
@@ -494,14 +497,6 @@ export function BankEntryPage() {
                 <option value="">-- All Ledger Types --</option>
                 {kinds.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
-              <label className="flex items-center gap-1 text-xs font-medium text-slate-600 cursor-pointer whitespace-nowrap px-1">
-                <input type="checkbox" aria-label="Only error rows" className="accent-orange-500 w-3.5 h-3.5 rounded" checked={onlyErr} onChange={e => setOnlyErr(e.target.checked)} />
-                <span>Only error rows</span>
-              </label>
-              <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">From</span>
-              <input type="date" aria-label="From date" className="h-7 px-1.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={from} onChange={e => setFrom(e.target.value)} />
-              <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">To</span>
-              <input type="date" aria-label="To date" className="h-7 px-1.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-md shadow-sm focus:outline-none focus:border-orange-400" value={to} onChange={e => setTo(e.target.value)} />
               <div className="flex items-center gap-1">
                 {quick(3, 'Last 3 Months')}
                 {quick(6, 'Last 6 Months')}
@@ -579,15 +574,6 @@ export function BankEntryPage() {
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
         onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Others saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
-      <Modal open={modal === 'ledger'} onClose={() => setModal(null)} title="Ledger Details" subtitle="Accounts a statement row can be posted against" size="lg">
-        <div className="grid sm:grid-cols-2 gap-4 text-sm">
-          {([['Income (money in)', incomeOpts, 'text-emerald-600'], ['Expense (money out)', expenseOpts, 'text-red-600']] as const).map(([title, list, tone]) => (
-            <div key={title}><p className={`text-xs font-bold uppercase mb-1.5 ${tone}`}>{title}</p>
-              {list.length === 0 ? <p className="text-slate-400 text-xs">None.</p> : <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">{list.map(a => <li key={a.id} className="px-3 py-2 flex gap-3 hover:bg-slate-50"><span className="font-mono text-slate-500">{a.code}</span>{a.name}</li>)}</ul>}</div>
-          ))}
-        </div>
-        <button className={`${btn} mt-4`} onClick={() => { setModal(null); navigate('/accounts/ledger'); }}><BookOpen size={14} />Open Ledger</button>
-      </Modal>
 
       <EditBankEntryModal
         open={!!editRow}
