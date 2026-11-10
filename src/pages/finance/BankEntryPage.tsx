@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, PenLine, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { SortLabel, useSort } from '@/components/ui/SortHeader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +31,86 @@ const money = (n: number | string | null | undefined) => (n === null || n === un
 const dmy = (iso: string | null | undefined) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('-') : '');
 const isoDaysAgo = (months: number) => { const d = new Date(); d.setMonth(d.getMonth() - months); return d.toISOString().slice(0, 10); };
 const ERR_STATUS = /error|bounce|fail|reject/i;
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function extractRowTypeAndDesc(
+  rawDescription: string | null | undefined,
+  fallbackKind: string | null | undefined,
+  typeList: EntryType[] = []
+): { type: string; description: string } {
+  let desc = (rawDescription ?? '').trim();
+  let extractedType = '';
+
+  const knownNames = [
+    ...typeList.map(t => t.name),
+    'INTERNAL',
+    'EXPENSE',
+    'EXPENSES',
+    'CUSTOMER',
+    'SUPPLIER',
+    'UNKNOWN',
+    'OTHERS',
+    'OTHER',
+    'SALARY',
+    'RENT',
+    'DIRECT EXPENSES',
+    'INDIRECT EXPENSES',
+    'CASH PAYMENT',
+    'TDS ADJUSTMENT',
+    'DEBIT NOTE',
+  ];
+
+  const uniqueNames = Array.from(new Set(knownNames.filter(Boolean)))
+    .sort((a, b) => b.length - a.length);
+
+  for (const name of uniqueNames) {
+    const regexSep = new RegExp(`^${escapeRegExp(name)}\\s*[-:–—]\\s*`, 'i');
+    if (regexSep.test(desc)) {
+      extractedType = name;
+      desc = desc.replace(regexSep, '').trim();
+      break;
+    }
+    const regexSpace = new RegExp(`^${escapeRegExp(name)}\\s+(?=[A-Za-z0-9/])`, 'i');
+    if (/^unknown$/i.test(name) && regexSpace.test(desc)) {
+      extractedType = 'Unknown';
+      desc = desc.replace(regexSpace, '').trim();
+      break;
+    }
+  }
+
+  if (!extractedType) {
+    const generic = desc.match(/^([A-Za-z0-9\s&]{2,30})\s*[-:–—]\s*(.+)$/);
+    if (generic) {
+      const cand = generic[1].trim();
+      const matchInTypes = typeList.find(t => t.name.toLowerCase() === cand.toLowerCase());
+      if (matchInTypes) {
+        extractedType = matchInTypes.name;
+        desc = generic[2].trim();
+      }
+    }
+  }
+
+  let finalType = extractedType;
+  if (!finalType) {
+    if (fallbackKind && !['payment', 'receipt'].includes(fallbackKind.toLowerCase())) {
+      finalType = fallbackKind;
+    } else {
+      finalType = fallbackKind || 'Payment';
+    }
+  } else {
+    const matchedObj = typeList.find(t => t.name.toLowerCase() === extractedType.toLowerCase());
+    if (matchedObj) {
+      finalType = matchedObj.name;
+    } else {
+      finalType = extractedType.charAt(0).toUpperCase() + extractedType.slice(1).toLowerCase();
+    }
+  }
+
+  return { type: finalType, description: desc };
+}
 
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 
@@ -123,8 +203,12 @@ export function BankEntryPage() {
   // sorting and filtering in the column headers of the saved-data table (like the other list pages)
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const colGet: Record<string, (r: BankRow) => string> = {
-    date: r => r.txn_date ?? '', cheque: r => r.reference_no ?? '', description: r => r.description ?? '',
-    bank: r => r.account_name ?? '', type: r => r.kind ?? '', company: r => r.party_name ?? '', status: r => r.status ?? '',
+    date: r => r.txn_date ?? '',
+    cheque: r => r.reference_no ?? '',
+    description: r => extractRowTypeAndDesc(r.description, r.kind, types).description,
+    bank: r => r.account_name ?? '',
+    type: r => extractRowTypeAndDesc(r.description, r.kind, types).type,
+    company: r => r.party_name ?? '',
   };
   const sort = useSort<BankRow>({
     ...Object.fromEntries(Object.entries(colGet).map(([k, g]) => [k, g])),
@@ -142,8 +226,9 @@ export function BankEntryPage() {
   const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
 
   const startEditing = (r: BankRow) => {
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
     setEditingId(r.id);
-    setEditKind(r.kind || '');
+    setEditKind(parsed.type || r.kind || '');
     setEditParty(r.party_name || '');
   };
 
@@ -156,7 +241,8 @@ export function BankEntryPage() {
   const handleSaveInline = async (r: BankRow) => {
     setSavingId(r.id);
     try {
-      const trimmedKind = editKind.trim() || (r.direction === 'IN' ? 'Receipt' : 'Payment');
+      const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+      const trimmedKind = editKind.trim() || parsed.type || (r.direction === 'IN' ? 'Receipt' : 'Payment');
       const trimmedParty = editParty.trim() || null;
       const t = types.find(x => x.name.toLowerCase() === trimmedKind.toLowerCase());
       const contraId = t?.ledgerId || undefined;
@@ -164,6 +250,7 @@ export function BankEntryPage() {
       const patch: Record<string, unknown> = {
         kind: trimmedKind,
         party_name: trimmedParty,
+        description: parsed.description,
         ...(contraId ? { contra_account_id: contraId } : {}),
       };
 
@@ -172,12 +259,13 @@ export function BankEntryPage() {
       setData(prev => prev.map(item => item.id === r.id ? {
         ...item,
         kind: trimmedKind,
+        description: parsed.description,
         party_name: trimmedParty ?? undefined,
         ...(contraId ? { contra_account_id: contraId } : {}),
       } : item));
 
       setEditingId(null);
-      setMsg({ kind: 'ok', text: `Transaction ${r.txn_no} updated successfully.` });
+      setMsg({ kind: 'ok', text: 'Transaction updated successfully.' });
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save changes.' });
     } finally {
@@ -314,11 +402,16 @@ export function BankEntryPage() {
       const dir = rowDirection(r)!; const t = types.find(x => x.id === r.typeId);
       const cust = options?.customers.find(c => c.name === r.party); const sup = options?.suppliers.find(s => s.name === r.party);
       try {
-        await financeApi.addBankEntry({
+        const added = await financeApi.addBankEntry({
           direction: dir, account_id: bankId, contra_account_id: r.ledgerId || '', amount: String(dir === 'IN' ? r.credit : r.debit), txn_date: r.date,
           party_type: cust ? 'Customer' : sup ? 'Supplier' : r.party ? (/^internal$/i.test(others.find(o => o.name === r.party)?.kind ?? '') ? 'Other' : 'Other') : '', party_name: r.party, customer_id: cust?.id ?? '', supplier_id: sup?.id ?? '',
-          mode: 'Statement import', reference_no: r.reference, description: [t?.name, r.description].filter(Boolean).join(' - '), status: 'Cleared', source_type: 'bank_import',
+          mode: 'Statement import', reference_no: r.reference, description: r.description, status: 'Cleared', source_type: 'bank_import',
         });
+        if (t?.name && added?.id) {
+          try {
+            await financeApi.updateBankEntry(added.id, { kind: t.name });
+          } catch { /* ignore */ }
+        }
         savedIds.add(r.id);
       } catch (e) { failed.push(`row ${r.line}: ${e instanceof Error ? e.message : 'failed'}`); }
     }
@@ -337,13 +430,13 @@ export function BankEntryPage() {
   const shownData = sort.apply(data.filter(r => Object.entries(colFilters).every(([k, v]) => {
     if (!v) return true;
     const val = (colGet[k]?.(r) ?? '');
-    return ['bank', 'type', 'company', 'status'].includes(k) ? val === v : val.toLowerCase().includes(v.toLowerCase());
+    return ['bank', 'type', 'company'].includes(k) ? val === v : val.toLowerCase().includes(v.toLowerCase());
   })));
   const colValues = useMemo(() => {
     const uniq = (f: (r: BankRow) => string) => Array.from(new Set(data.map(f).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-    return { bank: uniq(colGet.bank), type: uniq(colGet.type), company: uniq(colGet.company), status: uniq(colGet.status) } as Record<string, string[]>;
+    return { bank: uniq(colGet.bank), type: uniq(colGet.type), company: uniq(colGet.company) } as Record<string, string[]>;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, types]);
   const shownRows = rows;
 
   // A ready-to-fill sample in the usual bank-statement layout; the importer reads it as is.
@@ -360,8 +453,21 @@ export function BankEntryPage() {
   const downloadCsv = () => {
     if (!shownData.length) { setMsg({ kind: 'err', text: 'No bank data to download.' }); return; }
     exportCsv(`bank-data-${todayISO()}`, [
-      ['Txn No', 'Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance', 'Status'],
-      ...shownData.map(r => [r.txn_no, dmy(r.txn_date), r.account_name, r.kind, r.party_name ?? '', r.reference_no ?? '', r.description ?? '', r.direction === 'OUT' ? r.amount : '', r.direction === 'IN' ? r.amount : '', r.balance ?? '', r.status]),
+      ['Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance'],
+      ...shownData.map(r => {
+        const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+        return [
+          dmy(r.txn_date),
+          r.account_name,
+          parsed.type || r.kind,
+          r.party_name ?? '',
+          r.reference_no ?? '',
+          parsed.description,
+          r.direction === 'OUT' ? r.amount : '',
+          r.direction === 'IN' ? r.amount : '',
+          r.balance ?? '',
+        ];
+      }),
     ]);
   };
   const downloadPdf = async () => {
@@ -373,9 +479,22 @@ export function BankEntryPage() {
       pdf.setFontSize(8); pdf.text(`${company?.company_name ?? ''}  |  ${dmy(from) || 'start'} to ${dmy(to) || 'today'}  |  ${shownData.length} rows`, 14, 19);
       autoTable(pdf, {
         startY: 23, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
-        head: [['Txn No', 'Date', 'Bank', 'Type', 'Company', 'Ref', 'Description', 'Debit', 'Credit', 'Balance', 'Status']],
-        body: shownData.map(r => [r.txn_no, dmy(r.txn_date), r.account_name, r.kind, r.party_name ?? '', r.reference_no ?? '', (r.description ?? '').slice(0, 40), r.direction === 'OUT' ? Number(r.amount).toFixed(2) : '', r.direction === 'IN' ? Number(r.amount).toFixed(2) : '', r.balance ?? '', r.status]),
-        columnStyles: { 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
+        head: [['Date', 'Bank', 'Type', 'Company', 'Ref', 'Description', 'Debit', 'Credit', 'Balance']],
+        body: shownData.map(r => {
+          const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+          return [
+            dmy(r.txn_date),
+            r.account_name,
+            parsed.type || r.kind,
+            r.party_name ?? '',
+            r.reference_no ?? '',
+            parsed.description.slice(0, 40),
+            r.direction === 'OUT' ? Number(r.amount).toFixed(2) : '',
+            r.direction === 'IN' ? Number(r.amount).toFixed(2) : '',
+            r.balance ?? '',
+          ];
+        }),
+        columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
       });
       pdf.save(`bank-data-${todayISO()}.pdf`);
     } catch (e) { setMsg({ kind: 'err', text: `Could not create the PDF: ${(e as Error).message}` }); }
@@ -430,18 +549,6 @@ export function BankEntryPage() {
 
         {/* ---------- import ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center gap-2">
-            <UploadCloud size={16} className="text-orange-500" /><h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Import statement</h2>
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <button className={btnPrimary} disabled={busy} onClick={() => void save()}><Save size={14} />{busy ? 'Saving…' : 'Save'}</button>
-              <button className={btn} disabled={busy} onClick={() => void parseNow()}><Table2 size={14} />View full Table</button>
-              <button className={btn} onClick={clearText}><Eraser size={14} />Clear Text</button>
-              <span className="w-px h-6 bg-slate-200 mx-1" />
-              <button className={btn} onClick={downloadCsv}><FileSpreadsheet size={14} />Download CSV</button>
-              <button className={btn} onClick={() => void downloadPdf()}><FileDown size={14} />Download PDF</button>
-              <button className={btn} disabled={busy} onClick={() => void updateEntries()}><Wand2 size={14} />Update entries</button>
-            </div>
-          </div>
           <div className="p-3">
             <div className="flex flex-wrap xl:flex-nowrap items-stretch gap-2">
               <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-2.5 py-1.5 cursor-pointer shrink-0">
@@ -473,6 +580,50 @@ export function BankEntryPage() {
                 className="flex-1 min-w-[12rem] p-2 text-xs font-mono leading-relaxed text-slate-800 bg-slate-50/60 border border-slate-200 rounded-lg resize-y focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15" />
             </div>
 
+            {/* ---------- one line: import actions + data filters (previously two separate bars) ---------- */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button className={btnPrimary} disabled={busy} onClick={() => void save()}><Save size={14} />{busy ? 'Saving…' : 'Save'}</button>
+                <button className={btn} disabled={busy} onClick={() => void parseNow()}><Table2 size={14} />View full Table</button>
+                <button className={btn} onClick={clearText}><Eraser size={14} />Clear Text</button>
+                <span className="w-px h-6 bg-slate-200 mx-1" />
+                <button className={btn} onClick={downloadCsv}><FileSpreadsheet size={14} />Download CSV</button>
+                <button className={btn} onClick={() => void downloadPdf()}><FileDown size={14} />Download PDF</button>
+                <button className={btn} disabled={busy} onClick={() => void updateEntries()}><Wand2 size={14} />Update entries</button>
+              </div>
+
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold tabular-nums whitespace-nowrap">In ₹{money(inTotal)}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold tabular-nums whitespace-nowrap">Out ₹{money(outTotal)}</span>
+                </div>
+
+                <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+
+                <div className="flex items-center gap-1.5">
+                  <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition disabled:opacity-40 whitespace-nowrap cursor-pointer" disabled={loadingData} onClick={() => void loadData(true)}>
+                    {loadingData ? 'Loading…' : 'Load Full Data'}
+                  </button>
+                  <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap" data-testid="data-count">
+                    {loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal}` : ''}`}
+                  </span>
+                </div>
+
+                <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    {quick(3, 'Last 3 Months')}
+                    {quick(6, 'Last 6 Months')}
+                    {quick(12, 'Last 1 Year')}
+                  </div>
+                  <button className="h-7 px-2 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap cursor-pointer" onClick={clearFilters}>
+                    Clear Filters
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {msg && (
               <div role="status" data-testid="bank-msg" className={`mt-2 flex items-start gap-2 text-sm rounded-xl border px-3.5 py-2.5 ${msgTone}`}>
                 {msg.kind === 'err' ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : msg.kind === 'ok' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <Info size={16} className="mt-0.5 shrink-0" />}
@@ -497,7 +648,7 @@ export function BankEntryPage() {
             <div className="overflow-auto max-h-[440px]">
               <table className="w-full text-xs min-w-[1500px]">
                 <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
-                  {['#', 'Txn Date', 'Value Date', 'Cheque No.', 'Description', 'Branch Code', 'Debit', 'Credit', 'Balance', 'Type', 'Ledger', 'Company / Other', 'Status'].map((h, i) => <th key={h} className={`${th} ${i >= 6 && i <= 8 ? 'text-right' : ''}`}>{h}</th>)}
+                  {['#', 'Txn Date', 'Value Date', 'Cheque No.', 'Description', 'Branch Code', 'Debit', 'Credit', 'Balance', 'Type', 'Ledger', 'Company / Other', 'Issues'].map((h, i) => <th key={h} className={`${th} ${i >= 6 && i <= 8 ? 'text-right' : ''}`}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {shownRows.map(r => {
@@ -532,39 +683,6 @@ export function BankEntryPage() {
 
         {/* ---------- bank data ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2.5 overflow-x-auto min-w-0">
-            {/* Totals */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold tabular-nums whitespace-nowrap">In ₹{money(inTotal)}</span>
-              <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold tabular-nums whitespace-nowrap">Out ₹{money(outTotal)}</span>
-            </div>
-
-            <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
-
-            {/* Load Full Data */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition disabled:opacity-40 whitespace-nowrap cursor-pointer" disabled={loadingData} onClick={() => void loadData(true)}>
-                {loadingData ? 'Loading…' : 'Load Full Data'}
-              </button>
-              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap" data-testid="data-count">
-                {loadingData ? '' : `${shownData.length} shown${dataTotal > data.length ? ` of ${dataTotal}` : ''}`}
-              </span>
-            </div>
-
-            <span className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
-
-            {/* Filters */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="flex items-center gap-1">
-                {quick(3, 'Last 3 Months')}
-                {quick(6, 'Last 6 Months')}
-                {quick(12, 'Last 1 Year')}
-              </div>
-              <button className="h-7 px-2 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors whitespace-nowrap cursor-pointer" onClick={clearFilters}>
-                Clear Filters
-              </button>
-            </div>
-          </div>
           <div className="p-4 space-y-4">
             {dataError && <div data-testid="data-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{dataError}</div>}
             <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
@@ -573,7 +691,7 @@ export function BankEntryPage() {
                   {([
                     ['date', 'Date', 'none'], ['cheque', 'Cheque No.', 'text'], ['description', 'Description', 'text'],
                     ['debit', 'Debit (out)', 'none'], ['credit', 'Credit (in)', 'none'], ['balance', 'Balance', 'none'],
-                    ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'], ['status', 'Status', 'list'],
+                    ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'],
                   ] as const).map(([key, label, kind], i) => (
                     <th key={key} className={`${th} align-top ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
                       <div className={`flex flex-col gap-1 ${i >= 3 && i <= 5 ? 'items-end' : 'items-start'}`}>
@@ -599,6 +717,7 @@ export function BankEntryPage() {
                 <tbody>
                   {shownData.map(r => {
                     const isEditing = editingId === r.id;
+                    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
                     return (
                       <tr
                         key={r.id}
@@ -607,7 +726,7 @@ export function BankEntryPage() {
                       >
                         <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
                         <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
-                        <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{r.description ?? ''}</td>
+                        <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{parsed.description || '—'}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
@@ -639,7 +758,7 @@ export function BankEntryPage() {
                               title="Click Edit or double-click to change"
                               onDoubleClick={() => startEditing(r)}
                             >
-                              {r.kind}
+                              {parsed.type || r.kind}
                             </span>
                           )}
                         </td>
@@ -668,7 +787,6 @@ export function BankEntryPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5">{statusPill(r.status)}</td>
                         <td className="px-3 py-2 text-center whitespace-nowrap">
                           {isEditing ? (
                             <div className="inline-flex items-center gap-1.5">
@@ -697,7 +815,7 @@ export function BankEntryPage() {
                                 type="button"
                                 onClick={() => startEditing(r)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 hover:text-orange-800 border border-orange-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                                title={`Edit Type & Company for ${r.txn_no}`}
+                                title="Edit Type & Company"
                               >
                                 <Pencil size={11} /> Edit
                               </button>
@@ -705,7 +823,7 @@ export function BankEntryPage() {
                                 type="button"
                                 onClick={() => setDeletingRow(r)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 hover:text-red-800 border border-red-200 rounded-md transition-colors cursor-pointer shadow-2xs"
-                                title={`Delete transaction ${r.txn_no}`}
+                                title="Delete transaction"
                               >
                                 <Trash2 size={11} /> Delete
                               </button>
@@ -760,6 +878,7 @@ export function BankEntryPage() {
       <DeleteBankEntryModal
         open={!!deletingRow}
         row={deletingRow}
+        types={types}
         onClose={() => setDeletingRow(null)}
         onDeleted={(deletedId, transferGroup) => {
           setData(prev => prev.filter(item => {
@@ -1060,7 +1179,7 @@ function ManualEntryModal({
   bankId: string;
   accounts: BankAccount[];
   types: EntryType[];
-  onTypes: () => void;
+  onTypes?: () => void;
   onSaved: () => void;
 }) {
   const [date, setDate] = useState(today());
@@ -1073,11 +1192,25 @@ function ManualEntryModal({
   const [err, setErr] = useState('');
   const [list, setList] = useState<BankRow[]>([]);
   const [listState, setListState] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterDesc, setFilterDesc] = useState('');
 
   useEffect(() => {
     if (open) {
       setErr('');
+      setEditingId(null);
+      setDeletingRow(null);
       setDate(today());
+      setDebit('');
+      setCredit('');
+      setDesc('');
+      setTypeId('');
+      setSearch('');
+      setFilterDate('');
+      setFilterDesc('');
       setSelectedBankId(bankId || accounts.find(a => a.type === 'Bank')?.id || accounts[0]?.id || '');
     }
   }, [open, bankId, accounts]);
@@ -1126,6 +1259,38 @@ function ManualEntryModal({
     }
   }, [open, selectedBankId, loadList]);
 
+  const handleStartEdit = (r: BankRow) => {
+    setEditingId(r.id);
+    setDate(r.txn_date || today());
+    if (r.account_id) setSelectedBankId(r.account_id);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const matched = types.find(t => t.name.toLowerCase() === parsed.type.toLowerCase() || t.name.toLowerCase() === (r.kind ?? '').toLowerCase());
+    if (matched) {
+      setTypeId(matched.id);
+    } else {
+      setTypeId('');
+    }
+    setDesc(parsed.description);
+    if (r.direction === 'IN') {
+      setCredit(String(r.amount));
+      setDebit('');
+    } else {
+      setDebit(String(r.amount));
+      setCredit('');
+    }
+    setErr('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setDate(today());
+    setDebit('');
+    setCredit('');
+    setDesc('');
+    setTypeId('');
+    setErr('');
+  };
+
   const submit = async () => {
     setErr('');
     if (!selectedBankId) return setErr('Select a bank first.');
@@ -1139,17 +1304,29 @@ function ManualEntryModal({
 
     setBusy(true);
     try {
-      await financeApi.addBankEntry({
+      const cleanDesc = desc.trim();
+      const payload = {
         direction: dir,
         account_id: selectedBankId,
         contra_account_id: type?.ledgerId || '',
         amount: String(dir === 'IN' ? c : d),
         txn_date: date,
         mode: 'Manual entry',
-        description: [type?.name, desc.trim()].filter(Boolean).join(' - '),
+        description: cleanDesc,
         status: 'Cleared',
         source_type: 'manual_entry',
-      });
+      };
+      if (editingId) {
+        await financeApi.updateBankEntry(editingId, { ...payload, kind: type?.name || '' });
+        setEditingId(null);
+      } else {
+        const added = await financeApi.addBankEntry(payload);
+        if (type?.name && added?.id) {
+          try {
+            await financeApi.updateBankEntry(added.id, { kind: type.name });
+          } catch { /* ignore */ }
+        }
+      }
       setDebit('');
       setCredit('');
       setDesc('');
@@ -1163,6 +1340,27 @@ function ManualEntryModal({
     }
   };
 
+  const filteredList = useMemo(() => {
+    let res = list;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      res = res.filter(r =>
+        (r.description ?? '').toLowerCase().includes(q) ||
+        dmy(r.txn_date).toLowerCase().includes(q) ||
+        (r.amount ?? '').includes(q)
+      );
+    }
+    if (filterDate.trim()) {
+      const q = filterDate.trim().toLowerCase();
+      res = res.filter(r => dmy(r.txn_date).toLowerCase().includes(q) || (r.txn_date ?? '').toLowerCase().includes(q));
+    }
+    if (filterDesc.trim()) {
+      const q = filterDesc.trim().toLowerCase();
+      res = res.filter(r => (r.description ?? '').toLowerCase().includes(q));
+    }
+    return res;
+  }, [list, search, filterDate, filterDesc]);
+
   return (
     <Modal
       open={open}
@@ -1171,17 +1369,28 @@ function ManualEntryModal({
       subtitle={selectedBank ? `Posting to ${selectedBank.name}` : 'Select a bank account'}
       size="xl"
       footer={
-        <>
-          <button className={btn} onClick={onClose}>Close</button>
-          <button className={btnPrimary} data-testid="manual-save" disabled={busy} onClick={() => void submit()}>
-            <Save size={14} />{busy ? 'Saving…' : 'Save'}
-          </button>
-        </>
+        <div className="w-full flex items-center justify-between">
+          <div>
+            {editingId && (
+              <button
+                type="button"
+                className={btn}
+                onClick={handleCancelEdit}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button className={btn} onClick={onClose}>Close</button>
+            <button className={btnPrimary} data-testid="manual-save" disabled={busy} onClick={() => void submit()}>
+              <Save size={14} />{busy ? (editingId ? 'Updating…' : 'Saving…') : (editingId ? 'Update Entry' : 'Save')}
+            </button>
+          </div>
+        </div>
       }
     >
-      <div className="flex justify-end -mt-1 mb-2">
-        <button className={btn} onClick={onTypes}><Tags size={14} />Types</button>
-      </div>
+      {/* Line 1: Date | Bank | Type */}
       <div className="grid sm:grid-cols-3 gap-3">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
           Date
@@ -1194,7 +1403,53 @@ function ManualEntryModal({
           />
         </label>
 
-        <label className={`text-xs font-bold uppercase tracking-wider ${hasIn ? 'text-slate-300' : 'text-slate-500'}`}>
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Bank
+          <select
+            aria-label="Manual bank"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={selectedBankId}
+            onChange={e => setSelectedBankId(e.target.value)}
+          >
+            <option value="">-- Select Bank --</option>
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.name}{a.type === 'Cash' ? ' (Cash)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Type
+          <select
+            aria-label="Manual type"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={typeId}
+            onChange={e => setTypeId(e.target.value)}
+          >
+            <option value="">-- Select Type --</option>
+            {fits.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Line 2: Description | Debit | Credit */}
+      <div className="grid sm:grid-cols-12 gap-3 mt-3">
+        <label className="sm:col-span-6 text-xs font-bold uppercase tracking-wider text-slate-500">
+          Description
+          <input
+            aria-label="Manual description"
+            className={`${inp} w-full mt-1 normal-case font-normal`}
+            placeholder="Description"
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+          />
+        </label>
+
+        <label className={`sm:col-span-3 text-xs font-bold uppercase tracking-wider ${hasIn ? 'text-slate-300' : 'text-slate-500'}`}>
           Debit (money out)
           <div className="relative mt-1">
             <input
@@ -1223,7 +1478,7 @@ function ManualEntryModal({
           </div>
         </label>
 
-        <label className={`text-xs font-bold uppercase tracking-wider ${hasOut ? 'text-slate-300' : 'text-slate-500'}`}>
+        <label className={`sm:col-span-3 text-xs font-bold uppercase tracking-wider ${hasOut ? 'text-slate-300' : 'text-slate-500'}`}>
           Credit (money in)
           <div className="relative mt-1">
             <input
@@ -1253,51 +1508,6 @@ function ManualEntryModal({
         </label>
       </div>
 
-      <label className="block mt-3 text-xs font-bold uppercase tracking-wider text-slate-500">
-        Description
-        <input
-          aria-label="Manual description"
-          className={`${inp} w-full mt-1 normal-case font-normal`}
-          placeholder="Description"
-          value={desc}
-          onChange={e => setDesc(e.target.value)}
-        />
-      </label>
-
-      <div className="grid sm:grid-cols-2 gap-3 mt-3">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Type
-          <select
-            aria-label="Manual type"
-            className={`${sel} w-full mt-1 normal-case font-normal`}
-            value={typeId}
-            onChange={e => setTypeId(e.target.value)}
-          >
-            <option value="">-- Select Type --</option>
-            {fits.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Bank
-          <select
-            aria-label="Manual bank"
-            className={`${sel} w-full mt-1 normal-case font-normal`}
-            value={selectedBankId}
-            onChange={e => setSelectedBankId(e.target.value)}
-          >
-            <option value="">-- Select Bank --</option>
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.name}{a.type === 'Cash' ? ' (Cash)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {err && (
         <p role="alert" data-testid="manual-error" className="mt-3 flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -1305,34 +1515,117 @@ function ManualEntryModal({
         </p>
       )}
 
+      {/* Manual Entry Details with Search, Header Filters & Symbol Actions */}
       <div className="mt-5 pt-4 border-t border-slate-200">
-        <h3 className="text-base font-bold text-slate-900">Manual Entry Details</h3>
-        <p className="text-sm text-emerald-700 mt-0.5" data-testid="manual-count">{listState}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Manual Entry Details</h3>
+            <p className="text-sm text-emerald-700 mt-0.5" data-testid="manual-count">{listState}</p>
+          </div>
+          <div className="relative w-60">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              aria-label="Search manual entries"
+              placeholder="Search entries…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-8 pl-8 pr-3 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg shadow-2xs focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-500/20 w-full"
+            />
+          </div>
+        </div>
+
         {list.length > 0 && (
-          <div className="mt-2 overflow-auto max-h-56 border border-slate-200 rounded-xl">
+          <div className="mt-2 overflow-auto max-h-60 border border-slate-200 rounded-xl">
             <table className="w-full text-xs">
-              <thead className="bg-slate-50 sticky top-0">
+              <thead className="bg-slate-50/95 backdrop-blur sticky top-0 shadow-2xs">
                 <tr className="text-left">
-                  {['Txn No', 'Date', 'Description', 'Debit', 'Credit'].map((h, i) => (
-                    <th key={h} className={`${th} ${i >= 3 ? 'text-right' : ''}`}>{h}</th>
-                  ))}
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top">
+                    <div>Date</div>
+                    <input
+                      placeholder="Filter…"
+                      value={filterDate}
+                      onChange={e => setFilterDate(e.target.value)}
+                      className="mt-1 h-6 w-24 text-[11px] font-normal normal-case px-1.5 bg-white border border-slate-200 rounded text-slate-700 focus:outline-none focus:border-orange-400"
+                    />
+                  </th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top">
+                    <div>Description</div>
+                    <input
+                      placeholder="Filter…"
+                      value={filterDesc}
+                      onChange={e => setFilterDesc(e.target.value)}
+                      className="mt-1 h-6 w-36 text-[11px] font-normal normal-case px-1.5 bg-white border border-slate-200 rounded text-slate-700 focus:outline-none focus:border-orange-400"
+                    />
+                  </th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] text-right align-top">
+                    <div>Debit</div>
+                  </th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] text-right align-top">
+                    <div>Credit</div>
+                  </th>
+                  <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] text-center align-top">
+                    <div>Action</div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {list.map(r => (
-                  <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-mono">{r.txn_no}</td>
-                    <td className="px-3 py-2">{dmy(r.txn_date)}</td>
-                    <td className="px-3 py-2 max-w-[260px] truncate">{r.description ?? ''}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                {filteredList.map(r => {
+                  const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+                  return (
+                    <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100 hover:bg-slate-50/60 transition">
+                      <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
+                      <td className="px-3 py-2.5 max-w-[280px] truncate" title={parsed.description || r.description || ''}>{parsed.description || r.description || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-red-600 font-semibold">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 font-semibold">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5 justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(r)}
+                            className="p-1.5 rounded-md text-orange-600 hover:text-orange-700 hover:bg-orange-50 border border-orange-200 transition cursor-pointer shadow-2xs"
+                            title="Edit"
+                            aria-label="Edit"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingRow(r)}
+                            className="p-1.5 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs"
+                            title="Delete"
+                            aria-label="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredList.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                      No matching manual entries.
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      <DeleteBankEntryModal
+        open={!!deletingRow}
+        onClose={() => setDeletingRow(null)}
+        row={deletingRow}
+        types={types}
+        onDeleted={(deletedId) => {
+          setList(prev => prev.filter(x => x.id !== deletedId));
+          setDeletingRow(null);
+          onSaved();
+        }}
+      />
     </Modal>
   );
 }
@@ -1341,11 +1634,13 @@ function DeleteBankEntryModal({
   open,
   onClose,
   row,
+  types = [],
   onDeleted,
 }: {
   open: boolean;
   onClose: () => void;
   row: BankRow | null;
+  types?: EntryType[];
   onDeleted: (deletedId: string, transferGroup?: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1376,7 +1671,7 @@ function DeleteBankEntryModal({
       open={open}
       onClose={() => !busy && onClose()}
       title="Delete Bank Entry"
-      subtitle={`Are you sure you want to delete transaction ${row.txn_no}?`}
+      subtitle="Are you sure you want to delete this bank entry?"
       size="md"
       footer={
         <div className="w-full flex items-center justify-end gap-2">
@@ -1398,8 +1693,8 @@ function DeleteBankEntryModal({
       <div className="space-y-4 text-xs">
         <div className="p-3.5 rounded-xl border border-red-200/80 bg-red-50/50 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white border border-red-200 text-red-900 shadow-2xs">
-              {row.txn_no}
+            <span className="font-semibold text-slate-800 text-sm">
+              {row.account_name}
             </span>
             <span className="text-slate-500 font-medium">
               {dmy(row.txn_date)}
@@ -1407,7 +1702,7 @@ function DeleteBankEntryModal({
           </div>
 
           <div className="flex items-center justify-between pt-1 border-t border-red-100">
-            <span className="text-slate-600 font-medium">{row.account_name}</span>
+            <span className="text-slate-500">Amount</span>
             <span className={`font-mono text-sm font-bold ${isCredit ? 'text-emerald-700' : 'text-red-700'}`}>
               {isCredit ? '+ ' : '- '}₹{money(row.amount)}
             </span>
@@ -1421,40 +1716,40 @@ function DeleteBankEntryModal({
 
           {row.description && (
             <p className="text-slate-600 break-words leading-relaxed pt-1 border-t border-red-100 text-[11px]">
-              {row.description}
+              {extractRowTypeAndDesc(row.description, row.kind, types).description || row.description}
             </p>
           )}
 
           {(row.kind || row.party_name) && (
-            <div className="flex items-center gap-2 pt-1 text-slate-500 text-[11px]">
-              {row.kind && <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 font-semibold text-slate-700">{row.kind}</span>}
-              {row.party_name && <span className="font-medium text-slate-700">{row.party_name}</span>}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 font-semibold text-slate-700">
+                {extractRowTypeAndDesc(row.description, row.kind, types).type || row.kind}
+              </span>
+              {row.party_name && <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{row.party_name}</span>}
             </div>
           )}
         </div>
 
-        {isContra && (
+        {isContra ? (
           <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs flex items-start gap-2">
             <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
             <div>
-              <p className="font-bold">Bank Transfer (Contra Entry)</p>
-              <p className="text-[11px] text-amber-800 mt-0.5">
-                This transaction is linked to a transfer between bank accounts. Deleting it will automatically delete both legs of the transfer.
+              <p className="font-bold">This is an Internal Transfer (Contra entry)</p>
+              <p className="mt-0.5 text-amber-800">
+                Deleting this entry will also delete its linked counterpart in the other account so both sides remain balanced.
               </p>
             </div>
           </div>
+        ) : (
+          <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 text-xs">
+            Deleting this entry will remove it from the bank ledger and recalculate running balances.
+          </div>
         )}
-
-        <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 text-xs">
-          <p className="font-semibold text-slate-700">Ledger Impact:</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Deleting this transaction will automatically remove its associated journal entry from the general ledger and update your account balance.
-          </p>
-        </div>
 
         {err && (
           <p
             role="alert"
+            data-testid="delete-error"
             className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3 py-2"
           >
             <AlertTriangle size={15} className="mt-0.5 shrink-0" />
