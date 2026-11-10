@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, FileText, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Plus, Landmark, Tags, Layers, PenLine, UploadCloud, Save, Table2, Eraser, FileDown, FileSpreadsheet, RefreshCw, Wand2, Search, Filter, CheckCircle2, AlertTriangle, Info, Inbox, Pencil, Trash2, Check, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
@@ -424,7 +424,6 @@ export function BankEntryPage() {
           <div className="p-3">
             <div className="flex flex-wrap xl:flex-nowrap items-stretch gap-2">
               <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-2.5 py-1.5 cursor-pointer shrink-0">
-                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center text-orange-500 shrink-0"><FileText size={16} /></div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">Choose a statement file <span className="font-normal text-slate-400">· xlsx, csv, tsv, txt ≤ 5 MB</span></p>
                   <button type="button" data-testid="download-sample" onClick={downloadSample}
