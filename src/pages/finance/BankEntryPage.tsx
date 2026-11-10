@@ -170,7 +170,7 @@ export function BankEntryPage() {
   const expenseOpts = options?.expense_accounts ?? [];
   const ledgerChoices = (r: ImportRow) => (rowDirection(r) === 'IN' ? incomeOpts : rowDirection(r) === 'OUT' ? expenseOpts : [...incomeOpts, ...expenseOpts]);
   const ledgerOptions = (r: ImportRow) => (<>
-    <option value="">—</option>
+    <option value="">{r.review ? 'UNKNOWN' : '—'}</option>
     {receivable && <optgroup label="Receivable (customers)"><option value={receivable.id}>{receivable.code} {receivable.name}</option></optgroup>}
     {payable && <optgroup label="Payable (suppliers)"><option value={payable.id}>{payable.code} {payable.name}</option></optgroup>}
     <optgroup label={rowDirection(r) === 'IN' ? 'Income' : rowDirection(r) === 'OUT' ? 'Expense' : 'Income / Expense'}>{ledgerChoices(r).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</optgroup>
@@ -435,7 +435,7 @@ export function BankEntryPage() {
                       <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-300 hover:[&>td]:!bg-red-400 [&>td]:!text-red-950 [&>td]:!border-y [&>td]:!border-red-500 [&>td:first-child]:shadow-[inset_8px_0_0_#b91c1c] [&>td:last-child]:shadow-[inset_-8px_0_0_#b91c1c]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{r.date ? dmy(r.date) : <span className="text-red-600">{r.rawDate || '—'}</span>}</td>
-                        <td className="px-3 py-2 max-w-[260px] truncate text-slate-700" title={r.description}>{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
+                        <td className="px-3 py-2 min-w-[300px] max-w-[460px] whitespace-normal break-words leading-snug text-slate-700">{r.auto && <span data-testid="auto-mark" title={`Filled in automatically: ${r.auto}`} className="mr-1 cursor-help text-orange-500">✨</span>}{r.description}</td>
                         <td className="px-3 py-2 font-mono text-slate-500">{r.reference}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-600">{Number.isNaN(r.debit) ? '?' : r.debit ? money(r.debit) : ''}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{Number.isNaN(r.credit) ? '?' : r.credit ? money(r.credit) : ''}</td>
@@ -443,7 +443,7 @@ export function BankEntryPage() {
                           <option value="">—</option>{types.filter(t => typeFitsRow(t, r)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                         <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
                           {ledgerOptions(r)}</select></td>
-                        <td className="px-3 py-1.5"><input aria-label={`Company row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
+                        <td className="px-3 py-1.5"><input aria-label={`Company row ${r.line}`} list="bank-parties" placeholder={r.review ? 'UNKNOWN' : ''} className={`${inp} !h-8 w-36 ${r.review ? 'placeholder:!text-red-700 placeholder:!font-extrabold !border-red-500' : ''}`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
                         <td className="px-3 py-2">{r.review && <span title={r.auto} className="mb-1 mr-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-red-600 text-white border border-red-800"><AlertTriangle size={11} />UNKNOWN: review</span>}{!(r.review && is.length === 0) && issueBadge(is)}</td>
                       </tr>
                     );
