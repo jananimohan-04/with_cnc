@@ -793,13 +793,13 @@ export function BankEntryPage() {
                     ['debit', 'Debit (out)', 'none'], ['credit', 'Credit (in)', 'none'], ['balance', 'Balance', 'none'],
                     ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'],
                   ] as const).map(([key, label, kind], i) => (
-                    <th key={key} className={`px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 align-top ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
-                      <div className={`flex flex-col gap-1 ${i >= 3 && i <= 5 ? 'items-end' : 'items-start'}`}>
-                        <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer" />
+                    <th key={key} className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
+                      <div className={`flex items-center gap-1.5 ${i >= 3 && i <= 5 ? 'justify-end' : 'justify-start'} whitespace-nowrap`}>
+                        <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer shrink-0" />
                         {kind === 'list' && (
                           <select aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-6 w-full max-w-[100px] rounded border bg-white px-1 text-[11px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+                            className={`h-5 rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
                             <option value="">All</option>
                             {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
@@ -807,12 +807,12 @@ export function BankEntryPage() {
                         {kind === 'text' && (
                           <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder="Filter…" onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-6 w-full max-w-[100px] rounded border bg-white px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                            className={`h-5 w-20 rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
                       </div>
                     </th>
                   ))}
-                  <th className={`px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 align-top text-center`}>Action</th>
+                  <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle text-center whitespace-nowrap">Action</th>
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
