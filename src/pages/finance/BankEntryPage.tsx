@@ -164,6 +164,7 @@ export function BankEntryPage() {
   const issues = useMemo(() => validateRows(rows, existing.map(e => ({ txn_date: e.txn_date, amount: e.amount, direction: e.direction, reference_no: e.reference_no }))), [rows, existing]);
   const errCount = rows.filter(r => (issues.get(r.id) ?? []).length > 0).length;
   const okCount = rows.length - errCount;
+  const reviewCount = rows.filter(r => r.review).length;
 
   const incomeOpts = options?.income_accounts ?? [];
   const expenseOpts = options?.expense_accounts ?? [];
@@ -194,10 +195,10 @@ export function BankEntryPage() {
     if (!p.rows.length) { setRows([]); setMsg({ kind: 'err', text: 'Nothing to read. Paste rows (TAB or comma separated) or choose a file first.' }); return []; }
     const withTypes = suggestRows(applyTypeDefaults(p.rows, types), suggestCtx());
     const auto = withTypes.filter(r => r.auto).length;
-    const notFound = withTypes.filter(r => !r.typeId && !r.ledgerId).length;
+    const notFound = withTypes.filter(r => r.review || (!r.typeId && !r.ledgerId)).length;
     setRows(withTypes); setShowTable(true);
     await readExisting(withTypes);
-    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${auto ? ` · ${auto} filled in automatically (marked ✨ — check them)` : ''}${notFound ? ` · ${notFound} could not be worked out: shown in RED, choose a Type or Ledger for them` : ''}${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
+    setMsg({ kind: 'info', text: `${p.rows.length} row${p.rows.length === 1 ? '' : 's'} read${auto ? ` · ${auto} filled in automatically (marked ✨ — check them)` : ''}${notFound ? ` · ${notFound} could not be worked out: marked UNKNOWN and shown in RED. Review them: keep to save as UNKNOWN, or choose the right Type / Ledger` : ''}${p.warnings.length ? ' · ' + p.warnings.join(' ') : ''}` });
     return withTypes;
   };
 
@@ -214,7 +215,7 @@ export function BankEntryPage() {
   const patchRow = (id: string, patch: Partial<ImportRow>) => setRows(rs => rs.map(r => {
     if (r.id !== id) return r;
     const next = { ...r, ...patch };
-    if (patch.typeId !== undefined || patch.ledgerId !== undefined || patch.party !== undefined) delete next.auto;
+    if (patch.typeId !== undefined || patch.ledgerId !== undefined || patch.party !== undefined) { delete next.auto; delete next.review; }
     if (patch.typeId !== undefined) {
       const t = types.find(x => x.id === patch.typeId);
       if (t && !typeFitsRow(t, next)) { setMsg({ kind: 'err', text: `Type “${t.name}” is for ${t.direction === 'IN' ? 'money in' : 'money out'}, but row ${r.line} is the opposite.` }); return r; }
@@ -416,6 +417,7 @@ export function BankEntryPage() {
                 <span className="font-bold text-slate-800">{rows.length} rows</span>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" data-testid="ok-count">{okCount} ready</span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${errCount ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`} data-testid="err-count">{errCount} with errors</span>
+                {reviewCount > 0 && <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white border border-red-800" data-testid="review-count">{reviewCount} UNKNOWN to review</span>}
               </div>
               <span className="text-xs text-slate-500">Choose a Type or a Ledger for every row, then Save. Rows with errors are not saved.</span>
             </div>
@@ -427,7 +429,7 @@ export function BankEntryPage() {
                 <tbody>
                   {shownRows.map(r => {
                     const is = issues.get(r.id) ?? [];
-                    const notFound = is.includes('No type or ledger');   // nothing could be worked out for this row: shown in strong red
+                    const notFound = is.includes('No type or ledger') || !!r.review;   // nothing could be worked out for this row: shown in strong red
                     return (
                       <tr key={r.id} data-testid="import-row" data-notfound={notFound ? 'true' : undefined} className={`border-t border-slate-100 transition ${notFound ? '[&>td]:!bg-red-300 hover:[&>td]:!bg-red-400 [&>td]:!text-red-950 [&>td]:!border-y [&>td]:!border-red-500 [&>td:first-child]:shadow-[inset_8px_0_0_#b91c1c] [&>td:last-child]:shadow-[inset_-8px_0_0_#b91c1c]' : is.length ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}>
                         <td className="px-3 py-2 text-slate-400 tabular-nums">{r.line}</td>
@@ -441,7 +443,7 @@ export function BankEntryPage() {
                         <td className="px-3 py-1.5"><select aria-label={`Ledger row ${r.line}`} className={`${sel} !h-8 w-48 ${notFound ? '!border-red-500 !ring-2 !ring-red-300 !bg-white' : ''}`} value={r.ledgerId} onChange={e => patchRow(r.id, { ledgerId: e.target.value })}>
                           {ledgerOptions(r)}</select></td>
                         <td className="px-3 py-1.5"><input aria-label={`Company row ${r.line}`} list="bank-parties" className={`${inp} !h-8 w-36`} value={r.party} onChange={e => patchRow(r.id, { party: e.target.value })} /></td>
-                        <td className="px-3 py-2">{issueBadge(is)}</td>
+                        <td className="px-3 py-2">{r.review && <span title={r.auto} className="mb-1 mr-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-red-600 text-white border border-red-800"><AlertTriangle size={11} />UNKNOWN: review</span>}{!(r.review && is.length === 0) && issueBadge(is)}</td>
                       </tr>
                     );
                   })}

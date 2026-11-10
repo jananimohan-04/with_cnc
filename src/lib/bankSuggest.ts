@@ -127,7 +127,7 @@ function buildMemory(items: HistoryItem[], types: EntryType[]): Map<string, Mem>
   for (const h of items) {
     const { typeName: fromDesc, rest } = stripType(h.description || '', types);
     const typeName = h.typeName || fromDesc;
-    if (!typeName) continue;
+    if (!typeName || /^unknown$/i.test(typeName)) continue;   // an unreviewed guess is never learned from
     const cp = counterparty(rest, h.direction ?? null);
     if (!cp || !cp.key) continue;
     const slot = votes.get(cp.key) ?? new Map<string, Mem>();
@@ -274,10 +274,16 @@ export function suggestRows(rows: ImportRow[], ctx: SuggestCtx): ImportRow[] {
   const typeName = (id: string) => ctx.types.find(t => t.id === id)?.name;
   const mine: HistoryItem[] = rows.filter(r => r.typeId && !r.auto).map(r => ({ description: r.description, typeName: typeName(r.typeId), party: r.party || undefined, direction: r.credit > 0 && !(r.debit > 0) ? 'IN' : 'OUT' }));
   const mem = buildMemory([...(ctx.history ?? []), ...mine], ctx.types);
-  return rows.map(r => {
+  const unknown = ctx.types.find(t => t.name.trim().toLowerCase() === 'unknown');
+  return rows.map(r0 => {
+    // a row still marked UNKNOWN is tried again (new history / new choices may now explain it)
+    const r: ImportRow = r0.review ? { ...r0, typeId: '', ledgerId: '', review: false, auto: undefined } : r0;
     if (r.ledgerId && r.typeId) return r;
     const s = suggestRow(r, ctx, mem);
-    if (!s) return r;
+    if (!s) {
+      if (!unknown || r.typeId || r.ledgerId) return r;
+      return { ...r, typeId: unknown.id, ledgerId: unknown.ledgerId || '', review: true, auto: 'Could not be worked out: marked UNKNOWN. Check it: keep it to save as UNKNOWN, or choose the right Type / Ledger.' };
+    }
     const next: ImportRow = { ...r };
     let used = false;
     if (!r.party && s.party) { next.party = s.party; used = true; }

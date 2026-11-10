@@ -17,6 +17,8 @@ export interface ImportRow {
   party: string;
   /** Why the Type / Ledger / Party were filled in automatically (cleared once the user changes the row). */
   auto?: string;
+  /** The importer could not work this row out and marked it UNKNOWN: shown in red until you review it. */
+  review?: boolean;
 }
 
 export type RowIssue = 'Invalid date' | 'No amount' | 'Both debit and credit' | 'Invalid amount' | 'Duplicate in file' | 'Already saved' | 'No type or ledger';
@@ -178,6 +180,7 @@ export const STANDARD_TYPES: EntryType[] = [
   { id: 't-salary', name: 'SALARY', direction: 'OUT', ledgerId: '' },
   { id: 't-expense', name: 'EXPENSE', direction: 'OUT', ledgerId: '' },
   { id: 't-income', name: 'INCOME', direction: 'IN', ledgerId: '' },
+  { id: 't-unknown', name: 'UNKNOWN', direction: 'ANY', ledgerId: '' },
 ];
 const DEFAULT_TYPES = STANDARD_TYPES;
 export function loadTypes(cid: string | null | undefined): EntryType[] {
@@ -193,6 +196,11 @@ export function loadTypes(cid: string | null | undefined): EntryType[] {
       list.push(...STANDARD_TYPES.filter(t => !have.has(t.name.toLowerCase())));
       localStorage.setItem(KEY('types', cid), JSON.stringify(list));
       localStorage.setItem(KEY('types-std', cid), '1');
+    }
+    // the UNKNOWN Type (rows the importer could not work out) is added once to lists made before it existed
+    if (localStorage.getItem(KEY('types-unknown', cid)) !== '1') {
+      if (!list.some(t => t.name.trim().toLowerCase() === 'unknown')) { list.push(STANDARD_TYPES.find(t => t.name === 'UNKNOWN')!); localStorage.setItem(KEY('types', cid), JSON.stringify(list)); }
+      localStorage.setItem(KEY('types-unknown', cid), '1');
     }
     return list;
   } catch { return DEFAULT_TYPES; }
