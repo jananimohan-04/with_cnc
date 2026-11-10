@@ -382,7 +382,7 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Draft'}</Button></div>}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-        {type !== 'BANK' && <FormField label="Company"><input className={`${inputClass} bg-slate-50`} readOnly value={lookups.company?.company_name ?? ''} /></FormField>}
+        {type === 'STOCK' && <FormField label="Company"><input className={`${inputClass} bg-slate-50`} readOnly value={lookups.company?.company_name ?? ''} /></FormField>}
         <FormField label="Opening Date" required><input type="date" className={inputClass} value={f.opening_date ?? ''} max={todayISO()} onChange={e => set('opening_date', e.target.value)} /></FormField>
 
         {type === 'BANK' && (<>
@@ -432,9 +432,9 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
           <FormField label="Total Opening Value"><input className={`${inputClass} bg-slate-50 font-bold`} readOnly value={money(stockValue(f.qty, f.unit_cost))} /></FormField>
         </>)}
 
-        {type !== 'BANK' && <FormField label="Currency"><select className={inputClass} value={f.currency ?? 'INR'} onChange={e => set('currency', e.target.value)}><option>INR</option></select></FormField>}
-        {type !== 'BANK' && <div className="sm:col-span-2"><FormField label="Remarks"><textarea rows={2} className={inputClass} value={f.remarks ?? ''} onChange={e => set('remarks', e.target.value)} /></FormField></div>}
-        {type !== 'BANK' && <FormField label="Status"><input className={`${inputClass} bg-slate-50`} readOnly value={entry?.status ?? 'Draft'} /></FormField>}
+        {type === 'STOCK' && <FormField label="Currency"><select className={inputClass} value={f.currency ?? 'INR'} onChange={e => set('currency', e.target.value)}><option>INR</option></select></FormField>}
+        {type === 'STOCK' && <div className="sm:col-span-2"><FormField label="Remarks"><textarea rows={2} className={inputClass} value={f.remarks ?? ''} onChange={e => set('remarks', e.target.value)} /></FormField></div>}
+        {type === 'STOCK' && <FormField label="Status"><input className={`${inputClass} bg-slate-50`} readOnly value={entry?.status ?? 'Draft'} /></FormField>}
       </div>
     </Modal>
   );
