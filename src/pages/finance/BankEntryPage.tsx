@@ -132,7 +132,7 @@ function TableCompanyCell({
       list="inline-party-datalist"
       aria-label="Company / party"
       placeholder="Company / party"
-      className="h-7 px-2 text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-44 font-medium"
+      className="h-7 px-2 text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[150px] font-medium"
       value={val}
       onChange={e => setVal(e.target.value)}
       onBlur={() => {
@@ -785,21 +785,21 @@ export function BankEntryPage() {
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-4 space-y-4">
             {dataError && <div data-testid="data-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{dataError}</div>}
-            <div className="overflow-auto max-h-[480px] border border-slate-200 rounded-xl">
-              <table className="w-full text-xs min-w-[1000px]">
-                <thead className="bg-slate-50/95 backdrop-blur sticky top-0 z-10 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-[11px] leading-tight">
+                <thead className="bg-slate-50/95 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
                   {([
                     ['date', 'Date', 'none'], ['cheque', 'Cheque No.', 'text'], ['description', 'Description', 'text'],
                     ['debit', 'Debit (out)', 'none'], ['credit', 'Credit (in)', 'none'], ['balance', 'Balance', 'none'],
                     ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'],
                   ] as const).map(([key, label, kind], i) => (
-                    <th key={key} className={`${th} align-top ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
+                    <th key={key} className={`px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 align-top ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
                       <div className={`flex flex-col gap-1 ${i >= 3 && i <= 5 ? 'items-end' : 'items-start'}`}>
                         <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer" />
                         {kind === 'list' && (
                           <select aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-6 max-w-[130px] rounded border bg-white px-1 text-[11px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+                            className={`h-6 w-full max-w-[100px] rounded border bg-white px-1 text-[11px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
                             <option value="">All</option>
                             {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
@@ -807,12 +807,12 @@ export function BankEntryPage() {
                         {kind === 'text' && (
                           <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder="Filter…" onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-6 w-28 rounded border bg-white px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                            className={`h-6 w-full max-w-[100px] rounded border bg-white px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
                       </div>
                     </th>
                   ))}
-                  <th className={`${th} align-top text-center`}>Action</th>
+                  <th className={`px-1.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 align-top text-center`}>Action</th>
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
@@ -823,17 +823,17 @@ export function BankEntryPage() {
                         data-testid="data-row"
                         className="border-t border-slate-100 transition hover:bg-slate-50"
                       >
-                        <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
-                        <td className="px-3 py-2.5 font-mono text-slate-500">{r.reference_no ?? ''}</td>
-                        <td className="px-3 py-2.5 min-w-[320px] max-w-[460px] whitespace-normal break-words text-slate-600 leading-snug">{parsed.description || '—'}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
-                        <td className="px-3 py-2.5">{r.account_name}</td>
-                        <td className="px-3 py-1.5">
+                        <td className="px-1.5 py-1 whitespace-nowrap">{dmy(r.txn_date)}</td>
+                        <td className="px-1.5 py-1 font-mono text-slate-500">{r.reference_no ?? ''}</td>
+                        <td className="px-1.5 py-1 whitespace-normal break-words text-slate-600 leading-snug">{parsed.description || '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
+                        <td className="px-1.5 py-1">{r.account_name}</td>
+                        <td className="px-1.5 py-0.5">
                           <select
                             aria-label="Type"
-                            className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-32 cursor-pointer shadow-2xs"
+                            className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[104px] cursor-pointer shadow-2xs"
                             value={parsed.type || r.kind || ''}
                             onChange={e => void handleUpdateType(r, e.target.value)}
                           >
@@ -846,13 +846,13 @@ export function BankEntryPage() {
                             )}
                           </select>
                         </td>
-                        <td className="px-3 py-1.5">
+                        <td className="px-1.5 py-0.5">
                           <TableCompanyCell
                             initialValue={r.party_name ?? ''}
                             onSave={val => void handleUpdateCompany(r, val)}
                           />
                         </td>
-                        <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                        <td className="px-1.5 py-0.5 text-center whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => setDeletingRow(r)}
