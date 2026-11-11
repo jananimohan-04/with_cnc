@@ -17,7 +17,11 @@ export interface InvoiceSeriesConfig {
   lastNumber: number;
   nextNumber: string;
   companyName?: string;
+  scope?: 'all' | 'company';
+  /** True for whichever format is currently the Global Default for all customers. */
   isDefault?: boolean;
+  /** True only for the built-in INV- fallback format. */
+  isSystemStandard?: boolean;
   /** Latest numeric sequence observed in DB invoices when state was loaded. */
   dbLastNumber?: number;
   /** DB max at the time the user explicitly overrode the next number in Edit mode. */
@@ -31,6 +35,53 @@ export interface CompanySeriesMapping {
 const STORAGE_SERIES_KEY = 'argus_invoice_custom_series_v1';
 const STORAGE_COMPANY_PREF_KEY = 'argus_company_invoice_series_pref_v1';
 const STORAGE_HIDDEN_SERIES_KEY = 'argus_invoice_hidden_series_v1';
+const STORAGE_GLOBAL_DEFAULT_KEY = 'argus_invoice_global_default_prefix_v1';
+
+export type InvoiceSeriesDefaultScope = 'all' | 'company' | 'none';
+
+export function loadGlobalDefaultPrefix(): string {
+  try {
+    const val = localStorage.getItem(STORAGE_GLOBAL_DEFAULT_KEY);
+    return val && val.trim() ? val.trim() : 'INV-';
+  } catch {
+    return 'INV-';
+  }
+}
+
+export function saveGlobalDefaultPrefix(prefix: string): void {
+  try {
+    const clean = (prefix || '').trim() || 'INV-';
+    localStorage.setItem(STORAGE_GLOBAL_DEFAULT_KEY, clean);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+/**
+ * Clear per-company overrides that don't point to a company-exclusive series
+ * so a newly chosen global default applies across all customers.
+ */
+export function clearNonCompanySpecificPrefs(seriesList?: InvoiceSeriesConfig[], alsoClearCompanyName?: string): void {
+  try {
+    const prefs = loadStoredCompanyPrefs();
+    const companyOnlyPrefixes = new Set(
+      (seriesList ?? []).filter((s) => !!s.companyName).map((s) => s.prefix)
+    );
+    const clearKey = alsoClearCompanyName ? normalizeCompanyName(alsoClearCompanyName) : '';
+    let changed = false;
+    for (const key of Object.keys(prefs)) {
+      if ((clearKey && key === clearKey) || !companyOnlyPrefixes.has(prefs[key])) {
+        delete prefs[key];
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(STORAGE_COMPANY_PREF_KEY, JSON.stringify(prefs));
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export const normalizeCompanyName = (name?: string | null): string => {
   return String(name || '').trim().toLowerCase();
@@ -269,26 +320,27 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
   }
 
   // Compile final array of series configs
-  const seriesList: InvoiceSeriesConfig[] = [];
+  const rawSeriesList: InvoiceSeriesConfig[] = [];
 
   for (const [prefix, meta] of prefixMap.entries()) {
-    const isDefault = prefix === 'INV-';
-    if (!isDefault && hiddenPrefixes.has(prefix)) continue;
+    const isSystemStandard = prefix === 'INV-';
+    if (!isSystemStandard && hiddenPrefixes.has(prefix)) continue;
 
     const nextNum = meta.maxNum + 1;
     const nextNumber = `${prefix}${String(nextNum).padStart(meta.padding, '0')}${meta.suffix}`;
 
-    // Find friendly name
-    let name = isDefault ? 'Standard (INV-)' : `${prefix} Series`;
     const matchingCustom = customSeries.find((c) => c.prefix === prefix);
+    const scopedCompanyName = matchingCustom?.scope === 'all'
+      ? undefined
+      : (matchingCustom?.companyName || undefined);
+
+    // Default series label stays neutral unless explicitly renamed or explicitly scoped to one customer
+    let name = isSystemStandard ? 'Standard (INV-)' : `${prefix} Series`;
     if (matchingCustom && matchingCustom.name) {
       name = matchingCustom.name;
-    } else if (meta.companies.size === 1) {
-      const singleComp = Array.from(meta.companies)[0];
-      name = `${singleComp} (${prefix})`;
     }
 
-    seriesList.push({
+    rawSeriesList.push({
       id: prefix,
       name,
       prefix,
@@ -296,12 +348,23 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
       suffix: meta.suffix,
       lastNumber: meta.maxNum,
       nextNumber,
-      companyName: matchingCustom?.companyName ?? (meta.companies.size === 1 ? Array.from(meta.companies)[0] : undefined),
-      isDefault,
+      companyName: scopedCompanyName,
+      scope: scopedCompanyName ? 'company' : 'all',
+      isDefault: false,
+      isSystemStandard,
       dbLastNumber: meta.dbMaxNum,
       overriddenDbMax: matchingCustom?.overriddenDbMax,
     });
   }
+
+  const storedGlobal = loadGlobalDefaultPrefix();
+  const hasStoredGlobal = rawSeriesList.some((s) => s.prefix === storedGlobal);
+  const resolvedGlobalPrefix = hasStoredGlobal ? storedGlobal : 'INV-';
+
+  const seriesList: InvoiceSeriesConfig[] = rawSeriesList.map((s) => ({
+    ...s,
+    isDefault: s.prefix === resolvedGlobalPrefix,
+  }));
 
   // Sort series: Preferred for this company first, then standard, then alphabetical
   seriesList.sort((a, b) => {
@@ -321,17 +384,22 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
     return a.name.localeCompare(b.name);
   });
 
-  // Determine active series for this company
-  let activeSeries = seriesList[0] || {
-    id: 'INV-',
-    name: 'Standard (INV-)',
-    prefix: 'INV-',
-    padding: 5,
-    suffix: '',
-    lastNumber: 0,
-    nextNumber: 'INV-00001',
-    isDefault: true,
-  };
+  // Determine active series: start from Global Default, then apply company override if explicitly configured
+  let activeSeries =
+    seriesList.find((s) => s.isDefault) ||
+    seriesList.find((s) => s.prefix === 'INV-') ||
+    seriesList[0] || {
+      id: 'INV-',
+      name: 'Standard (INV-)',
+      prefix: 'INV-',
+      padding: 5,
+      suffix: '',
+      lastNumber: 0,
+      nextNumber: 'INV-00001',
+      isDefault: true,
+      isSystemStandard: true,
+      scope: 'all' as const,
+    };
 
   if (targetCompanyKey) {
     const prefId = companyPrefs[targetCompanyKey];
@@ -339,9 +407,8 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
       const match = seriesList.find((s) => s.id === prefId || s.prefix === prefId);
       if (match) activeSeries = match;
     } else {
-      // Check if this company has an existing series in the DB
       const compSeries = seriesList.find(
-        (s) => s.companyName && normalizeCompanyName(s.companyName) === targetCompanyKey
+        (s) => s.scope === 'company' && s.companyName && normalizeCompanyName(s.companyName) === targetCompanyKey
       );
       if (compSeries) activeSeries = compSeries;
     }
@@ -355,38 +422,75 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 }
 
 /**
- * Registers or updates an invoice series when a user types a new format or saves an invoice.
+ * Registers or updates an invoice series when a user adds a format or saves an invoice.
  */
 export function registerInvoiceSeries(
   invoiceNo: string,
   customerName?: string,
   customName?: string,
-  setAsCompanyDefault = true
+  setAsCompanyDefault = false,
+  options?: {
+    defaultScope?: InvoiceSeriesDefaultScope;
+    scope?: 'all' | 'company';
+    /** When true (from Add Format UI), `invoiceNo` represents the next number to use rather than a just-saved number. */
+    nextNumberIsTarget?: boolean;
+    dbLastNumber?: number;
+    existingSeriesList?: InvoiceSeriesConfig[];
+  }
 ): InvoiceSeriesConfig | null {
   const parsed = parseInvoiceNumber(invoiceNo);
   if (!parsed) return null;
 
+  unhideInvoiceSeries(parsed.prefix);
+
   const customList = loadStoredCustomSeries();
-  const existingIndex = customList.findIndex((s) => s.prefix === parsed.prefix);
+  const existingIndex = customList.findIndex((s) => s.prefix === parsed.prefix || s.id === parsed.prefix);
+  const existing = existingIndex >= 0 ? customList[existingIndex] : undefined;
+
+  const isExplicitForm = !!options;
+  const targetScope: 'all' | 'company' = isExplicitForm
+    ? (options?.scope ?? 'all')
+    : (existing?.scope ?? (existing?.companyName ? 'company' : 'all'));
+
+  const targetLastNum = options?.nextNumberIsTarget ? Math.max(0, parsed.num - 1) : parsed.num;
+  const nextNumber = options?.nextNumberIsTarget
+    ? `${parsed.prefix}${String(parsed.num).padStart(parsed.padding, '0')}${parsed.suffix}`
+    : generateNextInvoiceNumber(parsed, 1);
+
+  const cleanedCustomName = customName?.trim() || '';
+  const targetCompanyName =
+    targetScope === 'company' ? (customerName || existing?.companyName || undefined) : undefined;
+
+  const fallbackName =
+    parsed.prefix === 'INV-'
+      ? 'Standard (INV-)'
+      : targetScope === 'company' && targetCompanyName
+        ? `${targetCompanyName} (${parsed.prefix})`
+        : `${parsed.prefix} Series`;
+
+  const resolvedName = cleanedCustomName || (!isExplicitForm && existing?.name ? existing.name : fallbackName);
+  const dbMax = Math.max(options?.dbLastNumber ?? 0, existing?.dbLastNumber ?? 0);
 
   const series: InvoiceSeriesConfig = {
     id: parsed.prefix,
-    name: customName || (customerName ? `${customerName} (${parsed.prefix})` : `${parsed.prefix} Series`),
+    name: resolvedName,
     prefix: parsed.prefix,
     padding: parsed.padding,
     suffix: parsed.suffix,
-    lastNumber: parsed.num,
-    nextNumber: generateNextInvoiceNumber(parsed, 1),
-    companyName: customerName || undefined,
+    lastNumber: existingIndex >= 0 && !options?.nextNumberIsTarget
+      ? Math.max(existing!.lastNumber, targetLastNum)
+      : targetLastNum,
+    nextNumber,
+    companyName: targetCompanyName,
+    scope: targetScope,
+    dbLastNumber: dbMax,
+    overriddenDbMax: options?.nextNumberIsTarget ? dbMax : existing?.overriddenDbMax,
   };
 
   if (existingIndex >= 0) {
     customList[existingIndex] = {
       ...customList[existingIndex],
-      lastNumber: Math.max(customList[existingIndex].lastNumber, parsed.num),
-      nextNumber: generateNextInvoiceNumber(parsed, 1),
-      companyName: customerName || customList[existingIndex].companyName,
-      name: customName || customList[existingIndex].name,
+      ...series,
     };
   } else {
     customList.push(series);
@@ -394,7 +498,13 @@ export function registerInvoiceSeries(
 
   saveStoredCustomSeries(customList);
 
-  if (customerName && setAsCompanyDefault) {
+  const defaultScope: InvoiceSeriesDefaultScope =
+    options?.defaultScope ?? (setAsCompanyDefault && customerName ? 'company' : 'none');
+
+  if (defaultScope === 'all') {
+    saveGlobalDefaultPrefix(parsed.prefix);
+    clearNonCompanySpecificPrefs(options?.existingSeriesList, customerName);
+  } else if (defaultScope === 'company' && customerName) {
     saveStoredCompanyPref(customerName, parsed.prefix);
   }
 
@@ -402,32 +512,44 @@ export function registerInvoiceSeries(
 }
 
 /**
- * Updates an existing invoice number format (name, prefix, next invoice number, and company default).
+ * Updates an existing invoice number format (name, prefix, next invoice number, scope, and default setting).
  */
 export function updateInvoiceSeries(
   original: InvoiceSeriesConfig,
   nextInvoiceNo: string,
   customName?: string,
   customerName?: string,
-  setAsCompanyDefault = true
+  setAsCompanyDefault = false,
+  options?: {
+    defaultScope?: InvoiceSeriesDefaultScope;
+    scope?: 'all' | 'company';
+    targetDbMax?: number;
+    existingSeriesList?: InvoiceSeriesConfig[];
+  }
 ): InvoiceSeriesConfig | null {
   const parsed = parseInvoiceNumber(nextInvoiceNo);
   if (!parsed) return null;
 
-  // Keep the Standard default format tied to the INV- prefix.
-  const targetPrefix = original.isDefault ? 'INV-' : parsed.prefix;
+  const isSystemStd = !!original.isSystemStandard || original.prefix === 'INV-';
+  // Keep built-in Standard format anchored to INV-; all other formats (including global default) can change prefix freely.
+  const targetPrefix = isSystemStd ? 'INV-' : parsed.prefix;
   const targetLastNum = Math.max(0, parsed.num - 1);
   const nextNumber = `${targetPrefix}${String(targetLastNum + 1).padStart(parsed.padding, '0')}${parsed.suffix}`;
-  const dbMax = Math.max(original.dbLastNumber ?? 0, original.overriddenDbMax ?? 0);
+  const dbMax = Math.max(
+    options?.targetDbMax ?? 0,
+    original.prefix === targetPrefix ? (original.dbLastNumber ?? 0) : 0
+  );
 
   let customList = loadStoredCustomSeries();
 
-  // If a non-default format changed its prefix, retire the old prefix cleanly.
-  if (!original.isDefault && original.prefix !== targetPrefix) {
+  // If a non-system format changed its prefix, retire the old prefix cleanly.
+  if (!isSystemStd && original.prefix !== targetPrefix) {
     customList = customList.filter((s) => s.prefix !== original.prefix && s.id !== original.id);
-    const hidden = loadHiddenSeriesPrefixes();
-    if (!hidden.includes(original.prefix)) {
-      saveHiddenSeriesPrefixes([...hidden, original.prefix]);
+    if ((original.dbLastNumber ?? 0) > 0) {
+      const hidden = loadHiddenSeriesPrefixes();
+      if (!hidden.includes(original.prefix)) {
+        saveHiddenSeriesPrefixes([...hidden, original.prefix]);
+      }
     }
     const prefs = loadStoredCompanyPrefs();
     let prefsChanged = false;
@@ -444,16 +566,29 @@ export function updateInvoiceSeries(
         // ignore
       }
     }
+    if (loadGlobalDefaultPrefix() === original.prefix) {
+      saveGlobalDefaultPrefix(targetPrefix);
+    }
   }
 
   unhideInvoiceSeries(targetPrefix);
 
+  const defaultScope: InvoiceSeriesDefaultScope =
+    options?.defaultScope ?? (setAsCompanyDefault && customerName ? 'company' : 'none');
+
+  const targetScope: 'all' | 'company' = isSystemStd
+    ? 'all'
+    : (options?.scope ?? (defaultScope === 'company' ? 'company' : 'all'));
+
+  const targetCompanyName =
+    targetScope === 'company' ? (customerName || original.companyName || undefined) : undefined;
+
   const resolvedName =
     customName?.trim() ||
-    (original.isDefault
+    (isSystemStd
       ? 'Standard (INV-)'
-      : customerName
-        ? `${customerName} (${targetPrefix})`
+      : targetScope === 'company' && targetCompanyName
+        ? `${targetCompanyName} (${targetPrefix})`
         : `${targetPrefix} Series`);
 
   const updated: InvoiceSeriesConfig = {
@@ -464,10 +599,12 @@ export function updateInvoiceSeries(
     suffix: parsed.suffix,
     lastNumber: targetLastNum,
     nextNumber,
-    companyName: original.isDefault ? undefined : (original.companyName || customerName || undefined),
-    isDefault: original.isDefault,
-    dbLastNumber: original.prefix === targetPrefix ? dbMax : 0,
-    overriddenDbMax: original.prefix === targetPrefix && dbMax > 0 ? dbMax : undefined,
+    companyName: targetCompanyName,
+    scope: targetScope,
+    isSystemStandard: isSystemStd,
+    isDefault: defaultScope === 'all' || (!isSystemStd && loadGlobalDefaultPrefix() === targetPrefix),
+    dbLastNumber: dbMax,
+    overriddenDbMax: dbMax,
   };
 
   const existingIndex = customList.findIndex((s) => s.prefix === targetPrefix || s.id === targetPrefix);
@@ -478,19 +615,58 @@ export function updateInvoiceSeries(
   }
   saveStoredCustomSeries(customList);
 
-  if (customerName) {
-    if (setAsCompanyDefault) {
-      saveStoredCompanyPref(customerName, targetPrefix);
-    } else {
+  if (defaultScope === 'all') {
+    saveGlobalDefaultPrefix(targetPrefix);
+    clearNonCompanySpecificPrefs(options?.existingSeriesList, customerName);
+  } else if (defaultScope === 'company' && customerName) {
+    saveStoredCompanyPref(customerName, targetPrefix);
+    if (loadGlobalDefaultPrefix() === targetPrefix && targetPrefix !== 'INV-') {
+      saveGlobalDefaultPrefix('INV-');
+    }
+  } else {
+    if (customerName) {
       const prefs = loadStoredCompanyPrefs();
       const prefVal = prefs[normalizeCompanyName(customerName)];
       if (prefVal === targetPrefix || prefVal === original.prefix) {
         removeStoredCompanyPref(customerName);
       }
     }
+    if (defaultScope === 'none' && loadGlobalDefaultPrefix() === targetPrefix && targetPrefix !== 'INV-') {
+      saveGlobalDefaultPrefix('INV-');
+    }
   }
 
   return updated;
+}
+
+/**
+ * Sets any format as the Global Default for all customers in one step.
+ */
+export function setGlobalDefaultInvoiceSeries(
+  prefix: string,
+  allSeries: InvoiceSeriesConfig[],
+  currentCustomerName?: string
+): void {
+  if (!prefix) return;
+  unhideInvoiceSeries(prefix);
+  saveGlobalDefaultPrefix(prefix);
+
+  // If the series had previously been tagged to a single company, promote it to a shared global series.
+  const customList = loadStoredCustomSeries();
+  const idx = customList.findIndex((s) => s.prefix === prefix || s.id === prefix);
+  if (idx >= 0 && customList[idx].scope === 'company') {
+    const oldComp = customList[idx].companyName;
+    const isOldAutoName = oldComp && customList[idx].name === `${oldComp} (${prefix})`;
+    customList[idx] = {
+      ...customList[idx],
+      companyName: undefined,
+      scope: 'all',
+      name: isOldAutoName ? `${prefix} Series` : customList[idx].name,
+    };
+    saveStoredCustomSeries(customList);
+  }
+
+  clearNonCompanySpecificPrefs(allSeries, currentCustomerName);
 }
 
 /**
@@ -503,6 +679,10 @@ export function deleteInvoiceSeries(prefix: string): void {
     (s) => s.prefix !== prefix && s.id !== prefix
   );
   saveStoredCustomSeries(customList);
+
+  if (loadGlobalDefaultPrefix() === prefix) {
+    saveGlobalDefaultPrefix('INV-');
+  }
 
   const prefs = loadStoredCompanyPrefs();
   let changed = false;
