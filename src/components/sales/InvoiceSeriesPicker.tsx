@@ -15,9 +15,14 @@ import {
 import {
   InvoiceSeriesConfig,
   InvoiceSeriesDefaultScope,
+  ParsedInvoiceNumber,
   getInvoiceSeriesState,
   parseInvoiceNumber,
+  parseInvoiceSegments,
   generateNextInvoiceNumber,
+  getSeriesId,
+  formatSeriesPatternLabel,
+  formatSeriesDisplayName,
   registerInvoiceSeries,
   setGlobalDefaultInvoiceSeries,
   updateInvoiceSeries,
@@ -25,6 +30,7 @@ import {
   unhideInvoiceSeries,
   loadStoredCompanyPrefs,
   normalizeCompanyName,
+  clearInvoiceSeriesManualOverride,
 } from '@/lib/invoiceNumberFormats';
 
 interface InvoiceSeriesPickerProps {
@@ -63,6 +69,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   const [editingSeries, setEditingSeries] = useState<InvoiceSeriesConfig | null>(null);
   const [confirmDeletePrefix, setConfirmDeletePrefix] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState('');
+  const [selectedSegmentIdx, setSelectedSegmentIdx] = useState<number | null>(null);
   const [customSeriesName, setCustomSeriesName] = useState('');
   const [defaultScope, setDefaultScope] = useState<InvoiceSeriesDefaultScope>('all');
   const [savingFormat, setSavingFormat] = useState(false);
@@ -70,12 +77,40 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   const [loading, setLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const parsedPreview = customInput.trim() ? parseInvoiceNumber(customInput.trim()) : null;
+  const customPatterns = seriesList
+    .filter((s) => !!s.suffix)
+    .map((s) => ({ prefix: s.prefix, suffix: s.suffix }));
+
+  const inputSegments = customInput.trim() ? parseInvoiceSegments(customInput.trim()) : [];
+  const autoParsedPreview = customInput.trim()
+    ? parseInvoiceNumber(customInput.trim(), customPatterns)
+    : null;
+  const selectedSegment =
+    selectedSegmentIdx !== null && inputSegments[selectedSegmentIdx]
+      ? inputSegments[selectedSegmentIdx]
+      : null;
+
+  const parsedPreview: ParsedInvoiceNumber | null = selectedSegment
+    ? {
+        raw: customInput.trim(),
+        prefix: selectedSegment.prefix,
+        num: selectedSegment.num,
+        padding: selectedSegment.padding,
+        suffix: selectedSegment.suffix,
+      }
+    : autoParsedPreview;
+
+  const activeSegmentIdx = parsedPreview
+    ? inputSegments.findIndex(
+        (seg) => seg.prefix === parsedPreview.prefix && seg.suffix === parsedPreview.suffix
+      )
+    : -1;
 
   const resetFormState = () => {
     setShowAddForm(false);
     setEditingSeries(null);
     setCustomInput('');
+    setSelectedSegmentIdx(null);
     setCustomSeriesName('');
     setFormError('');
     setDefaultScope('all');
@@ -102,9 +137,15 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
       .then((state) => {
         if (cancelled) return;
         setSeriesList(state.seriesList);
-        const parsedVal = value ? parseInvoiceNumber(value) : null;
+        const patterns = state.seriesList
+          .filter((s) => !!s.suffix)
+          .map((s) => ({ prefix: s.prefix, suffix: s.suffix }));
+        const parsedVal = value ? parseInvoiceNumber(value, patterns) : null;
+        const valSeriesId = parsedVal ? getSeriesId(parsedVal.prefix, parsedVal.suffix) : '';
         const matchedByValue = parsedVal
-          ? state.seriesList.find((s) => s.prefix === parsedVal.prefix)
+          ? state.seriesList.find(
+              (s) => s.id === valSeriesId || (!parsedVal.suffix && !s.suffix && s.prefix === parsedVal.prefix)
+            )
           : undefined;
         setActiveSeries(matchedByValue || state.activeSeries);
 
@@ -126,13 +167,16 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
 
   // Keep the displayed active series in sync if `value` changes externally
   useEffect(() => {
-    const parsedVal = value ? parseInvoiceNumber(value) : null;
+    const parsedVal = value ? parseInvoiceNumber(value, customPatterns) : null;
     if (!parsedVal || !seriesList.length) return;
-    const matched = seriesList.find((s) => s.prefix === parsedVal.prefix);
-    if (matched && matched.prefix !== activeSeries?.prefix) {
+    const valSeriesId = getSeriesId(parsedVal.prefix, parsedVal.suffix);
+    const matched = seriesList.find(
+      (s) => s.id === valSeriesId || (!parsedVal.suffix && !s.suffix && s.prefix === parsedVal.prefix)
+    );
+    if (matched && matched.id !== activeSeries?.id) {
       setActiveSeries(matched);
     }
-  }, [value, seriesList, activeSeries?.prefix]);
+  }, [value, seriesList, activeSeries?.id]);
 
   // When user selects an existing format for this invoice
   const handleSelectSeries = (s: InvoiceSeriesConfig) => {
@@ -149,14 +193,21 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   const handleMakeDefaultAll = async (s: InvoiceSeriesConfig, e: React.MouseEvent) => {
     e.stopPropagation();
     setConfirmDeletePrefix(null);
-    setGlobalDefaultInvoiceSeries(s.prefix, seriesList, customerName);
+    setGlobalDefaultInvoiceSeries(s.id, seriesList, customerName);
     const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
     setSeriesList(state.seriesList);
-    const updated = state.seriesList.find((x) => x.prefix === s.prefix) || { ...s, isDefault: true, companyName: undefined };
-    setActiveSeries(updated);
-    onChange(updated.nextNumber);
-    if (onSeriesSelected) onSeriesSelected(updated);
-    if (onCommit) void onCommit(updated.nextNumber);
+    const updated = state.seriesList.find((x) => x.id === s.id) || { ...s, isDefault: true, companyName: undefined };
+    // On an existing saved invoice row, changing default format shouldn't silently renumber that invoice.
+    const isEditingSavedInvoice = !!excludeInvoiceNo && !!onCommit;
+    if (!isEditingSavedInvoice) {
+      setActiveSeries(updated);
+      onChange(updated.nextNumber);
+      if (onSeriesSelected) onSeriesSelected(updated);
+      if (onCommit) void onCommit(updated.nextNumber);
+    } else if (activeSeries?.id === updated.id) {
+      setActiveSeries(updated);
+      if (onSeriesSelected) onSeriesSelected(updated);
+    }
   };
 
   // Start editing an existing format
@@ -166,19 +217,26 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     setFormError('');
     setEditingSeries(s);
     setCustomInput(s.nextNumber);
+    const segs = parseInvoiceSegments(s.nextNumber);
+    const segIdx = segs.findIndex((seg) => seg.prefix === s.prefix && seg.suffix === (s.suffix || ''));
+    setSelectedSegmentIdx(segIdx >= 0 ? segIdx : null);
+
     const trimmedName = s.name.trim();
+    const patLabel = formatSeriesPatternLabel(s.prefix, s.suffix || '');
+    const defaultLabel = formatSeriesDisplayName(s.prefix, s.suffix || '');
     const isAutoGeneratedName =
       trimmedName === 'Standard (INV-)' ||
       trimmedName === `${s.prefix} Series` ||
-      (!!s.companyName && trimmedName === `${s.companyName} (${s.prefix})`) ||
-      (!!customerName && trimmedName === `${customerName} (${s.prefix})`);
+      trimmedName === defaultLabel ||
+      (!!s.companyName && (trimmedName === `${s.companyName} (${s.prefix})` || trimmedName === `${s.companyName} (${patLabel})`)) ||
+      (!!customerName && (trimmedName === `${customerName} (${s.prefix})` || trimmedName === `${customerName} (${patLabel})`));
     setCustomSeriesName(isAutoGeneratedName ? '' : s.name);
 
     const prefs = loadStoredCompanyPrefs();
     const companyPref = customerName ? prefs[normalizeCompanyName(customerName)] : undefined;
     if (s.isDefault) {
       setDefaultScope('all');
-    } else if (customerName && (companyPref === s.prefix || companyPref === s.id || s.scope === 'company')) {
+    } else if (customerName && (companyPref === s.id || companyPref === s.prefix || s.scope === 'company')) {
       setDefaultScope('company');
     } else {
       setDefaultScope('none');
@@ -188,17 +246,18 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
 
   // Delete a non-standard format from the picker
   const handleConfirmDelete = async (s: InvoiceSeriesConfig) => {
-    deleteInvoiceSeries(s.prefix);
+    deleteInvoiceSeries(s.id);
     setConfirmDeletePrefix(null);
 
     const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
     setSeriesList(state.seriesList);
 
-    const parsedVal = parseInvoiceNumber(value);
+    const parsedVal = parseInvoiceNumber(value, customPatterns);
+    const valSeriesId = parsedVal ? getSeriesId(parsedVal.prefix, parsedVal.suffix) : '';
     if (
-      activeSeries?.prefix === s.prefix ||
       activeSeries?.id === s.id ||
-      parsedVal?.prefix === s.prefix
+      valSeriesId === s.id ||
+      (!s.suffix && activeSeries?.prefix === s.prefix)
     ) {
       setActiveSeries(state.activeSeries);
       onChange(state.suggestedNumber);
@@ -212,22 +271,25 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     const trimmed = customInput.trim();
     if (!trimmed || savingFormat) return;
 
-    const parsed = parseInvoiceNumber(trimmed);
+    const parsed = parsedPreview || parseInvoiceNumber(trimmed, customPatterns);
     if (!parsed) {
-      setFormError('Include trailing digits (e.g. INV-00016 or S/64/26/28).');
+      setFormError('Include at least one numeric sequence (e.g. INV-00016 or S/64/26/27).');
       return;
     }
 
+    const targetId = getSeriesId(parsed.prefix, parsed.suffix);
     setSavingFormat(true);
     try {
       if (editingSeries) {
-        const isSystemStd = !!editingSeries.isSystemStandard || editingSeries.prefix === 'INV-';
-        if (isSystemStd && parsed.prefix !== 'INV-') {
+        const isSystemStd = !!editingSeries.isSystemStandard || editingSeries.id === 'INV-';
+        if (isSystemStd && (parsed.prefix !== 'INV-' || parsed.suffix !== '')) {
           setFormError('Standard format keeps the INV- prefix. Add a new format to use another prefix.');
           return;
         }
 
-        const existingTargetSeries = seriesList.find((x) => x.prefix === parsed.prefix);
+        const existingTargetSeries = seriesList.find((x) => x.id === targetId);
+        const numberWasEdited =
+          trimmed !== editingSeries.nextNumber || editingSeries.id !== targetId;
         const updated = updateInvoiceSeries(
           editingSeries,
           trimmed,
@@ -239,6 +301,8 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
             scope: defaultScope === 'company' ? 'company' : 'all',
             targetDbMax: existingTargetSeries?.dbLastNumber,
             existingSeriesList: seriesList,
+            parsedOverride: isSystemStd ? { ...parsed, prefix: 'INV-', suffix: '' } : parsed,
+            preserveManualOverride: numberWasEdited ? undefined : false,
           }
         );
 
@@ -247,12 +311,20 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
 
         if (updated) {
           const refreshed =
-            state.seriesList.find((x) => x.prefix === updated.prefix) || updated;
+            state.seriesList.find((x) => x.id === updated.id) || updated;
           const wasActive =
-            activeSeries?.prefix === editingSeries.prefix ||
-            activeSeries?.id === editingSeries.id;
+            activeSeries?.id === editingSeries.id ||
+            activeSeries?.prefix === editingSeries.prefix;
+          const isEditingSavedSameSeries =
+            !!excludeInvoiceNo &&
+            !!onCommit &&
+            editingSeries.id === updated.id &&
+            activeSeries?.id === updated.id;
 
-          if (wasActive || defaultScope === 'all' || (customerName && defaultScope === 'company')) {
+          if (isEditingSavedSameSeries && !numberWasEdited) {
+            setActiveSeries(refreshed);
+            if (onSeriesSelected) onSeriesSelected(refreshed);
+          } else if (wasActive || defaultScope === 'all' || (customerName && defaultScope === 'company')) {
             setActiveSeries(refreshed);
             onChange(refreshed.nextNumber);
             if (onSeriesSelected) onSeriesSelected(refreshed);
@@ -264,8 +336,8 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
         return;
       }
 
-      unhideInvoiceSeries(parsed.prefix);
-      const existingTargetSeries = seriesList.find((x) => x.prefix === parsed.prefix);
+      unhideInvoiceSeries(targetId);
+      const existingTargetSeries = seriesList.find((x) => x.id === targetId);
       const registered = registerInvoiceSeries(
         trimmed,
         customerName,
@@ -277,6 +349,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
           nextNumberIsTarget: true,
           dbLastNumber: existingTargetSeries?.dbLastNumber ?? 0,
           existingSeriesList: seriesList,
+          parsedOverride: parsed,
         }
       );
 
@@ -284,7 +357,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
         const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
         setSeriesList(state.seriesList);
         const refreshed =
-          state.seriesList.find((x) => x.prefix === registered.prefix) || registered;
+          state.seriesList.find((x) => x.id === registered.id) || registered;
         setActiveSeries(refreshed);
         onChange(refreshed.nextNumber);
         if (onSeriesSelected) onSeriesSelected(refreshed);
@@ -298,24 +371,30 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     }
   };
 
-  // Regenerate to next number in the currently active series
+  // Regenerate to next number in the currently active series (resyncing with live DB max)
   const handleRefreshNext = () => {
-    if (activeSeries) {
-      onChange(activeSeries.nextNumber);
-      if (onCommit) void onCommit(activeSeries.nextNumber);
-    } else {
-      getInvoiceSeriesState(customerName, excludeInvoiceNo).then((state) => {
-        onChange(state.suggestedNumber);
-        if (onCommit) void onCommit(state.suggestedNumber);
-      });
+    const targetId = activeSeries?.id;
+    if (targetId) {
+      clearInvoiceSeriesManualOverride(targetId);
     }
+    getInvoiceSeriesState(customerName, excludeInvoiceNo).then((state) => {
+      setSeriesList(state.seriesList);
+      const matched = targetId
+        ? state.seriesList.find((s) => s.id === targetId) || state.activeSeries
+        : state.activeSeries;
+      setActiveSeries(matched);
+      onChange(matched.nextNumber);
+      if (onSeriesSelected) onSeriesSelected(matched);
+      if (onCommit) void onCommit(matched.nextNumber);
+    });
   };
 
   // Inspect the current input value for live detected series info
-  const parsedCurrent = parseInvoiceNumber(value);
+  const parsedCurrent = parseInvoiceNumber(value, customPatterns);
+  const currentSeriesId = parsedCurrent ? getSeriesId(parsedCurrent.prefix, parsedCurrent.suffix) : '';
   const isCustomDetected =
     parsedCurrent &&
-    (!activeSeries || activeSeries.prefix !== parsedCurrent.prefix);
+    (!activeSeries || (activeSeries.id !== currentSeriesId && !(!parsedCurrent.suffix && !activeSeries.suffix && activeSeries.prefix === parsedCurrent.prefix)));
 
   return (
     <div className="relative" ref={menuRef}>
@@ -359,9 +438,10 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
           onChange={(e) => {
             onChange(e.target.value);
             // If they type a pattern matching an existing series, update active series
-            const p = parseInvoiceNumber(e.target.value);
+            const p = parseInvoiceNumber(e.target.value, customPatterns);
             if (p) {
-              const matched = seriesList.find((s) => s.prefix === p.prefix);
+              const sid = getSeriesId(p.prefix, p.suffix);
+              const matched = seriesList.find((s) => s.id === sid || (!p.suffix && !s.suffix && s.prefix === p.prefix));
               if (matched) setActiveSeries(matched);
             }
           }}
@@ -393,7 +473,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
         <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
           <span>
-            New series detected: <b>{parsedCurrent.prefix}</b> · Next will be{' '}
+            New series detected: <b>{formatSeriesPatternLabel(parsedCurrent.prefix, parsedCurrent.suffix)}</b> · Next will be{' '}
             <b>{generateNextInvoiceNumber(parsedCurrent, 1)}</b>
           </span>
         </div>
@@ -440,9 +520,9 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {seriesList.map((s) => {
                 const isSelected =
-                  activeSeries?.id === s.id || activeSeries?.prefix === s.prefix;
+                  activeSeries?.id === s.id;
                 const isCompanySpecific = !!s.companyName;
-                const isConfirmingDelete = confirmDeletePrefix === s.prefix;
+                const isConfirmingDelete = confirmDeletePrefix === s.id;
 
                 return (
                   <div
@@ -475,7 +555,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
                         <span>
-                          Prefix: <code className="font-mono bg-white px-1 rounded">{s.prefix}</code>
+                          Format: <code className="font-mono bg-white px-1 rounded">{formatSeriesPatternLabel(s.prefix, s.suffix)}</code>
                         </span>
                         <span>•</span>
                         <span>
@@ -530,20 +610,20 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                           </button>
                           <button
                             type="button"
-                            disabled={!!s.isSystemStandard || s.prefix === 'INV-'}
+                            disabled={!!s.isSystemStandard || s.id === 'INV-'}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (s.isSystemStandard || s.prefix === 'INV-') return;
-                              setConfirmDeletePrefix(s.prefix);
+                              if (s.isSystemStandard || s.id === 'INV-') return;
+                              setConfirmDeletePrefix(s.id);
                             }}
                             title={
-                              s.isSystemStandard || s.prefix === 'INV-'
+                              s.isSystemStandard || s.id === 'INV-'
                                 ? 'Standard INV- format cannot be deleted'
                                 : 'Delete format'
                             }
                             aria-label={`Delete ${s.name}`}
                             className={`p-1.5 rounded border transition-colors ${
-                              s.isSystemStandard || s.prefix === 'INV-'
+                              s.isSystemStandard || s.id === 'INV-'
                                 ? 'border-slate-200 bg-white/60 text-slate-300 cursor-not-allowed'
                                 : 'border-slate-200 bg-white text-red-500 hover:text-red-700 hover:border-red-300 hover:bg-red-50 cursor-pointer'
                             }`}
@@ -590,17 +670,17 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                   </>
                 )}
               </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
+                <p className="text-[10px] text-slate-500 leading-tight">
                 {editingSeries ? (
-                  editingSeries.prefix === 'INV-' ? (
+                  editingSeries.id === 'INV-' ? (
                     <>Update the format name, default setting, or next <code className="font-semibold text-slate-700">INV-</code> invoice number.</>
                   ) : (
-                    <>Update the format name, prefix, next invoice number, or default setting.</>
+                    <>Update the format name, which number increments, next invoice number, or default setting.</>
                   )
                 ) : (
                   <>
-                    Enter the next invoice number with any prefix (e.g.{' '}
-                    <code className="font-semibold text-slate-700">S/64/26/28</code>,{' '}
+                    Enter the next invoice number (e.g.{' '}
+                    <code className="font-semibold text-slate-700">S/64/26/27</code>,{' '}
                     <code className="font-semibold text-slate-700">LGB/26-27/001</code>, or{' '}
                     <code className="font-semibold text-slate-700">ARG-001</code>).
                   </>
@@ -613,21 +693,45 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. S/64/26/28 or ARG-001"
+                  placeholder="e.g. S/64/26/27 or ARG-001"
                   value={customInput}
                   onChange={(e) => {
                     setCustomInput(e.target.value);
+                    setSelectedSegmentIdx(null);
                     if (formError) setFormError('');
                   }}
                   className="w-full text-xs font-semibold px-2 py-1.5 border border-slate-300 rounded bg-white focus:outline-none focus:border-orange-500"
                 />
+                {inputSegments.length > 1 && editingSeries?.id !== 'INV-' && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] text-slate-500">Number to increment:</span>
+                    {inputSegments.map((seg) => {
+                      const isActiveSeg = seg.index === activeSegmentIdx;
+                      return (
+                        <button
+                          key={seg.index}
+                          type="button"
+                          onClick={() => setSelectedSegmentIdx(seg.index)}
+                          className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold border transition-colors cursor-pointer ${
+                            isActiveSeg
+                              ? 'bg-orange-600 text-white border-orange-600'
+                              : 'bg-white text-slate-700 border-slate-300 hover:border-orange-400'
+                          }`}
+                        >
+                          {seg.digitsStr}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 {parsedPreview ? (
-                  <p className="text-[10px] text-emerald-700 mt-0.5">
-                    Prefix: <span className="font-mono font-semibold">{parsedPreview.prefix}</span> · Next #{parsedPreview.num}
+                  <p className="text-[10px] text-emerald-700 mt-1">
+                    Format: <span className="font-mono font-semibold">{formatSeriesPatternLabel(parsedPreview.prefix, parsedPreview.suffix)}</span>
+                    {' · '}Next after: <span className="font-mono font-semibold">{generateNextInvoiceNumber(parsedPreview, 1)}</span>
                   </p>
                 ) : customInput.trim() ? (
                   <p className="text-[10px] text-amber-700 mt-0.5">
-                    Must end with digits (e.g. S/64/26/28)
+                    Include a numeric sequence (e.g. S/64/26/27)
                   </p>
                 ) : null}
               </div>
