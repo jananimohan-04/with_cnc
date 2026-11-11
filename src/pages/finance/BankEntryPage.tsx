@@ -191,12 +191,14 @@ export function BankEntryPage() {
       const all: HistoryItem[] = [];
       for (let page = 1; page <= 10; page++) {
         const r = await financeApi.bankTransactions({ page, pageSize: 200 });
-        all.push(...r.rows.filter(x => x.description).map(x => ({ description: x.description ?? '', party: x.party_name || undefined, direction: x.direction })));
+        // the Type is read from the entry (imported ones carry it in front of the description; a Type you edited later is in "kind"),
+        // so a correction you make in the Bank Data table is learned too
+        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
         if (all.length >= r.total || !r.rows.length) break;
       }
       setHistory(all);
     } catch { /* suggestions still work from names, keywords and the bank's wording */ }
-  }, []);
+  }, [types]);
   useEffect(() => { void loadHistory(); }, [loadHistory, cid]);
   const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name, history });
 
@@ -251,7 +253,8 @@ export function BankEntryPage() {
         description: parsed.description,
         ...(contraId ? { contra_account_id: contraId } : {}),
       });
-      setMsg({ kind: 'ok', text: 'Type updated successfully.' });
+      setMsg({ kind: 'ok', text: 'Type updated successfully. It will be remembered for the next statement.' });
+      void loadHistory();
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update type.' });
       void loadData(full);
@@ -275,7 +278,8 @@ export function BankEntryPage() {
         party_name: trimmed,
         description: parsed.description,
       });
-      setMsg({ kind: 'ok', text: 'Company updated successfully.' });
+      setMsg({ kind: 'ok', text: 'Company updated successfully. It will be remembered for the next statement.' });
+      void loadHistory();
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update company.' });
       void loadData(full);

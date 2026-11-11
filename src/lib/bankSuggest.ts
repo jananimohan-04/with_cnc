@@ -116,7 +116,9 @@ export function counterparty(desc: string, dir: 'IN' | 'OUT' | null): Counterpar
 }
 
 /* ---------- memory: what you chose for the same payer / payee before ---------- */
-interface Mem { typeName?: string; party?: string; n: number }
+interface Mem { typeName?: string; party?: string; n: number; rank: number }
+/** A key for narrations that name nobody (salary, petrol, interest ...): the text with the numbers / dates / ids taken out. */
+const textKey = (desc: string): string => squash(desc.replace(/\b\d[\d/:.\-]*\b/g, ' ').replace(/\b[A-Z0-9]{10,}\b/g, ' ')).slice(0, 40);
 const stripType = (d: string, types: EntryType[]) => {
   const i = d.indexOf(' - ');
   if (i > 0 && types.some(t => t.name.trim().toLowerCase() === d.slice(0, i).trim().toLowerCase())) return { typeName: d.slice(0, i).trim() as string | undefined, rest: d.slice(i + 3) };
@@ -124,27 +126,28 @@ const stripType = (d: string, types: EntryType[]) => {
 };
 function buildMemory(items: HistoryItem[], types: EntryType[]): Map<string, Mem> {
   const votes = new Map<string, Map<string, Mem>>();
-  for (const h of items) {
+  items.forEach((h, idx) => {   // newest entries come first, so a recent correction wins a tie
     const { typeName: fromDesc, rest } = stripType(h.description || '', types);
     const typeName = h.typeName || fromDesc;
-    if (!typeName || /^unknown$/i.test(typeName)) continue;   // an unreviewed guess is never learned from
+    if (!typeName || /^unknown$/i.test(typeName)) return;   // an unreviewed guess is never learned from
     const cp = counterparty(rest, h.direction ?? null);
-    if (!cp || !cp.key) continue;
-    const slot = votes.get(cp.key) ?? new Map<string, Mem>();
+    const key = cp && cp.key ? cp.key : textKey(rest);
+    if (!key || key.length < 8) return;
+    const slot = votes.get(key) ?? new Map<string, Mem>();
     const id = `${typeName}|${h.party ?? ''}`;
-    const cur = slot.get(id) ?? { typeName, party: h.party || undefined, n: 0 };
-    cur.n++; slot.set(id, cur); votes.set(cp.key, slot);
-  }
+    const cur = slot.get(id) ?? { typeName, party: h.party || undefined, n: 0, rank: idx };
+    cur.n++; slot.set(id, cur); votes.set(key, slot);
+  });
   const out = new Map<string, Mem>();
-  votes.forEach((slot, key) => { out.set(key, Array.from(slot.values()).sort((a, b) => b.n - a.n)[0]); });
+  votes.forEach((slot, key) => { out.set(key, Array.from(slot.values()).sort((a, b) => b.n - a.n || a.rank - b.rank)[0]); });
   return out;
 }
-function recall(mem: Map<string, Mem>, cp: Counterparty | null): Mem | null {
-  if (!cp || !cp.key) return null;
-  const exact = mem.get(cp.key);
+function recall(mem: Map<string, Mem>, key: string): Mem | null {
+  if (!key) return null;
+  const exact = mem.get(key);
   if (exact) return exact;
   let hit: Mem | null = null;
-  mem.forEach((v, k) => { if (!hit && Math.min(k.length, cp.key.length) >= 8 && (k.startsWith(cp.key) || cp.key.startsWith(k))) hit = v; });
+  mem.forEach((v, k) => { if (!hit && Math.min(k.length, key.length) >= 8 && (k.startsWith(key) || key.startsWith(k))) hit = v; });
   return hit;
 }
 
@@ -217,13 +220,13 @@ export function suggestRow(r: ImportRow, ctx: SuggestCtx, mem?: Map<string, Mem>
   }
 
   // 3: learned from what you saved or chose before for the same payer / payee
-  const seen = recall(memory, cp);
+  const seen = recall(memory, cp && cp.key ? cp.key : '') ?? recall(memory, textKey(r.description));
   if (seen && seen.typeName) {
     const t = findType(ctx.types, seen.typeName);
     if (t && typeFits(t, dir)) {
       const nm = t.name.toUpperCase();
       const led = nm === 'CUSTOMER' ? ctx.receivable?.id : nm === 'SUPPLIER' ? ctx.payable?.id : t.ledgerId || undefined;
-      return { typeId: t.id, ledgerId: led, party: seen.party, reason: `Same as ${seen.n > 1 ? seen.n + ' earlier entries' : 'an earlier entry'} for ${cp?.name || 'this payer'}: ${t.name}` };
+      return { typeId: t.id, ledgerId: led, party: seen.party, reason: `Same as ${seen.n > 1 ? seen.n + ' earlier entries' : 'an earlier entry'} for ${cp?.name || 'this narration'}: ${t.name}` };
     }
   }
 
