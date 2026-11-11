@@ -10,6 +10,8 @@ export interface SortState<T> {
   set?: (key: string | null, dir?: SortDir) => void;
   /** Returns the rows in the chosen order (the same array when no column is chosen, so the page's own default order stays). */
   apply: (rows: T[]) => T[];
+  /** Same as `apply` (some pages call it by this name). */
+  sortRows: (rows: T[]) => T[];
 }
 
 /**
@@ -42,7 +44,7 @@ export function useSort<T>(accessors: Record<string, (row: T) => string | number
     });
   };
 
-  return { key, dir, toggle, set, apply };
+  return { key, dir, toggle, set, apply, sortRows: apply };
 }
 
 /** A column title that sorts its column when clicked, with the up / down arrow beside it. */
