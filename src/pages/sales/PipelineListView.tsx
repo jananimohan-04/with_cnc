@@ -16,13 +16,19 @@ interface PipelineListViewProps {
   onView: (card: KanbanCard) => void;
   onEdit?: (card: KanbanCard) => void;
   onDelete?: (card: KanbanCard) => void;
+  /** The toolbar's search box and small stage filter (above the list) drive these. */
+  search?: string;
+  stageFilter?: string;
+  onStageFilter?: (v: string) => void;
 }
 
 
-export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineListViewProps) {
+export function PipelineListView({ cards, onView, onEdit, onDelete, search: searchProp, stageFilter: stageProp, onStageFilter }: PipelineListViewProps) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
-  const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState('All');
+  const search = searchProp ?? '';
+  const [stageLocal, setStageLocal] = useState('All');
+  const stageFilter = stageProp ?? stageLocal;
+  const setStageFilter = onStageFilter ?? setStageLocal;
 
   const customers = useMemo(() => {
     const set = new Set<string>();
@@ -109,22 +115,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete }: PipelineLi
 
   return (
     <div className="flex flex-col">
-      <div className="pb-2 flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search enquiries, parts..." 
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-brand-500"
-          />
-        </div>
-        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:border-brand-500 bg-white">
-          <option value="All">All Stages</option>
-          {stageOptions.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-
+      <div className="pb-2 flex justify-end">
         <button onClick={handleExport} className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="Export CSV">
           <Upload className="w-4 h-4" />
         </button>

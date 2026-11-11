@@ -2380,6 +2380,8 @@ export function SalesPipelinePage() {
 
   const [, setLoading] = useState(true);
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'companies' | 'calendar'>('kanban');
+  const [listSearch, setListSearch] = useState('');
+  const [listStage, setListStage] = useState('All');
   // Per-column kanban search: term typed in each column's own search box.
   const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -5554,11 +5556,22 @@ export function SalesPipelinePage() {
     [boardCards, canView],
   );
   // List View: the board's records plus every record that has left it (old / converted / billed), same filters.
-  const listCards = useMemo(
-    () => [...visibleCards, ...historyCards.filter((c) => inGlobalDateRange(cardRecordDate(c)) && canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline'))],
+  const listCards = useMemo(() => {
+    const all = [...visibleCards, ...historyCards.filter((c) => inGlobalDateRange(cardRecordDate(c)) && canView(STAGE_MODULE[c.stage] ?? 'sales-pipeline'))];
+    // the same enquiry / order / challan / invoice chain (same Ref No) is ONE row in the list: the furthest stage it has reached
+    const rank: Record<string, number> = { Enquiry: 0, Quotation: 1, 'Sales Order': 2, Inward: 3, 'Finished Goods': 4, DC: 5, Invoice: 6 };
+    const best = new Map<string, KanbanCard>();
+    const loose: KanbanCard[] = [];
+    for (const c of all) {
+      const key = baseUniqueNo(c.refNo || '');
+      if (!key) { loose.push(c); continue; }
+      const cur = best.get(key);
+      if (!cur || (rank[c.stage] ?? 0) > (rank[cur.stage] ?? 0)) best.set(key, c);
+    }
+    const keep = new Set<KanbanCard>([...best.values(), ...loose]);
+    return all.filter((c) => keep.has(c));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibleCards, historyCards, canView, inGlobalDateRange],
-  );
+  }, [visibleCards, historyCards, canView, inGlobalDateRange]);
 
   const addForStage = (stageId: string) => {
                     if (stageId === 'Enquiry') { setEnquiryForm(resetEnquiryForm()); setDuplicateSource(null); setEnquirySaveNotice(null); setAddPopup('Enquiry'); }
@@ -9029,9 +9042,16 @@ export function SalesPipelinePage() {
             {!onQuotationView && (
               <>
                 <div className="relative shrink-0">
-                  <input type="text" placeholder="Search cards..." className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
+                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
                   <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
+                {pipelineViewMode === 'list' && (
+                  <select aria-label="Filter by stage" title="Filter by stage" value={listStage} onChange={e => setListStage(e.target.value)}
+                    className={`shrink-0 h-9 w-[118px] px-2 border rounded-lg text-xs font-semibold bg-white shadow-sm focus:outline-none focus:border-brand-500 ${listStage !== 'All' ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-200'}`}>
+                    <option value="All">All Stages</option>
+                    {['Total Enquiries', 'Quotations', 'Sales Orders', 'Inward', 'Finished Goods', 'Delivery Challans', 'Invoices'].map(x => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                )}
                 <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                 </button>
@@ -9111,6 +9131,9 @@ export function SalesPipelinePage() {
         <div>
           <PipelineListView
             cards={listCards}
+            search={listSearch}
+            stageFilter={listStage}
+            onStageFilter={setListStage}
             onView={openViewModal}
             onEdit={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'edit')) { alert('Not authorized: your account cannot edit these records.'); return; } if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
             onDelete={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'delete')) { alert('Not authorized: your account cannot delete these records.'); return; } void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}
