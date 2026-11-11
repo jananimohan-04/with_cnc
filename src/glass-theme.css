@@ -157,3 +157,8 @@ aside nav button:hover { background: rgba(255, 255, 255, .10) !important; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :is(main, .retail-shell, .retail-app) :is(.shadow-premium, .card) { background: rgba(255, 255, 255, .92) !important; }
 }
+
+/* popups: the scrollbar sits a little inside the window and is wider, so it is easy to grab */
+.modal-scroll::-webkit-scrollbar { width: 14px; height: 14px; }
+.modal-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .35); border-radius: 999px; }
+.modal-scroll::-webkit-scrollbar-thumb { border: 3px solid transparent !important; background-clip: padding-box !important; border-radius: 999px; min-height: 48px; }
