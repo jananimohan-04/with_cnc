@@ -434,8 +434,6 @@ export function OpeningBalancesPage() {
             }}>
             <option value="">All</option>
             <option value="none">No opening yet</option>
-            <option value="Draft">Draft (not posted)</option>
-            <option value="Posted">Posted</option>
             <option value="entries">Entered openings</option>
           </select>
           <div className="ml-auto flex items-center gap-2 shrink-0">
