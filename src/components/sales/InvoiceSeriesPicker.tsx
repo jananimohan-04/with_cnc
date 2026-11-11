@@ -7,6 +7,9 @@ import {
   Check,
   Building,
   Sparkles,
+  Pencil,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   InvoiceSeriesConfig,
@@ -14,6 +17,11 @@ import {
   parseInvoiceNumber,
   generateNextInvoiceNumber,
   registerInvoiceSeries,
+  updateInvoiceSeries,
+  deleteInvoiceSeries,
+  unhideInvoiceSeries,
+  loadStoredCompanyPrefs,
+  normalizeCompanyName,
   saveStoredCompanyPref,
 } from '@/lib/invoiceNumberFormats';
 
@@ -38,18 +46,30 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   const [activeSeries, setActiveSeries] = useState<InvoiceSeriesConfig | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingSeries, setEditingSeries] = useState<InvoiceSeriesConfig | null>(null);
+  const [confirmDeletePrefix, setConfirmDeletePrefix] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState('');
   const [customSeriesName, setCustomSeriesName] = useState('');
   const [setAsCompanyDefault, setSetAsCompanyDefault] = useState(true);
+  const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const resetFormState = () => {
+    setShowAddForm(false);
+    setEditingSeries(null);
+    setCustomInput('');
+    setCustomSeriesName('');
+    setFormError('');
+  };
 
   // Close menu on click outside
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(false);
-        setShowAddForm(false);
+        setConfirmDeletePrefix(null);
+        resetFormState();
       }
     }
     document.addEventListener('mousedown', onDocClick);
@@ -91,14 +111,97 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     }
     if (onSeriesSelected) onSeriesSelected(s);
     setShowMenu(false);
-    setShowAddForm(false);
+    setConfirmDeletePrefix(null);
+    resetFormState();
   };
 
-  // When user defines and adds a brand new format/starting number
-  const handleSaveCustomFormat = () => {
+  // Start editing an existing format
+  const handleStartEdit = (s: InvoiceSeriesConfig, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDeletePrefix(null);
+    setFormError('');
+    setEditingSeries(s);
+    setCustomInput(s.nextNumber);
+    setCustomSeriesName(s.name);
+    if (customerName) {
+      const prefs = loadStoredCompanyPrefs();
+      const pref = prefs[normalizeCompanyName(customerName)];
+      setSetAsCompanyDefault(
+        pref === s.prefix || pref === s.id || (!pref && activeSeries?.prefix === s.prefix)
+      );
+    } else {
+      setSetAsCompanyDefault(false);
+    }
+    setShowAddForm(true);
+  };
+
+  // Delete a non-default format from the picker
+  const handleConfirmDelete = async (s: InvoiceSeriesConfig) => {
+    deleteInvoiceSeries(s.prefix);
+    setConfirmDeletePrefix(null);
+
+    const state = await getInvoiceSeriesState(customerName);
+    setSeriesList(state.seriesList);
+
+    const parsedVal = parseInvoiceNumber(value);
+    if (
+      activeSeries?.prefix === s.prefix ||
+      activeSeries?.id === s.id ||
+      parsedVal?.prefix === s.prefix
+    ) {
+      setActiveSeries(state.activeSeries);
+      onChange(state.suggestedNumber);
+      if (onSeriesSelected) onSeriesSelected(state.activeSeries);
+    }
+  };
+
+  // Save either a new custom format or edits to an existing format
+  const handleSaveCustomFormat = async () => {
     const trimmed = customInput.trim();
     if (!trimmed) return;
 
+    const parsed = parseInvoiceNumber(trimmed);
+    if (!parsed) {
+      setFormError('Include trailing digits (e.g. INV-00016 or LGB/24-25/001).');
+      return;
+    }
+
+    if (editingSeries) {
+      if (editingSeries.isDefault && parsed.prefix !== 'INV-') {
+        setFormError('Default format must keep the INV- prefix.');
+        return;
+      }
+
+      const updated = updateInvoiceSeries(
+        editingSeries,
+        trimmed,
+        customSeriesName.trim() || undefined,
+        customerName,
+        setAsCompanyDefault
+      );
+
+      const state = await getInvoiceSeriesState(customerName);
+      setSeriesList(state.seriesList);
+
+      if (updated) {
+        const refreshed =
+          state.seriesList.find((x) => x.prefix === updated.prefix) || updated;
+        const wasActive =
+          activeSeries?.prefix === editingSeries.prefix ||
+          activeSeries?.id === editingSeries.id;
+
+        if (wasActive || (customerName && setAsCompanyDefault)) {
+          setActiveSeries(refreshed);
+          onChange(refreshed.nextNumber);
+          if (onSeriesSelected) onSeriesSelected(refreshed);
+        }
+      }
+
+      resetFormState();
+      return;
+    }
+
+    unhideInvoiceSeries(parsed.prefix);
     const registered = registerInvoiceSeries(
       trimmed,
       customerName,
@@ -111,15 +214,11 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
       onChange(trimmed);
       if (onSeriesSelected) onSeriesSelected(registered);
 
-      // Refresh list
-      getInvoiceSeriesState(customerName).then((state) => {
-        setSeriesList(state.seriesList);
-      });
+      const state = await getInvoiceSeriesState(customerName);
+      setSeriesList(state.seriesList);
     }
 
-    setCustomInput('');
-    setCustomSeriesName('');
-    setShowAddForm(false);
+    resetFormState();
     setShowMenu(false);
   };
 
@@ -154,7 +253,8 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
           onClick={() => {
             if (disabled) return;
             setShowMenu((v) => !v);
-            setShowAddForm(false);
+            setConfirmDeletePrefix(null);
+            resetFormState();
           }}
           disabled={disabled}
           title="Click to choose invoice format series or add custom format for this company"
@@ -216,7 +316,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
 
       {/* Format Selector Dropdown Popover */}
       {showMenu && (
-        <div className="absolute right-0 top-full mt-1.5 w-84 sm:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3 text-xs animate-scale-in">
+        <div className="absolute right-0 top-full mt-1.5 w-84 sm:w-[410px] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3 text-xs animate-scale-in">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
             <div>
               <p className="font-bold text-slate-800 text-xs">Invoice Number Formats</p>
@@ -228,8 +328,20 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => setShowAddForm((v) => !v)}
-              className="px-2 py-1 rounded bg-orange-600 hover:bg-orange-700 text-white font-bold text-[10px] flex items-center gap-1 transition-colors"
+              onClick={() => {
+                setConfirmDeletePrefix(null);
+                if (showAddForm) {
+                  resetFormState();
+                } else {
+                  setEditingSeries(null);
+                  setCustomInput('');
+                  setCustomSeriesName('');
+                  setSetAsCompanyDefault(true);
+                  setFormError('');
+                  setShowAddForm(true);
+                }
+              }}
+              className="px-2 py-1 rounded bg-orange-600 hover:bg-orange-700 text-white font-bold text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Plus size={11} />
               <span>{showAddForm ? 'View Formats' : 'Add Format'}</span>
@@ -243,11 +355,15 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                 const isSelected =
                   activeSeries?.id === s.id || activeSeries?.prefix === s.prefix;
                 const isCompanySpecific = !!s.companyName;
+                const isConfirmingDelete = confirmDeletePrefix === s.prefix;
 
                 return (
                   <div
                     key={s.id}
-                    onClick={() => handleSelectSeries(s)}
+                    onClick={() => {
+                      if (isConfirmingDelete) return;
+                      handleSelectSeries(s);
+                    }}
                     className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                       isSelected
                         ? 'bg-orange-50/80 border-orange-300 ring-1 ring-orange-400'
@@ -260,12 +376,12 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                           {s.name}
                         </span>
                         {s.isDefault && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 text-slate-700 font-semibold">
+                          <span className="shrink-0 text-[9px] px-1 py-0.2 rounded bg-slate-200 text-slate-700 font-semibold">
                             Default
                           </span>
                         )}
                         {isCompanySpecific && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-700 font-semibold flex items-center gap-0.5">
+                          <span className="shrink-0 text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-700 font-semibold flex items-center gap-0.5">
                             <Building size={9} /> Company
                           </span>
                         )}
@@ -281,50 +397,128 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${
-                        isSelected
-                          ? 'bg-orange-600 text-white'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                      }`}
+                    <div
+                      className="flex items-center gap-1 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {isSelected ? (
-                        <span className="flex items-center gap-0.5">
-                          <Check size={10} /> Active
-                        </span>
+                      {isConfirmingDelete ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void handleConfirmDelete(s)}
+                            className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePrefix(null)}
+                            title="Cancel delete"
+                            aria-label="Cancel delete"
+                            className="p-1 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        </>
                       ) : (
-                        'Use'
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => handleStartEdit(s, e)}
+                            title="Edit format"
+                            aria-label={`Edit ${s.name}`}
+                            className="p-1.5 rounded border border-slate-200 bg-white text-slate-600 hover:text-orange-600 hover:border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!s.isDefault}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (s.isDefault) return;
+                              setConfirmDeletePrefix(s.prefix);
+                            }}
+                            title={s.isDefault ? 'Default format cannot be deleted' : 'Delete format'}
+                            aria-label={`Delete ${s.name}`}
+                            className={`p-1.5 rounded border transition-colors ${
+                              s.isDefault
+                                ? 'border-slate-200 bg-white/60 text-slate-300 cursor-not-allowed'
+                                : 'border-slate-200 bg-white text-red-500 hover:text-red-700 hover:border-red-300 hover:bg-red-50 cursor-pointer'
+                            }`}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectSeries(s)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <span className="flex items-center gap-0.5">
+                                <Check size={10} /> Active
+                              </span>
+                            ) : (
+                              'Use'
+                            )}
+                          </button>
+                        </>
                       )}
-                    </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            /* Inline Add Format Form */
+            /* Inline Add / Edit Format Form */
             <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-2">
               <div className="flex items-center gap-1 text-[11px] font-bold text-slate-800">
-                <Plus size={13} className="text-orange-600" />
-                <span>Add Format / Custom Starting Number</span>
+                {editingSeries ? (
+                  <>
+                    <Pencil size={12} className="text-orange-600" />
+                    <span>Edit Format</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={13} className="text-orange-600" />
+                    <span>Add Format / Custom Starting Number</span>
+                  </>
+                )}
               </div>
               <p className="text-[10px] text-slate-500 leading-tight">
-                Enter any format with starting digits (e.g.{' '}
-                <code className="font-semibold text-slate-700">LGB/24-25/001</code>,{' '}
-                <code className="font-semibold text-slate-700">LGB-101</code>, or{' '}
-                <code className="font-semibold text-slate-700">ARG-2026-0001</code>). The next
-                invoice will automatically increment to the next number!
+                {editingSeries ? (
+                  editingSeries.isDefault ? (
+                    <>Update the format name or next <code className="font-semibold text-slate-700">INV-</code> invoice number.</>
+                  ) : (
+                    <>Update the format name, prefix, or next sequential invoice number.</>
+                  )
+                ) : (
+                  <>
+                    Enter any format with starting digits (e.g.{' '}
+                    <code className="font-semibold text-slate-700">LGB/24-25/001</code>,{' '}
+                    <code className="font-semibold text-slate-700">LGB-101</code>, or{' '}
+                    <code className="font-semibold text-slate-700">ARG-2026-0001</code>). The next
+                    invoice will automatically increment to the next number!
+                  </>
+                )}
               </p>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                  Starting Invoice Number *
+                  {editingSeries ? 'Next Invoice Number *' : 'Starting Invoice Number *'}
                 </label>
                 <input
                   type="text"
                   placeholder="e.g. LGB/24-25/001 or LGB-001"
                   value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
+                  onChange={(e) => {
+                    setCustomInput(e.target.value);
+                    if (formError) setFormError('');
+                  }}
                   className="w-full text-xs font-semibold px-2 py-1.5 border border-slate-300 rounded bg-white focus:outline-none focus:border-orange-500"
                 />
               </div>
@@ -358,21 +552,25 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
                 </label>
               )}
 
+              {formError && (
+                <p className="text-[10px] font-semibold text-red-600">{formError}</p>
+              )}
+
               <div className="flex justify-end gap-1.5 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-[10px] font-semibold hover:bg-slate-100"
+                  onClick={resetFormState}
+                  className="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-[10px] font-semibold hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleSaveCustomFormat}
+                  onClick={() => void handleSaveCustomFormat()}
                   disabled={!customInput.trim()}
-                  className="px-3 py-1 rounded bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold transition-colors disabled:opacity-50"
+                  className="px-3 py-1 rounded bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  Apply & Save Format
+                  {editingSeries ? 'Save Changes' : 'Apply & Save Format'}
                 </button>
               </div>
             </div>

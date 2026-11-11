@@ -134,10 +134,11 @@ function TableCompanyCell({
   return (
     <input
       type="text"
+      size={10}
       list="inline-party-datalist"
       aria-label="Company / party"
       placeholder="Company / party"
-      className="h-7 px-2 text-xs text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[150px] font-medium"
+      className="h-6 px-1.5 text-[11px] font-normal text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full min-w-[72px] max-w-[104px]"
       value={val}
       onChange={e => setVal(e.target.value)}
       onBlur={() => {
@@ -182,8 +183,8 @@ export function BankEntryPage() {
     setTabActions(
       <div className="flex items-center gap-1.5">
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Transaction Types</button>
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Manage Types</button>
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Others</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Add Types</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Types</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('manual')}><PenLine size={13} className="text-slate-500" /> Manual Entry</button>
       </div>
     );
@@ -248,6 +249,8 @@ export function BankEntryPage() {
     date: r => r.txn_date ?? '',
     cheque: r => r.reference_no ?? '',
     description: r => extractRowTypeAndDesc(r.description, r.kind, types).description,
+    debit: r => (r.direction === 'OUT' ? money(r.amount) : ''),
+    credit: r => (r.direction === 'IN' ? money(r.amount) : ''),
     bank: r => r.account_name ?? '',
     type: r => extractRowTypeAndDesc(r.description, r.kind, types).type,
     company: r => r.party_name ?? '',
@@ -410,7 +413,7 @@ export function BankEntryPage() {
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
-    if (f.size > 5 * 1024 * 1024) { setMsg({ kind: 'err', text: 'File is larger than 5 MB.' }); return; }
+    if (f.size > 50 * 1024 * 1024) { setMsg({ kind: 'err', text: 'File is larger than 50 MB.' }); return; }
     if (!/\.(csv|tsv|txt|xlsx)$/i.test(f.name)) { setMsg({ kind: 'err', text: 'Choose an .xlsx, .csv, .tsv or .txt statement. For an old .xls file, use Save As .xlsx or CSV first.' }); return; }
     let t: string;
     try { t = /\.xlsx$/i.test(f.name) ? await xlsxToTsv(await f.arrayBuffer()) : await f.text(); }
@@ -499,7 +502,14 @@ export function BankEntryPage() {
   const shownData = sort.apply(data.filter(r => Object.entries(colFilters).every(([k, v]) => {
     if (!v) return true;
     const val = (colGet[k]?.(r) ?? '');
-    return ['bank', 'type', 'company'].includes(k) ? val === v : val.toLowerCase().includes(v.toLowerCase());
+    if (['bank', 'type', 'company'].includes(k)) return val === v;
+    if (val.toLowerCase().includes(v.toLowerCase())) return true;
+    // Allow searching Debit/Credit amounts without typing thousand separators (e.g. 1500 matches 1,500.00).
+    if ((k === 'debit' || k === 'credit') && val) {
+      const q = v.replace(/,/g, '').trim();
+      return q ? val.replace(/,/g, '').includes(q) : false;
+    }
+    return false;
   })));
   const colValues = useMemo(() => {
     const uniq = (f: (r: BankRow) => string) => Array.from(new Set(data.map(f).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -620,8 +630,8 @@ export function BankEntryPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {topBtn(<Landmark size={14} />, 'Transaction Types', () => setModal('banks'))}
-            {topBtn(<Tags size={14} />, 'Manage Types', () => setModal('types'))}
-            {topBtn(<Layers size={14} />, 'Manage Others', () => { setOthers(loadOthers(cid)); setModal('others'); })}
+            {topBtn(<Tags size={14} />, 'Add Types', () => setModal('types'))}
+            {topBtn(<Layers size={14} />, 'Manage Types', () => { setOthers(loadOthers(cid)); setModal('others'); })}
             {topBtn(<PenLine size={14} />, 'Manual Entry', () => setModal('manual'))}
           </div>
         </div>
@@ -632,7 +642,7 @@ export function BankEntryPage() {
             <div className="flex flex-wrap xl:flex-nowrap items-stretch gap-2">
               <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 hover:border-orange-400 hover:bg-orange-50/30 transition px-2.5 py-1.5 cursor-pointer shrink-0">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">Choose a statement file <span className="font-normal text-slate-400">· xlsx, csv, tsv, txt ≤ 5 MB</span></p>
+                  <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">Choose a statement file <span className="font-normal text-slate-400">· xlsx, csv, tsv, txt ≤ 50 MB</span></p>
                   <button type="button" data-testid="download-sample" onClick={downloadSample}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-600 hover:text-orange-700 hover:underline">
                     <FileDown size={12} /> Download sample format
@@ -642,7 +652,7 @@ export function BankEntryPage() {
               </label>
               <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 flex flex-wrap items-center gap-2 shrink-0">
                 <div className="min-w-[10rem]">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Post into</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Bank Account</p>
                   <select aria-label="Select bank" className={`${sel} w-full !py-1.5 !text-xs`} value={bankId} onChange={e => { setBankId(e.target.value); setExisting([]); }}>
                     <option value="">-- Select Bank --</option>
                     {(options?.accounts ?? []).map(a => <option key={a.id} value={a.id}>{a.name}{a.type === 'Cash' ? ' (Cash)' : ''}</option>)}
@@ -803,34 +813,34 @@ export function BankEntryPage() {
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-2.5 sm:p-3 space-y-2.5">
             {dataError && <div data-testid="data-error" className="flex items-start gap-2 text-sm rounded-xl border border-red-200 bg-red-50 text-red-800 px-3.5 py-2.5"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{dataError}</div>}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto">
               <table className="w-full text-[11px] leading-tight">
                 <thead className="bg-slate-50/95 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
                   {([
-                    ['date', 'Date', 'none'], ['cheque', 'Cheque No.', 'text'], ['description', 'Description', 'text'],
-                    ['debit', 'Debit (out)', 'none'], ['credit', 'Credit (in)', 'none'], ['balance', 'Balance', 'none'],
+                    ['date', 'Date', 'none'], ['cheque', 'Cheque No.', 'none'], ['description', 'Description', 'text'],
+                    ['debit', 'Debit (out)', 'text'], ['credit', 'Credit (in)', 'text'], ['balance', 'Balance', 'none'],
                     ['bank', 'Bank', 'list'], ['type', 'Type', 'list'], ['company', 'Company', 'list'],
                   ] as const).map(([key, label, kind], i) => (
-                    <th key={key} className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
-                      <div className={`flex items-center gap-1.5 ${i >= 3 && i <= 5 ? 'justify-end' : 'justify-start'} whitespace-nowrap`}>
+                    <th key={key} className={`px-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle ${i >= 3 && i <= 5 ? 'text-right' : ''}`}>
+                      <div className={`flex items-center gap-1 ${i >= 3 && i <= 5 ? 'justify-end' : 'justify-start'} whitespace-nowrap`}>
                         <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer shrink-0" />
                         {kind === 'list' && (
                           <select aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-5 rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+                            className={`h-5 max-w-[54px] rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
                             <option value="">All</option>
                             {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
                         )}
                         {kind === 'text' && (
-                          <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder="Filter…" onClick={e => e.stopPropagation()}
+                          <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder={key === 'debit' || key === 'credit' ? 'Filter' : 'Filter…'} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
-                            className={`h-5 w-20 rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                            className={`h-5 ${key === 'debit' || key === 'credit' ? 'w-12' : 'w-16'} rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
                       </div>
                     </th>
                   ))}
-                  <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle text-center whitespace-nowrap">Action</th>
+                  <th className="px-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 align-middle text-center whitespace-nowrap">Action</th>
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
@@ -843,7 +853,7 @@ export function BankEntryPage() {
                       >
                         <td className="px-1.5 py-1 whitespace-nowrap">{dmy(r.txn_date)}</td>
                         <td className="px-1.5 py-1 font-mono text-slate-500">{r.reference_no ?? ''}</td>
-                        <td className="px-1.5 py-1 whitespace-normal break-words text-slate-600 leading-snug">{parsed.description || '—'}</td>
+                        <td className="px-1.5 py-1 whitespace-normal break-words [overflow-wrap:anywhere] text-slate-600 leading-snug">{parsed.description || '—'}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-red-600">{r.direction === 'OUT' ? money(r.amount) : ''}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
@@ -851,7 +861,7 @@ export function BankEntryPage() {
                         <td className="px-1.5 py-0.5">
                           <select
                             aria-label="Type"
-                            className="h-7 px-2 text-xs font-semibold text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[104px] cursor-pointer shadow-2xs"
+                            className="h-6 px-1.5 text-[11px] font-normal text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[94px] cursor-pointer shadow-2xs"
                             value={parsed.type || r.kind || ''}
                             onChange={e => void handleUpdateType(r, e.target.value)}
                           >
@@ -874,7 +884,7 @@ export function BankEntryPage() {
                           <button
                             type="button"
                             onClick={() => setDeletingRow(r)}
-                            className="p-1.5 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                            className="p-1 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
                             title="Delete transaction"
                             aria-label="Delete"
                           >
@@ -924,7 +934,7 @@ export function BankEntryPage() {
           if (renamed) { const o2 = others.map(o => (o.kind === renamed.from ? { ...o, kind: renamed.to } : o)); if (saveOthers(cid, o2)) setOthers(o2); }
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
-        onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Others saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
+        onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Types saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
 
       <DeleteBankEntryModal
         open={!!deletingRow}
@@ -1127,7 +1137,7 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
   const dirLabel = (d: EntryType['direction']) => (d === 'IN' ? 'money in' : d === 'OUT' ? 'money out' : '');
 
   return (
-    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Types tag statement rows and parties. Changes save as you make them." size="md"
+    <Modal open={open} onClose={onClose} title="Add Types" subtitle="Types tag statement rows and parties. Changes save as you make them." size="md"
       footer={<button className={btn} data-testid="types-close" onClick={onClose}>Close</button>}>
       <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New type name" className={`${inp} flex-1`} placeholder="New type name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
@@ -1194,7 +1204,7 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Manage Others" subtitle="Companies that are not customers or suppliers, for the Company of a row" size="lg"
+    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Companies that are not customers or suppliers, for the Company of a row" size="lg"
       footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="others-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New company name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Company name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />

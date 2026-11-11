@@ -65,7 +65,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'invoices', label: 'Invoice column', category: 'Sales Pipeline Columns', actions: [...VCEDX], pages: [] },
   { key: 'bank-entry', label: 'Bank Entry', category: 'Finance', actions: [...VCEDX], pages: ['finance/bank-entries', 'finance/bank-entry'] },
   { key: 'petty-cash', label: 'Petty Cash', category: 'Finance', actions: [...VCEDX], pages: ['finance/petty-cash'] },
-  { key: 'ledger', label: 'Ledger', category: 'Finance', actions: [...VCEDX], pages: ['accounts/ledger', 'finance/ledger-dashboard'] },
+  { key: 'ledger', label: 'Ledger Statement', category: 'Finance', actions: [...VCEDX], pages: ['accounts/ledger', 'finance/ledger-dashboard'] },
   { key: 'trial-balance', label: 'Trial Balance', category: 'Finance', actions: [...VCEDX], pages: ['accounts/trial-balance'], parent: 'ledger' },
   { key: 'profit-loss', label: 'Profit & Loss', category: 'Finance', actions: [...VCEDX], pages: ['accounts/profit-loss'], parent: 'ledger' },
   { key: 'balance-sheet', label: 'Balance Sheet', category: 'Finance', actions: [...VCEDX], pages: ['accounts/balance-sheet'], parent: 'ledger' },

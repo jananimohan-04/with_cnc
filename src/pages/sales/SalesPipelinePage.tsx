@@ -13,8 +13,6 @@ import { financeApi } from '@/lib/finance';
 import { baseNo, downstreamOfLead, enquiryColumnLeads, usedProjectNumbers } from '@/lib/pipelineLinks';
 import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
-import { OpeningBalanceFields, emptyOpening } from '@/components/OpeningBalanceFields';
-import { savePartyOpening, type OpeningInput } from '@/lib/openingBalances';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
@@ -7153,7 +7151,6 @@ export function SalesPipelinePage() {
   };
 
   const [showNewLead, setShowNewLead] = useState(false);
-  const [newLeadOpening, setNewLeadOpening] = useState<OpeningInput>(emptyOpening());
   // Company-master popup state (Company ID is auto-generated at save).
   const [newLeadForm, setNewLeadForm] = useState<any>({
     company: '', city: '', gst: '', source: 'Direct',
@@ -7221,7 +7218,6 @@ export function SalesPipelinePage() {
       company: '', city: '', gst: '', source: 'Direct',
       contacts: [{ person: '', phone: '', email: '' }],
     });
-    setNewLeadOpening(emptyOpening());
     setShowNewLead(true);
   };
 
@@ -7286,9 +7282,6 @@ export function SalesPipelinePage() {
           city: newLeadForm.city || null, gst: newLeadForm.gst || null, status: 'Active',
         }]);
       } catch {}
-      // Optional opening balance typed in the form: saved and posted for the new company.
-      const ob = await savePartyOpening('CUSTOMER', { partyId: custPayload.id, partyName: name, input: newLeadOpening, existing: null });
-      if (ob.message) alert(ob.message);
       setShowNewLead(false);
       setNewLeadForm({
         company: '', city: '', gst: '', source: 'Direct',
@@ -9500,7 +9493,6 @@ export function SalesPipelinePage() {
               <option>Direct</option><option>Website</option><option>Referral</option><option>Phone</option><option>Email</option><option>Other</option>
             </select>
           </FormField>
-          <div className="col-span-3"><OpeningBalanceFields kind="CUSTOMER" className="" value={newLeadOpening} onChange={setNewLeadOpening} existing={null} /></div>
         </div>
       </Modal>
 

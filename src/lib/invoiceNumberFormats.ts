@@ -18,6 +18,10 @@ export interface InvoiceSeriesConfig {
   nextNumber: string;
   companyName?: string;
   isDefault?: boolean;
+  /** Latest numeric sequence observed in DB invoices when state was loaded. */
+  dbLastNumber?: number;
+  /** DB max at the time the user explicitly overrode the next number in Edit mode. */
+  overriddenDbMax?: number;
 }
 
 export interface CompanySeriesMapping {
@@ -26,6 +30,7 @@ export interface CompanySeriesMapping {
 
 const STORAGE_SERIES_KEY = 'argus_invoice_custom_series_v1';
 const STORAGE_COMPANY_PREF_KEY = 'argus_company_invoice_series_pref_v1';
+const STORAGE_HIDDEN_SERIES_KEY = 'argus_invoice_hidden_series_v1';
 
 export const normalizeCompanyName = (name?: string | null): string => {
   return String(name || '').trim().toLowerCase();
@@ -114,6 +119,44 @@ export function saveStoredCompanyPref(companyName: string, seriesIdOrPrefix: str
   }
 }
 
+export function removeStoredCompanyPref(companyName: string): void {
+  if (!companyName) return;
+  try {
+    const prefs = loadStoredCompanyPrefs();
+    delete prefs[normalizeCompanyName(companyName)];
+    localStorage.setItem(STORAGE_COMPANY_PREF_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadHiddenSeriesPrefixes(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_HIDDEN_SERIES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveHiddenSeriesPrefixes(prefixes: string[]): void {
+  try {
+    localStorage.setItem(STORAGE_HIDDEN_SERIES_KEY, JSON.stringify(Array.from(new Set(prefixes))));
+  } catch {
+    // ignore
+  }
+}
+
+export function unhideInvoiceSeries(prefix: string): void {
+  if (!prefix) return;
+  const hidden = loadHiddenSeriesPrefixes();
+  if (hidden.includes(prefix)) {
+    saveHiddenSeriesPrefixes(hidden.filter((p) => p !== prefix));
+  }
+}
+
 /**
  * Discovers all invoice series from database + local storage,
  * and determines the best series and next auto-generated number for a specific company.
@@ -125,11 +168,13 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 }> {
   const customSeries = loadStoredCustomSeries();
   const companyPrefs = loadStoredCompanyPrefs();
+  const hiddenPrefixes = new Set(loadHiddenSeriesPrefixes());
   const targetCompanyKey = normalizeCompanyName(customerName);
 
   // Group existing numbers from DB
   const prefixMap = new Map<string, {
     maxNum: number;
+    dbMaxNum: number;
     padding: number;
     suffix: string;
     sample: string;
@@ -140,6 +185,7 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
   // Always seed default standard series
   prefixMap.set('INV-', {
     maxNum: 0,
+    dbMaxNum: 0,
     padding: 5,
     suffix: '',
     sample: 'INV-00001',
@@ -161,6 +207,7 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 
         const current = prefixMap.get(parsed.prefix) || {
           maxNum: 0,
+          dbMaxNum: 0,
           padding: parsed.padding,
           suffix: parsed.suffix,
           sample: parsed.raw,
@@ -170,6 +217,7 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 
         if (parsed.num > current.maxNum) {
           current.maxNum = parsed.num;
+          current.dbMaxNum = parsed.num;
           current.padding = Math.max(current.padding, parsed.padding);
           current.suffix = parsed.suffix;
           current.sample = parsed.raw;
@@ -189,23 +237,31 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 
   // Merge custom user-configured series into map
   for (const cs of customSeries) {
-    const parsed = parseInvoiceNumber(cs.sample || cs.prefix + '1');
-    const prefix = cs.prefix || (parsed ? parsed.prefix : cs.id);
+    const prefix = cs.prefix || cs.id;
+    if (prefix !== 'INV-' && hiddenPrefixes.has(prefix)) continue;
+
     const existing = prefixMap.get(prefix);
 
     if (existing) {
-      if (cs.lastNumber > existing.maxNum) {
+      const withinUserOverride =
+        cs.overriddenDbMax !== undefined && existing.dbMaxNum <= cs.overriddenDbMax;
+
+      if (withinUserOverride || cs.lastNumber > existing.maxNum) {
         existing.maxNum = cs.lastNumber;
+        existing.padding = cs.padding || existing.padding;
+        existing.suffix = cs.suffix ?? existing.suffix;
       }
       if (cs.companyName) {
         existing.companies.add(cs.companyName);
       }
     } else {
+      const padding = cs.padding || 3;
       prefixMap.set(prefix, {
-        maxNum: cs.lastNumber || (parsed ? parsed.num : 0),
-        padding: cs.padding || (parsed ? parsed.padding : 3),
-        suffix: cs.suffix || (parsed ? parsed.suffix : ''),
-        sample: cs.sample || `${prefix}001`,
+        maxNum: cs.lastNumber || 0,
+        dbMaxNum: 0,
+        padding,
+        suffix: cs.suffix || '',
+        sample: `${prefix}${'1'.padStart(padding, '0')}`,
         companies: cs.companyName ? new Set([cs.companyName]) : new Set(),
         latestCompanyDate: new Map(),
       });
@@ -217,9 +273,11 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 
   for (const [prefix, meta] of prefixMap.entries()) {
     const isDefault = prefix === 'INV-';
+    if (!isDefault && hiddenPrefixes.has(prefix)) continue;
+
     const nextNum = meta.maxNum + 1;
     const nextNumber = `${prefix}${String(nextNum).padStart(meta.padding, '0')}${meta.suffix}`;
-    
+
     // Find friendly name
     let name = isDefault ? 'Standard (INV-)' : `${prefix} Series`;
     const matchingCustom = customSeries.find((c) => c.prefix === prefix);
@@ -238,8 +296,10 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
       suffix: meta.suffix,
       lastNumber: meta.maxNum,
       nextNumber,
-      companyName: meta.companies.size === 1 ? Array.from(meta.companies)[0] : undefined,
+      companyName: matchingCustom?.companyName ?? (meta.companies.size === 1 ? Array.from(meta.companies)[0] : undefined),
       isDefault,
+      dbLastNumber: meta.dbMaxNum,
+      overriddenDbMax: matchingCustom?.overriddenDbMax,
     });
   }
 
@@ -339,4 +399,129 @@ export function registerInvoiceSeries(
   }
 
   return series;
+}
+
+/**
+ * Updates an existing invoice number format (name, prefix, next invoice number, and company default).
+ */
+export function updateInvoiceSeries(
+  original: InvoiceSeriesConfig,
+  nextInvoiceNo: string,
+  customName?: string,
+  customerName?: string,
+  setAsCompanyDefault = true
+): InvoiceSeriesConfig | null {
+  const parsed = parseInvoiceNumber(nextInvoiceNo);
+  if (!parsed) return null;
+
+  // Keep the Standard default format tied to the INV- prefix.
+  const targetPrefix = original.isDefault ? 'INV-' : parsed.prefix;
+  const targetLastNum = Math.max(0, parsed.num - 1);
+  const nextNumber = `${targetPrefix}${String(targetLastNum + 1).padStart(parsed.padding, '0')}${parsed.suffix}`;
+  const dbMax = Math.max(original.dbLastNumber ?? 0, original.overriddenDbMax ?? 0);
+
+  let customList = loadStoredCustomSeries();
+
+  // If a non-default format changed its prefix, retire the old prefix cleanly.
+  if (!original.isDefault && original.prefix !== targetPrefix) {
+    customList = customList.filter((s) => s.prefix !== original.prefix && s.id !== original.id);
+    const hidden = loadHiddenSeriesPrefixes();
+    if (!hidden.includes(original.prefix)) {
+      saveHiddenSeriesPrefixes([...hidden, original.prefix]);
+    }
+    const prefs = loadStoredCompanyPrefs();
+    let prefsChanged = false;
+    for (const [k, v] of Object.entries(prefs)) {
+      if (v === original.prefix || v === original.id) {
+        prefs[k] = targetPrefix;
+        prefsChanged = true;
+      }
+    }
+    if (prefsChanged) {
+      try {
+        localStorage.setItem(STORAGE_COMPANY_PREF_KEY, JSON.stringify(prefs));
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  unhideInvoiceSeries(targetPrefix);
+
+  const resolvedName =
+    customName?.trim() ||
+    (original.isDefault
+      ? 'Standard (INV-)'
+      : customerName
+        ? `${customerName} (${targetPrefix})`
+        : `${targetPrefix} Series`);
+
+  const updated: InvoiceSeriesConfig = {
+    id: targetPrefix,
+    name: resolvedName,
+    prefix: targetPrefix,
+    padding: parsed.padding,
+    suffix: parsed.suffix,
+    lastNumber: targetLastNum,
+    nextNumber,
+    companyName: original.isDefault ? undefined : (original.companyName || customerName || undefined),
+    isDefault: original.isDefault,
+    dbLastNumber: original.prefix === targetPrefix ? dbMax : 0,
+    overriddenDbMax: original.prefix === targetPrefix && dbMax > 0 ? dbMax : undefined,
+  };
+
+  const existingIndex = customList.findIndex((s) => s.prefix === targetPrefix || s.id === targetPrefix);
+  if (existingIndex >= 0) {
+    customList[existingIndex] = updated;
+  } else {
+    customList.push(updated);
+  }
+  saveStoredCustomSeries(customList);
+
+  if (customerName) {
+    if (setAsCompanyDefault) {
+      saveStoredCompanyPref(customerName, targetPrefix);
+    } else {
+      const prefs = loadStoredCompanyPrefs();
+      const prefVal = prefs[normalizeCompanyName(customerName)];
+      if (prefVal === targetPrefix || prefVal === original.prefix) {
+        removeStoredCompanyPref(customerName);
+      }
+    }
+  }
+
+  return updated;
+}
+
+/**
+ * Removes an invoice format from the picker list (and hides DB-discovered non-default series).
+ */
+export function deleteInvoiceSeries(prefix: string): void {
+  if (!prefix || prefix === 'INV-') return;
+
+  const customList = loadStoredCustomSeries().filter(
+    (s) => s.prefix !== prefix && s.id !== prefix
+  );
+  saveStoredCustomSeries(customList);
+
+  const prefs = loadStoredCompanyPrefs();
+  let changed = false;
+  for (const [k, v] of Object.entries(prefs)) {
+    if (v === prefix) {
+      delete prefs[k];
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      localStorage.setItem(STORAGE_COMPANY_PREF_KEY, JSON.stringify(prefs));
+    } catch {
+      // ignore
+    }
+  }
+
+  const hidden = loadHiddenSeriesPrefixes();
+  if (!hidden.includes(prefix)) {
+    saveHiddenSeriesPrefixes([...hidden, prefix]);
+  }
 }

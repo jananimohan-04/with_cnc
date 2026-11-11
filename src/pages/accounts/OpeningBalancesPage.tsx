@@ -11,7 +11,7 @@ import { exportCsv } from '@/lib/reportExport';
 import { xlsxToTsv } from '@/lib/xlsxRead';
 import {
   num, openingApi, parseStockCsv, stockValue, toIsoDate,
-  type OpeningDraft, type OpeningEntry, type OpeningLookups, type OpeningPreview, type OpeningSummary, type OpeningType,
+  type OpeningDraft, type OpeningEntry, type OpeningLookups, type OpeningPreview, type OpeningType,
 } from '@/lib/openingBalances';
 
 
@@ -45,11 +45,10 @@ export function OpeningBalancesPage() {
   const navigate = useNavigate();
   const { company } = useAuth();
   const companyId = company?.id ?? null;
-  const { setHeader, setTabActions } = useHeaderKpis();
+  const { setHeader, setTabs, setTabActions } = useHeaderKpis();
 
   const [lookups, setLookups] = useState<OpeningLookups | null>(null);
   const [rows, setRows] = useState<OpeningEntry[]>([]);
-  const [summary, setSummary] = useState<OpeningSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<Toast>(null);
@@ -57,7 +56,6 @@ export function OpeningBalancesPage() {
   const [tab, setTab] = useState<Tab>('BANK');
   const [kind, setKind] = useState<PartyKind>('CUSTOMER');
   const [fyId, setFyId] = useState('');
-  const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
@@ -73,12 +71,12 @@ export function OpeningBalancesPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [lk, list] = await Promise.all([openingApi.lookups(), openingApi.list({ status, search, fyId })]);
-      setLookups(lk); setRows(list.rows); setSummary(list.summary);
+      const [lk, list] = await Promise.all([openingApi.lookups(), openingApi.list({ search, fyId })]);
+      setLookups(lk); setRows(list.rows);
       setPicked(new Set());
     } catch (e) { setError(errText(e)); }
     finally { setLoading(false); }
-  }, [status, search, fyId]);
+  }, [search, fyId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -97,9 +95,15 @@ export function OpeningBalancesPage() {
 
   useEffect(() => {
     setHeader({ title: 'Opening Balances' });
+    // Keep the three section tabs in the desktop topbar (smaller screens fall back to the inline row).
+    setTabs(TABS.map(t => ({
+      label: t.label,
+      active: tab === t.id,
+      onClick: () => { setTab(t.id); setPicked(new Set()); },
+    })));
     setTabActions(null);
-    return () => { setHeader(null); setTabActions(null); };
-  }, [setHeader, setTabActions]);
+    return () => { setHeader(null); setTabs([]); setTabActions(null); };
+  }, [setHeader, setTabs, setTabActions, tab]);
 
   const openPreview = async (ids: string[]) => {
     if (!ids.length) { say('err', 'Select at least one draft entry.'); return; }
@@ -180,44 +184,24 @@ export function OpeningBalancesPage() {
     );
   }
 
-  const cards: { label: string; value: number; draft: number; tint: string; note: string }[] = [
-    { label: 'Total Bank Opening Balance', value: summary?.bank.posted ?? 0, draft: summary?.bank.draft ?? 0, tint: 'border-lime-300 bg-lime-50', note: 'Bank & cash accounts' },
-    { label: 'Total Customer Receivables', value: summary?.receivable.posted ?? 0, draft: summary?.receivable.draft ?? 0, tint: 'border-sky-300 bg-sky-50', note: 'Owed to us' },
-    { label: 'Total Supplier Payables', value: summary?.payable.posted ?? 0, draft: summary?.payable.draft ?? 0, tint: 'border-amber-300 bg-amber-50', note: 'We owe' },
-    { label: 'Total Opening Stock Value', value: summary?.stock.posted ?? 0, draft: summary?.stock.draft ?? 0, tint: 'border-rose-300 bg-rose-50', note: 'Qty × unit cost' },
-  ];
-
   return (
     <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full space-y-3">
       {toast && (
         <div role="status" className={`fixed bottom-20 right-5 z-[80] max-w-sm px-4 py-2.5 rounded-lg shadow-xl text-sm font-semibold ${toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>{toast.text}</div>
       )}
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2" data-testid="opening-summary">
-        {cards.map(c => (
-          <div key={c.label} className={`rounded-xl border px-3 py-2.5 shadow-sm ${c.tint}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600">{c.label}</p>
-            <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{money(c.value)}</p>
-            <p className="text-[11px] text-slate-500">{c.note}{c.draft !== 0 && <span className="ml-1 font-semibold text-amber-700">· {money(c.draft)} in draft</span>}</p>
-          </div>
-        ))}
-      </div>
-
       <Card className="p-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 px-1">{lookups?.company?.company_name ?? company.company_name}</span>
-          <select aria-label="Financial year" className={sel} value={fyId} onChange={e => setFyId(e.target.value)}>
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+          <span className="text-xs font-semibold text-slate-500 px-1 shrink-0">{lookups?.company?.company_name ?? company.company_name}</span>
+          <select aria-label="Financial year" className={`${sel} !w-auto shrink-0`} value={fyId} onChange={e => setFyId(e.target.value)}>
             <option value="">All financial years</option>
             {(lookups?.financial_years ?? []).map(y => <option key={y.id} value={y.id}>{y.name}{y.status === 'Closed' ? ' (closed)' : ''}</option>)}
           </select>
-          <select aria-label="Entry status" className={sel} value={status} onChange={e => setStatus(e.target.value)}>
-            <option value="">All statuses</option><option>Draft</option><option>Posted</option><option>Reversed</option>
-          </select>
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input aria-label="Search by name" className={`${sel} pl-8 w-56`} placeholder="Search name, code, entry no…" value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="relative shrink-0">
+            <Search size={14} className="pointer-events-none z-10 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input aria-label="Search by name" className={`${sel} !pl-8 !w-52`} placeholder="Search name, code, entry no…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportRows} disabled={!shown.length}>Export CSV</Button>
             {tab === 'STOCK' && (
               <>
@@ -232,15 +216,15 @@ export function OpeningBalancesPage() {
         </div>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className={`${tab === 'PARTY' || (canManage && drafts.length > 0) ? 'flex' : 'flex lg:hidden'} flex-wrap items-center gap-1.5`}>
         {TABS.map(t => (
           <button key={t.id} type="button" onClick={() => { setTab(t.id); setPicked(new Set()); }}
-            className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-bold border transition ${tab === t.id ? 'bg-orange-600 text-white border-orange-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+            className={`lg:hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-bold border transition ${tab === t.id ? 'bg-orange-600 text-white border-orange-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
             <t.icon size={14} />{t.label}
           </button>
         ))}
         {tab === 'PARTY' && (
-          <div className="ml-2 inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="Customer or supplier">
+          <div className="ml-2 lg:ml-0 inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="Customer or supplier">
             {(['CUSTOMER', 'SUPPLIER'] as PartyKind[]).map(k => (
               <button key={k} type="button" onClick={() => { setKind(k); setPicked(new Set()); }}
                 className={`h-9 px-3 text-[13px] font-semibold ${kind === k ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{k === 'CUSTOMER' ? 'Customers' : 'Suppliers'}</button>
@@ -359,7 +343,7 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
 
   const pickParty = (id: string) => {
     const p = partyList.find(x => x.id === id);
-    setF(prev => ({ ...prev, party_id: id, party_name: p?.name ?? '', party_code: type === 'SUPPLIER' ? (p as { code?: string | null } | undefined)?.code ?? '' : id }));
+    setF(prev => ({ ...prev, party_id: id, party_name: p?.name ?? '', party_code: type === 'SUPPLIER' ? (p as { code?: string | null } | undefined)?.code ?? '' : '' }));
   };
   const pickItem = (key: string) => {
     const it = lookups.items.find(i => `${i.kind}:${i.id}` === key);
@@ -401,7 +385,9 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
               <option value="">Select…</option>
               {partyList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select></FormField>
-          <FormField label={type === 'CUSTOMER' ? 'Customer Code' : 'Supplier Code'}><input className={`${inputClass} bg-slate-50`} readOnly value={f.party_code ?? ''} /></FormField>
+          {type === 'SUPPLIER' && (
+            <FormField label="Supplier Code"><input className={`${inputClass} bg-slate-50`} readOnly value={f.party_code ?? ''} /></FormField>
+          )}
           <FormField label="Balance Type"><select className={inputClass} value={f.balance_type ?? ''} onChange={e => set('balance_type', e.target.value)}>
             {type === 'CUSTOMER' ? <><option>Receivable</option><option>Credit Balance</option></> : <><option>Payable</option><option>Debit Balance</option></>}</select></FormField>
           <FormField label="Opening Balance Amount" required><input type="number" min="0" step="0.01" className={inputClass} value={f.amount ?? ''} onChange={e => set('amount', e.target.value)} /></FormField>
