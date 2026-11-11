@@ -119,42 +119,6 @@ export function extractRowTypeAndDesc(
   return { type: finalType, description: desc };
 }
 
-function TableCompanyCell({
-  initialValue,
-  onSave,
-}: {
-  initialValue: string;
-  onSave: (val: string) => void;
-}) {
-  const [val, setVal] = useState(initialValue);
-  useEffect(() => {
-    setVal(initialValue);
-  }, [initialValue]);
-
-  return (
-    <input
-      type="text"
-      size={10}
-      list="inline-party-datalist"
-      aria-label="Company / party"
-      placeholder="Company / party"
-      className="h-6 px-1.5 text-[11px] font-normal text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full min-w-[72px] max-w-[104px]"
-      value={val}
-      onChange={e => setVal(e.target.value)}
-      onBlur={() => {
-        if (val.trim() !== (initialValue ?? '').trim()) {
-          onSave(val.trim());
-        }
-      }}
-      onKeyDown={e => {
-        if (e.key === 'Enter') {
-          (e.target as HTMLInputElement).blur();
-        }
-      }}
-    />
-  );
-}
-
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 
 export function BankEntryPage() {
@@ -265,6 +229,8 @@ export function BankEntryPage() {
   const [to, setTo] = useState('');
   const [full, setFull] = useState(false);
   const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
+  // A row is never edited in place: clicking it (or the pencil that appears on hover) opens this popup.
+  const [editingRow, setEditingRow] = useState<BankRow | null>(null);
 
   const handleUpdateType = async (r: BankRow, newTypeName: string) => {
     const trimmed = newTypeName.trim();
@@ -289,6 +255,7 @@ export function BankEntryPage() {
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update type.' });
       void loadData(full);
+      throw e;                 // the edit popup stays open and shows the reason
     }
   };
 
@@ -312,7 +279,16 @@ export function BankEntryPage() {
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update company.' });
       void loadData(full);
+      throw e;                 // the edit popup stays open and shows the reason
     }
+  };
+
+  // Save the edit popup: only the fields that really changed are written.
+  const saveRowEdit = async (r: BankRow, newType: string, newCompany: string) => {
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const currentType = parsed.type || r.kind || '';
+    if (newType.trim().toLowerCase() !== currentType.trim().toLowerCase()) await handleUpdateType(r, newType.trim());
+    if (newCompany.trim() !== (r.party_name ?? '').trim()) await handleUpdateCompany(r, newCompany.trim());
   };
 
   const loadOptions = useCallback(async () => {
@@ -849,7 +825,8 @@ export function BankEntryPage() {
                       <tr
                         key={r.id}
                         data-testid="data-row"
-                        className="border-t border-slate-100 transition hover:bg-slate-50"
+                        className="group border-t border-slate-100 transition hover:bg-slate-50 cursor-pointer"
+                        onClick={() => setEditingRow(r)}
                       >
                         <td className="px-1.5 py-1 whitespace-nowrap">{dmy(r.txn_date)}</td>
                         <td className="px-1.5 py-1 font-mono text-slate-500">{r.reference_no ?? ''}</td>
@@ -858,38 +835,35 @@ export function BankEntryPage() {
                         <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-600">{r.direction === 'IN' ? money(r.amount) : ''}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums text-slate-700">{money(r.balance)}</td>
                         <td className="px-1.5 py-1">{r.account_name}</td>
-                        <td className="px-1.5 py-0.5">
-                          <select
-                            aria-label="Type"
-                            className="h-6 px-1.5 text-[11px] font-normal text-slate-800 bg-white border border-slate-200 hover:border-slate-300 focus:border-orange-400 focus:ring-1 focus:ring-orange-400 rounded-md transition w-full max-w-[94px] cursor-pointer shadow-2xs"
-                            value={parsed.type || r.kind || ''}
-                            onChange={e => void handleUpdateType(r, e.target.value)}
-                          >
-                            <option value="">-- Type --</option>
-                            {types.filter(t => t.direction === 'ANY' || t.direction === r.direction).map(t => (
-                              <option key={t.id} value={t.name}>{t.name}</option>
-                            ))}
-                            {parsed.type && !types.some(t => t.name.toLowerCase() === parsed.type.toLowerCase()) && (
-                              <option value={parsed.type}>{parsed.type}</option>
-                            )}
-                          </select>
+                        <td className="px-1.5 py-1">
+                          <span className="inline-block px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 bg-white/80 border border-slate-200 rounded-md whitespace-nowrap">
+                            {parsed.type || r.kind || '—'}
+                          </span>
                         </td>
-                        <td className="px-1.5 py-0.5">
-                          <TableCompanyCell
-                            initialValue={r.party_name ?? ''}
-                            onSave={val => void handleUpdateCompany(r, val)}
-                          />
+                        <td className="px-1.5 py-1 text-[11px] text-slate-700 whitespace-nowrap">
+                          {r.party_name || <span className="text-slate-400">—</span>}
                         </td>
                         <td className="px-1.5 py-0.5 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setDeletingRow(r)}
-                            className="p-1 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
-                            title="Delete transaction"
-                            aria-label="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div className="inline-flex items-center gap-1.5 justify-center">
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setEditingRow(r); }}
+                              className="p-1 rounded-md text-slate-500 hover:text-orange-700 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 transition cursor-pointer shadow-2xs inline-flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              title="Edit"
+                              aria-label="Edit"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setDeletingRow(r); }}
+                              className="p-1 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                              title="Delete transaction"
+                              aria-label="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -935,6 +909,13 @@ export function BankEntryPage() {
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
         onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Types saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
+
+      <EditRowModal
+        row={editingRow}
+        types={types}
+        onClose={() => setEditingRow(null)}
+        onSave={saveRowEdit}
+      />
 
       <DeleteBankEntryModal
         open={!!deletingRow}
@@ -1708,6 +1689,97 @@ function ManualEntryModal({
           onSaved();
         }}
       />
+    </Modal>
+  );
+}
+
+/** Editing one statement row: the row itself is read-only, this popup holds the Type and Company fields. */
+function EditRowModal({ row, types, onClose, onSave }: {
+  row: BankRow | null;
+  types: EntryType[];
+  onClose: () => void;
+  onSave: (row: BankRow, type: string, company: string) => Promise<void>;
+}) {
+  const [type, setType] = useState('');
+  const [company, setCompany] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (!row) return;
+    setType(extractRowTypeAndDesc(row.description, row.kind, types).type || row.kind || '');
+    setCompany(row.party_name ?? '');
+    setErr('');
+  }, [row, types]);
+
+  if (!row) return null;
+
+  const parsed = extractRowTypeAndDesc(row.description, row.kind, types);
+  const currentType = parsed.type || row.kind || '';
+
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      await onSave(row, type.trim() || currentType, company.trim());
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the changes.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={() => !busy && onClose()}
+      title="Edit Transaction"
+      subtitle={[dmy(row.txn_date), row.account_name, row.reference_no].filter(Boolean).join(' · ')}
+      size="sm"
+      footer={
+        <div className="w-full flex items-center justify-end gap-2">
+          {err && <span className="mr-auto text-xs font-semibold text-red-600">{err}</span>}
+          <button className={btn} onClick={() => !busy && onClose()}>Cancel</button>
+          <button className={btnPrimary} data-testid="row-edit-save" disabled={busy} onClick={() => void save()}>
+            <Save size={14} />{busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+          Type
+          <select
+            aria-label="Type"
+            className={`${sel} w-full mt-1 normal-case font-normal`}
+            value={type}
+            onChange={e => setType(e.target.value)}
+          >
+            <option value="">-- Type --</option>
+            {types.filter(t => t.direction === 'ANY' || t.direction === row.direction).map(t => (
+              <option key={t.id} value={t.name}>{t.name}</option>
+            ))}
+            {type && !types.some(t => t.name.toLowerCase() === type.toLowerCase()) && (
+              <option value={type}>{type}</option>
+            )}
+          </select>
+        </label>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+          Company / Party
+          <input
+            aria-label="Company / party"
+            className={`${inp} w-full mt-1 normal-case font-normal`}
+            list="inline-party-datalist"
+            placeholder="Company / party"
+            value={company}
+            onChange={e => setCompany(e.target.value)}
+          />
+        </label>
+        <div>
+          <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Description</span>
+          <p className="text-sm text-slate-600 leading-snug [overflow-wrap:anywhere]">{parsed.description || row.description || '—'}</p>
+        </div>
+      </div>
     </Modal>
   );
 }

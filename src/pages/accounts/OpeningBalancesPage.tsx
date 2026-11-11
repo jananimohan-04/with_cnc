@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Boxes, CheckCircle2, Download, Eye, FilePlus2, Landmark, Pencil, Plus, Rows3, Search, Trash2, Undo2, Upload, Users } from 'lucide-react';
+import { AlertTriangle, Boxes, CheckCircle2, Download, Eye, FilePlus2, Landmark, Pencil, Plus, Rows3, Search, Trash2, Undo2, Upload, Users, X } from 'lucide-react';
 import { Badge, Button, Card } from '@/components/ui/Card';
 import { EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { FormField, Modal, inputClass } from '@/components/ui/Modal';
+import { SortLabel, useSort } from '@/components/ui/SortHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
@@ -57,14 +58,20 @@ export function OpeningBalancesPage() {
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // 'all' lists every bank / customer / supplier / item with its opening balance (blank if none); 'entries' is the plain list of entered openings
-  const [view] = useState<'all' | 'entries'>('all');
+  const [view, setView] = useState<'all' | 'entries'>('all');
   const [statusFilter, setStatusFilter] = useState<'' | 'none' | 'Draft' | 'Posted'>('');
 
   const [form, setForm] = useState<{ type: OpeningType; entry?: OpeningEntry; prefill?: OpeningDraft } | null>(null);
   const [bulk, setBulk] = useState<BulkRow[] | null>(null);
   const [preview, setPreview] = useState<OpeningPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
-  const [reversing, setReversing] = useState<OpeningEntry | null>(null);
+  const [reversing, setReversing] = useState<{ entry: OpeningEntry; afterReverse?: 'edit' } | null>(null);
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const setColFilter = (k: string, v: string) => setColFilters(prev => {
+    if (!v) { const next = { ...prev }; delete next[k]; return next; }
+    return { ...prev, [k]: v };
+  });
+  const clearFilters = useCallback(() => setColFilters({}), []);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const say = (kind: 'ok' | 'err', text: string) => { setToast({ kind, text }); window.setTimeout(() => setToast(t => (t && t.text === text ? null : t)), 4500); };
@@ -88,7 +95,6 @@ export function OpeningBalancesPage() {
   const canManage = !!lookups?.can_manage;
   const shown = useMemo(() => rows.filter(e => (tab === 'PARTY' ? e.entry_type === 'CUSTOMER' || e.entry_type === 'SUPPLIER' : e.entry_type === tab)), [rows, tab]);
   const drafts = shown.filter(e => e.status === 'Draft');
-  const allPicked = drafts.length > 0 && drafts.every(e => picked.has(e.id));
   const togglePick = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // Every bank account / customer / supplier / item, each with its opening (from the entries, Reversed ones ignored)
@@ -137,11 +143,11 @@ export function OpeningBalancesPage() {
     setTabs(TABS.map(t => ({
       label: t.label,
       active: tab === t.id,
-      onClick: () => { setTab(t.id); setPicked(new Set()); },
+      onClick: () => { setTab(t.id); setPicked(new Set()); clearFilters(); },
     })));
     setTabActions(null);
     return () => { setHeader(null); setTabs([]); setTabActions(null); };
-  }, [setHeader, setTabs, setTabActions, tab]);
+  }, [setHeader, setTabs, setTabActions, tab, clearFilters]);
 
   const openPreview = async (ids: string[]) => {
     if (!ids.length) { say('err', 'Select at least one draft entry.'); return; }
@@ -214,6 +220,98 @@ export function OpeningBalancesPage() {
     }));
   };
 
+  const hasColFilters = Object.keys(colFilters).length > 0;
+
+  const masterSort = useSort<MasterRow>({
+    name: m => m.name,
+    unit: m => m.unit,
+    opening_balance: m => m.net,
+    current: m => parseDisplayNumber(m.current),
+    entries: m => m.entries.length,
+    qty: m => m.qty,
+    value: m => m.value,
+    status: m => masterStatus(m),
+  });
+
+  const masterOpts = useMemo(() => ({
+    unit: uniqueOpts(master.map(m => m.unit)),
+    status: uniqueOpts(master.map(m => masterStatus(m))),
+  }), [master]);
+
+  const filteredMasterBase = useMemo(() => {
+    if (!hasColFilters) return master;
+    const eq = (key: string, val: string) => !colFilters[key] || val === colFilters[key];
+    return master.filter(m =>
+      matchText(`${m.name} ${m.code} ${m.sub}`, colFilters.name)
+      && eq('unit', m.unit)
+      && matchText(m.entries.length ? `${Math.abs(m.net)} ${money(Math.abs(m.net))} ${m.net < 0 ? 'Cr' : 'Dr'}` : '-', colFilters.opening_balance)
+      && matchText(`${m.current} ${m.current.replace(/,/g, '')}`, colFilters.current)
+      && matchText(m.entries.length ? String(m.entries.length) : '-', colFilters.entries)
+      && matchText(m.entries.length ? `${m.qty} ${m.qty.toLocaleString('en-IN')}` : '-', colFilters.qty)
+      && matchText(m.entries.length ? `${m.value} ${money(m.value)}` : '-', colFilters.value)
+      && eq('status', masterStatus(m))
+    );
+  }, [master, colFilters, hasColFilters]);
+  const filteredMaster = masterSort.sortRows(filteredMasterBase);
+
+  const entrySort = useSort<OpeningEntry>({
+    entry_no: e => e.entry_no,
+    opening_date: e => e.opening_date,
+    account_name: e => e.account_name ?? '',
+    remarks: e => e.remarks ?? '',
+    party_name: e => e.party_name ?? '',
+    balance_type: e => e.balance_type ?? '',
+    invoice_ref: e => e.invoice_ref ?? '',
+    due_date: e => e.due_date ?? '',
+    item_name: e => e.item_name ?? '',
+    warehouse_name: e => e.warehouse_name ?? 'Item default',
+    qty: e => num(e.qty),
+    unit_cost: e => num(e.unit_cost),
+    amount: e => num(e.amount),
+    status: e => e.status,
+  });
+
+  const entryOpts = useMemo(() => ({
+    account_name: uniqueOpts(shown.map(e => e.account_name)),
+    balance_type: uniqueOpts(shown.map(e => e.balance_type)),
+    warehouse_name: uniqueOpts(shown.map(e => e.warehouse_name ?? 'Item default')),
+    status: uniqueOpts(shown.map(e => e.status)),
+  }), [shown]);
+
+  const filteredEntriesBase = useMemo(() => {
+    if (!hasColFilters) return shown;
+    const eq = (key: string, val: string) => !colFilters[key] || val === colFilters[key];
+    return shown.filter(e =>
+      matchText(e.entry_no, colFilters.entry_no)
+      && matchText(`${e.opening_date} ${formatDate(e.opening_date)}`, colFilters.opening_date)
+      && eq('account_name', e.account_name ?? '')
+      && matchText(e.remarks ?? '', colFilters.remarks)
+      && matchText(`${e.party_name ?? ''} ${e.party_code ?? ''}`, colFilters.party_name)
+      && eq('balance_type', e.balance_type ?? '')
+      && matchText(e.invoice_ref ?? '', colFilters.invoice_ref)
+      && matchText(e.due_date ? `${e.due_date} ${formatDate(e.due_date)}` : '', colFilters.due_date)
+      && matchText(`${e.item_name ?? ''} ${e.item_code ?? ''}`, colFilters.item_name)
+      && eq('warehouse_name', e.warehouse_name ?? 'Item default')
+      && matchText(`${num(e.qty)} ${num(e.qty).toLocaleString('en-IN')} ${e.unit ?? ''}`, colFilters.qty)
+      && matchText(`${num(e.unit_cost)} ${money(num(e.unit_cost))}`, colFilters.unit_cost)
+      && matchText(`${num(e.amount)} ${money(e.amount)} ${tab === 'STOCK' ? '' : drCr(e.side)}`, colFilters.amount)
+      && eq('status', e.status)
+    );
+  }, [shown, colFilters, hasColFilters, tab]);
+  const filteredEntries = entrySort.sortRows(filteredEntriesBase);
+  const visibleDrafts = filteredEntries.filter(e => e.status === 'Draft');
+  const allPicked = visibleDrafts.length > 0 && visibleDrafts.every(e => picked.has(e.id));
+
+  const jumpToEntity = (m: MasterRow) => {
+    setView('entries');
+    if (tab === 'BANK') setColFilters({ account_name: m.entries[0]?.account_name || m.name });
+    else if (tab === 'PARTY') setColFilters({ party_name: m.name });
+    else setColFilters({ item_name: m.name });
+  };
+
+  const masterColSpan = tab === 'STOCK' ? 7 : 5;
+  const entryColSpan = (canManage ? 1 : 0) + (tab === 'BANK' ? 7 : tab === 'PARTY' ? 9 : 9);
+
   const masterView = (() => {
     if (loading && !lookups) return <LoadingState message="Loading…" />;
     if (!master.length) return <EmptyState icon={<FilePlus2 size={28} />} title="Nothing to list" message={tab === 'BANK' ? 'No bank or cash accounts found.' : tab === 'STOCK' ? 'No inventory items found.' : 'No companies found.'} />;
@@ -222,18 +320,48 @@ export function OpeningBalancesPage() {
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className={th}>{tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : 'Company'}</th>
-              {tab === 'STOCK' && <th className={th}>Unit</th>}
-              {tab === 'STOCK' ? (<><th className={thR}>Opening qty</th><th className={thR}>Opening value</th><th className={thR}>Stock now</th></>)
-                : (<><th className={thR}>Opening balance</th>{tab === 'BANK' && <th className={thR}>Balance now</th>}{tab === 'PARTY' && <th className={thR}>Entries</th>}</>)}
-              <th className={th}>Status</th><th className={`${th} text-right`}>Actions</th>
+              <HeadingCell label={tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : 'Company'} colKey="name" sort={masterSort} filterValue={colFilters.name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
+              {tab === 'STOCK' && <HeadingCell label="Unit" colKey="unit" sort={masterSort} filterValue={colFilters.unit ?? ''} onFilter={setColFilter} options={masterOpts.unit} optionWidth="max-w-[68px]" thClass={th} />}
+              {tab === 'STOCK' ? (<>
+                <HeadingCell label="Opening qty" colKey="qty" sort={masterSort} filterValue={colFilters.qty ?? ''} onFilter={setColFilter} align="right" inputWidth="w-14" thClass={thR} />
+                <HeadingCell label="Opening value" colKey="value" sort={masterSort} filterValue={colFilters.value ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                <HeadingCell label="Stock now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+              </>) : (<>
+                <HeadingCell label="Opening balance" colKey="opening_balance" sort={masterSort} filterValue={colFilters.opening_balance ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                {tab === 'BANK' && <HeadingCell label="Balance now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />}
+                {tab === 'PARTY' && <HeadingCell label="Entries" colKey="entries" sort={masterSort} filterValue={colFilters.entries ?? ''} onFilter={setColFilter} align="right" inputWidth="w-12" thClass={thR} />}
+              </>)}
+              <HeadingCell label="Status" colKey="status" sort={masterSort} filterValue={colFilters.status ?? ''} onFilter={setColFilter} options={masterOpts.status} optionWidth="max-w-[88px]" thClass={th} />
+              <ActionsHead thClass={thR} hasFilters={hasColFilters} onClear={clearFilters} />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {master.map(m => {
+            {filteredMaster.length === 0 && (
+              <tr><td colSpan={masterColSpan} className="px-4 py-8 text-center text-xs text-slate-500">
+                No rows match the active column filters.{' '}
+                <button type="button" onClick={clearFilters} className="font-semibold text-orange-600 hover:underline">Clear filters</button>
+              </td></tr>
+            )}
+            {filteredMaster.map(m => {
               const dr = m.entries.filter(e => e.status === 'Draft'); const po = m.entries.filter(e => e.status === 'Posted');
               const status = !m.entries.length ? '' : dr.length ? 'Draft' : 'Posted';
               const canAdd = canManage && (m.entries.length === 0 || tab === 'PARTY');
+              const onlyDraft = m.entries.length === 1 && dr.length === 1 ? dr[0] : null;
+              const onlyPosted = m.entries.length === 1 && po.length === 1 ? po[0] : null;
+              const onEdit = onlyDraft
+                ? () => setForm({ type: m.type, entry: onlyDraft })
+                : onlyPosted && canManage
+                  ? () => setReversing({ entry: onlyPosted, afterReverse: 'edit' })
+                  : m.entries.length > 1
+                    ? () => jumpToEntity(m)
+                    : null;
+              const onDelete = onlyDraft
+                ? () => remove(onlyDraft)
+                : onlyPosted && canManage
+                  ? () => setReversing({ entry: onlyPosted })
+                  : m.entries.length > 1
+                    ? () => jumpToEntity(m)
+                    : null;
               return (
                 <tr key={m.key} className="hover:bg-orange-50/40">
                   <td className={`${td} font-semibold`}>{m.name}{m.code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{m.code}</span>}<span className="ml-1.5 text-[10px] font-semibold uppercase text-slate-400">{m.sub}</span></td>
@@ -244,14 +372,22 @@ export function OpeningBalancesPage() {
                     <td className={tdR}>{m.current}</td></>) : (<>
                     <td className={`${tdR} font-semibold`}>{m.entries.length ? <>{money(Math.abs(m.net))} <span className="text-[10px] text-slate-400">{m.net < 0 ? 'Cr' : 'Dr'}</span></> : <span className="text-slate-300">-</span>}</td>
                     {tab === 'BANK' && <td className={tdR}>{m.current}</td>}
-                    {tab === 'PARTY' && <td className={tdR}>{m.entries.length || <span className="text-slate-300">-</span>}</td>}</>)}
+                    {tab === 'PARTY' && (
+                      <td className={tdR}>
+                        {m.entries.length ? (
+                          <button type="button" onClick={() => jumpToEntity(m)} title="View entered openings"
+                            className="font-semibold text-orange-700 hover:underline">{m.entries.length}</button>
+                        ) : <span className="text-slate-300">-</span>}
+                      </td>
+                    )}</>)}
                   <td className={td}>{status ? <Badge variant={statusVariant(status)} dot>{status}</Badge> : <span className="text-[11px] text-slate-400">No opening</span>}</td>
                   <td className={`${td} text-right whitespace-nowrap`}>
                     <div className="inline-flex items-center gap-1">
                       {canAdd && <button type="button" onClick={() => setForm({ type: m.type, prefill: m.prefill })} className="h-7 px-2 inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-bold hover:bg-orange-100"><Plus size={12} />Add opening</button>}
-                      {dr.length === 1 && <IconBtn label="Edit draft" onClick={() => setForm({ type: m.type, entry: dr[0] })}><Pencil size={14} /></IconBtn>}
                       {dr.length > 0 && canManage && <IconBtn label="Validate, preview & post" onClick={() => openPreview(dr.map(d => d.id))}><CheckCircle2 size={14} /></IconBtn>}
                       {po.length > 0 && <IconBtn label={tab === 'STOCK' ? 'View stock' : 'View ledger'} onClick={() => viewIn(po[0])}><Eye size={14} /></IconBtn>}
+                      {onEdit && <IconBtn label={onlyDraft ? 'Edit draft' : onlyPosted ? 'Edit posted entry' : 'Edit entries'} onClick={onEdit}><Pencil size={14} /></IconBtn>}
+                      {onDelete && <IconBtn label={onlyDraft ? 'Delete draft' : onlyPosted ? 'Delete (reverse) posted entry' : 'Delete / reverse entries'} danger onClick={onDelete}><Trash2 size={14} /></IconBtn>}
                     </div>
                   </td>
                 </tr>
@@ -311,11 +447,19 @@ export function OpeningBalancesPage() {
 
       <div className="flex flex-wrap items-center gap-1.5">
         {TABS.map(t => (
-          <button key={t.id} type="button" onClick={() => { setTab(t.id); setPicked(new Set()); }}
+          <button key={t.id} type="button" onClick={() => { setTab(t.id); setPicked(new Set()); clearFilters(); }}
             className={`lg:hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-bold border transition ${tab === t.id ? 'bg-orange-600 text-white border-orange-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
             <t.icon size={14} />{t.label}
           </button>
         ))}
+        <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
+          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : 'All companies'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => { setView(k); clearFilters(); }}
+              className={`h-8 px-3 rounded-md text-xs font-bold transition ${view === k ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         {canManage && drafts.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-500">{drafts.length} draft{drafts.length === 1 ? '' : 's'} waiting to be posted</span>
@@ -336,17 +480,41 @@ export function OpeningBalancesPage() {
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {canManage && <th className={`${th} w-8`}><input type="checkbox" aria-label="Select all drafts" checked={allPicked} disabled={!drafts.length}
-                    onChange={() => setPicked(allPicked ? new Set() : new Set(drafts.map(d => d.id)))} /></th>}
-                  <th className={th}>Entry No</th><th className={th}>Date</th>
-                  {tab === 'BANK' && (<><th className={th}>Bank Account</th><th className={th}>Remarks</th><th className={thR}>Opening Balance</th></>)}
-                  {tab === 'PARTY' && (<><th className={th}>Company</th><th className={th}>Balance Type</th><th className={th}>Invoice Ref</th><th className={th}>Due</th><th className={thR}>Amount</th></>)}
-                  {tab === 'STOCK' && (<><th className={th}>Product</th><th className={th}>Warehouse</th><th className={thR}>Qty</th><th className={thR}>Unit Cost</th><th className={thR}>Value</th></>)}
-                  <th className={th}>Status</th><th className={`${th} text-right`}>Actions</th>
+                  {canManage && <th className={`${th} w-8`}><input type="checkbox" aria-label="Select all drafts" checked={allPicked} disabled={!visibleDrafts.length}
+                    onChange={() => setPicked(allPicked ? new Set() : new Set(visibleDrafts.map(d => d.id)))} /></th>}
+                  <HeadingCell label="Entry No" colKey="entry_no" sort={entrySort} filterValue={colFilters.entry_no ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
+                  <HeadingCell label="Date" colKey="opening_date" sort={entrySort} filterValue={colFilters.opening_date ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
+                  {tab === 'BANK' && (<>
+                    <HeadingCell label="Bank Account" colKey="account_name" sort={entrySort} filterValue={colFilters.account_name ?? ''} onFilter={setColFilter} options={entryOpts.account_name} optionWidth="max-w-[82px]" thClass={th} />
+                    <HeadingCell label="Remarks" colKey="remarks" sort={entrySort} filterValue={colFilters.remarks ?? ''} onFilter={setColFilter} inputWidth="w-20" thClass={th} />
+                    <HeadingCell label="Opening Balance" colKey="amount" sort={entrySort} filterValue={colFilters.amount ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  </>)}
+                  {tab === 'PARTY' && (<>
+                    <HeadingCell label="Company" colKey="party_name" sort={entrySort} filterValue={colFilters.party_name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
+                    <HeadingCell label="Balance Type" colKey="balance_type" sort={entrySort} filterValue={colFilters.balance_type ?? ''} onFilter={setColFilter} options={entryOpts.balance_type} optionWidth="max-w-[78px]" thClass={th} />
+                    <HeadingCell label="Invoice Ref" colKey="invoice_ref" sort={entrySort} filterValue={colFilters.invoice_ref ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
+                    <HeadingCell label="Due" colKey="due_date" sort={entrySort} filterValue={colFilters.due_date ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
+                    <HeadingCell label="Amount" colKey="amount" sort={entrySort} filterValue={colFilters.amount ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  </>)}
+                  {tab === 'STOCK' && (<>
+                    <HeadingCell label="Product" colKey="item_name" sort={entrySort} filterValue={colFilters.item_name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
+                    <HeadingCell label="Warehouse" colKey="warehouse_name" sort={entrySort} filterValue={colFilters.warehouse_name ?? ''} onFilter={setColFilter} options={entryOpts.warehouse_name} optionWidth="max-w-[82px]" thClass={th} />
+                    <HeadingCell label="Qty" colKey="qty" sort={entrySort} filterValue={colFilters.qty ?? ''} onFilter={setColFilter} align="right" inputWidth="w-14" thClass={thR} />
+                    <HeadingCell label="Unit Cost" colKey="unit_cost" sort={entrySort} filterValue={colFilters.unit_cost ?? ''} onFilter={setColFilter} align="right" inputWidth="w-14" thClass={thR} />
+                    <HeadingCell label="Value" colKey="amount" sort={entrySort} filterValue={colFilters.amount ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  </>)}
+                  <HeadingCell label="Status" colKey="status" sort={entrySort} filterValue={colFilters.status ?? ''} onFilter={setColFilter} options={entryOpts.status} optionWidth="max-w-[78px]" thClass={th} />
+                  <ActionsHead thClass={thR} hasFilters={hasColFilters} onClear={clearFilters} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {shown.map(e => (
+                {filteredEntries.length === 0 && (
+                  <tr><td colSpan={entryColSpan} className="px-4 py-8 text-center text-xs text-slate-500">
+                    No opening entries match the active column filters.{' '}
+                    <button type="button" onClick={clearFilters} className="font-semibold text-orange-600 hover:underline">Clear filters</button>
+                  </td></tr>
+                )}
+                {filteredEntries.map(e => (
                   <tr key={e.id} className="hover:bg-orange-50/40">
                     {canManage && <td className={td}>{e.status === 'Draft' && <input type="checkbox" aria-label={`Select ${e.entry_no}`} checked={picked.has(e.id)} onChange={() => togglePick(e.id)} />}</td>}
                     <td className={`${td} font-mono text-xs`}>{e.entry_no}</td>
@@ -368,7 +536,12 @@ export function OpeningBalancesPage() {
                           <IconBtn label="Validate & preview" onClick={() => openPreview([e.id])}><Eye size={14} /></IconBtn>
                           <IconBtn label="Delete draft" danger onClick={() => remove(e)}><Trash2 size={14} /></IconBtn></>}
                         {e.status !== 'Draft' && <IconBtn label={e.entry_type === 'STOCK' ? 'View stock' : 'View ledger'} onClick={() => viewIn(e)}><Eye size={14} /></IconBtn>}
-                        {e.status === 'Posted' && canManage && <IconBtn label="Reverse" danger onClick={() => setReversing(e)}><Undo2 size={14} /></IconBtn>}
+                        {e.status === 'Posted' && canManage && <>
+                          <IconBtn label="Edit posted entry (reverse & re-enter)" onClick={() => setReversing({ entry: e, afterReverse: 'edit' })}><Pencil size={14} /></IconBtn>
+                          <IconBtn label="Delete (reverse) posted entry" danger onClick={() => setReversing({ entry: e })}><Trash2 size={14} /></IconBtn></>}
+                        {e.status === 'Reversed' && canManage && <>
+                          <IconBtn label="Re-enter replacement opening" onClick={() => setForm({ type: e.entry_type, prefill: entryToDraft(e) })}><Pencil size={14} /></IconBtn>
+                          <IconBtn label="Already reversed" danger disabled onClick={() => {}}><Trash2 size={14} /></IconBtn></>}
                       </div>
                     </td>
                   </tr>
@@ -390,17 +563,103 @@ export function OpeningBalancesPage() {
         <PreviewModal data={preview} busy={previewBusy} canPost={canManage} onClose={() => setPreview(null)} onPost={doPost} />
       )}
       {reversing && (
-        <ReverseModal entry={reversing} onClose={() => setReversing(null)}
-          onDone={async () => { setReversing(null); say('ok', 'Entry reversed. You can now enter a corrected one.'); await load(); }} />
+        <ReverseModal entry={reversing.entry} onClose={() => setReversing(null)}
+          onDone={async () => {
+            const target = reversing;
+            setReversing(null);
+            await load();
+            if (target.afterReverse === 'edit') {
+              say('ok', 'Original entry reversed. Save and post your updated opening.');
+              setForm({ type: target.entry.entry_type, prefill: entryToDraft(target.entry) });
+            } else {
+              say('ok', 'Entry reversed. You can now enter a corrected one.');
+            }
+          }} />
       )}
     </div>
   );
 }
 
-function IconBtn({ label, onClick, children, danger }: { label: string; onClick: () => void; children: React.ReactNode; danger?: boolean }) {
+function masterStatus(m: { entries: OpeningEntry[] }): string {
+  return m.entries.some(e => e.status === 'Draft') ? 'Draft' : m.entries.length ? 'Posted' : 'No opening';
+}
+
+function matchText(haystack: string, query?: string): boolean {
+  if (!query) return true;
+  return haystack.toLowerCase().includes(query.trim().toLowerCase());
+}
+
+function uniqueOpts(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((v): v is string => Boolean(v && v.trim())))).sort((a, b) => a.localeCompare(b));
+}
+
+function parseDisplayNumber(s: string): number {
+  const cleaned = s.replace(/[^0-9.-]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? (/\bCr\b/i.test(s) ? -n : n) : 0;
+}
+
+function entryToDraft(e: OpeningEntry): OpeningDraft {
+  return {
+    entry_type: e.entry_type, opening_date: e.opening_date, account_id: e.account_id ?? '', party_id: e.party_id ?? '', party_name: e.party_name ?? '',
+    party_code: e.party_code ?? '', balance_type: e.balance_type ?? '', invoice_ref: e.invoice_ref ?? '', due_date: e.due_date ?? '',
+    item_kind: e.item_kind ?? undefined, item_id: e.item_id ?? '', warehouse_id: e.warehouse_id ?? '', qty: e.qty ?? '', unit_cost: e.unit_cost ?? '',
+    amount: e.amount, currency: e.currency, remarks: e.remarks ?? '',
+  };
+}
+
+function HeadingCell<T>({ label, colKey, sort, filterValue, onFilter, options, align = 'left', placeholder, inputWidth = 'w-16', optionWidth = 'max-w-[78px]', thClass }: {
+  label: string;
+  colKey: string;
+  sort: Parameters<typeof SortLabel<T>>[0]['sort'];
+  filterValue: string;
+  onFilter: (key: string, val: string) => void;
+  options?: string[];
+  align?: 'left' | 'right';
+  placeholder?: string;
+  inputWidth?: string;
+  optionWidth?: string;
+  thClass: string;
+}) {
   return (
-    <button type="button" title={label} aria-label={label} onClick={onClick}
-      className={`h-7 w-7 inline-flex items-center justify-center rounded-md border border-transparent ${danger ? 'text-red-500 hover:bg-red-50 hover:border-red-200' : 'text-slate-500 hover:bg-slate-100 hover:border-slate-200'}`}>{children}</button>
+    <th className={`${thClass} py-1.5 align-middle`}>
+      <div className={`inline-flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
+        <SortLabel label={label} col={colKey} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-widest text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer shrink-0" />
+        {options ? (
+          <select aria-label={`Filter ${label}`} value={filterValue} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
+            className={`h-5 ${optionWidth} rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${filterValue ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
+            <option value="">All</option>
+            {options.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        ) : (
+          <input aria-label={`Filter ${label}`} value={filterValue} placeholder={placeholder ?? 'Filter…'} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
+            className={`h-5 ${inputWidth} rounded border bg-white px-1.5 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${filterValue ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+        )}
+      </div>
+    </th>
+  );
+}
+
+function ActionsHead({ thClass, hasFilters, onClear }: { thClass: string; hasFilters: boolean; onClear: () => void }) {
+  return (
+    <th className={`${thClass} py-1.5 align-middle`}>
+      <div className="inline-flex items-center justify-end gap-1.5">
+        <span>Actions</span>
+        {hasFilters && (
+          <button type="button" onClick={onClear} title="Clear column filters"
+            className="inline-flex items-center gap-0.5 rounded border border-orange-300 bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-orange-700 hover:bg-orange-100">
+            <X size={10} />Clear
+          </button>
+        )}
+      </div>
+    </th>
+  );
+}
+
+function IconBtn({ label, onClick, children, danger, disabled }: { label: string; onClick: () => void; children: React.ReactNode; danger?: boolean; disabled?: boolean }) {
+  return (
+    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick}
+      className={`h-7 w-7 inline-flex items-center justify-center rounded-md border border-transparent disabled:opacity-35 disabled:pointer-events-none ${danger ? 'text-red-500 hover:bg-red-50 hover:border-red-200' : 'text-slate-500 hover:bg-slate-100 hover:border-slate-200'}`}>{children}</button>
   );
 }
 
