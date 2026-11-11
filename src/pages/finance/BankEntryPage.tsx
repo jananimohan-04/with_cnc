@@ -1037,7 +1037,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title="Transaction Types" subtitle="Bank and cash accounts in your books" size="md"
+    <Modal open={open} onClose={() => !busy && onClose()} title="Transaction Types" subtitle="Manage cash, bank accounts and adjustments" size="md"
       footer={<button className={btn} data-testid="banks-close" onClick={onClose}>Close</button>}>
       <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New bank name" className={`${inp} flex-1`} placeholder="New bank name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
@@ -1204,7 +1204,7 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Companies that are not customers or suppliers, for the Company of a row" size="lg"
+    <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Add payments, receipts and adjustments manually" size="lg"
       footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="others-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New company name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Company name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
