@@ -20,11 +20,10 @@ import {
 // A posted entry is never edited or deleted; it is reversed (an audit trail is kept) and a corrected entry entered.
 
 type Tab = 'BANK' | 'PARTY' | 'STOCK';
-type PartyKind = 'CUSTOMER' | 'SUPPLIER';
 
 const TABS: { id: Tab; label: string; icon: typeof Landmark }[] = [
   { id: 'BANK', label: 'Bank Opening Balances', icon: Landmark },
-  { id: 'PARTY', label: 'Customer & Supplier', icon: Users },
+  { id: 'PARTY', label: 'Companies', icon: Users },
   { id: 'STOCK', label: 'Inventory Opening Stock', icon: Boxes },
 ];
 
@@ -54,7 +53,6 @@ export function OpeningBalancesPage() {
   const [toast, setToast] = useState<Toast>(null);
 
   const [tab, setTab] = useState<Tab>('BANK');
-  const [kind, setKind] = useState<PartyKind>('CUSTOMER');
   const [fyId, setFyId] = useState('');
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -87,7 +85,7 @@ export function OpeningBalancesPage() {
   }, [companyId, load, search]);
 
   const canManage = !!lookups?.can_manage;
-  const shown = useMemo(() => rows.filter(e => (tab === 'PARTY' ? e.entry_type === kind : e.entry_type === tab)), [rows, tab, kind]);
+  const shown = useMemo(() => rows.filter(e => (tab === 'PARTY' ? e.entry_type === 'CUSTOMER' || e.entry_type === 'SUPPLIER' : e.entry_type === tab)), [rows, tab]);
   const drafts = shown.filter(e => e.status === 'Draft');
   const allPicked = drafts.length > 0 && drafts.every(e => picked.has(e.id));
   const togglePick = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -107,12 +105,15 @@ export function OpeningBalancesPage() {
         return { key: b.id, type: 'BANK' as const, name: b.name, code: b.code, sub: b.type, entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: money(num(b.balance)), prefill: { account_id: b.id } };
       });
     } else if (tab === 'PARTY') {
-      const list = (kind === 'CUSTOMER' ? lookups.customers : lookups.suppliers) as { id: string; name: string; code?: string | null }[];
-      out = list.map(pt => {
-        const nk = pt.name.trim().toLowerCase();
-        const en = live.filter(e => e.entry_type === kind && (e.party_id === pt.id || (e.party_name ?? '').trim().toLowerCase() === nk));
-        return { key: pt.id, type: kind, name: pt.name, code: pt.code ?? '', sub: kind === 'CUSTOMER' ? 'Customer' : 'Supplier', entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: '',
-          prefill: { party_id: pt.id, party_name: pt.name, party_code: kind === 'SUPPLIER' ? (pt.code ?? '') : '' } };
+      const byName = new Map<string, { name: string; cust?: { id: string }; sup?: { id: string; code: string | null } }>();
+      for (const c of lookups.customers) { const k = c.name.trim().toLowerCase(); byName.set(k, { ...(byName.get(k) ?? { name: c.name }), cust: { id: c.id } }); }
+      for (const sp of lookups.suppliers) { const k = sp.name.trim().toLowerCase(); byName.set(k, { ...(byName.get(k) ?? { name: sp.name }), sup: { id: sp.id, code: sp.code } }); }
+      out = Array.from(byName.entries()).sort((x, y) => x[1].name.localeCompare(y[1].name)).map(([nk, c]) => {
+        const en = live.filter(e => (e.entry_type === 'CUSTOMER' || e.entry_type === 'SUPPLIER')
+          && (e.party_id === c.cust?.id || e.party_id === c.sup?.id || (e.party_name ?? '').trim().toLowerCase() === nk));
+        const asCustomer = !!c.cust;
+        return { key: nk, type: (asCustomer ? 'CUSTOMER' : 'SUPPLIER') as OpeningType, name: c.name, code: c.sup?.code ?? '', sub: '', entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: '',
+          prefill: { party_id: asCustomer ? c.cust!.id : c.sup!.id, party_name: c.name, party_code: asCustomer ? '' : (c.sup!.code ?? '') } };
       });
     } else {
       out = lookups.items.map(i => {
@@ -123,10 +124,10 @@ export function OpeningBalancesPage() {
       });
     }
     return out.filter(m => hit(m.name, m.code));
-  }, [lookups, rows, tab, kind, search]);
+  }, [lookups, rows, tab, search]);
 
-  const addType: OpeningType = tab === 'BANK' ? 'BANK' : tab === 'STOCK' ? 'STOCK' : kind;
-  const addLabel = tab === 'BANK' ? 'Add Bank Balance' : tab === 'STOCK' ? 'Add Opening Stock' : kind === 'CUSTOMER' ? 'Add Customer Balance' : 'Add Supplier Balance';
+  const addType: OpeningType = tab === 'BANK' ? 'BANK' : tab === 'STOCK' ? 'STOCK' : 'CUSTOMER';
+  const addLabel = tab === 'BANK' ? 'Add Bank Balance' : tab === 'STOCK' ? 'Add Opening Stock' : 'Add Company Balance';
 
   useEffect(() => {
     setHeader({ title: 'Opening Balances' });
@@ -173,7 +174,7 @@ export function OpeningBalancesPage() {
   };
 
   const exportRows = () => {
-    exportCsv(`Opening_${tab === 'PARTY' ? kind : tab}_${todayISO()}`, [
+    exportCsv(`Opening_${tab === 'PARTY' ? 'COMPANIES' : tab}_${todayISO()}`, [
       ['Entry No', 'Date', 'Type', 'Name', 'Code', 'Balance type', 'Invoice ref', 'Due date', 'Warehouse', 'Qty', 'Unit cost', 'Amount', 'Status', 'Remarks'],
       ...shown.map(e => [e.entry_no, e.opening_date, e.entry_type,
         e.entry_type === 'BANK' ? e.account_name : e.entry_type === 'STOCK' ? e.item_name : e.party_name,
@@ -213,13 +214,13 @@ export function OpeningBalancesPage() {
 
   const masterView = (() => {
     if (loading && !lookups) return <LoadingState message="Loading…" />;
-    if (!master.length) return <EmptyState icon={<FilePlus2 size={28} />} title="Nothing to list" message={tab === 'BANK' ? 'No bank or cash accounts found.' : tab === 'STOCK' ? 'No inventory items found.' : 'No parties found.'} />;
+    if (!master.length) return <EmptyState icon={<FilePlus2 size={28} />} title="Nothing to list" message={tab === 'BANK' ? 'No bank or cash accounts found.' : tab === 'STOCK' ? 'No inventory items found.' : 'No companies found.'} />;
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className={th}>{tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : kind === 'CUSTOMER' ? 'Customer' : 'Supplier'}</th>
+              <th className={th}>{tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : 'Company'}</th>
               {tab === 'STOCK' && <th className={th}>Unit</th>}
               {tab === 'STOCK' ? (<><th className={thR}>Opening qty</th><th className={thR}>Opening value</th><th className={thR}>Stock now</th></>)
                 : (<><th className={thR}>Opening balance</th>{tab === 'BANK' && <th className={thR}>Balance now</th>}{tab === 'PARTY' && <th className={thR}>Entries</th>}</>)}
@@ -308,19 +309,11 @@ export function OpeningBalancesPage() {
           </button>
         ))}
         <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="What to list">
-          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : kind === 'CUSTOMER' ? 'All customers' : 'All suppliers'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
+          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : 'All companies'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
             <button key={k} type="button" onClick={() => setView(k)}
               className={`h-9 px-3 text-[13px] font-semibold ${view === k ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
           ))}
         </div>
-        {tab === 'PARTY' && (
-          <div className="ml-2 lg:ml-0 inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="Customer or supplier">
-            {(['CUSTOMER', 'SUPPLIER'] as PartyKind[]).map(k => (
-              <button key={k} type="button" onClick={() => { setKind(k); setPicked(new Set()); }}
-                className={`h-9 px-3 text-[13px] font-semibold ${kind === k ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{k === 'CUSTOMER' ? 'Customers' : 'Suppliers'}</button>
-            ))}
-          </div>
-        )}
         {canManage && drafts.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-500">{picked.size} of {drafts.length} drafts selected</span>
@@ -345,7 +338,7 @@ export function OpeningBalancesPage() {
                     onChange={() => setPicked(allPicked ? new Set() : new Set(drafts.map(d => d.id)))} /></th>}
                   <th className={th}>Entry No</th><th className={th}>Date</th>
                   {tab === 'BANK' && (<><th className={th}>Bank Account</th><th className={th}>Remarks</th><th className={thR}>Opening Balance</th></>)}
-                  {tab === 'PARTY' && (<><th className={th}>{kind === 'CUSTOMER' ? 'Customer' : 'Supplier'}</th><th className={th}>Balance Type</th><th className={th}>Invoice Ref</th><th className={th}>Due</th><th className={thR}>Amount</th></>)}
+                  {tab === 'PARTY' && (<><th className={th}>Company</th><th className={th}>Balance Type</th><th className={th}>Invoice Ref</th><th className={th}>Due</th><th className={thR}>Amount</th></>)}
                   {tab === 'STOCK' && (<><th className={th}>Product</th><th className={th}>Warehouse</th><th className={thR}>Qty</th><th className={thR}>Unit Cost</th><th className={thR}>Value</th></>)}
                   <th className={th}>Status</th><th className={`${th} text-right`}>Actions</th>
                 </tr>
@@ -412,30 +405,47 @@ function IconBtn({ label, onClick, children, danger }: { label: string; onClick:
 // ------------------------------------------------------------------------------------------------
 // Add / edit one draft
 // ------------------------------------------------------------------------------------------------
-function EntryForm({ type, entry, prefill, lookups, fyDefault, onClose, onSaved }: {
+function EntryForm({ type: typeProp, entry, prefill, lookups, fyDefault, onClose, onSaved }: {
   type: OpeningType; entry?: OpeningEntry; prefill?: OpeningDraft; lookups: OpeningLookups; fyDefault: string; onClose: () => void; onSaved: (msg: string) => void | Promise<void>;
 }) {
+  const [type, setType] = useState<OpeningType>(entry?.entry_type ?? typeProp);
   const [f, setF] = useState<OpeningDraft>(() => entry ? {
     id: entry.id, entry_type: entry.entry_type, opening_date: entry.opening_date, account_id: entry.account_id ?? '', party_id: entry.party_id ?? '', party_name: entry.party_name ?? '',
     party_code: entry.party_code ?? '', balance_type: entry.balance_type ?? '', invoice_ref: entry.invoice_ref ?? '', due_date: entry.due_date ?? '',
     item_kind: entry.item_kind ?? undefined, item_id: entry.item_id ?? '', warehouse_id: entry.warehouse_id ?? '', qty: entry.qty ?? '', unit_cost: entry.unit_cost ?? '',
     amount: entry.amount, currency: entry.currency, remarks: entry.remarks ?? '',
   } : {
-    entry_type: type, opening_date: fyDefault, currency: 'INR', account_id: '', party_id: '', party_name: '', party_code: '', invoice_ref: '', due_date: '', item_id: '', warehouse_id: '', qty: '', unit_cost: '', amount: '', remarks: '',
-    balance_type: type === 'BANK' ? 'Debit' : type === 'CUSTOMER' ? 'Receivable' : type === 'SUPPLIER' ? 'Payable' : '',
+    entry_type: typeProp, opening_date: fyDefault, currency: 'INR', account_id: '', party_id: '', party_name: '', party_code: '', invoice_ref: '', due_date: '', item_id: '', warehouse_id: '', qty: '', unit_cost: '', amount: '', remarks: '',
+    balance_type: typeProp === 'BANK' ? 'Debit' : typeProp === 'CUSTOMER' ? 'Receivable' : typeProp === 'SUPPLIER' ? 'Payable' : '',
   });
   // opened from a row of the full list: the bank / party / item is already chosen
   useEffect(() => { if (prefill && !entry) setF(p => ({ ...p, ...prefill })); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k: keyof OpeningDraft, v: string) => setF(p => ({ ...p, [k]: v }));
-  const partyList = type === 'CUSTOMER' ? lookups.customers : lookups.suppliers;
+  // every company (customers and suppliers together, one entry per name); a company in both lists can be entered either way
+  const companies = useMemo(() => {
+    const m = new Map<string, { key: string; name: string; cust?: { id: string }; sup?: { id: string; code: string | null } }>();
+    for (const c of lookups.customers) { const k = c.name.trim().toLowerCase(); m.set(k, { ...(m.get(k) ?? { key: k, name: c.name }), cust: { id: c.id } }); }
+    for (const sp of lookups.suppliers) { const k = sp.name.trim().toLowerCase(); m.set(k, { ...(m.get(k) ?? { key: k, name: sp.name }), sup: { id: sp.id, code: sp.code } }); }
+    return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [lookups]);
+  const company = companies.find(c => c.key === (f.party_name ?? '').trim().toLowerCase());
   const itemKey = f.item_id ? `${f.item_kind}:${f.item_id}` : '';
   const item = lookups.items.find(i => `${i.kind}:${i.id}` === itemKey);
 
-  const pickParty = (id: string) => {
-    const p = partyList.find(x => x.id === id);
-    setF(prev => ({ ...prev, party_id: id, party_name: p?.name ?? '', party_code: type === 'SUPPLIER' ? (p as { code?: string | null } | undefined)?.code ?? '' : '' }));
+  const asType = (t: 'CUSTOMER' | 'SUPPLIER', c?: typeof company) => {
+    setType(t);
+    setF(prev => ({ ...prev, entry_type: t, balance_type: t === 'CUSTOMER' ? 'Receivable' : 'Payable', amount: prev.amount,
+      party_id: c ? (t === 'CUSTOMER' ? c.cust?.id : c.sup?.id) ?? '' : prev.party_id, party_code: t === 'SUPPLIER' ? (c?.sup?.code ?? '') : '' }));
+  };
+  const pickParty = (key: string) => {
+    const c = companies.find(x => x.key === key);
+    if (!c) { setF(prev => ({ ...prev, party_id: '', party_name: '', party_code: '' })); return; }
+    const t: 'CUSTOMER' | 'SUPPLIER' = type === 'SUPPLIER' && c.sup ? 'SUPPLIER' : c.cust ? 'CUSTOMER' : 'SUPPLIER';
+    setType(t);
+    setF(prev => ({ ...prev, entry_type: t, party_name: c.name, party_id: (t === 'CUSTOMER' ? c.cust?.id : c.sup?.id) ?? '', party_code: t === 'SUPPLIER' ? (c.sup?.code ?? '') : '',
+      balance_type: t === 'CUSTOMER' ? 'Receivable' : 'Payable' }));
   };
   const pickItem = (key: string) => {
     const it = lookups.items.find(i => `${i.kind}:${i.id}` === key);
@@ -496,14 +506,20 @@ function EntryForm({ type, entry, prefill, lookups, fyDefault, onClose, onSaved 
         )}
 
         {(type === 'CUSTOMER' || type === 'SUPPLIER') && (<>
-          <FormField label={type === 'CUSTOMER' ? 'Customer / Client' : 'Supplier'} required>
-            <select className={inputClass} value={f.party_id ?? ''} onChange={e => pickParty(e.target.value)}>
-              <option value="">Select…</option>
-              {partyList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <FormField label="Company" required>
+            <select className={inputClass} value={company?.key ?? ''} onChange={e => pickParty(e.target.value)}>
+              <option value="">Select company…</option>
+              {companies.map(c => <option key={c.key} value={c.key}>{c.name}</option>)}
             </select></FormField>
-          {type === 'SUPPLIER' && (
-            <FormField label="Supplier Code"><input className={`${inputClass} bg-slate-50`} readOnly value={f.party_code ?? ''} /></FormField>
-          )}
+          {company?.cust && company?.sup ? (
+            <FormField label="Enter this balance as">
+              <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group">
+                {(['CUSTOMER', 'SUPPLIER'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => asType(t, company)} className={`h-9 px-3 text-[13px] font-semibold ${type === t ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{t === 'CUSTOMER' ? 'Receivable (they owe us)' : 'Payable (we owe them)'}</button>
+                ))}
+              </div>
+            </FormField>
+          ) : <div />}
           {sideFields}
           <FormField label="Invoice Reference" hint="Optional. Enter one entry per bill to track bills separately"><input className={inputClass} value={f.invoice_ref ?? ''} onChange={e => set('invoice_ref', e.target.value)} /></FormField>
           <FormField label="Due Date"><input type="date" className={inputClass} value={f.due_date ?? ''} onChange={e => set('due_date', e.target.value)} /></FormField>
