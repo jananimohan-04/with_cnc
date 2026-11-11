@@ -98,48 +98,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     setNote(n < 0 ? `${which}: could not update.` : `${which} updated: ${n} row${n === 1 ? '' : 's'}.`);
   };
 
-  // The Reference Number of an invoice / inward is the order's Company ID with its date and time (1001-06OCT26-0952AM),
-  // found through the sales order / challan it came from; failing that the company's own ID (1001). The document
-  // number moves into the narration. Bank rows keep their cheque / UTR reference.
-  const [ids, setIds] = useState<{ byName: Map<string, string>; bySo: Map<string, string>; byDc: Map<string, string>; byBase: Map<string, string> }>({ byName: new Map(), bySo: new Map(), byDc: new Map(), byBase: new Map() });
-  useEffect(() => {
-    let off = false;
-    (async () => {
-      const byName = new Map<string, string>(), bySo = new Map<string, string>(), byDc = new Map<string, string>(), byBase = new Map<string, string>();
-      const enq = await supabase.from('cnc_enquiries').select('customer,lead_no,enquiry_no,created_at').order('created_at', { ascending: false });
-      for (const e of (enq.error ? [] : enq.data) ?? []) {
-        const k = nameKey(String(e.customer ?? ''));
-        if (k && !byName.has(k)) byName.set(k, stripStamp(String(e.lead_no || (e.enquiry_no ? `LD-${e.enquiry_no}` : ''))));
-      }
-      const cust = await supabase.from('cnc_customers').select('id,name');
-      for (const c of (cust.error ? [] : cust.data) ?? []) {
-        const k = nameKey(String(c.name ?? ''));
-        if (k && !byName.get(k)) byName.set(k, String(c.id));
-      }
-      const sos = await supabase.from('cnc_sales_orders').select('order_no,lead_no').order('created_at', { ascending: false });
-      for (const o of (sos.error ? [] : sos.data) ?? []) {
-        if (!o.lead_no) continue;
-        if (o.order_no) bySo.set(String(o.order_no), String(o.lead_no));
-        byBase.set(String(o.lead_no).toUpperCase(), String(o.lead_no)); // exact stamped number
-        const base = stripStamp(String(o.lead_no));
-        if (!byBase.has(base)) byBase.set(base, String(o.lead_no)); // newest order of that company
-      }
-      const dcs = await supabase.from('cnc_deliveries').select('delivery_no,sales_order_no');
-      for (const d of (dcs.error ? [] : dcs.data) ?? []) {
-        const lead = d.sales_order_no ? bySo.get(String(d.sales_order_no)) : undefined;
-        if (d.delivery_no && lead) byDc.set(String(d.delivery_no), lead);
-      }
-      if (!off) setIds({ byName, bySo, byDc, byBase });
-    })().catch(() => { /* references stay as document numbers */ });
-    return () => { off = true; };
-  }, [cid]);
-  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows, ...src.Opening.rows].map(l => {
-    if (l.source === 'Bank' || l.source === 'Opening') return l;
-    let id = '';
-    for (const k of l.links ?? []) { id = ids.bySo.get(k) || ids.byDc.get(k) || ids.byBase.get(k.toUpperCase()) || ids.byBase.get(stripStamp(k)) || ''; if (id) break; }
-    id = (id || ids.byName.get(nameKey(l.party)) || '').toUpperCase();
-    return id ? { ...l, ref: id, narration: [l.ref, l.narration].filter(Boolean).join(' · ') } : l;
-  }), [src, ids]);
+  // Reference No: the invoice number for an invoiced entry; for an inward, the reference number entered there (bank rows keep their cheque / UTR).
+  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows, ...src.Opening.rows], [src]);
   // The page shows a bank entry only when its description holds a payment word (UPI, NEFT, IMPS, Cheque ...); the others are hidden here.
   // (Invoice status and the Receivable / Payable chips still use every entry, so nothing paid ever looks unpaid.)
   const visibleAll = useMemo(() => all.filter(l => l.source !== 'Bank' || hasPaymentWord(l.detail ?? l.narration)), [all]);
