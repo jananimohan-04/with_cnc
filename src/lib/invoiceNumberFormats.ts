@@ -212,7 +212,10 @@ export function unhideInvoiceSeries(prefix: string): void {
  * Discovers all invoice series from database + local storage,
  * and determines the best series and next auto-generated number for a specific company.
  */
-export async function getInvoiceSeriesState(customerName?: string): Promise<{
+export async function getInvoiceSeriesState(
+  customerName?: string,
+  excludeInvoiceNo?: string
+): Promise<{
   seriesList: InvoiceSeriesConfig[];
   activeSeries: InvoiceSeriesConfig;
   suggestedNumber: string;
@@ -221,6 +224,8 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
   const companyPrefs = loadStoredCompanyPrefs();
   const hiddenPrefixes = new Set(loadHiddenSeriesPrefixes());
   const targetCompanyKey = normalizeCompanyName(customerName);
+  const excludeUpper = excludeInvoiceNo?.trim().toUpperCase() || '';
+  const usedInvoiceNos = new Set<string>();
 
   // Group existing numbers from DB
   const prefixMap = new Map<string, {
@@ -253,6 +258,10 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
 
     if (invRows && Array.isArray(invRows)) {
       for (const row of invRows) {
+        const rawNo = String(row.invoice_no ?? '').trim();
+        if (rawNo && rawNo.toUpperCase() !== excludeUpper) {
+          usedInvoiceNos.add(rawNo.toUpperCase());
+        }
         const parsed = parseInvoiceNumber(row.invoice_no);
         if (!parsed) continue;
 
@@ -326,8 +335,12 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
     const isSystemStandard = prefix === 'INV-';
     if (!isSystemStandard && hiddenPrefixes.has(prefix)) continue;
 
-    const nextNum = meta.maxNum + 1;
-    const nextNumber = `${prefix}${String(nextNum).padStart(meta.padding, '0')}${meta.suffix}`;
+    let nextNum = meta.maxNum + 1;
+    let nextNumber = `${prefix}${String(nextNum).padStart(meta.padding, '0')}${meta.suffix}`;
+    while (usedInvoiceNos.has(nextNumber.toUpperCase())) {
+      nextNum += 1;
+      nextNumber = `${prefix}${String(nextNum).padStart(meta.padding, '0')}${meta.suffix}`;
+    }
 
     const matchingCustom = customSeries.find((c) => c.prefix === prefix);
     const scopedCompanyName = matchingCustom?.scope === 'all'
@@ -419,6 +432,52 @@ export async function getInvoiceSeriesState(customerName?: string): Promise<{
     activeSeries,
     suggestedNumber: activeSeries.nextNumber,
   };
+}
+
+/**
+ * Finds the next free invoice number matching the prefix/format of `invoiceNo`,
+ * skipping any number already stored in `cnc_invoices` (excluding `excludeInvoiceId`).
+ */
+export async function findNextAvailableInvoiceNo(
+  invoiceNo: string,
+  excludeInvoiceId?: string
+): Promise<string | null> {
+  const parsed = parseInvoiceNumber(invoiceNo);
+  if (!parsed) return null;
+
+  try {
+    const { data } = await supabase
+      .from('cnc_invoices')
+      .select('id, invoice_no')
+      .not('invoice_no', 'is', null);
+
+    const taken = new Set<string>();
+    let maxNum = parsed.num;
+    for (const row of data ?? []) {
+      if (excludeInvoiceId && String(row.id) === String(excludeInvoiceId)) continue;
+      const raw = String(row.invoice_no ?? '').trim();
+      if (!raw) continue;
+      taken.add(raw.toUpperCase());
+      const p = parseInvoiceNumber(raw);
+      if (p && p.prefix === parsed.prefix && p.num > maxNum) {
+        maxNum = p.num;
+      }
+    }
+
+    if (!taken.has(parsed.raw.toUpperCase())) {
+      return parsed.raw;
+    }
+
+    let candidateNum = Math.max(parsed.num + 1, maxNum + 1);
+    let candidate = `${parsed.prefix}${String(candidateNum).padStart(parsed.padding, '0')}${parsed.suffix}`;
+    while (taken.has(candidate.toUpperCase())) {
+      candidateNum += 1;
+      candidate = `${parsed.prefix}${String(candidateNum).padStart(parsed.padding, '0')}${parsed.suffix}`;
+    }
+    return candidate;
+  } catch {
+    return null;
+  }
 }
 
 /**

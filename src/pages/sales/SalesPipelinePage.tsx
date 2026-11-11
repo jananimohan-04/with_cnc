@@ -1,4 +1,5 @@
-import { parseInvoiceNumber, getInvoiceSeriesState, registerInvoiceSeries } from '@/lib/invoiceNumberFormats';
+import { getInvoiceSeriesState, registerInvoiceSeries, findNextAvailableInvoiceNo } from '@/lib/invoiceNumberFormats';
+import { InvoiceSeriesPicker } from '@/components/sales/InvoiceSeriesPicker';
 import { DcOptionSelect } from '@/components/DcOptionSelect';
 import { sameProduct } from '@/lib/productMatch';
 import { defaultTermsText } from '@/lib/termsLibrary';
@@ -279,6 +280,81 @@ function formatSaleOrderDateTime(order: any): string | null {
     return String(order.created_at).slice(0, 16).replace('T', ' ');
   }
   return null;
+}
+
+/** Inline Invoice No cell with full series picker, format editor, global default, and duplicate protection. */
+function InlineInvoiceNoCell({
+  invoiceId,
+  savedValue,
+  customerName,
+  onSaveInvoiceNo,
+}: {
+  invoiceId: string;
+  savedValue: string;
+  customerName: string;
+  onSaveInvoiceNo: (nextVal: string) => Promise<{ ok: boolean; errorMessage?: string }>;
+}) {
+  const [draft, setDraft] = useState(savedValue);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(savedValue);
+  }, [invoiceId, savedValue]);
+
+  const handleCommit = async (rawNext: string) => {
+    const next = rawNext.trim();
+    if (!next || next === savedValue.trim() || saving) {
+      if (!next) setDraft(savedValue);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const freeCandidate = await findNextAvailableInvoiceNo(next, invoiceId);
+      let targetToSave = next;
+      if (freeCandidate && freeCandidate.toUpperCase() !== next.toUpperCase()) {
+        const useFree = window.confirm(
+          `Invoice number "${next}" is already used on another invoice.\n\nClick OK to use next available "${freeCandidate}", or Cancel to keep "${savedValue}".`
+        );
+        if (!useFree) {
+          setDraft(savedValue);
+          return;
+        }
+        targetToSave = freeCandidate;
+        setDraft(freeCandidate);
+      }
+
+      const res = await onSaveInvoiceNo(targetToSave);
+      if (!res.ok) {
+        alert(
+          /duplicate key|unique constraint|23505/i.test(res.errorMessage || '')
+            ? `Invoice number "${targetToSave}" is already used on another invoice.`
+            : `Failed to update Invoice No: ${res.errorMessage || 'Unknown error'}`
+        );
+        setDraft(savedValue);
+        return;
+      }
+
+      registerInvoiceSeries(targetToSave, customerName);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <InvoiceSeriesPicker
+      value={draft}
+      onChange={setDraft}
+      onCommit={(val) => void handleCommit(val)}
+      customerName={customerName}
+      excludeInvoiceNo={savedValue}
+      label="Invoice No"
+      hideLabelIcon
+      popoverAlign="left"
+      disabled={saving}
+      inputClassName="w-full text-sm font-semibold text-brand-900 rounded px-2 py-1 bg-white border border-brand-300 focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500 shadow-sm"
+    />
+  );
 }
 
 /** Normalised comparison key for names/codes (case- and space-insensitive). */
@@ -2758,7 +2834,13 @@ export function SalesPipelinePage() {
   const quoSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const [mockImages, setMockImages] = useState<Record<string, string>>({});
 
-  const handleInlineEdit = async (title: string, id: string, field: string | Record<string, any>, value?: string) => {
+  const handleInlineEdit = async (
+    title: string,
+    id: string,
+    field: string | Record<string, any>,
+    value?: string,
+    silent = false
+  ): Promise<{ ok: boolean; errorMessage?: string }> => {
     const tableMap: any = {
       'Enquiry': 'cnc_enquiries',
       'Quotation': 'cnc_quotations',
@@ -2769,7 +2851,7 @@ export function SalesPipelinePage() {
       'Invoice': 'cnc_invoices'
     };
     const table = tableMap[title];
-    if (!table) return;
+    if (!table) return { ok: false, errorMessage: 'Unknown stage table' };
 
     const patch: Record<string, any> = typeof field === 'object' ? field : { [field]: value };
 
@@ -2777,8 +2859,8 @@ export function SalesPipelinePage() {
       const { error } = await supabase.from(table).update(patch).eq('id', id);
       if (error) {
          console.error("Failed to update:", error);
-         alert("Failed to update field: " + error.message);
-         return;
+         if (!silent) alert("Failed to update field: " + error.message);
+         return { ok: false, errorMessage: error.message };
       }
     }
 
@@ -2801,6 +2883,7 @@ export function SalesPipelinePage() {
           return newPrev;
        });
        fetchPipeline();
+       return { ok: true };
   };
 
   const updateInwardGroup = async (groupRows: any[], patch: Record<string, any> | ((row: any, index: number) => Record<string, any>)) => {
@@ -3321,15 +3404,24 @@ export function SalesPipelinePage() {
             // A date field (invoice_date, due_date, delivery_date ...) is picked from a calendar, so it can never be saved misspelt.
             const isDateField = /(^|_)date$/.test(key) && /^\d{4}-\d{2}-\d{2}/.test(String(displayVal ?? ''));
             const isEditable = (viewEditMode && key !== 'created_at' && key !== 'updated_at') || isInvoiceNo;
+            if (isInvoiceNo) {
+              return (
+                <div key={key}>
+                  <InlineInvoiceNoCell
+                    invoiceId={String(raw.id || '')}
+                    savedValue={String(displayVal ?? '')}
+                    customerName={String(raw.customer_name || raw.customer || '')}
+                    onSaveInvoiceNo={(nextVal) =>
+                      handleInlineEdit('Invoice', raw.id, 'invoice_no', nextVal, true)
+                    }
+                  />
+                </div>
+              );
+            }
             return (
               <div key={key}>
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="block text-[10px] font-bold text-slate-500 uppercase">{formattedKey}</span>
-                  {isInvoiceNo && (
-                    <span className="text-[9px] font-semibold text-orange-700 bg-orange-50 px-1.5 py-0.2 rounded border border-orange-200" title="Invoice series format">
-                      Series: {parseInvoiceNumber(displayVal)?.prefix || 'INV-'} · Auto/Editable
-                    </span>
-                  )}
                 </div>
                 {key === 'invoice_type' ? (
                   viewEditMode ? (
@@ -3355,13 +3447,8 @@ export function SalesPipelinePage() {
                 ) : isEditable ? (
                    <input
                      type={isDateField ? 'date' : 'text'}
-                     className={`w-full text-sm font-medium rounded px-2 py-1 bg-white focus:outline-none ${
-                       isInvoiceNo
-                         ? 'text-brand-900 border border-brand-300 font-semibold focus:border-brand-600 focus:ring-1 focus:ring-brand-500 shadow-sm'
-                         : 'text-slate-800 border border-slate-300 focus:border-brand-500'
-                     }`}
+                     className="w-full text-sm font-medium rounded px-2 py-1 bg-white focus:outline-none text-slate-800 border border-slate-300 focus:border-brand-500"
                      defaultValue={isDateField ? String(displayVal ?? '').slice(0, 10) : (displayVal ?? '')}
-                     placeholder={isInvoiceNo ? 'Auto-generated (e.g. INV-0001)' : ''}
                      onKeyDown={(e) => {
                        if (e.key === 'Enter') {
                          (e.target as HTMLInputElement).blur();
@@ -3372,10 +3459,7 @@ export function SalesPipelinePage() {
                        const before = isDateField ? String(displayVal ?? '').slice(0, 10) : String(displayVal ?? '').trim();
                        if (isDateField && !next) return;   // a cleared date picker keeps the saved date
                        if (next !== before) {
-                         handleInlineEdit(title, raw.id, key, next);
-                         if (isInvoiceNo && next) {
-                           registerInvoiceSeries(next, raw.customer_name || raw.customer);
-                         }
+                         void handleInlineEdit(title, raw.id, key, next);
                        }
                      }}
                    />

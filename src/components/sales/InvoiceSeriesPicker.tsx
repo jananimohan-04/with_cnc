@@ -34,6 +34,13 @@ interface InvoiceSeriesPickerProps {
   inputClassName?: string;
   disabled?: boolean;
   onSeriesSelected?: (series: InvoiceSeriesConfig) => void;
+  /** Fires on discrete picks (selecting a series, setting default, refresh, save format) or on input Enter/blur. */
+  onCommit?: (val: string) => void | Promise<void>;
+  /** Existing invoice number already owned by the record being edited (so it is not flagged as a collision with itself). */
+  excludeInvoiceNo?: string;
+  label?: string;
+  hideLabelIcon?: boolean;
+  popoverAlign?: 'left' | 'right';
 }
 
 export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
@@ -43,6 +50,11 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   inputClassName = '',
   disabled = false,
   onSeriesSelected,
+  onCommit,
+  excludeInvoiceNo,
+  label = 'Invoice Number',
+  hideLabelIcon = false,
+  popoverAlign = 'right',
 }) => {
   const [seriesList, setSeriesList] = useState<InvoiceSeriesConfig[]>([]);
   const [activeSeries, setActiveSeries] = useState<InvoiceSeriesConfig | null>(null);
@@ -86,11 +98,15 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getInvoiceSeriesState(customerName)
+    getInvoiceSeriesState(customerName, excludeInvoiceNo)
       .then((state) => {
         if (cancelled) return;
         setSeriesList(state.seriesList);
-        setActiveSeries(state.activeSeries);
+        const parsedVal = value ? parseInvoiceNumber(value) : null;
+        const matchedByValue = parsedVal
+          ? state.seriesList.find((s) => s.prefix === parsedVal.prefix)
+          : undefined;
+        setActiveSeries(matchedByValue || state.activeSeries);
 
         // If the invoice number is currently blank, auto-populate with the suggested next number!
         if (!value || value.trim() === '') {
@@ -106,7 +122,17 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [customerName]);
+  }, [customerName, excludeInvoiceNo]);
+
+  // Keep the displayed active series in sync if `value` changes externally
+  useEffect(() => {
+    const parsedVal = value ? parseInvoiceNumber(value) : null;
+    if (!parsedVal || !seriesList.length) return;
+    const matched = seriesList.find((s) => s.prefix === parsedVal.prefix);
+    if (matched && matched.prefix !== activeSeries?.prefix) {
+      setActiveSeries(matched);
+    }
+  }, [value, seriesList, activeSeries?.prefix]);
 
   // When user selects an existing format for this invoice
   const handleSelectSeries = (s: InvoiceSeriesConfig) => {
@@ -116,6 +142,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     setShowMenu(false);
     setConfirmDeletePrefix(null);
     resetFormState();
+    if (onCommit) void onCommit(s.nextNumber);
   };
 
   // Set any format as the Global Default for all customers in one click
@@ -123,12 +150,13 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     e.stopPropagation();
     setConfirmDeletePrefix(null);
     setGlobalDefaultInvoiceSeries(s.prefix, seriesList, customerName);
-    const state = await getInvoiceSeriesState(customerName);
+    const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
     setSeriesList(state.seriesList);
     const updated = state.seriesList.find((x) => x.prefix === s.prefix) || { ...s, isDefault: true, companyName: undefined };
     setActiveSeries(updated);
     onChange(updated.nextNumber);
     if (onSeriesSelected) onSeriesSelected(updated);
+    if (onCommit) void onCommit(updated.nextNumber);
   };
 
   // Start editing an existing format
@@ -163,7 +191,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
     deleteInvoiceSeries(s.prefix);
     setConfirmDeletePrefix(null);
 
-    const state = await getInvoiceSeriesState(customerName);
+    const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
     setSeriesList(state.seriesList);
 
     const parsedVal = parseInvoiceNumber(value);
@@ -175,6 +203,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
       setActiveSeries(state.activeSeries);
       onChange(state.suggestedNumber);
       if (onSeriesSelected) onSeriesSelected(state.activeSeries);
+      if (onCommit) void onCommit(state.suggestedNumber);
     }
   };
 
@@ -213,7 +242,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
           }
         );
 
-        const state = await getInvoiceSeriesState(customerName);
+        const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
         setSeriesList(state.seriesList);
 
         if (updated) {
@@ -227,6 +256,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
             setActiveSeries(refreshed);
             onChange(refreshed.nextNumber);
             if (onSeriesSelected) onSeriesSelected(refreshed);
+            if (onCommit) void onCommit(refreshed.nextNumber);
           }
         }
 
@@ -251,13 +281,14 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
       );
 
       if (registered) {
-        const state = await getInvoiceSeriesState(customerName);
+        const state = await getInvoiceSeriesState(customerName, excludeInvoiceNo);
         setSeriesList(state.seriesList);
         const refreshed =
           state.seriesList.find((x) => x.prefix === registered.prefix) || registered;
         setActiveSeries(refreshed);
         onChange(refreshed.nextNumber);
         if (onSeriesSelected) onSeriesSelected(refreshed);
+        if (onCommit) void onCommit(refreshed.nextNumber);
       }
 
       resetFormState();
@@ -271,9 +302,11 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   const handleRefreshNext = () => {
     if (activeSeries) {
       onChange(activeSeries.nextNumber);
+      if (onCommit) void onCommit(activeSeries.nextNumber);
     } else {
-      getInvoiceSeriesState(customerName).then((state) => {
+      getInvoiceSeriesState(customerName, excludeInvoiceNo).then((state) => {
         onChange(state.suggestedNumber);
+        if (onCommit) void onCommit(state.suggestedNumber);
       });
     }
   };
@@ -287,10 +320,10 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
   return (
     <div className="relative" ref={menuRef}>
       {/* Top row: Label + Format Picker Toggle */}
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
-          <Hash size={11} className="text-orange-500" />
-          <span>Invoice Number</span>
+      <div className={`flex items-center justify-between ${hideLabelIcon ? 'mb-0.5' : 'mb-1'}`}>
+        <label className={`text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1 ${hideLabelIcon ? '' : 'tracking-wider'}`}>
+          {!hideLabelIcon && <Hash size={11} className="text-orange-500" />}
+          <span>{label}</span>
         </label>
 
         <button
@@ -302,7 +335,7 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
             resetFormState();
           }}
           disabled={disabled}
-          title="Click to choose invoice format series or add custom format for this company"
+          title="Click to choose, edit, or set default invoice format series"
           className="text-[10px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/80 px-2 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
         >
           <Sparkles size={10} className="text-orange-500" />
@@ -332,6 +365,14 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
               if (matched) setActiveSeries(matched);
             }
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          onBlur={(e) => {
+            if (onCommit) void onCommit(e.target.value.trim());
+          }}
           className={`${inputClassName} font-bold text-slate-900 pr-8`}
           data-testid="inv-docno"
         />
@@ -360,7 +401,11 @@ export const InvoiceSeriesPicker: React.FC<InvoiceSeriesPickerProps> = ({
 
       {/* Format Selector Dropdown Popover */}
       {showMenu && (
-        <div className="absolute right-0 top-full mt-1.5 w-[360px] sm:w-[440px] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3 text-xs animate-scale-in">
+        <div
+          className={`absolute ${
+            popoverAlign === 'left' ? 'left-0' : 'right-0'
+          } top-full mt-1.5 w-[360px] sm:w-[440px] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3 text-xs animate-scale-in`}
+        >
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
             <div>
               <p className="font-bold text-slate-800 text-xs">Invoice Number Formats</p>
