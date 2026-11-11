@@ -17,6 +17,8 @@ export interface LedgerLine {
   ref: string;
   particulars: string;
   narration: string;
+  /** For a bank entry: its description (and mode), used to decide whether the Ledger page shows it. */
+  detail?: string;
   debit: number;
   credit: number;
   party: string;
@@ -38,11 +40,23 @@ const num = (v: unknown): number => { const n = Number(v); return Number.isFinit
 const day = (v: unknown): string => String(v ?? '').slice(0, 10);
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** The Ledger page shows a bank entry only when its description contains one of these payment words
+ *  (UPI, UPI QR, IMPS, Mobile IMPS, NEFT, RTGS, Internal Transfer, Cheque, Demand Draft, POS Payment, ATM Transaction,
+ *  Net Banking, Mobile Banking, Digital Wallet, Payment Gateway, NACH, Auto Debit, Bulk Transfer, SWIFT Transfer, Other),
+ *  including the short forms banks print (IFT, By Clg, MB/, DD, ECS ...). */
+export const PAYMENT_WORDS: RegExp[] = [
+  /\bUPI\b/i, /\bIMPS\b/i, /\bNEFT\b/i, /\bRTGS\b/i, /\bSWIFT\b/i, /\bNACH\b/i, /\bPOS\b/i, /\bATM\b/i, /\bECS\b/i,
+  /internal\s*(fund\s*)?transfer|\bIFT\b/i, /\bch(e)?que\b|\bchq\b|\bby\s*clg\b|\bclearing\b/i, /demand\s*draft|\bDD\b/i,
+  /net\s*banking|internet\s*banking/i, /mobile\s*banking|^\s*MB\//i, /\bwallet\b|paytm|phonepe|gpay|google\s*pay|amazon\s*pay/i,
+  /payment\s*gateway|razorpay|payu|ccavenue|billdesk|cashfree/i, /auto\s*debit|\bmandate\b/i, /bulk\s*(transfer|payment|upload)/i, /\bother/i,
+];
+export const hasPaymentWord = (text: string | null | undefined): boolean => PAYMENT_WORDS.some(re => re.test(String(text ?? '')));
+
 export function fromBank(rows: BankRow[]): LedgerLine[] {
   // a cancelled entry is not money that moved: leaving it in made cancelled receipts still count as paid
   return rows.filter(r => String((r as any).status ?? '') !== 'Cancelled').map(r => ({
     id: `bank:${r.id}`, source: 'Bank' as const, date: day(r.txn_date), ref: r.reference_no ?? '',
-    particulars: r.account_name ?? '', narration: r.mode || r.description || '',
+    particulars: r.account_name ?? '', narration: r.mode || r.description || '', detail: `${r.description ?? ''} ${r.mode ?? ''}`,
     debit: r.direction === 'OUT' ? r2(num(r.amount)) : 0, credit: r.direction === 'IN' ? r2(num(r.amount)) : 0,
     party: r.party_name ?? '', ledgerType: r.party_type ?? '', linked: !!r.invoice_id,
   }));

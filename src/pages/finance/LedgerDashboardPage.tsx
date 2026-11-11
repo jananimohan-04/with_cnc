@@ -12,7 +12,7 @@ import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { addRoundedLogo } from '@/lib/brandedDocument';
 import {
-  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
+  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, hasPaymentWord, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
 
@@ -140,6 +140,9 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
     id = (id || ids.byName.get(nameKey(l.party)) || '').toUpperCase();
     return id ? { ...l, ref: id, narration: [l.ref, l.narration].filter(Boolean).join(' · ') } : l;
   }), [src, ids]);
+  // The page shows a bank entry only when its description holds a payment word (UPI, NEFT, IMPS, Cheque ...); the others are hidden here.
+  // (Invoice status and the Receivable / Payable chips still use every entry, so nothing paid ever looks unpaid.)
+  const visibleAll = useMemo(() => all.filter(l => l.source !== 'Bank' || hasPaymentWord(l.detail ?? l.narration)), [all]);
   const recPay = useMemo(() => receivablePayable(all), [all]);
   const settled = useMemo(() => settleDocuments(all, todayISO()), [all]);
   const statusText = (id: string): string => {
@@ -150,13 +153,13 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   };
   const parties = useMemo(() => {
     const byKey = new Map<string, string>();
-    for (const l of all) { const k = nameKey(l.party); if (k && !byKey.has(k)) byKey.set(k, l.party.trim().replace(/\s+/g, ' ')); }
+    for (const l of visibleAll) { const k = nameKey(l.party); if (k && !byKey.has(k)) byKey.set(k, l.party.trim().replace(/\s+/g, ' ')); }
     return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [all]);
+  }, [visibleAll]);
   // Global Topbar range intersects the page's own From/To.
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   const { from: effFrom, to: effTo } = intersectRange(applied.from, applied.to, globalFrom, globalTo);
-  const baseFiltered = useMemo(() => filterLines(all, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [all, applied, search, effFrom, effTo]);
+  const baseFiltered = useMemo(() => filterLines(visibleAll, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [visibleAll, applied, search, effFrom, effTo]);
   // filters in the column headers (same as the other list pages)
   const [colF, setColF] = useState<Record<string, string>>({});
   const setCol = (k: string, v: string) => setColF(f => { const c = { ...f }; if (v) c[k] = v; else delete c[k]; return c; });
@@ -421,8 +424,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
           <Button icon={<FileDown size={14} />} onClick={() => void downloadPdf()}>Download PDF</Button></>}>
         {preview && <iframe ref={previewFrame} title="Ledger preview" data-testid="ledger-preview-frame" src={preview} className="w-full h-[68vh] rounded-lg border border-slate-200 bg-slate-100" />}
       </Modal>
-      <StatementModal open={modal === 'statement'} onClose={() => setModal(null)} lines={all} parties={parties} party={stmtParty} setParty={setStmtParty} initFrom={applied.from} initTo={applied.to} company={company?.company_name ?? ''} />
-      <BookModal open={modal === 'book'} onClose={() => setModal(null)} lines={filterLines(all, { from: applied.from, to: applied.to })} onOpen={p => { setStmtParty(p); setModal('statement'); }} />
+      <StatementModal open={modal === 'statement'} onClose={() => setModal(null)} lines={visibleAll} parties={parties} party={stmtParty} setParty={setStmtParty} initFrom={applied.from} initTo={applied.to} company={company?.company_name ?? ''} />
+      <BookModal open={modal === 'book'} onClose={() => setModal(null)} lines={filterLines(visibleAll, { from: applied.from, to: applied.to })} onOpen={p => { setStmtParty(p); setModal('statement'); }} />
     </div>
   );
 }
