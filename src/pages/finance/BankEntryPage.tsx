@@ -1034,7 +1034,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
         <button className={btn} disabled={busy} onClick={add}><Plus size={14} />Add</button>
       </div>
       {err && <p role="alert" data-testid="banks-error" className="mt-2 text-xs text-red-600">{err}</p>}
-      <div className="mt-1 max-h-80 overflow-y-auto divide-y divide-slate-100">
+      <div className="mt-1 divide-y divide-slate-100">
         {displayedAccounts.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No bank or cash accounts yet.</p>}
         {displayedAccounts.map(a => {
           const system = !!a.system_key;
@@ -1134,7 +1134,7 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
         <button className={btn} onClick={add}><Plus size={14} />Add Type</button>
       </div>
       {err && <p role="alert" data-testid="types-error" className="mt-2 text-xs text-red-600">{err}</p>}
-      <div className="mt-1 max-h-80 overflow-y-auto divide-y divide-slate-100">
+      <div className="mt-1 divide-y divide-slate-100">
         {types.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No types yet.</p>}
         {types.map(t => (
           <div key={t.id} data-testid="type-row" className="py-2 text-sm">
@@ -1203,7 +1203,7 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
         <button className={btn} onClick={add}><Plus size={14} />Add Company</button>
       </div>
       {err && <p role="alert" data-testid="others-error" className="mt-2 text-xs text-red-600">{err}</p>}
-      <div className="mt-2 max-h-80 overflow-y-auto divide-y divide-slate-100">
+      <div className="mt-2 divide-y divide-slate-100">
         {list.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No parties yet, for example Petrol, Bank Charges or a loan account.</p>}
         {list.map(o => (
           <div key={o.name} data-testid="other-row" className="flex items-center gap-2 py-2 text-sm">
@@ -1603,7 +1603,7 @@ function ManualEntryModal({
         </div>
 
         {list.length > 0 && (
-          <div className="mt-2 overflow-auto max-h-60 border border-slate-200 rounded-xl">
+          <div className="mt-2 overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-xs">
               <thead className="bg-slate-50/95 backdrop-blur sticky top-0 shadow-2xs">
                 <tr className="text-left">
