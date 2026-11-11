@@ -424,11 +424,19 @@ export function OpeningBalancesPage() {
             <Search size={14} className="pointer-events-none z-10 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input aria-label="Search by name" className={`${sel} !pl-8 !w-52`} placeholder="Search name, code, entry no…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select aria-label="Filter by opening status" className={`${sel} !w-auto shrink-0 ${statusFilter ? '!border-orange-500 ring-1 ring-orange-400' : ''}`} value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}>
-            <option value="">All {tab === 'BANK' ? 'banks' : tab === 'STOCK' ? 'items' : 'companies'}</option>
+          <select aria-label="Filter openings" className={`${sel} !w-auto shrink-0 ${(view === 'entries' || statusFilter) ? '!border-orange-500 ring-1 ring-orange-400' : ''}`}
+            value={view === 'entries' ? 'entries' : statusFilter}
+            onChange={e => {
+              const v = e.target.value;
+              clearFilters();
+              if (v === 'entries') { setView('entries'); return; }
+              setView('all'); setStatusFilter(v as typeof statusFilter);
+            }}>
+            <option value="">All</option>
             <option value="none">No opening yet</option>
             <option value="Draft">Draft (not posted)</option>
             <option value="Posted">Posted</option>
+            <option value="entries">Entered openings</option>
           </select>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportRows} disabled={!shown.length}>Export CSV</Button>
@@ -452,14 +460,6 @@ export function OpeningBalancesPage() {
             <t.icon size={14} />{t.label}
           </button>
         ))}
-        <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
-          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : 'All companies'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
-            <button key={k} type="button" onClick={() => { setView(k); clearFilters(); }}
-              className={`h-8 px-3 rounded-md text-xs font-bold transition ${view === k ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
         {canManage && drafts.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-500">{drafts.length} draft{drafts.length === 1 ? '' : 's'} waiting to be posted</span>
