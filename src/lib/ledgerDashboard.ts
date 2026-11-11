@@ -17,6 +17,8 @@ export interface LedgerLine {
   ref: string;
   particulars: string;
   narration: string;
+  /** The bank's full description of the entry (searched, but the ledger shows only the payment mode). */
+  detail?: string;
   debit: number;
   credit: number;
   party: string;
@@ -38,11 +40,40 @@ const num = (v: unknown): number => { const n = Number(v); return Number.isFinit
 const day = (v: unknown): string => String(v ?? '').slice(0, 10);
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** How the money moved, read from the bank's description. The first match in this order wins (specific ones first). */
+export const PAYMENT_MODES: { name: string; re: RegExp }[] = [
+  { name: 'UPI QR', re: /\bUPI\s*-?\s*QR\b/i },
+  { name: 'Mobile IMPS', re: /\bmobile\s*imps\b/i },
+  { name: 'UPI', re: /\bUPI\b/i },
+  { name: 'IMPS', re: /\bIMPS\b/i },
+  { name: 'NEFT', re: /\bNEFT\b/i },
+  { name: 'RTGS', re: /\bRTGS\b/i },
+  { name: 'SWIFT Transfer', re: /\bSWIFT\b/i },
+  { name: 'Internal Transfer', re: /internal\s*(fund\s*)?transfer|\bIB\s*IFT\b|\bIFT\b/i },
+  { name: 'Bulk Transfer', re: /bulk\s*(transfer|payment|upload)/i },
+  { name: 'NACH', re: /\bNACH\b/i },
+  { name: 'Auto Debit', re: /auto\s*debit|\bECS\b|\bmandate\b/i },
+  { name: 'Demand Draft', re: /demand\s*draft|\bDD\b/i },
+  { name: 'Cheque', re: /\bch(e)?que\b|\bchq\b|\bby\s*clg\b|\bclearing\b/i },
+  { name: 'POS Payment', re: /\bPOS\b/i },
+  { name: 'ATM Transaction', re: /\bATM\b/i },
+  { name: 'Payment Gateway', re: /payment\s*gateway|razorpay|payu|ccavenue|billdesk|cashfree/i },
+  { name: 'Digital Wallet', re: /\bwallet\b|paytm|phonepe|gpay|google\s*pay|amazon\s*pay/i },
+  { name: 'Net Banking', re: /net\s*banking|internet\s*banking/i },
+  { name: 'Mobile Banking', re: /mobile\s*banking|^\s*MB\//i },
+];
+export function paymentModeOf(text: string | null | undefined): string | null {
+  const t = String(text ?? '');
+  for (const m of PAYMENT_MODES) if (m.re.test(t)) return m.name;
+  return null;
+}
+
 export function fromBank(rows: BankRow[]): LedgerLine[] {
   // a cancelled entry is not money that moved: leaving it in made cancelled receipts still count as paid
   return rows.filter(r => String((r as any).status ?? '') !== 'Cancelled').map(r => ({
     id: `bank:${r.id}`, source: 'Bank' as const, date: day(r.txn_date), ref: r.reference_no ?? '',
-    particulars: r.account_name ?? '', narration: r.mode || r.description || '',
+    // the ledger shows only the payment mode (UPI, NEFT, IMPS, Cheque ...); the full description is kept for searching
+    particulars: r.account_name ?? '', narration: paymentModeOf(r.description) ?? (r.mode && !/statement import/i.test(r.mode) ? r.mode : 'Other'), detail: r.description ?? '',
     debit: r.direction === 'OUT' ? r2(num(r.amount)) : 0, credit: r.direction === 'IN' ? r2(num(r.amount)) : 0,
     party: r.party_name ?? '', ledgerType: r.party_type ?? '', linked: !!r.invoice_id,
   }));
@@ -113,7 +144,7 @@ export function filterLines(lines: LedgerLine[], f: LedgerFilter): LedgerLine[] 
     if (f.to && (!l.date || l.date > f.to)) return false;
     if (part && !l.particulars.toLowerCase().includes(part)) return false;
     if (f.party && nameKey(l.party) !== nameKey(f.party)) return false;
-    if (search && ![l.date, l.ref, l.particulars, l.narration, l.party, l.ledgerType, String(l.debit || ''), String(l.credit || '')].some(x => x.toLowerCase().includes(search))) return false;
+    if (search && ![l.date, l.ref, l.particulars, l.narration, l.detail ?? '', l.party, l.ledgerType, String(l.debit || ''), String(l.credit || '')].some(x => x.toLowerCase().includes(search))) return false;
     return true;
   });
 }
