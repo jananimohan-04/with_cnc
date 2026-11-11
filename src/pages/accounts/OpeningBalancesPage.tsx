@@ -58,8 +58,10 @@ export function OpeningBalancesPage() {
   const [fyId, setFyId] = useState('');
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // 'all' lists every bank / customer / supplier / item with its opening balance (blank if none); 'entries' is the plain list of entered openings
+  const [view, setView] = useState<'all' | 'entries'>('all');
 
-  const [form, setForm] = useState<{ type: OpeningType; entry?: OpeningEntry } | null>(null);
+  const [form, setForm] = useState<{ type: OpeningType; entry?: OpeningEntry; prefill?: OpeningDraft } | null>(null);
   const [bulk, setBulk] = useState<BulkRow[] | null>(null);
   const [preview, setPreview] = useState<OpeningPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -71,12 +73,12 @@ export function OpeningBalancesPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [lk, list] = await Promise.all([openingApi.lookups(), openingApi.list({ search, fyId })]);
+      const [lk, list] = await Promise.all([openingApi.lookups(), openingApi.list({ search: view === 'entries' ? search : '', fyId })]);
       setLookups(lk); setRows(list.rows);
       setPicked(new Set());
     } catch (e) { setError(errText(e)); }
     finally { setLoading(false); }
-  }, [search, fyId]);
+  }, [search, fyId, view]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -89,6 +91,39 @@ export function OpeningBalancesPage() {
   const drafts = shown.filter(e => e.status === 'Draft');
   const allPicked = drafts.length > 0 && drafts.every(e => picked.has(e.id));
   const togglePick = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // Every bank account / customer / supplier / item, each with its opening (from the entries, Reversed ones ignored)
+  interface MasterRow { key: string; type: OpeningType; name: string; code: string; sub: string; entries: OpeningEntry[]; net: number; qty: number; value: number; unit: string; current: string; prefill: OpeningDraft }
+  const master = useMemo<MasterRow[]>(() => {
+    if (!lookups) return [];
+    const live = rows.filter(e => e.status !== 'Reversed');
+    const signed = (list: OpeningEntry[]) => list.reduce((n, e) => n + (e.side === 'CR' ? -1 : 1) * num(e.amount), 0);
+    const q = search.trim().toLowerCase();
+    const hit = (...v: (string | null | undefined)[]) => !q || v.some(x => (x ?? '').toLowerCase().includes(q));
+    let out: MasterRow[] = [];
+    if (tab === 'BANK') {
+      out = lookups.banks.map(b => {
+        const en = live.filter(e => e.entry_type === 'BANK' && e.account_id === b.id);
+        return { key: b.id, type: 'BANK' as const, name: b.name, code: b.code, sub: b.type, entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: money(num(b.balance)), prefill: { account_id: b.id } };
+      });
+    } else if (tab === 'PARTY') {
+      const list = (kind === 'CUSTOMER' ? lookups.customers : lookups.suppliers) as { id: string; name: string; code?: string | null }[];
+      out = list.map(pt => {
+        const nk = pt.name.trim().toLowerCase();
+        const en = live.filter(e => e.entry_type === kind && (e.party_id === pt.id || (e.party_name ?? '').trim().toLowerCase() === nk));
+        return { key: pt.id, type: kind, name: pt.name, code: pt.code ?? '', sub: kind === 'CUSTOMER' ? 'Customer' : 'Supplier', entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: '',
+          prefill: { party_id: pt.id, party_name: pt.name, party_code: kind === 'SUPPLIER' ? (pt.code ?? '') : '' } };
+      });
+    } else {
+      out = lookups.items.map(i => {
+        const en = live.filter(e => e.entry_type === 'STOCK' && e.item_id === i.id && e.item_kind === i.kind);
+        return { key: `${i.kind}:${i.id}`, type: 'STOCK' as const, name: i.name, code: i.code ?? '', sub: i.kind === 'RAW' ? 'Material' : 'Part', entries: en, net: 0,
+          qty: en.reduce((n, e) => n + num(e.qty), 0), value: en.reduce((n, e) => n + num(e.amount), 0), unit: i.unit ?? '', current: `${num(i.stock).toLocaleString('en-IN')} ${i.unit ?? ''}`.trim(),
+          prefill: { item_kind: i.kind, item_id: i.id, unit_cost: i.rate } };
+      });
+    }
+    return out.filter(m => hit(m.name, m.code));
+  }, [lookups, rows, tab, kind, search]);
 
   const addType: OpeningType = tab === 'BANK' ? 'BANK' : tab === 'STOCK' ? 'STOCK' : kind;
   const addLabel = tab === 'BANK' ? 'Add Bank Balance' : tab === 'STOCK' ? 'Add Opening Stock' : kind === 'CUSTOMER' ? 'Add Customer Balance' : 'Add Supplier Balance';
@@ -176,6 +211,55 @@ export function OpeningBalancesPage() {
     }));
   };
 
+  const masterView = (() => {
+    if (loading && !lookups) return <LoadingState message="Loading…" />;
+    if (!master.length) return <EmptyState icon={<FilePlus2 size={28} />} title="Nothing to list" message={tab === 'BANK' ? 'No bank or cash accounts found.' : tab === 'STOCK' ? 'No inventory items found.' : 'No parties found.'} />;
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className={th}>{tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : kind === 'CUSTOMER' ? 'Customer' : 'Supplier'}</th>
+              {tab === 'STOCK' && <th className={th}>Unit</th>}
+              {tab === 'STOCK' ? (<><th className={thR}>Opening qty</th><th className={thR}>Opening value</th><th className={thR}>Stock now</th></>)
+                : (<><th className={thR}>Opening balance</th>{tab === 'BANK' && <th className={thR}>Balance now</th>}{tab === 'PARTY' && <th className={thR}>Entries</th>}</>)}
+              <th className={th}>Status</th><th className={`${th} text-right`}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {master.map(m => {
+              const dr = m.entries.filter(e => e.status === 'Draft'); const po = m.entries.filter(e => e.status === 'Posted');
+              const status = !m.entries.length ? '' : dr.length ? 'Draft' : 'Posted';
+              const canAdd = canManage && (m.entries.length === 0 || tab === 'PARTY');
+              return (
+                <tr key={m.key} className="hover:bg-orange-50/40">
+                  <td className={`${td} font-semibold`}>{m.name}{m.code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{m.code}</span>}<span className="ml-1.5 text-[10px] font-semibold uppercase text-slate-400">{m.sub}</span></td>
+                  {tab === 'STOCK' && <td className={td}>{m.unit}</td>}
+                  {tab === 'STOCK' ? (<>
+                    <td className={tdR}>{m.entries.length ? m.qty.toLocaleString('en-IN') : <span className="text-slate-300">-</span>}</td>
+                    <td className={`${tdR} font-semibold`}>{m.entries.length ? money(m.value) : <span className="text-slate-300">-</span>}</td>
+                    <td className={tdR}>{m.current}</td></>) : (<>
+                    <td className={`${tdR} font-semibold`}>{m.entries.length ? <>{money(Math.abs(m.net))} <span className="text-[10px] text-slate-400">{m.net < 0 ? 'Cr' : 'Dr'}</span></> : <span className="text-slate-300">-</span>}</td>
+                    {tab === 'BANK' && <td className={tdR}>{m.current}</td>}
+                    {tab === 'PARTY' && <td className={tdR}>{m.entries.length || <span className="text-slate-300">-</span>}</td>}</>)}
+                  <td className={td}>{status ? <Badge variant={statusVariant(status)} dot>{status}</Badge> : <span className="text-[11px] text-slate-400">No opening</span>}</td>
+                  <td className={`${td} text-right whitespace-nowrap`}>
+                    <div className="inline-flex items-center gap-1">
+                      {canAdd && <button type="button" onClick={() => setForm({ type: m.type, prefill: m.prefill })} className="h-7 px-2 inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-bold hover:bg-orange-100"><Plus size={12} />Add opening</button>}
+                      {dr.length === 1 && <IconBtn label="Edit draft" onClick={() => setForm({ type: m.type, entry: dr[0] })}><Pencil size={14} /></IconBtn>}
+                      {dr.length > 0 && canManage && <IconBtn label="Validate, preview & post" onClick={() => openPreview(dr.map(d => d.id))}><CheckCircle2 size={14} /></IconBtn>}
+                      {po.length > 0 && <IconBtn label={tab === 'STOCK' ? 'View stock' : 'View ledger'} onClick={() => viewIn(po[0])}><Eye size={14} /></IconBtn>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  })();
+
   if (!company) {
     return (
       <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
@@ -216,13 +300,19 @@ export function OpeningBalancesPage() {
         </div>
       </Card>
 
-      <div className={`${tab === 'PARTY' || (canManage && drafts.length > 0) ? 'flex' : 'flex lg:hidden'} flex-wrap items-center gap-1.5`}>
+      <div className="flex flex-wrap items-center gap-1.5">
         {TABS.map(t => (
           <button key={t.id} type="button" onClick={() => { setTab(t.id); setPicked(new Set()); }}
             className={`lg:hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-bold border transition ${tab === t.id ? 'bg-orange-600 text-white border-orange-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
             <t.icon size={14} />{t.label}
           </button>
         ))}
+        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="What to list">
+          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : kind === 'CUSTOMER' ? 'All customers' : 'All suppliers'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setView(k)}
+              className={`h-9 px-3 text-[13px] font-semibold ${view === k ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
+          ))}
+        </div>
         {tab === 'PARTY' && (
           <div className="ml-2 lg:ml-0 inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="Customer or supplier">
             {(['CUSTOMER', 'SUPPLIER'] as PartyKind[]).map(k => (
@@ -244,7 +334,7 @@ export function OpeningBalancesPage() {
       )}
 
       <Card className="overflow-hidden">
-        {loading && !rows.length ? <LoadingState message="Loading opening entries…" /> : !shown.length ? (
+        {view === 'all' ? masterView : loading && !rows.length ? <LoadingState message="Loading opening entries…" /> : !shown.length ? (
           <EmptyState icon={<FilePlus2 size={28} />} title="No opening entries yet" message={`Use “${addLabel}” to enter the first one. Nothing counts in the books until it is posted.`} />
         ) : (
           <div className="overflow-x-auto">
@@ -295,7 +385,7 @@ export function OpeningBalancesPage() {
       </Card>
 
       {form && lookups && (
-        <EntryForm key={form.entry?.id ?? 'new'} type={form.type} entry={form.entry} lookups={lookups} fyDefault={todayISO()}
+        <EntryForm key={form.entry?.id ?? `new-${form.type}-${form.prefill?.account_id ?? form.prefill?.party_id ?? form.prefill?.item_id ?? ''}`} type={form.type} entry={form.entry} prefill={form.prefill} lookups={lookups} fyDefault={todayISO()}
           onClose={() => setForm(null)} onSaved={async (msg) => { setForm(null); say('ok', msg); await load(); }} />
       )}
       {bulk && lookups && (
@@ -322,8 +412,8 @@ function IconBtn({ label, onClick, children, danger }: { label: string; onClick:
 // ------------------------------------------------------------------------------------------------
 // Add / edit one draft
 // ------------------------------------------------------------------------------------------------
-function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
-  type: OpeningType; entry?: OpeningEntry; lookups: OpeningLookups; fyDefault: string; onClose: () => void; onSaved: (msg: string) => void | Promise<void>;
+function EntryForm({ type, entry, prefill, lookups, fyDefault, onClose, onSaved }: {
+  type: OpeningType; entry?: OpeningEntry; prefill?: OpeningDraft; lookups: OpeningLookups; fyDefault: string; onClose: () => void; onSaved: (msg: string) => void | Promise<void>;
 }) {
   const [f, setF] = useState<OpeningDraft>(() => entry ? {
     id: entry.id, entry_type: entry.entry_type, opening_date: entry.opening_date, account_id: entry.account_id ?? '', party_id: entry.party_id ?? '', party_name: entry.party_name ?? '',
@@ -334,6 +424,8 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
     entry_type: type, opening_date: fyDefault, currency: 'INR', account_id: '', party_id: '', party_name: '', party_code: '', invoice_ref: '', due_date: '', item_id: '', warehouse_id: '', qty: '', unit_cost: '', amount: '', remarks: '',
     balance_type: type === 'BANK' ? 'Debit' : type === 'CUSTOMER' ? 'Receivable' : type === 'SUPPLIER' ? 'Payable' : '',
   });
+  // opened from a row of the full list: the bank / party / item is already chosen
+  useEffect(() => { if (prefill && !entry) setF(p => ({ ...p, ...prefill })); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k: keyof OpeningDraft, v: string) => setF(p => ({ ...p, [k]: v }));
@@ -350,7 +442,33 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
     setF(prev => ({ ...prev, item_kind: it?.kind, item_id: it?.id ?? '', unit_cost: it && !num(prev.unit_cost) ? it.rate : prev.unit_cost }));
   };
 
+  // Two boxes instead of a "Balance Type" dropdown + amount: the box you type in decides the side.
+  // Same direction as Bank Entry / Petty Cash — Credit = money in (the normal positive balance),
+  // Debit = money out (overdraft, we owe the party). The server derives side (Dr/Cr) from balance_type.
+  const moneyInType = type === 'BANK' ? 'Debit' : type === 'CUSTOMER' ? 'Receivable' : 'Debit Balance';
+  const moneyOutType = type === 'BANK' ? 'Overdraft' : type === 'CUSTOMER' ? 'Credit Balance' : 'Payable';
+  const bt = (f.balance_type || '').toLowerCase();
+  const isMoneyIn = type === 'BANK' ? bt !== 'overdraft' && bt !== 'credit'
+    : type === 'CUSTOMER' ? !bt.startsWith('credit')
+    : bt.startsWith('debit');                      // supplier: 'Debit Balance' = they owe us = money in
+  const amount = f.amount === undefined || f.amount === null ? '' : String(f.amount);
+  const setBox = (side: 'money-in' | 'money-out', v: string) =>
+    setF(p => ({ ...p, balance_type: side === 'money-in' ? moneyInType : moneyOutType, amount: v }));
+  const sideFields = (
+    <div className="sm:col-span-2 grid gap-x-4 sm:grid-cols-2">
+      <FormField label="Debit (Money Out)" hint="Enter the amount in one of the two boxes">
+        <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass}
+          value={amount && !isMoneyIn ? amount : ''} onChange={e => setBox('money-out', e.target.value)} />
+      </FormField>
+      <FormField label="Credit (Money In)">
+        <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass}
+          value={amount && isMoneyIn ? amount : ''} onChange={e => setBox('money-in', e.target.value)} />
+      </FormField>
+    </div>
+  );
+
   const save = async () => {
+    if (type !== 'STOCK' && num(f.amount) <= 0) { setErr('Enter the opening balance in the debit (money out) or credit (money in) box.'); return; }
     setBusy(true); setErr('');
     try {
       const res = await openingApi.save({ ...f, entry_type: type });
@@ -369,15 +487,13 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
         {type === 'STOCK' && <FormField label="Company"><input className={`${inputClass} bg-slate-50`} readOnly value={lookups.company?.company_name ?? ''} /></FormField>}
         <FormField label="Opening Date" required><input type="date" className={inputClass} value={f.opening_date ?? ''} max={todayISO()} onChange={e => set('opening_date', e.target.value)} /></FormField>
 
-        {type === 'BANK' && (<>
+        {type === 'BANK' && (
           <FormField label="Bank Account" required>
             <select className={inputClass} value={f.account_id ?? ''} onChange={e => set('account_id', e.target.value)}>
               <option value="">Select account…</option>
               {lookups.banks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.type})</option>)}
             </select></FormField>
-          <FormField label="Balance Type"><select className={inputClass} value={f.balance_type ?? 'Debit'} onChange={e => set('balance_type', e.target.value)}>
-            <option value="Debit">Money in the account (Dr)</option><option value="Overdraft">Overdraft (Cr)</option></select></FormField>
-        </>)}
+        )}
 
         {(type === 'CUSTOMER' || type === 'SUPPLIER') && (<>
           <FormField label={type === 'CUSTOMER' ? 'Customer / Client' : 'Supplier'} required>
@@ -388,16 +504,12 @@ function EntryForm({ type, entry, lookups, fyDefault, onClose, onSaved }: {
           {type === 'SUPPLIER' && (
             <FormField label="Supplier Code"><input className={`${inputClass} bg-slate-50`} readOnly value={f.party_code ?? ''} /></FormField>
           )}
-          <FormField label="Balance Type"><select className={inputClass} value={f.balance_type ?? ''} onChange={e => set('balance_type', e.target.value)}>
-            {type === 'CUSTOMER' ? <><option>Receivable</option><option>Credit Balance</option></> : <><option>Payable</option><option>Debit Balance</option></>}</select></FormField>
-          <FormField label="Opening Balance Amount" required><input type="number" min="0" step="0.01" className={inputClass} value={f.amount ?? ''} onChange={e => set('amount', e.target.value)} /></FormField>
+          {sideFields}
           <FormField label="Invoice Reference" hint="Optional. Enter one entry per bill to track bills separately"><input className={inputClass} value={f.invoice_ref ?? ''} onChange={e => set('invoice_ref', e.target.value)} /></FormField>
           <FormField label="Due Date"><input type="date" className={inputClass} value={f.due_date ?? ''} onChange={e => set('due_date', e.target.value)} /></FormField>
         </>)}
 
-        {type === 'BANK' && (
-          <FormField label="Opening Balance" required><input type="number" min="0" step="0.01" className={inputClass} value={f.amount ?? ''} onChange={e => set('amount', e.target.value)} /></FormField>
-        )}
+        {type === 'BANK' && sideFields}
 
         {type === 'STOCK' && (<>
           <FormField label="Warehouse" hint="Leave blank to use the product's own warehouse">
