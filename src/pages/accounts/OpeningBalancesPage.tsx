@@ -57,7 +57,8 @@ export function OpeningBalancesPage() {
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // 'all' lists every bank / customer / supplier / item with its opening balance (blank if none); 'entries' is the plain list of entered openings
-  const [view, setView] = useState<'all' | 'entries'>('all');
+  const [view] = useState<'all' | 'entries'>('all');
+  const [statusFilter, setStatusFilter] = useState<'' | 'none' | 'Draft' | 'Posted'>('');
 
   const [form, setForm] = useState<{ type: OpeningType; entry?: OpeningEntry; prefill?: OpeningDraft } | null>(null);
   const [bulk, setBulk] = useState<BulkRow[] | null>(null);
@@ -123,8 +124,9 @@ export function OpeningBalancesPage() {
           prefill: { item_kind: i.kind, item_id: i.id, unit_cost: i.rate } };
       });
     }
-    return out.filter(m => hit(m.name, m.code));
-  }, [lookups, rows, tab, search]);
+    const stat = (m: MasterRow) => (!m.entries.length ? 'none' : m.entries.some(e => e.status === 'Draft') ? 'Draft' : 'Posted');
+    return out.filter(m => hit(m.name, m.code) && (!statusFilter || stat(m) === statusFilter));
+  }, [lookups, rows, tab, search, statusFilter]);
 
   const addType: OpeningType = tab === 'BANK' ? 'BANK' : tab === 'STOCK' ? 'STOCK' : 'CUSTOMER';
   const addLabel = tab === 'BANK' ? 'Add Bank Balance' : tab === 'STOCK' ? 'Add Opening Stock' : 'Add Company Balance';
@@ -286,6 +288,12 @@ export function OpeningBalancesPage() {
             <Search size={14} className="pointer-events-none z-10 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input aria-label="Search by name" className={`${sel} !pl-8 !w-52`} placeholder="Search name, code, entry no…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <select aria-label="Filter by opening status" className={`${sel} !w-auto shrink-0 ${statusFilter ? '!border-orange-500 ring-1 ring-orange-400' : ''}`} value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}>
+            <option value="">All {tab === 'BANK' ? 'banks' : tab === 'STOCK' ? 'items' : 'companies'}</option>
+            <option value="none">No opening yet</option>
+            <option value="Draft">Draft (not posted)</option>
+            <option value="Posted">Posted</option>
+          </select>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportRows} disabled={!shown.length}>Export CSV</Button>
             {tab === 'STOCK' && (
@@ -308,16 +316,10 @@ export function OpeningBalancesPage() {
             <t.icon size={14} />{t.label}
           </button>
         ))}
-        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white" role="group" aria-label="What to list">
-          {([['all', tab === 'BANK' ? 'All banks' : tab === 'STOCK' ? 'All items' : 'All companies'], ['entries', 'Entered openings']] as const).map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setView(k)}
-              className={`h-9 px-3 text-[13px] font-semibold ${view === k ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
-          ))}
-        </div>
         {canManage && drafts.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-500">{picked.size} of {drafts.length} drafts selected</span>
-            <Button variant="success" size="sm" icon={<CheckCircle2 size={14} />} onClick={() => openPreview([...picked])} disabled={!picked.size || previewBusy}>Validate, Preview &amp; Post</Button>
+            <span className="text-xs text-slate-500">{drafts.length} draft{drafts.length === 1 ? '' : 's'} waiting to be posted</span>
+            <Button variant="success" size="sm" icon={<CheckCircle2 size={14} />} onClick={() => openPreview(drafts.map(d => d.id))} disabled={previewBusy}>Validate, Preview &amp; Post all</Button>
           </div>
         )}
       </div>
@@ -462,18 +464,71 @@ function EntryForm({ type: typeProp, entry, prefill, lookups, fyDefault, onClose
     : type === 'CUSTOMER' ? !bt.startsWith('credit')
     : bt.startsWith('debit');                      // supplier: 'Debit Balance' = they owe us = money in
   const amount = f.amount === undefined || f.amount === null ? '' : String(f.amount);
-  const setBox = (side: 'money-in' | 'money-out', v: string) =>
-    setF(p => ({ ...p, balance_type: side === 'money-in' ? moneyInType : moneyOutType, amount: v }));
+  const debitVal = amount && !isMoneyIn ? amount : '';
+  const creditVal = amount && isMoneyIn ? amount : '';
+  // Mutually exclusive rule matching Bank Entry: entering Debit disables Credit and vice versa.
+  const hasOut = Boolean(debitVal.trim());
+  const hasIn = Boolean(creditVal.trim());
+  const setBox = (side: 'money-in' | 'money-out', rawVal: string) => {
+    if (side === 'money-out' && hasIn) return;
+    if (side === 'money-in' && hasOut) return;
+    const clean = rawVal.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+    setF(p => ({ ...p, balance_type: side === 'money-in' ? moneyInType : moneyOutType, amount: clean }));
+  };
   const sideFields = (
     <div className="sm:col-span-2 grid gap-x-4 sm:grid-cols-2">
-      <FormField label="Debit (Money Out)" hint="Enter the amount in one of the two boxes">
-        <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass}
-          value={amount && !isMoneyIn ? amount : ''} onChange={e => setBox('money-out', e.target.value)} />
-      </FormField>
-      <FormField label="Credit (Money In)">
-        <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass}
-          value={amount && isMoneyIn ? amount : ''} onChange={e => setBox('money-in', e.target.value)} />
-      </FormField>
+      <div className={hasIn ? 'opacity-55' : ''}>
+        <FormField label="Debit (Money Out)" hint="Enter in one box — typing locks the other">
+          <div className="relative">
+            <input
+              aria-label="Debit (Money Out)"
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={hasIn}
+              className={`${inputClass} ${hasIn ? '!bg-slate-100 !text-slate-400 cursor-not-allowed border-slate-200' : debitVal ? 'pr-7' : ''}`}
+              value={debitVal}
+              onChange={e => setBox('money-out', e.target.value)}
+            />
+            {debitVal && (
+              <button
+                type="button"
+                onClick={() => setBox('money-out', '')}
+                aria-label="Clear debit"
+                title="Clear"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs px-1 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </FormField>
+      </div>
+      <div className={hasOut ? 'opacity-55' : ''}>
+        <FormField label="Credit (Money In)">
+          <div className="relative">
+            <input
+              aria-label="Credit (Money In)"
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={hasOut}
+              className={`${inputClass} ${hasOut ? '!bg-slate-100 !text-slate-400 cursor-not-allowed border-slate-200' : creditVal ? 'pr-7' : ''}`}
+              value={creditVal}
+              onChange={e => setBox('money-in', e.target.value)}
+            />
+            {creditVal && (
+              <button
+                type="button"
+                onClick={() => setBox('money-in', '')}
+                aria-label="Clear credit"
+                title="Clear"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs px-1 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </FormField>
+      </div>
     </div>
   );
 
