@@ -122,10 +122,23 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const baseFiltered = useMemo(() => filterLines(visibleAll, { from: effFrom, to: effTo, particulars: applied.part, party: applied.party, search }), [visibleAll, applied, search, effFrom, effTo]);
   // filters in the column headers (same as the other list pages)
   const [colF, setColF] = useState<Record<string, string>>({});
-  const setCol = (k: string, v: string) => setColF(f => { const c = { ...f }; if (v) c[k] = v; else delete c[k]; return c; });
+  const setCol = (k: string, v: string) => {
+    setColF(f => { const c = { ...f }; if (v) c[k] = v; else delete c[k]; return c; });
+    setPage(1);
+  };
   const filtered = useMemo(() => baseFiltered.filter(l => {
     const has = (hay: string, q?: string) => !q || hay.toLowerCase().includes(q.toLowerCase());
+    const hasAmt = (amt: number, q?: string) => {
+      if (!q) return true;
+      const needle = q.trim().toLowerCase().replace(/,/g, '');
+      if (!needle) return true;
+      const formatted = money(amt);
+      return formatted.toLowerCase().includes(q.trim().toLowerCase())
+        || formatted.replace(/,/g, '').toLowerCase().includes(needle)
+        || (amt ? String(amt).includes(needle) || amt.toFixed(2).includes(needle) : false);
+    };
     return has(dmy(l.date), colF.date) && has(l.ref ?? '', colF.ref) && has(l.narration ?? '', colF.narration)
+      && hasAmt(l.debit, colF.debit) && hasAmt(l.credit, colF.credit)
       && (!colF.party || l.party === colF.party) && (!colF.particulars || l.particulars === colF.particulars) && (!colF.status || statusText(l.id) === colF.status);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [baseFiltered, colF, settled]);
@@ -302,7 +315,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               <thead className="bg-slate-100/90 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
                 {([
                   ['date', 'Date', 'text'], ['ref', 'Reference No.', 'text'], ['party', 'Company Name', 'list'], ['particulars', 'Particulars', 'list'],
-                  ['narration', 'Narration', 'text'], ['debit', 'Debit', 'none'], ['credit', 'Credit', 'none'], ['status', 'Status', 'list'],
+                  ['narration', 'Narration', 'text'], ['debit', 'Debit', 'text'], ['credit', 'Credit', 'text'], ['status', 'Status', 'list'],
                 ] as const).map(([key, label, kind]) => {
                   const sortable = key !== 'status';
                   const right = key === 'debit' || key === 'credit';
@@ -324,7 +337,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                         )}
                         {kind === 'text' && (
                           <input aria-label={`Filter ${label}`} value={colF[key] ?? ''} placeholder="Filter…" onChange={e => setCol(key, e.target.value)}
-                            className={`h-5 w-[64px] rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
+                            className={`h-5 ${right ? 'w-[56px]' : 'w-[64px]'} rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
                       </div>
                     </th>
