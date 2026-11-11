@@ -20,10 +20,12 @@ interface PipelineListViewProps {
   search?: string;
   stageFilter?: string;
   onStageFilter?: (v: string) => void;
+  /** The toolbar's Export button calls this. */
+  exportRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 
-export function PipelineListView({ cards, onView, onEdit, onDelete, search: searchProp, stageFilter: stageProp, onStageFilter }: PipelineListViewProps) {
+export function PipelineListView({ cards, onView, onEdit, onDelete, search: searchProp, stageFilter: stageProp, onStageFilter, exportRef }: PipelineListViewProps) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
   const search = searchProp ?? '';
   const [stageLocal, setStageLocal] = useState('All');
@@ -113,14 +115,10 @@ export function PipelineListView({ cards, onView, onEdit, onDelete, search: sear
     ]);
   };
 
+  if (exportRef) exportRef.current = handleExport;
+
   return (
     <div className="flex flex-col">
-      <div className="pb-2 flex justify-end">
-        <button onClick={handleExport} className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="Export CSV">
-          <Upload className="w-4 h-4" />
-        </button>
-      </div>
-
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>

@@ -2382,6 +2382,7 @@ export function SalesPipelinePage() {
   const [pipelineViewMode, setPipelineViewMode] = useState<'kanban' | 'list' | 'companies' | 'calendar'>('kanban');
   const [listSearch, setListSearch] = useState('');
   const [listStage, setListStage] = useState('All');
+  const listExportRef = useRef<(() => void) | null>(null);
   // Per-column kanban search: term typed in each column's own search box.
   const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -9052,6 +9053,13 @@ export function SalesPipelinePage() {
                     {['Total Enquiries', 'Quotations', 'Sales Orders', 'Inward', 'Finished Goods', 'Delivery Challans', 'Invoices'].map(x => <option key={x} value={x}>{x}</option>)}
                   </select>
                 )}
+                {pipelineViewMode === 'list' && (
+                  <button type="button" onClick={() => listExportRef.current?.()} title="Export CSV" aria-label="Export CSV"
+                    className="shrink-0 h-9 px-2.5 inline-flex items-center gap-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 text-xs font-semibold shadow-sm transition-colors">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12l-4 4m4-4l4 4" /></svg>
+                    Export CSV
+                  </button>
+                )}
                 <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                 </button>
@@ -9134,6 +9142,7 @@ export function SalesPipelinePage() {
             search={listSearch}
             stageFilter={listStage}
             onStageFilter={setListStage}
+            exportRef={listExportRef}
             onView={openViewModal}
             onEdit={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'edit')) { alert('Not authorized: your account cannot edit these records.'); return; } if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); void openViewModal(card); }}
             onDelete={card => { const m = STAGE_MODULE[card.stage] ?? 'sales-pipeline'; if (!canDo(m, 'delete')) { alert('Not authorized: your account cannot delete these records.'); return; } void handleDeleteCard({ stopPropagation() { /* not a click event */ } } as unknown as React.MouseEvent, card); }}
