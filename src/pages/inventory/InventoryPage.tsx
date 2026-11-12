@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import {
   inventoryApi, ensureOwnSupplier, IMPORT_HEADERS, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
   parseCsv, isCorruptedItemText, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
@@ -503,6 +504,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
     toggle: toggleSort,
     set: setSort,
     apply: (rows: any[]) => rows,
+    sortRows: (rows: any[]) => rows,
   }), [sortKey, sortDir]);
 
   const sortedItemsRows = useMemo(() => {
@@ -2968,7 +2970,23 @@ interface WarehouseOpt { id: string; code: string | null; name: string | null }
 function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [warehouses, setWarehouses] = useState<WarehouseOpt[] | null>(null);
   const [item, setItem] = useState<InventoryItemRow | null>(null);
-  const [picking, setPicking] = useState(false);
+  // the product is chosen from a typed dropdown right in the form (no second popup)
+  const [allItems, setAllItems] = useState<InventoryItemRow[] | null>(null);
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      const all: InventoryItemRow[] = [];
+      try {
+        for (let page = 1; page <= 10; page++) {
+          const res = await inventoryApi.items({ categoryId: null, search: null, supplierId: null, status: null, warehouseId: null, page, pageSize: 200 });
+          all.push(...res.rows);
+          if (res.rows.length < 200) break;
+        }
+      } catch { /* the list stays as far as it loaded */ }
+      if (!off) setAllItems(all);
+    })();
+    return () => { off = true; };
+  }, []);
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [qty, setQty] = useState('');
@@ -3094,9 +3112,16 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       ) : (
         <div className="space-y-4">
           <FormField label="Product" required>
-            <button onClick={() => setPicking(true)} className={`${inputClass} text-left ${item ? '' : 'text-slate-400'}`}>
-              {item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : 'Select product...'}
-            </button>
+            <SearchSelect
+              inputClassName={inputClass}
+              placeholder={allItems === null ? 'Loading products…' : 'Type product code or name…'}
+              disabled={allItems === null}
+              options={(allItems ?? []).map(r => ({ key: `${r.kind}:${r.id}`, label: `${r.code} · ${r.name} (available ${formatQty(r.current_stock)} ${r.unit ?? ''})` }))}
+              value={item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : ''}
+              onPick={key => setItem((allItems ?? []).find(r => `${r.kind}:${r.id}` === key) ?? null)}
+              onClear={() => setItem(null)}
+              emptyText="No product matches"
+            />
           </FormField>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="From Warehouse" required>
@@ -3126,9 +3151,6 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           <FormField label="Reason" required><input className={inputClass} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Move to production store" /></FormField>
           <FormField label="Reference (optional)"><input className={inputClass} value={reference} onChange={e => setReference(e.target.value)} placeholder="Auto-generated when blank" /></FormField>
         </div>
-      )}
-      {picking && (
-        <ItemPickerModal title="Select Product to Transfer" onClose={() => setPicking(false)} onPick={r => { setItem(r); setPicking(false); }} />
       )}
     </Modal>
   );

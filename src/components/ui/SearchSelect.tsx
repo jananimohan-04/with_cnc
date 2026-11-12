@@ -9,9 +9,9 @@ export interface SearchOption { key: string; label: string }
  * products), the list is drawn on the page itself so no panel can clip it, and `onPick` gets the chosen key.
  * `value` is the text shown for the current choice ('' when nothing is chosen).
  */
-export function SearchSelect({ options, value, onPick, onClear, placeholder = 'Type or select', className = '', disabled = false, emptyText = 'Nothing matches' }: {
+export function SearchSelect({ options, value, onPick, onClear, placeholder = 'Type or select', className = '', disabled = false, emptyText = 'Nothing matches', inputClassName }: {
   options: SearchOption[]; value: string; onPick: (key: string) => void; onClear?: () => void;
-  placeholder?: string; className?: string; disabled?: boolean; emptyText?: string;
+  placeholder?: string; className?: string; disabled?: boolean; emptyText?: string; inputClassName?: string;
 }) {
   const [text, setText] = useState<string | null>(null); // null = show the chosen value
   const [open, setOpen] = useState(false);
@@ -44,7 +44,7 @@ export function SearchSelect({ options, value, onPick, onClear, placeholder = 'T
       <input
         ref={input}
         disabled={disabled}
-        className="h-7 w-full rounded-md border border-slate-300 bg-white px-2 pr-6 text-xs focus:border-brand-500 focus:outline-none disabled:bg-slate-100"
+        className={inputClassName ? `${inputClassName} !pr-8` : 'h-7 w-full rounded-md border border-slate-300 bg-white px-2 pr-6 text-xs focus:border-brand-500 focus:outline-none disabled:bg-slate-100'}
         placeholder={placeholder}
         value={shown}
         onFocus={() => setOpen(true)}
