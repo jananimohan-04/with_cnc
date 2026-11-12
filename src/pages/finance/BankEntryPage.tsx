@@ -649,9 +649,9 @@ export function BankEntryPage() {
                 className="flex-1 min-w-[12rem] p-2 text-xs font-mono leading-relaxed text-slate-800 bg-slate-50/60 border border-slate-200 rounded-lg resize-y focus:outline-none focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15" />
             </div>
 
-            {/* ---------- single line: import actions + data filters (compact view) ---------- */}
-            <div className="mt-1.5 flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 flex-nowrap w-full overflow-hidden">
-              <div className="flex items-center gap-1 shrink-0">
+            {/* ---------- import actions + data filters ---------- */}
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 w-full">
+              <div className="flex flex-wrap items-center gap-1 shrink-0">
                 <button
                   className={btnCompactPrimary}
                   disabled={busy}
@@ -688,13 +688,15 @@ export function BankEntryPage() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-1 shrink-0 ml-auto">
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold tabular-nums whitespace-nowrap">
-                    In ₹{money(inTotal)}
+              <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-300 text-base font-extrabold tabular-nums shadow-sm whitespace-nowrap">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-600">In</span>
+                    <span>₹{money(inTotal)}</span>
                   </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold tabular-nums whitespace-nowrap">
-                    Out ₹{money(outTotal)}
+                  <span className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl bg-red-50 text-red-700 border-2 border-red-300 text-base font-extrabold tabular-nums shadow-sm whitespace-nowrap">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-red-600">Out</span>
+                    <span>₹{money(outTotal)}</span>
                   </span>
                 </div>
 

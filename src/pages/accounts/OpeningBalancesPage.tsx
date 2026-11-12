@@ -11,6 +11,9 @@ import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { xlsxToTsv } from '@/lib/xlsxRead';
 import { buildSheet, parseSheet, type SheetImport } from '@/lib/openingSheet';
+import { financeApi, type BankRow, type InvoiceRow } from '@/lib/finance';
+import { fromBank, fromInvoices, fromInwards, nameKey, type LedgerLine } from '@/lib/ledgerDashboard';
+import { supabase } from '@/lib/supabase';
 import {
   num, openingApi, parseStockCsv, stockValue, toIsoDate,
   type OpeningDraft, type OpeningEntry, type OpeningLookups, type OpeningPreview, type OpeningType,
@@ -34,9 +37,9 @@ const thR = `${th} !text-right`;
 const td = 'px-3 py-2 text-[13px] text-slate-700';
 const tdR = `${td} text-right tabular-nums whitespace-nowrap`;
 const sel = 'h-9 px-3 text-[13px] font-medium text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15';
+const MAX_ACTIVITY_ROWS = 10000;
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const money = (n: number) => formatINR(n, { decimals: 'always' });
-const drCr = (side: string | null) => (side === 'CR' ? 'Cr' : 'Dr');
 
 const statusVariant = (s: string) => (s === 'Posted' ? 'success' : s === 'Draft' ? 'warning' : 'neutral') as 'success' | 'warning' | 'neutral';
 
@@ -67,6 +70,14 @@ export function OpeningBalancesPage() {
   const [preview, setPreview] = useState<OpeningPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [reversing, setReversing] = useState<{ entry: OpeningEntry; afterReverse?: 'edit' } | null>(null);
+  const [bankRows, setBankRows] = useState<BankRow[]>([]);
+  const [partyLines, setPartyLines] = useState<LedgerLine[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [ledgerDetail, setLedgerDetail] = useState<
+    | { kind: 'BANK'; title: string; subtitle: string; current: string; debit: number; credit: number; rows: BankRow[]; accountId: string }
+    | { kind: 'PARTY'; title: string; subtitle: string; debit: number; credit: number; lines: LedgerLine[] }
+    | null
+  >(null);
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const setColFilter = (k: string, v: string) => setColFilters(prev => {
     if (!v) { const next = { ...prev }; delete next[k]; return next; }
@@ -87,19 +98,74 @@ export function OpeningBalancesPage() {
     finally { setLoading(false); }
   }, [search, fyId, view]);
 
+  // Fetch Bank Entry transactions + Invoices + Inwards so Bank Opening Balances and Companies show entered Debit & Credit totals.
+  const loadActivity = useCallback(async () => {
+    if (!companyId) return;
+    setActivityLoading(true);
+    try {
+      const [bankRes, invRes, inwRes] = await Promise.allSettled([
+        fetchAllPages(page => financeApi.bankTransactions({ page, pageSize: 200 })),
+        fetchAllPages(page => financeApi.invoices({ page, pageSize: 200 })),
+        supabase.from('cnc_inwards').select('*').neq('status', 'Deleted').limit(MAX_ACTIVITY_ROWS),
+      ]);
+      const banks: BankRow[] = bankRes.status === 'fulfilled' ? bankRes.value : [];
+      const invs: InvoiceRow[] = invRes.status === 'fulfilled' ? invRes.value : [];
+      const inws: LedgerLine[] = inwRes.status === 'fulfilled' && !inwRes.value.error
+        ? fromInwards((inwRes.value.data ?? []) as Record<string, unknown>[])
+        : [];
+      setBankRows(banks);
+      setPartyLines([...fromBank(banks), ...fromInvoices(invs), ...inws]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [companyId]);
+
   useEffect(() => {
     if (!companyId) return;
     const t = window.setTimeout(() => { void load(); }, search ? 250 : 0);
     return () => window.clearTimeout(t);
   }, [companyId, load, search]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    void loadActivity();
+  }, [companyId, loadActivity]);
+
   const canManage = !!lookups?.can_manage;
   const shown = useMemo(() => rows.filter(e => (tab === 'PARTY' ? e.entry_type === 'CUSTOMER' || e.entry_type === 'SUPPLIER' : e.entry_type === tab)), [rows, tab]);
   const drafts = shown.filter(e => e.status === 'Draft');
   const togglePick = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  const bankActivity = useMemo(() => {
+    const map = new Map<string, { debit: number; credit: number; rows: BankRow[] }>();
+    for (const r of bankRows) {
+      if (r.status === 'Cancelled' || !r.account_id) continue;
+      const cur = map.get(r.account_id) ?? { debit: 0, credit: 0, rows: [] };
+      const amt = num(r.amount);
+      if (r.direction === 'OUT') cur.debit += amt;
+      else cur.credit += amt;
+      cur.rows.push(r);
+      map.set(r.account_id, cur);
+    }
+    return map;
+  }, [bankRows]);
+
+  const partyActivity = useMemo(() => {
+    const map = new Map<string, { debit: number; credit: number; lines: LedgerLine[] }>();
+    for (const l of partyLines) {
+      const k = nameKey(l.party);
+      if (!k) continue;
+      const cur = map.get(k) ?? { debit: 0, credit: 0, lines: [] };
+      cur.debit += l.debit;
+      cur.credit += l.credit;
+      cur.lines.push(l);
+      map.set(k, cur);
+    }
+    return map;
+  }, [partyLines]);
+
   // Every bank account / customer / supplier / item, each with its opening (from the entries, Reversed ones ignored)
-  interface MasterRow { key: string; type: OpeningType; name: string; code: string; sub: string; entries: OpeningEntry[]; net: number; qty: number; value: number; unit: string; current: string; prefill: OpeningDraft }
+  interface MasterRow { key: string; type: OpeningType; name: string; code: string; sub: string; entries: OpeningEntry[]; net: number; debit: number; credit: number; txCount: number; qty: number; value: number; unit: string; current: string; prefill: OpeningDraft }
   const master = useMemo<MasterRow[]>(() => {
     if (!lookups) return [];
     const live = rows.filter(e => e.status !== 'Reversed');
@@ -110,7 +176,12 @@ export function OpeningBalancesPage() {
     if (tab === 'BANK') {
       out = lookups.banks.map(b => {
         const en = live.filter(e => e.entry_type === 'BANK' && e.account_id === b.id);
-        return { key: b.id, type: 'BANK' as const, name: b.name, code: b.code, sub: b.type, entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: money(num(b.balance)), prefill: { account_id: b.id } };
+        const act = bankActivity.get(b.id);
+        return {
+          key: b.id, type: 'BANK' as const, name: b.name, code: b.code, sub: b.type, entries: en, net: signed(en),
+          debit: act?.debit ?? 0, credit: act?.credit ?? 0, txCount: act?.rows.length ?? 0,
+          qty: 0, value: 0, unit: '', current: money(num(b.balance)), prefill: { account_id: b.id },
+        };
       });
     } else if (tab === 'PARTY') {
       const byName = new Map<string, { name: string; cust?: { id: string }; sup?: { id: string; code: string | null } }>();
@@ -120,20 +191,28 @@ export function OpeningBalancesPage() {
         const en = live.filter(e => (e.entry_type === 'CUSTOMER' || e.entry_type === 'SUPPLIER')
           && (e.party_id === c.cust?.id || e.party_id === c.sup?.id || (e.party_name ?? '').trim().toLowerCase() === nk));
         const asCustomer = !!c.cust;
-        return { key: nk, type: (asCustomer ? 'CUSTOMER' : 'SUPPLIER') as OpeningType, name: c.name, code: c.sup?.code ?? '', sub: '', entries: en, net: signed(en), qty: 0, value: 0, unit: '', current: '',
-          prefill: { party_id: asCustomer ? c.cust!.id : c.sup!.id, party_name: c.name, party_code: asCustomer ? '' : (c.sup!.code ?? '') } };
+        const act = partyActivity.get(nameKey(c.name));
+        return {
+          key: nk, type: (asCustomer ? 'CUSTOMER' : 'SUPPLIER') as OpeningType, name: c.name, code: c.sup?.code ?? '', sub: '', entries: en, net: signed(en),
+          debit: act?.debit ?? 0, credit: act?.credit ?? 0, txCount: act?.lines.length ?? 0,
+          qty: 0, value: 0, unit: '', current: '',
+          prefill: { party_id: asCustomer ? c.cust!.id : c.sup!.id, party_name: c.name, party_code: asCustomer ? '' : (c.sup!.code ?? '') },
+        };
       });
     } else {
       out = lookups.items.map(i => {
         const en = live.filter(e => e.entry_type === 'STOCK' && e.item_id === i.id && e.item_kind === i.kind);
-        return { key: `${i.kind}:${i.id}`, type: 'STOCK' as const, name: i.name, code: i.code ?? '', sub: i.kind === 'RAW' ? 'Material' : 'Part', entries: en, net: 0,
+        return {
+          key: `${i.kind}:${i.id}`, type: 'STOCK' as const, name: i.name, code: i.code ?? '', sub: i.kind === 'RAW' ? 'Material' : 'Part', entries: en, net: 0,
+          debit: 0, credit: 0, txCount: 0,
           qty: en.reduce((n, e) => n + num(e.qty), 0), value: en.reduce((n, e) => n + num(e.amount), 0), unit: i.unit ?? '', current: `${num(i.stock).toLocaleString('en-IN')} ${i.unit ?? ''}`.trim(),
-          prefill: { item_kind: i.kind, item_id: i.id, unit_cost: i.rate } };
+          prefill: { item_kind: i.kind, item_id: i.id, unit_cost: i.rate },
+        };
       });
     }
     const stat = (m: MasterRow) => (!m.entries.length ? 'none' : m.entries.some(e => e.status === 'Draft') ? 'Draft' : 'Posted');
     return out.filter(m => hit(m.name, m.code) && (!statusFilter || stat(m) === statusFilter));
-  }, [lookups, rows, tab, search, statusFilter]);
+  }, [lookups, rows, tab, search, statusFilter, bankActivity, partyActivity]);
 
   const addType: OpeningType = tab === 'BANK' ? 'BANK' : tab === 'STOCK' ? 'STOCK' : 'CUSTOMER';
   const addLabel = tab === 'BANK' ? 'Add Bank Balance' : tab === 'STOCK' ? 'Add Opening Stock' : 'Add Company Balance';
@@ -256,6 +335,8 @@ export function OpeningBalancesPage() {
     name: m => m.name,
     unit: m => m.unit,
     opening_balance: m => m.net,
+    debit: m => m.debit,
+    credit: m => m.credit,
     current: m => parseDisplayNumber(m.current),
     entries: m => m.entries.length,
     qty: m => m.qty,
@@ -275,6 +356,8 @@ export function OpeningBalancesPage() {
       matchText(`${m.name} ${m.code} ${m.sub}`, colFilters.name)
       && eq('unit', m.unit)
       && matchText(m.entries.length ? `${Math.abs(m.net)} ${money(Math.abs(m.net))} ${m.net < 0 ? 'Cr' : 'Dr'}` : '-', colFilters.opening_balance)
+      && matchMoney(m.debit, colFilters.debit)
+      && matchMoney(m.credit, colFilters.credit)
       && matchText(`${m.current} ${m.current.replace(/,/g, '')}`, colFilters.current)
       && matchText(m.entries.length ? String(m.entries.length) : '-', colFilters.entries)
       && matchText(m.entries.length ? `${m.qty} ${m.qty.toLocaleString('en-IN')}` : '-', colFilters.qty)
@@ -298,6 +381,8 @@ export function OpeningBalancesPage() {
     qty: e => num(e.qty),
     unit_cost: e => num(e.unit_cost),
     amount: e => num(e.amount),
+    debit: e => entryDebitCredit(e, tab).debit,
+    credit: e => entryDebitCredit(e, tab).credit,
     status: e => e.status,
   });
 
@@ -311,22 +396,27 @@ export function OpeningBalancesPage() {
   const filteredEntriesBase = useMemo(() => {
     if (!hasColFilters) return shown;
     const eq = (key: string, val: string) => !colFilters[key] || val === colFilters[key];
-    return shown.filter(e =>
-      matchText(e.entry_no, colFilters.entry_no)
-      && matchText(`${e.opening_date} ${formatDate(e.opening_date)}`, colFilters.opening_date)
-      && eq('account_name', e.account_name ?? '')
-      && matchText(e.remarks ?? '', colFilters.remarks)
-      && matchText(`${e.party_name ?? ''} ${e.party_code ?? ''}`, colFilters.party_name)
-      && eq('balance_type', e.balance_type ?? '')
-      && matchText(e.invoice_ref ?? '', colFilters.invoice_ref)
-      && matchText(e.due_date ? `${e.due_date} ${formatDate(e.due_date)}` : '', colFilters.due_date)
-      && matchText(`${e.item_name ?? ''} ${e.item_code ?? ''}`, colFilters.item_name)
-      && eq('warehouse_name', e.warehouse_name ?? 'Item default')
-      && matchText(`${num(e.qty)} ${num(e.qty).toLocaleString('en-IN')} ${e.unit ?? ''}`, colFilters.qty)
-      && matchText(`${num(e.unit_cost)} ${money(num(e.unit_cost))}`, colFilters.unit_cost)
-      && matchText(`${num(e.amount)} ${money(e.amount)} ${tab === 'STOCK' ? '' : drCr(e.side)}`, colFilters.amount)
-      && eq('status', e.status)
-    );
+    return shown.filter(e => {
+      const dc = entryDebitCredit(e, tab);
+      return (
+        matchText(e.entry_no, colFilters.entry_no)
+        && matchText(`${e.opening_date} ${formatDate(e.opening_date)}`, colFilters.opening_date)
+        && eq('account_name', e.account_name ?? '')
+        && matchText(e.remarks ?? '', colFilters.remarks)
+        && matchText(`${e.party_name ?? ''} ${e.party_code ?? ''}`, colFilters.party_name)
+        && eq('balance_type', e.balance_type ?? '')
+        && matchText(e.invoice_ref ?? '', colFilters.invoice_ref)
+        && matchText(e.due_date ? `${e.due_date} ${formatDate(e.due_date)}` : '', colFilters.due_date)
+        && matchText(`${e.item_name ?? ''} ${e.item_code ?? ''}`, colFilters.item_name)
+        && eq('warehouse_name', e.warehouse_name ?? 'Item default')
+        && matchText(`${num(e.qty)} ${num(e.qty).toLocaleString('en-IN')} ${e.unit ?? ''}`, colFilters.qty)
+        && matchText(`${num(e.unit_cost)} ${money(num(e.unit_cost))}`, colFilters.unit_cost)
+        && matchText(`${num(e.amount)} ${money(e.amount)}`, colFilters.amount)
+        && matchMoney(dc.debit, colFilters.debit)
+        && matchMoney(dc.credit, colFilters.credit)
+        && eq('status', e.status)
+      );
+    });
   }, [shown, colFilters, hasColFilters, tab]);
   const filteredEntries = entrySort.sortRows(filteredEntriesBase);
   const visibleDrafts = filteredEntries.filter(e => e.status === 'Draft');
@@ -339,93 +429,171 @@ export function OpeningBalancesPage() {
     else setColFilters({ item_name: m.name });
   };
 
-  const masterColSpan = tab === 'STOCK' ? 7 : 5;
-  const entryColSpan = (canManage ? 1 : 0) + (tab === 'BANK' ? 7 : tab === 'PARTY' ? 9 : 9);
+  const openDetail = (m: MasterRow) => {
+    if (tab === 'BANK') {
+      const act = bankActivity.get(m.key);
+      setLedgerDetail({
+        kind: 'BANK',
+        accountId: m.key,
+        title: `${m.name} — Entered Debit & Credit`,
+        subtitle: `${act?.rows.length ?? 0} entered bank transaction${(act?.rows.length ?? 0) === 1 ? '' : 's'} (matching Bank Entry)`,
+        current: m.current,
+        debit: m.debit,
+        credit: m.credit,
+        rows: act?.rows ?? [],
+      });
+    } else if (tab === 'PARTY') {
+      const act = partyActivity.get(nameKey(m.name));
+      setLedgerDetail({
+        kind: 'PARTY',
+        title: `${m.name} — Entered Debit & Credit`,
+        subtitle: `${act?.lines.length ?? 0} entered ledger transaction${(act?.lines.length ?? 0) === 1 ? '' : 's'}`,
+        debit: m.debit,
+        credit: m.credit,
+        lines: act?.lines ?? [],
+      });
+    }
+  };
+
+  const masterColSpan = 7;
+  const entryColSpan = (canManage ? 1 : 0) + (tab === 'BANK' ? 8 : tab === 'PARTY' ? 10 : 9);
+
+  const summaryTotals = useMemo(() => filteredMaster.reduce(
+    (acc, m) => ({
+      debit: acc.debit + m.debit,
+      credit: acc.credit + m.credit,
+      balanceNow: acc.balanceNow + (tab === 'BANK' ? parseDisplayNumber(m.current) : 0),
+      txCount: acc.txCount + m.txCount,
+    }),
+    { debit: 0, credit: 0, balanceNow: 0, txCount: 0 },
+  ), [filteredMaster, tab]);
 
   const masterView = (() => {
     if (loading && !lookups) return <LoadingState message="Loading…" />;
     if (!master.length) return <EmptyState icon={<FilePlus2 size={28} />} title="Nothing to list" message={tab === 'BANK' ? 'No bank or cash accounts found.' : tab === 'STOCK' ? 'No inventory items found.' : 'No companies found.'} />;
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              <HeadingCell label={tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : 'Company'} colKey="name" sort={masterSort} filterValue={colFilters.name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
-              {tab === 'STOCK' && <HeadingCell label="Unit" colKey="unit" sort={masterSort} filterValue={colFilters.unit ?? ''} onFilter={setColFilter} options={masterOpts.unit} optionWidth="max-w-[68px]" thClass={th} />}
-              {tab === 'STOCK' ? (<>
-                <HeadingCell label="Opening qty" colKey="qty" sort={masterSort} filterValue={colFilters.qty ?? ''} onFilter={setColFilter} align="right" inputWidth="w-14" thClass={thR} />
-                <HeadingCell label="Opening value" colKey="value" sort={masterSort} filterValue={colFilters.value ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
-                <HeadingCell label="Stock now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
-              </>) : (<>
-                <HeadingCell label="Opening balance" colKey="opening_balance" sort={masterSort} filterValue={colFilters.opening_balance ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
-                {tab === 'BANK' && <HeadingCell label="Balance now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />}
-                {tab === 'PARTY' && <HeadingCell label="Entries" colKey="entries" sort={masterSort} filterValue={colFilters.entries ?? ''} onFilter={setColFilter} align="right" inputWidth="w-12" thClass={thR} />}
-              </>)}
-              <HeadingCell label="Status" colKey="status" sort={masterSort} filterValue={colFilters.status ?? ''} onFilter={setColFilter} options={masterOpts.status} optionWidth="max-w-[88px]" thClass={th} />
-              <ActionsHead thClass={thR} hasFilters={hasColFilters} onClear={clearFilters} />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredMaster.length === 0 && (
-              <tr><td colSpan={masterColSpan} className="px-4 py-8 text-center text-xs text-slate-500">
-                No rows match the active column filters.{' '}
-                <button type="button" onClick={clearFilters} className="font-semibold text-orange-600 hover:underline">Clear filters</button>
-              </td></tr>
-            )}
-            {filteredMaster.map(m => {
-              const dr = m.entries.filter(e => e.status === 'Draft'); const po = m.entries.filter(e => e.status === 'Posted');
-              const status = !m.entries.length ? '' : dr.length ? 'Draft' : 'Posted';
-              const canAdd = canManage && (m.entries.length === 0 || tab === 'PARTY');
-              const onlyDraft = m.entries.length === 1 && dr.length === 1 ? dr[0] : null;
-              const onlyPosted = m.entries.length === 1 && po.length === 1 ? po[0] : null;
-              const onEdit = onlyDraft
-                ? () => setForm({ type: m.type, entry: onlyDraft })
-                : onlyPosted && canManage
-                  ? () => setReversing({ entry: onlyPosted, afterReverse: 'edit' })
-                  : m.entries.length > 1
-                    ? () => jumpToEntity(m)
-                    : null;
-              const onDelete = onlyDraft
-                ? () => remove(onlyDraft)
-                : onlyPosted && canManage
-                  ? () => setReversing({ entry: onlyPosted })
-                  : m.entries.length > 1
-                    ? () => jumpToEntity(m)
-                    : null;
-              return (
-                <tr key={m.key} className="hover:bg-orange-50/40">
-                  <td className={`${td} font-semibold`}>{m.name}{m.code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{m.code}</span>}<span className="ml-1.5 text-[10px] font-semibold uppercase text-slate-400">{m.sub}</span></td>
-                  {tab === 'STOCK' && <td className={td}>{m.unit}</td>}
-                  {tab === 'STOCK' ? (<>
-                    <td className={tdR}>{m.entries.length ? m.qty.toLocaleString('en-IN') : <span className="text-slate-300">-</span>}</td>
-                    <td className={`${tdR} font-semibold`}>{m.entries.length ? money(m.value) : <span className="text-slate-300">-</span>}</td>
-                    <td className={tdR}>{m.current}</td></>) : (<>
-                    <td className={`${tdR} font-semibold`}>{m.entries.length ? <>{money(Math.abs(m.net))} <span className="text-[10px] text-slate-400">{m.net < 0 ? 'Cr' : 'Dr'}</span></> : <span className="text-slate-300">-</span>}</td>
-                    {tab === 'BANK' && <td className={tdR}>{m.current}</td>}
-                    {tab === 'PARTY' && (
+      <>
+        {(tab === 'BANK' || tab === 'PARTY') && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50/70">
+            <span className="text-xs font-medium text-slate-500">
+              {activityLoading
+                ? 'Loading entered Debit & Credit totals…'
+                : `${summaryTotals.txCount} entered transaction${summaryTotals.txCount === 1 ? '' : 's'} across ${filteredMaster.length} ${tab === 'BANK' ? (filteredMaster.length === 1 ? 'account' : 'accounts') : (filteredMaster.length === 1 ? 'company' : 'companies')} · Click any amount to inspect rows`}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-red-50 text-red-700 border-2 border-red-300 text-sm font-extrabold tabular-nums shadow-xs whitespace-nowrap">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-600">{tab === 'BANK' ? 'Debit (Out)' : 'Total Debit'}</span>
+                <span>{money(summaryTotals.debit)}</span>
+              </span>
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-300 text-sm font-extrabold tabular-nums shadow-xs whitespace-nowrap">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600">{tab === 'BANK' ? 'Credit (In)' : 'Total Credit'}</span>
+                <span>{money(summaryTotals.credit)}</span>
+              </span>
+              {tab === 'BANK' && (
+                <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white text-slate-800 border-2 border-slate-200 text-sm font-extrabold tabular-nums shadow-xs whitespace-nowrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Balance Now</span>
+                  <span>{money(summaryTotals.balanceNow)}</span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <HeadingCell label={tab === 'BANK' ? 'Bank / cash account' : tab === 'STOCK' ? 'Item' : 'Company'} colKey="name" sort={masterSort} filterValue={colFilters.name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
+                {tab === 'STOCK' && <HeadingCell label="Unit" colKey="unit" sort={masterSort} filterValue={colFilters.unit ?? ''} onFilter={setColFilter} options={masterOpts.unit} optionWidth="max-w-[68px]" thClass={th} />}
+                {tab === 'STOCK' ? (<>
+                  <HeadingCell label="Opening qty" colKey="qty" sort={masterSort} filterValue={colFilters.qty ?? ''} onFilter={setColFilter} align="right" inputWidth="w-14" thClass={thR} />
+                  <HeadingCell label="Opening value" colKey="value" sort={masterSort} filterValue={colFilters.value ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  <HeadingCell label="Stock now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                </>) : (<>
+                  <HeadingCell label="Opening balance" colKey="opening_balance" sort={masterSort} filterValue={colFilters.opening_balance ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  <HeadingCell label={tab === 'BANK' ? 'Debit (Out)' : 'Debit'} colKey="debit" sort={masterSort} filterValue={colFilters.debit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  <HeadingCell label={tab === 'BANK' ? 'Credit (In)' : 'Credit'} colKey="credit" sort={masterSort} filterValue={colFilters.credit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                  {tab === 'BANK' && <HeadingCell label="Balance now" colKey="current" sort={masterSort} filterValue={colFilters.current ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />}
+                  {tab === 'PARTY' && <HeadingCell label="Entries" colKey="entries" sort={masterSort} filterValue={colFilters.entries ?? ''} onFilter={setColFilter} align="right" inputWidth="w-12" thClass={thR} />}
+                </>)}
+                <HeadingCell label="Status" colKey="status" sort={masterSort} filterValue={colFilters.status ?? ''} onFilter={setColFilter} options={masterOpts.status} optionWidth="max-w-[88px]" thClass={th} />
+                <ActionsHead thClass={thR} hasFilters={hasColFilters} onClear={clearFilters} />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredMaster.length === 0 && (
+                <tr><td colSpan={masterColSpan} className="px-4 py-8 text-center text-xs text-slate-500">
+                  No rows match the active column filters.{' '}
+                  <button type="button" onClick={clearFilters} className="font-semibold text-orange-600 hover:underline">Clear filters</button>
+                </td></tr>
+              )}
+              {filteredMaster.map(m => {
+                const dr = m.entries.filter(e => e.status === 'Draft'); const po = m.entries.filter(e => e.status === 'Posted');
+                const status = !m.entries.length ? '' : dr.length ? 'Draft' : 'Posted';
+                const canAdd = canManage && (m.entries.length === 0 || tab === 'PARTY');
+                const onlyDraft = m.entries.length === 1 && dr.length === 1 ? dr[0] : null;
+                const onlyPosted = m.entries.length === 1 && po.length === 1 ? po[0] : null;
+                const onEdit = onlyDraft
+                  ? () => setForm({ type: m.type, entry: onlyDraft })
+                  : onlyPosted && canManage
+                    ? () => setReversing({ entry: onlyPosted, afterReverse: 'edit' })
+                    : m.entries.length > 1
+                      ? () => jumpToEntity(m)
+                      : null;
+                const onDelete = onlyDraft
+                  ? () => remove(onlyDraft)
+                  : onlyPosted && canManage
+                    ? () => setReversing({ entry: onlyPosted })
+                    : m.entries.length > 1
+                      ? () => jumpToEntity(m)
+                      : null;
+                return (
+                  <tr key={m.key} className="hover:bg-orange-50/40">
+                    <td className={`${td} font-semibold`}>{m.name}{m.code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{m.code}</span>}<span className="ml-1.5 text-[10px] font-semibold uppercase text-slate-400">{m.sub}</span></td>
+                    {tab === 'STOCK' && <td className={td}>{m.unit}</td>}
+                    {tab === 'STOCK' ? (<>
+                      <td className={tdR}>{m.entries.length ? m.qty.toLocaleString('en-IN') : <span className="text-slate-300">-</span>}</td>
+                      <td className={`${tdR} font-semibold`}>{m.entries.length ? money(m.value) : <span className="text-slate-300">-</span>}</td>
+                      <td className={tdR}>{m.current}</td></>) : (<>
+                      <td className={`${tdR} font-semibold`}>{m.entries.length ? <>{money(Math.abs(m.net))} <span className="text-[10px] text-slate-400">{m.net < 0 ? 'Cr' : 'Dr'}</span></> : <span className="text-slate-300">-</span>}</td>
                       <td className={tdR}>
-                        {m.entries.length ? (
-                          <button type="button" onClick={() => jumpToEntity(m)} title="View entered openings"
-                            className="font-semibold text-orange-700 hover:underline">{m.entries.length}</button>
-                        ) : <span className="text-slate-300">-</span>}
+                        {m.debit > 0 ? (
+                          <button type="button" onClick={() => openDetail(m)} title="View entered Debit & Credit rows"
+                            className="font-semibold text-red-700 hover:underline tabular-nums">{money(m.debit)}</button>
+                        ) : <span className="text-slate-400">{money(0)}</span>}
                       </td>
-                    )}</>)}
-                  <td className={td}>{status ? <Badge variant={statusVariant(status)} dot>{status}</Badge> : <span className="text-[11px] text-slate-400">No opening</span>}</td>
-                  <td className={`${td} text-right whitespace-nowrap`}>
-                    <div className="inline-flex items-center gap-1">
-                      {canAdd && <button type="button" onClick={() => setForm({ type: m.type, prefill: m.prefill })} className="h-7 px-2 inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-bold hover:bg-orange-100"><Plus size={12} />Add opening</button>}
-                      {dr.length > 0 && canManage && <IconBtn label="Validate, preview & post" onClick={() => openPreview(dr.map(d => d.id))}><CheckCircle2 size={14} /></IconBtn>}
-                      {po.length > 0 && <IconBtn label={tab === 'STOCK' ? 'View stock' : 'View ledger'} onClick={() => viewIn(po[0])}><Eye size={14} /></IconBtn>}
-                      {onEdit && <IconBtn label={onlyDraft ? 'Edit draft' : onlyPosted ? 'Edit posted entry' : 'Edit entries'} onClick={onEdit}><Pencil size={14} /></IconBtn>}
-                      {onDelete && <IconBtn label={onlyDraft ? 'Delete draft' : onlyPosted ? 'Delete (reverse) posted entry' : 'Delete / reverse entries'} danger onClick={onDelete}><Trash2 size={14} /></IconBtn>}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      <td className={tdR}>
+                        {m.credit > 0 ? (
+                          <button type="button" onClick={() => openDetail(m)} title="View entered Debit & Credit rows"
+                            className="font-semibold text-emerald-700 hover:underline tabular-nums">{money(m.credit)}</button>
+                        ) : <span className="text-slate-400">{money(0)}</span>}
+                      </td>
+                      {tab === 'BANK' && <td className={`${tdR} font-semibold text-slate-900`}>{m.current}</td>}
+                      {tab === 'PARTY' && (
+                        <td className={tdR}>
+                          {m.entries.length ? (
+                            <button type="button" onClick={() => jumpToEntity(m)} title="View entered openings"
+                              className="font-semibold text-orange-700 hover:underline">{m.entries.length}</button>
+                          ) : <span className="text-slate-300">-</span>}
+                        </td>
+                      )}</>)}
+                    <td className={td}>{status ? <Badge variant={statusVariant(status)} dot>{status}</Badge> : <span className="text-[11px] text-slate-400">No opening</span>}</td>
+                    <td className={`${td} text-right whitespace-nowrap`}>
+                      <div className="inline-flex items-center gap-1">
+                        {canAdd && <button type="button" onClick={() => setForm({ type: m.type, prefill: m.prefill })} className="h-7 px-2 inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-bold hover:bg-orange-100"><Plus size={12} />Add opening</button>}
+                        {dr.length > 0 && canManage && <IconBtn label="Validate, preview & post" onClick={() => openPreview(dr.map(d => d.id))}><CheckCircle2 size={14} /></IconBtn>}
+                        {m.txCount > 0 && <IconBtn label="View entered Debit & Credit entries" onClick={() => openDetail(m)}><Eye size={14} /></IconBtn>}
+                        {m.txCount === 0 && po.length > 0 && <IconBtn label={tab === 'STOCK' ? 'View stock' : 'View ledger'} onClick={() => viewIn(po[0])}><Eye size={14} /></IconBtn>}
+                        {onEdit && <IconBtn label={onlyDraft ? 'Edit draft' : onlyPosted ? 'Edit posted entry' : 'Edit entries'} onClick={onEdit}><Pencil size={14} /></IconBtn>}
+                        {onDelete && <IconBtn label={onlyDraft ? 'Delete draft' : onlyPosted ? 'Delete (reverse) posted entry' : 'Delete / reverse entries'} danger onClick={onDelete}><Trash2 size={14} /></IconBtn>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>
     );
   })();
 
@@ -517,14 +685,16 @@ export function OpeningBalancesPage() {
                   {tab === 'BANK' && (<>
                     <HeadingCell label="Bank Account" colKey="account_name" sort={entrySort} filterValue={colFilters.account_name ?? ''} onFilter={setColFilter} options={entryOpts.account_name} optionWidth="max-w-[82px]" thClass={th} />
                     <HeadingCell label="Remarks" colKey="remarks" sort={entrySort} filterValue={colFilters.remarks ?? ''} onFilter={setColFilter} inputWidth="w-20" thClass={th} />
-                    <HeadingCell label="Opening Balance" colKey="amount" sort={entrySort} filterValue={colFilters.amount ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                    <HeadingCell label="Debit (Out)" colKey="debit" sort={entrySort} filterValue={colFilters.debit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                    <HeadingCell label="Credit (In)" colKey="credit" sort={entrySort} filterValue={colFilters.credit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
                   </>)}
                   {tab === 'PARTY' && (<>
                     <HeadingCell label="Company" colKey="party_name" sort={entrySort} filterValue={colFilters.party_name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
                     <HeadingCell label="Balance Type" colKey="balance_type" sort={entrySort} filterValue={colFilters.balance_type ?? ''} onFilter={setColFilter} options={entryOpts.balance_type} optionWidth="max-w-[78px]" thClass={th} />
                     <HeadingCell label="Invoice Ref" colKey="invoice_ref" sort={entrySort} filterValue={colFilters.invoice_ref ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
                     <HeadingCell label="Due" colKey="due_date" sort={entrySort} filterValue={colFilters.due_date ?? ''} onFilter={setColFilter} inputWidth="w-16" thClass={th} />
-                    <HeadingCell label="Amount" colKey="amount" sort={entrySort} filterValue={colFilters.amount ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                    <HeadingCell label="Debit" colKey="debit" sort={entrySort} filterValue={colFilters.debit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
+                    <HeadingCell label="Credit" colKey="credit" sort={entrySort} filterValue={colFilters.credit ?? ''} onFilter={setColFilter} align="right" inputWidth="w-16" thClass={thR} />
                   </>)}
                   {tab === 'STOCK' && (<>
                     <HeadingCell label="Product" colKey="item_name" sort={entrySort} filterValue={colFilters.item_name ?? ''} onFilter={setColFilter} inputWidth="w-24" thClass={th} />
@@ -544,16 +714,20 @@ export function OpeningBalancesPage() {
                     <button type="button" onClick={clearFilters} className="font-semibold text-orange-600 hover:underline">Clear filters</button>
                   </td></tr>
                 )}
-                {filteredEntries.map(e => (
+                {filteredEntries.map(e => {
+                  const dc = entryDebitCredit(e, tab);
+                  return (
                   <tr key={e.id} className="hover:bg-orange-50/40">
                     {canManage && <td className={td}>{e.status === 'Draft' && <input type="checkbox" aria-label={`Select ${e.entry_no}`} checked={picked.has(e.id)} onChange={() => togglePick(e.id)} />}</td>}
                     <td className={`${td} font-mono text-xs`}>{e.entry_no}</td>
                     <td className={`${td} whitespace-nowrap`}>{formatDate(e.opening_date)}</td>
                     {tab === 'BANK' && (<><td className={`${td} font-semibold`}>{e.account_name}</td><td className={`${td} text-slate-500`}>{e.remarks}</td>
-                      <td className={`${tdR} font-semibold`}>{money(e.amount)} <span className="text-[10px] text-slate-400">{drCr(e.side)}</span></td></>)}
+                      <td className={`${tdR} ${dc.debit ? 'font-semibold text-red-700' : 'text-slate-300'}`}>{dc.debit ? money(dc.debit) : '-'}</td>
+                      <td className={`${tdR} ${dc.credit ? 'font-semibold text-emerald-700' : 'text-slate-300'}`}>{dc.credit ? money(dc.credit) : '-'}</td></>)}
                     {tab === 'PARTY' && (<><td className={`${td} font-semibold`}>{e.party_name}{e.party_code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{e.party_code}</span>}</td>
                       <td className={td}>{e.balance_type}</td><td className={td}>{e.invoice_ref ?? ''}</td><td className={`${td} whitespace-nowrap`}>{e.due_date ? formatDate(e.due_date) : ''}</td>
-                      <td className={`${tdR} font-semibold`}>{money(e.amount)} <span className="text-[10px] text-slate-400">{drCr(e.side)}</span></td></>)}
+                      <td className={`${tdR} ${dc.debit ? 'font-semibold text-red-700' : 'text-slate-300'}`}>{dc.debit ? money(dc.debit) : '-'}</td>
+                      <td className={`${tdR} ${dc.credit ? 'font-semibold text-emerald-700' : 'text-slate-300'}`}>{dc.credit ? money(dc.credit) : '-'}</td></>)}
                     {tab === 'STOCK' && (<><td className={`${td} font-semibold`}>{e.item_name}{e.item_code && <span className="ml-1.5 text-[11px] font-normal text-slate-400">{e.item_code}</span>}</td>
                       <td className={td}>{e.warehouse_name ?? <span className="text-slate-400">Item default</span>}</td>
                       <td className={tdR}>{num(e.qty).toLocaleString('en-IN')} <span className="text-[10px] text-slate-400">{e.unit}</span></td>
@@ -575,7 +749,8 @@ export function OpeningBalancesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -611,6 +786,18 @@ export function OpeningBalancesPage() {
       {preview && (
         <PreviewModal data={preview} busy={previewBusy} canPost={canManage} onClose={() => setPreview(null)} onPost={doPost} />
       )}
+      {ledgerDetail && (
+        <LedgerDetailModal
+          detail={ledgerDetail}
+          onClose={() => setLedgerDetail(null)}
+          onOpenSource={() => {
+            const d = ledgerDetail;
+            setLedgerDetail(null);
+            if (d.kind === 'BANK') navigate('/accounts/bank-entry');
+            else navigate(`/accounts/ledger?party=${encodeURIComponent(d.title.replace(/ — Entered Debit & Credit$/, ''))}`);
+          }}
+        />
+      )}
       {reversing && (
         <ReverseModal entry={reversing.entry} onClose={() => setReversing(null)}
           onDone={async () => {
@@ -633,9 +820,33 @@ function masterStatus(m: { entries: OpeningEntry[] }): string {
   return m.entries.some(e => e.status === 'Draft') ? 'Draft' : m.entries.length ? 'Posted' : 'No opening';
 }
 
+/** Paginate through list RPCs up to MAX_ACTIVITY_ROWS without duplicating loops. */
+async function fetchAllPages<T>(fetchPage: (page: number) => Promise<{ rows: T[]; total: number }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let page = 1; out.length < MAX_ACTIVITY_ROWS; page++) {
+    const res = await fetchPage(page);
+    out.push(...res.rows);
+    if (out.length >= res.total || !res.rows.length) break;
+  }
+  return out;
+}
+
+/** Debit / Credit split for one OpeningEntry matching EntryForm's Debit (Money Out) and Credit (Money In) boxes. */
+function entryDebitCredit(e: OpeningEntry, tab: Tab): { debit: number; credit: number } {
+  const amt = num(e.amount);
+  if (tab === 'BANK') return e.side === 'CR' ? { debit: amt, credit: 0 } : { debit: 0, credit: amt };
+  return e.side === 'DR' ? { debit: amt, credit: 0 } : { debit: 0, credit: amt };
+}
+
 function matchText(haystack: string, query?: string): boolean {
   if (!query) return true;
   return haystack.toLowerCase().includes(query.trim().toLowerCase());
+}
+
+function matchMoney(val: number, query?: string): boolean {
+  if (!query) return true;
+  const formatted = money(val);
+  return matchText(`${val} ${formatted} ${formatted.replace(/,/g, '')}`, query);
 }
 
 function uniqueOpts(values: Array<string | null | undefined>): string[] {
@@ -1046,6 +1257,132 @@ function ReverseModal({ entry, onClose, onDone }: { entry: OpeningEntry; onClose
           : `This reverses the ${money(entry.amount)} opening balance of ${entry.party_name ?? entry.account_name}.`} Afterwards you can enter a corrected opening entry.
       </p>
       <FormField label="Reason" required><textarea rows={3} className={inputClass} value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this being reversed?" /></FormField>
+    </Modal>
+  );
+}
+
+/** Shows all individual entered Debit (Out) & Credit (In) transactions for a Bank account or Company right on Opening Balances. */
+function LedgerDetailModal({
+  detail,
+  onClose,
+  onOpenSource,
+}: {
+  detail:
+    | { kind: 'BANK'; title: string; subtitle: string; current: string; debit: number; credit: number; rows: BankRow[]; accountId: string }
+    | { kind: 'PARTY'; title: string; subtitle: string; debit: number; credit: number; lines: LedgerLine[] };
+  onClose: () => void;
+  onOpenSource: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={detail.title}
+      subtitle={detail.subtitle}
+      size="2xl"
+      footer={(
+        <div className="flex items-center justify-between w-full gap-2">
+          <Button variant="secondary" onClick={onOpenSource}>
+            {detail.kind === 'BANK' ? 'Open Bank Entry Page' : 'Open Ledger Dashboard'}
+          </Button>
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      )}
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-red-50 text-red-700 border-2 border-red-300 text-sm font-extrabold tabular-nums">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-600">{detail.kind === 'BANK' ? 'Debit (Out)' : 'Total Debit'}</span>
+              <span>{money(detail.debit)}</span>
+            </span>
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-300 text-sm font-extrabold tabular-nums">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600">{detail.kind === 'BANK' ? 'Credit (In)' : 'Total Credit'}</span>
+              <span>{money(detail.credit)}</span>
+            </span>
+            {detail.kind === 'BANK' && (
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 text-slate-800 border-2 border-slate-200 text-sm font-extrabold tabular-nums">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Balance Now</span>
+                <span>{detail.current}</span>
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search description, ref, amount…"
+              className={`${sel} !h-8 !pl-8 !w-56 text-xs`}
+            />
+          </div>
+        </div>
+
+        <div className="max-h-[55vh] overflow-auto border border-slate-200 rounded-xl">
+          {detail.kind === 'BANK' ? (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th className={th}>Date</th>
+                  <th className={th}>Type</th>
+                  <th className={th}>Company / Party</th>
+                  <th className={th}>Ref / Description</th>
+                  <th className={thR}>Debit (Out)</th>
+                  <th className={thR}>Credit (In)</th>
+                  <th className={thR}>Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {detail.rows
+                  .filter(r => !query || [r.txn_date, r.kind, r.party_name, r.reference_no, r.description, r.amount].some(v => String(v ?? '').toLowerCase().includes(query)))
+                  .map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">{formatDate(r.txn_date)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-700">{r.kind || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{r.party_name || '-'}</td>
+                      <td className="px-3 py-2 text-slate-600 break-words">{[r.reference_no, r.description].filter(Boolean).join(' · ') || '-'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-700 whitespace-nowrap">{r.direction === 'OUT' ? money(num(r.amount)) : ''}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700 whitespace-nowrap">{r.direction === 'IN' ? money(num(r.amount)) : ''}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600 whitespace-nowrap">{r.balance != null && r.balance !== '' ? money(num(r.balance)) : '-'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th className={th}>Date</th>
+                  <th className={th}>Source</th>
+                  <th className={th}>Ref</th>
+                  <th className={th}>Particulars</th>
+                  <th className={th}>Narration</th>
+                  <th className={thR}>Debit</th>
+                  <th className={thR}>Credit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {detail.lines
+                  .filter(l => !query || [l.date, l.source, l.ref, l.particulars, l.narration, l.debit, l.credit].some(v => String(v ?? '').toLowerCase().includes(query)))
+                  .map(l => (
+                    <tr key={l.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">{l.date ? formatDate(l.date) : '-'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-700">{l.source}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">{l.ref || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{l.particulars}</td>
+                      <td className="px-3 py-2 text-slate-600 break-words">{l.narration || '-'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-red-700 whitespace-nowrap">{l.debit ? money(l.debit) : ''}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700 whitespace-nowrap">{l.credit ? money(l.credit) : ''}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </Modal>
   );
 }
