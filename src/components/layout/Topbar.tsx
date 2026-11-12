@@ -17,7 +17,6 @@ import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
 import { MenuPositionSelector } from './MenuPositionSelector';
-import { DesktopUpdateNavButton } from '../desktop/DesktopUpdateNavButton';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -167,9 +166,6 @@ export function Topbar({
             {company.company_name}
           </div>
         )}
-
-        {/* Desktop App & Updates Navigation Button */}
-        <DesktopUpdateNavButton onNavigate={onNavigate} />
 
         {/* Date + profile box */}
         <div className="relative shrink-0" ref={profileRef}>

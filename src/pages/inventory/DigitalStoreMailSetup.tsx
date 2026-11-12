@@ -72,7 +72,7 @@ export function DigitalStoreMailSetup({ storeId, payLink, payNote, onSaved }: Pr
     const link = pay.link.trim();
     if (link && !/^https?:\/\//i.test(link)) throw new Error('The payment link must start with https://');
     const up = await supabase.from('digital_stores').update({ payment_link: link || null, payment_note: pay.note.trim() || null, updated_at: new Date().toISOString() }).eq('id', storeId);
-    if (up.error) throw new Error(/payment_link/.test(up.error.message) ? 'Run the migration 20261110020000_digital_store_payment_mail.sql in Supabase first.' : up.error.message);
+    if (up.error) throw new Error(/payment_link/.test(up.error.message) ? 'Apply the database migration 20261110020000_digital_store_payment_mail.sql first.' : up.error.message);
     setMsg({ ok: true, text: 'Payment link saved.' }); onSaved();
   });
 
@@ -186,7 +186,7 @@ export function DigitalStoreMailSetup({ storeId, payLink, payNote, onSaved }: Pr
     const link = pay.link.trim();
     if (link && !/^https?:\/\//i.test(link)) throw new Error('The payment link must start with https://');
     const up = await supabase.from('digital_stores').update({ payment_link: link || null, payment_note: pay.note.trim() || null, updated_at: new Date().toISOString() }).eq('id', storeId);
-    if (up.error) throw new Error(/payment_link/.test(up.error.message) ? 'Run the migration 20261110020000_digital_store_payment_mail.sql in Supabase first.' : up.error.message);
+    if (up.error) throw new Error(/payment_link/.test(up.error.message) ? 'Apply the database migration 20261110020000_digital_store_payment_mail.sql first.' : up.error.message);
     setMsg({ ok: true, text: 'Saved. Customers who order will now get the e-mail.' }); onSaved();
   }
 }

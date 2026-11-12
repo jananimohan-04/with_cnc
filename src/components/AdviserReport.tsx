@@ -18,7 +18,7 @@ const SEV: Record<Severity, { label: string; chip: string; bar: string; icon: ty
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
-const REVIEW_SYSTEM = (lang: Lang) => `You are the business Adviser of a CNC machining company, reading the figures its Business Intelligence system produced today.
+const REVIEW_SYSTEM = (lang: Lang) => `You are the business Adviser of a CNC machining company, reading the figures its Argus Business Intelligence system produced today.
 Write a short management report: (1) the 3 most urgent problems, each with the customer / order / invoice names and amounts given, (2) one concrete action for each, (3) 3 ideas to improve cash collection, delivery speed and profit over the next month.
 Use only the figures given; never invent customers, amounts or days. About 12 short lines, plain text, no markdown symbols, numbered lines. ${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
 

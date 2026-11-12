@@ -114,7 +114,7 @@ export default function DigitalStore() {
 
   if (state === 'loading') return <Skeleton h={420} />;
   if (state === 'error') return <div className="p-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">{error}</div>;
-  if (state === 'empty') return <div className="p-8 text-center text-slate-600 bg-white border border-slate-200 rounded-2xl">The Digital Store has no products yet. An administrator can set up the racks and add products in Business Intelligence → Inventory → Digital Store.</div>;
+  if (state === 'empty') return <div className="p-8 text-center text-slate-600 bg-white border border-slate-200 rounded-2xl">The Digital Store has no products yet. An administrator can set up the racks and add products in Argus Business Intelligence → Inventory → Digital Store.</div>;
 
   return (
     <div className="space-y-3">
@@ -236,7 +236,7 @@ export default function DigitalStore() {
                   </div>
                 </div>
               )}
-              {bodyFailed && <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">A 3D body could not be built from this photo, so a box is shown. Use a straight-on photo of the product on a plain background, or give it a 3D model or 360° photos in BI → Digital Store.</div>}
+              {bodyFailed && <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">A 3D body could not be built from this photo, so a box is shown. Use a straight-on photo of the product on a plain background, or give it a 3D model or 360° photos in Argus BI → Digital Store.</div>}
               <div className="mt-auto pt-4 text-[11px] text-slate-400">Drag to turn it around{picked.shape === 'spin' ? '' : ' · scroll or pinch to zoom'}</div>
             </div>
           </div>

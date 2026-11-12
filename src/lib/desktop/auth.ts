@@ -122,7 +122,7 @@ export async function desktopGoogleSignIn(): Promise<void> {
   }
   if (!params.refresh_token) {
     throw new Error(
-      'Google sign-in returned no refresh token. Please sign out everywhere in Supabase and try again.',
+      'Google sign-in returned no refresh token. Please sign out everywhere and try again.',
     );
   }
 

@@ -85,7 +85,7 @@ pub fn run() {
                             next_popup_label(),
                             WebviewUrl::External("about:blank".parse().expect("static url")),
                         )
-                        .title("Business Intelligence")
+                        .title("Argus Business Intelligence")
                         .center();
                         if let Some(size) = features.size() {
                             builder = builder.inner_size(size.width, size.height);
@@ -138,5 +138,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Business Intelligence");
+        .expect("error while running Argus Business Intelligence");
 }

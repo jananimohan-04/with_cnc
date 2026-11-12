@@ -1318,7 +1318,7 @@ function DcSection({ rows, qtyTracking, editMode: editing, saveRef, customers, c
         })).forEach((k) => dropped.add(k));
       }
       if (dropped.size) {
-        alert(`Saved, but these fields have no database column yet and were not stored: ${[...dropped].join(', ')}. Apply the latest Supabase migration (deliveries_challan_fields).`);
+        alert(`Saved, but these fields have no database column yet and were not stored: ${[...dropped].join(', ')}. Apply the latest database migration (deliveries_challan_fields).`);
       }
       // Refresh the linked sales order totals from live delivery rows.
       const soNo = String(first.sales_order_no || '');

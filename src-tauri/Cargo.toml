@@ -1,7 +1,7 @@
 [package]
 name = "cncforge-erp"
 version = "1.0.7"
-description = "Business Intelligence — Windows desktop application"
+description = "Argus Business Intelligence — Windows desktop application"
 authors = ["CNCFORGE"]
 edition = "2021"
 rust-version = "1.90"

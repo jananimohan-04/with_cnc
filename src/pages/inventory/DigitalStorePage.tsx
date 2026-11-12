@@ -31,7 +31,7 @@ const errText = (e: unknown) => {
   const col = m.match(/Could not find the '([^']+)' column/i);
   if (col) {
     const fix = ['stock_qty', 'unit'].includes(col[1]) ? '20261109000000_digital_store_orders.sql' : ['shape', 'model_path', 'angle_paths'].includes(col[1]) ? '20261108010000_digital_store_3d.sql' : '20261108000000_digital_store.sql';
-    return `The database is missing "${col[1]}". Run the migration ${fix} in the Supabase SQL editor, then try again.`;
+    return `The database is missing "${col[1]}". Apply the migration ${fix}, then try again.`;
   }
   return m;
 };
@@ -58,7 +58,7 @@ export function DigitalStorePage() {
   const [orderNote, setOrderNote] = useState<string | null>(null);
   const loadOrders = useCallback(async () => {
     const o = await supabase.from('digital_store_orders').select('*').order('created_at', { ascending: false }).limit(300);
-    if (o.error) { setOrderNote(/digital_store_orders/.test(o.error.message) ? 'Orders are not set up yet. Run the migration 20261109000000_digital_store_orders.sql in Supabase.' : o.error.message); setOrders([]); return; }
+    if (o.error) { setOrderNote(/digital_store_orders/.test(o.error.message) ? 'Orders are not set up yet. Apply the database migration 20261109000000_digital_store_orders.sql.' : o.error.message); setOrders([]); return; }
     setOrderNote(null); setOrders((o.data as Order[]) ?? []);
   }, []);
   useEffect(() => { if (tab === 'orders') void loadOrders(); }, [tab, loadOrders]);
@@ -72,7 +72,7 @@ export function DigitalStorePage() {
   const load = useCallback(async () => {
     setLoading(true);
     const s = await supabase.from('digital_stores').select('*').maybeSingle();
-    if (s.error) { setError(/digital_stores/.test(s.error.message) ? 'The Digital Store tables are not created yet. Run the migration 20261108000000_digital_store.sql in Supabase.' : s.error.message); setLoading(false); return; }
+    if (s.error) { setError(/digital_stores/.test(s.error.message) ? 'The Digital Store tables are not created yet. Apply the database migration 20261108000000_digital_store.sql.' : s.error.message); setLoading(false); return; }
     setError(null);
     const st = (s.data as Store | null) ?? null;
     setStore(st);

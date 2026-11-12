@@ -71,5 +71,5 @@ export async function androidGoogleSignIn(): Promise<void> {
     if (e) throw new Error(e.message);
     return;
   }
-  throw new Error('Google sign-in returned no session. Check that com.arguscnc.erp://auth/callback is in the Supabase redirect URLs.');
+  throw new Error('Google sign-in returned no session. Check that com.arguscnc.erp://auth/callback is in the allowed authentication redirect URLs.');
 }

@@ -839,7 +839,7 @@ async function loadMailCfg(companyId) {
 }
 /* only an administrator of the company may link or change its mail account */
 async function mailAdminFor(req, res) {
-  if (!SB.enabled) { res.status(503).json({ ok: false, error: 'The server is not connected to Supabase.' }); return null; }
+  if (!SB.enabled) { res.status(503).json({ ok: false, error: 'The server is not connected to the database.' }); return null; }
   const h = String(req.headers.authorization || '');
   const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
   if (!user) { res.status(401).json({ ok: false, error: 'Please sign in again.' }); return null; }
@@ -876,7 +876,7 @@ app.post('/api/digital-mail/save', async (req, res) => {
     const row = { company_id: a.companyId, provider: String(b.provider || '').slice(0, 30) || null, smtp_host: host, smtp_port: port, smtp_user: user, smtp_pass_enc: mailEnc(pass),
       from_name: String(b.from_name || '').trim().slice(0, 80) || null, bcc: String(b.bcc || '').trim().slice(0, 120) || null, verified_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() };
     const { error } = await SB.admin.from('digital_store_mail').upsert(row, { onConflict: 'company_id' });
-    if (error) return res.status(500).json({ ok: false, error: /digital_store_mail/.test(error.message) ? 'Run the migration 20261110030000_digital_store_mail_accounts.sql in Supabase first.' : error.message });
+    if (error) return res.status(500).json({ ok: false, error: /digital_store_mail/.test(error.message) ? 'Apply database migration 20261110030000_digital_store_mail_accounts.sql first.' : error.message });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: mailProblem(e) }); }
 });
@@ -962,7 +962,7 @@ app.post('/api/digital-pay/save', async (req, res) => {
     try { out = await rzpCall({ keyId, secret }, 'GET', '/payment_links?count=1'); } catch { return res.status(502).json({ ok: false, error: 'Razorpay could not be reached. Try again in a moment.' }); }
     if (!out.ok) return res.status(400).json({ ok: false, error: rzpProblem(out.j, out.status) });
     const { error } = await SB.admin.from('digital_store_payment').upsert({ company_id: a.companyId, provider: 'razorpay', key_id: keyId, key_secret_enc: mailEnc(secret), verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
-    if (error) return res.status(500).json({ ok: false, error: /digital_store_payment/.test(error.message) ? 'Run the migration 20261110040000_digital_store_payment_gateway.sql in Supabase first.' : error.message });
+    if (error) return res.status(500).json({ ok: false, error: /digital_store_payment/.test(error.message) ? 'Apply database migration 20261110040000_digital_store_payment_gateway.sql first.' : error.message });
     res.json({ ok: true, mode: keyId.startsWith('rzp_live_') ? 'live' : 'test' });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
@@ -976,7 +976,7 @@ app.post('/api/digital-pay/remove', async (req, res) => {
 
 app.post('/api/digital-order-mail', async (req, res) => {
   try {
-    if (!SB.enabled) return res.status(503).json({ ok: false, error: 'The server is not connected to Supabase.' });
+    if (!SB.enabled) return res.status(503).json({ ok: false, error: 'The server is not connected to the database.' });
     const h = String(req.headers.authorization || '');
     const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
     if (!user) return res.status(401).json({ ok: false, error: 'Please sign in again.' });
@@ -988,7 +988,7 @@ app.post('/api/digital-order-mail', async (req, res) => {
     const note = async (patch) => { await SB.admin.from('digital_store_orders').update(patch).eq('id', o.id); };
     const mailCfg = await loadMailCfg(o.company_id);
     if (!mailCfg) {
-      const msg = 'This company has not linked its e-mail account yet (Business Intelligence > Digital Store > E-mail setup).';
+      const msg = 'This company has not linked its e-mail account yet (Argus Business Intelligence > Digital Store > E-mail setup).';
       await note({ mail_error: msg });
       return res.status(503).json({ ok: false, error: msg, payUrl });
     }
@@ -1116,7 +1116,7 @@ async function sendDocMail({ kind, doc, req }) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { ok: false, error: 'No valid customer e-mail on this ' + kind + '.' };
   const co = await biCompanyOf(doc.companyId);
   const cfg = co ? await loadMailCfg(co.id) : null;
-  if (!cfg) return { ok: false, error: 'This company has not linked its e-mail account yet (Business Intelligence > Digital Store > E-mail setup).' };
+  if (!cfg) return { ok: false, error: 'This company has not linked its e-mail account yet (Argus Business Intelligence > Digital Store > E-mail setup).' };
   const items = Array.isArray(doc.items) ? doc.items : [];
   const dsc = kind === 'invoice' ? invDiscOf(doc) : { type: doc.discountType, value: doc.discountValue };
   const t = totalsOf(items, dsc.type, dsc.value);
@@ -2037,7 +2037,7 @@ const safeName = n => String(n || 'file').replace(/[^a-zA-Z0-9.]+/g, '_').slice(
 const mediaPath = (req, name) => `${req.ctx.companyId || 'platform'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(name)}`;
 app.post('/api/uploads/sign', async (req, res) => {
   if (!isWorkflowStaff(req)) return res.status(403).json({ error: 'Your role is not permitted to upload media' });
-  if (!SB.enabled) return res.status(501).json({ error: 'Supabase Storage not configured', fallback: true });
+  if (!SB.enabled) return res.status(501).json({ error: 'Cloud Storage not configured', fallback: true });
   const files = Array.isArray(req.body.files) ? req.body.files.slice(0, 10) : [];
   if (!files.length) return res.status(400).json({ error: 'files[] required' });
   for (const f of files) {

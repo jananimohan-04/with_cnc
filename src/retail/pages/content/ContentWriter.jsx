@@ -209,7 +209,7 @@ function ContentQueue() {
             icon="📦"
             title="Nothing in this queue"
             sub={tab === 'mine'
-              ? 'New products appear here the moment the BI assigns them to the Retail Store warehouse.'
+              ? 'New products appear here the moment Argus BI assigns them to the Retail Store warehouse.'
               : 'No products currently match this stage.'}
           />
         </div>
@@ -264,7 +264,7 @@ function ContentQueue() {
                   <td className="px-4 py-3 font-mono font-bold text-slate-800">{p.stock ?? '—'}</td>
                   <td className="px-4 py-3"><StageBadge stage={p.workflow_stage} label={p.stageLabel} /></td>
                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                    {p.erp_synced && <span className="mr-1.5 text-[10px] font-extrabold uppercase text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">BI</span>}
+                    {p.erp_synced && <span className="mr-1.5 text-[10px] font-extrabold uppercase text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">Argus BI</span>}
                     {(p.mediaStats?.images || 0)} img · {(p.mediaStats?.documents || 0)} pdf · {(p.mediaStats?.youtube || 0)} yt
                   </td>
                   <td className="px-4 py-3">
@@ -940,7 +940,7 @@ function ContentEditor({ id }) {
           {/* Top Panel: From BI Inventory */}
           <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3">
             <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 flex-shrink-0">
-              <h3 className="font-extrabold text-slate-900 text-xs">From BI Inventory</h3>
+              <h3 className="font-extrabold text-slate-900 text-xs">From Argus BI Inventory</h3>
               {p.erp_synced && (
                 <span className="text-[9px] font-extrabold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
                   Synced
@@ -956,7 +956,7 @@ function ContentEditor({ id }) {
               <Fact k="Lead time" v={p.leadTime || '—'} />
               <Fact k="Warehouse" v={p.warehouse || '—'} mono />
               <Fact k="Stock on hand" v={p.stock ?? '—'} mono strong />
-              {p.erp_item_id && <Fact k="BI item ID" v={p.erp_item_id} mono />}
+              {p.erp_item_id && <Fact k="Argus BI item ID" v={p.erp_item_id} mono />}
               {p.erp_last_synced_at && <Fact k="Last Synced" v={fmtDate(p.erp_last_synced_at)} />}
             </div>
           </div>

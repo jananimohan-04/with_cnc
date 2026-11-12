@@ -44,7 +44,7 @@ export function RetailRolesPanel({ open, onClose, onChanged, canEdit }: { open: 
       try { await retailApi.get('/api/roles'); await new Promise(res => setTimeout(res, 1200)); } catch { /* shown below */ }
       ({ data, error } = await supabase.from('retail_roles').select('*').order('category').order('name'));
     }
-    if (error) setNote('Roles could not be loaded. Apply the retail roles migration (20261106010000_retail_roles.sql) in Supabase.');
+    if (error) setNote('Roles could not be loaded. Apply the retail roles database migration (20261106010000_retail_roles.sql).');
     else setNote(((data as any[]) ?? []).length === 0 ? 'No roles yet. They are copied from the Retail Store the first time someone opens it; or add one here.' : null);
     setRoles(error ? [] : ((data as any[]) ?? []).map(r => ({ ...r, markup_pct: Number(r.markup_pct) || 0, menu_permissions: Array.isArray(r.menu_permissions) ? r.menu_permissions : [] })));
     setLoading(false);

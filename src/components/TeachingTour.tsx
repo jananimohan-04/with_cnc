@@ -240,8 +240,8 @@ export function TeachingTour() {
         const order = [...all.slice(start), ...all.slice(0, start)];
         // the menu first: the sections and what is in each
         const menuText = L(
-          `Welcome to the Business Intelligence tour. The menu on the left has ${secs.length} sections: ${secs.map((s) => `${s.label} with ${s.items.filter((i) => !i.page.startsWith('store/')).length} screens`).join(', ')}. I will now visit every screen in turn and explain each option on it.`,
-          `Business Intelligence சுற்றுப்பயணத்திற்கு வரவேற்கிறோம். இடதுபுற மெனுவில் ${secs.length} பிரிவுகள் உள்ளன: ${secs.map((s) => `${s.label} - ${s.items.filter((i) => !i.page.startsWith('store/')).length} திரைகள்`).join(', ')}. இப்போது ஒவ்வொரு திரைக்கும் சென்று, அதிலுள்ள ஒவ்வொரு தேர்வையும் விளக்குகிறேன்.`,
+          `Welcome to the Argus Business Intelligence tour. The menu on the left has ${secs.length} sections: ${secs.map((s) => `${s.label} with ${s.items.filter((i) => !i.page.startsWith('store/')).length} screens`).join(', ')}. I will now visit every screen in turn and explain each option on it.`,
+          `Argus Business Intelligence சுற்றுப்பயணத்திற்கு வரவேற்கிறோம். இடதுபுற மெனுவில் ${secs.length} பிரிவுகள் உள்ளன: ${secs.map((s) => `${s.label} - ${s.items.filter((i) => !i.page.startsWith('store/')).length} திரைகள்`).join(', ')}. இப்போது ஒவ்வொரு திரைக்கும் சென்று, அதிலுள்ள ஒவ்வொரு தேர்வையும் விளக்குகிறேன்.`,
         );
         targetEl.current = document.querySelector('aside') as HTMLElement | null;
         setView({ kind, pageLabel: L('Menu', 'மெனு'), pageNo: 0, pageCount: order.length, itemNo: 0, itemCount: 0, heading: L('Menu', 'மெனு'), text: menuText, inForm: '', note: '' });
@@ -348,7 +348,7 @@ export function TeachingTour() {
         <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={17} /></span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-500">{view.kind === 'erp' ? (ta ? 'முழு BI கற்பித்தல்' : 'Teaching · Whole BI') : (ta ? 'இந்தப் பக்கம் கற்பித்தல்' : 'Teaching · This page')}</p>
+            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-500">{view.kind === 'erp' ? (ta ? 'முழு Argus BI கற்பித்தல்' : 'Teaching · Whole Argus BI') : (ta ? 'இந்தப் பக்கம் கற்பித்தல்' : 'Teaching · This page')}</p>
             <p className="truncate text-[10px] text-slate-400">
               {view.kind === 'erp' && view.pageNo > 0 ? `${ta ? 'பக்கம்' : 'Page'} ${view.pageNo}/${view.pageCount} · ` : ''}{view.pageLabel}
               {view.itemCount > 0 && view.itemNo > 0 ? ` · ${view.inForm ? `${view.inForm} · ` : ''}${ta ? 'தேர்வு' : 'Option'} ${view.itemNo}/${view.itemCount}` : ''}

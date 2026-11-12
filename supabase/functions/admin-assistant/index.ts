@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
   const gemini = Deno.env.get('GEMINI_API_KEY');
   const claude = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!gemini && !claude) return json({ error: 'No AI key is set. Add the GEMINI_API_KEY secret (free) in Supabase Edge Functions > Secrets.' }, 500);
+  if (!gemini && !claude) return json({ error: 'No AI key is set. Please configure the GEMINI_API_KEY secret in the server secrets.' }, 500);
 
   const auth = req.headers.get('Authorization') ?? '';
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: auth } } });

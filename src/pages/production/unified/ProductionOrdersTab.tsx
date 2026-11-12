@@ -547,7 +547,7 @@ export function ProductionOrdersTab({ workOrders, allWorkOrders, refresh }: { wo
         if (isPart) { base.product_name = pc.productName; base.is_part_order = true; }
         const { error } = await supabase.from('cnc_work_orders').insert([base]);
         if (error && isPart && /product_name|is_part_order/.test(String(error.message || ''))) {
-          throw new Error('Part orders need the database update 20261021000000_work_order_parts.sql. Run it in the Supabase SQL Editor, then try again. (Nothing was saved.)');
+          throw new Error('Part orders need the database update 20261021000000_work_order_parts.sql. Ask your administrator to apply it, then try again. (Nothing was saved.)');
         }
         if (error) throw error;
         await saveOpDrafts(woId, { wo_no: '', sales_order: so?.order_no ?? '' });
@@ -597,7 +597,7 @@ export function ProductionOrdersTab({ workOrders, allWorkOrders, refresh }: { wo
       void loadPlans();
     } catch (err: any) {
       alert(isMissingTable(err)
-        ? 'The work order was saved, but its planned timeline was not: run migration 20261009000000_operation_plans.sql in Supabase first.'
+        ? 'The work order was saved, but its planned timeline was not: apply database migration 20261009000000_operation_plans.sql first.'
         : `The work order was saved, but its planned timeline was not: ${err?.message ?? err}`);
     }
   };
@@ -825,7 +825,7 @@ export function ProductionOrdersTab({ workOrders, allWorkOrders, refresh }: { wo
         <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
           <span className="font-bold">Setup required: </span>
           the <span className="font-mono">cnc_work_order_operations</span> table does not exist yet. Apply{' '}
-          <span className="font-mono">supabase/migrations/20260928000000_work_order_operations.sql</span> to
+          <span className="font-mono">20260928000000_work_order_operations.sql</span> to
           the database. Work orders can still be created, but operations and release are disabled until then.
         </div>
       )}

@@ -859,7 +859,7 @@ export function FgCostingModal({ card, onClose, onMoved, mode = 'add', pickOptio
       return;
     }
     if (sheetsMissing) {
-      alert('Costing storage is not provisioned. Apply supabase/migrations/20260930000000_costing_sheets.sql first.');
+      alert('Costing storage is not provisioned. Apply the costing_sheets database migration (20260930000000_costing_sheets.sql) first.');
       return;
     }
     if (baseQty <= 0) {

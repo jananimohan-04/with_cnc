@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Business Intelligence</string>
-    <string name="title_activity_main">Business Intelligence</string>
+    <string name="app_name">Argus Business Intelligence</string>
+    <string name="title_activity_main">Argus Business Intelligence</string>
     <string name="package_name">com.arguscnc.erp</string>
     <string name="custom_url_scheme">com.arguscnc.erp</string>
 </resources>

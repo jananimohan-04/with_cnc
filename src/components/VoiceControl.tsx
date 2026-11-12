@@ -50,8 +50,8 @@ export function VoiceControl() {
 
   const say = useCallback((text: string, spoken = true) => {
     const sanitized = text
-      .replace(/\bERP\b/gi, 'Business Intelligence')
-      .replace(/இ\.?ஆர்\.?பி/gi, 'Business Intelligence');
+      .replace(/\bERP\b/gi, 'Argus Business Intelligence')
+      .replace(/இ\.?ஆர்\.?பி/gi, 'Argus Business Intelligence');
     setNote(sanitized);
     if (!spoken || !repliesRef.current || !('speechSynthesis' in window)) return;
     try {

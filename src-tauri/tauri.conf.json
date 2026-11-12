@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Business Intelligence",
+  "productName": "Argus Business Intelligence",
   "version": "1.0.7",
   "identifier": "com.cncforge.erp",
   "build": {
@@ -14,7 +14,7 @@
       {
         "label": "main",
         "create": false,
-        "title": "Business Intelligence",
+        "title": "Argus Business Intelligence",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -46,8 +46,8 @@
     ],
     "publisher": "CNCFORGE",
     "copyright": "Copyright Â© 2026 CNCFORGE",
-    "shortDescription": "Business Intelligence desktop application",
-    "longDescription": "Business Intelligence â€” enterprise resource planning for CNC machining operations. Windows desktop edition with signed automatic updates.",
+    "shortDescription": "Argus Business Intelligence desktop application",
+    "longDescription": "Argus Business Intelligence â€” enterprise resource planning for CNC machining operations. Windows desktop edition with signed automatic updates.",
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",

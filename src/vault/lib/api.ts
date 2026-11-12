@@ -417,7 +417,7 @@ export async function createAuthUserWithoutLogin(email: string, password: string
   const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
   if (!url || !key) {
-    throw new Error("Supabase URL or Publishable Key is missing");
+    throw new Error("Database URL or Publishable Key is missing");
   }
 
   const tempClient = createClient(url, key, {

@@ -179,10 +179,10 @@ function Gate({ children, noSide, roles, perm }) {
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
           <h2 className="text-lg font-bold text-slate-800">Retail Store could not sign you in</h2>
-          <p className="mt-2 text-sm text-slate-600">Your Business Intelligence login was not accepted by the Retail Store. This usually means the Retail Store server is not connected to Supabase yet (an administrator must add SUPABASE_SECRET_KEY on the host), or your sign-in has expired.</p>
+          <p className="mt-2 text-sm text-slate-600">Your Argus Business Intelligence login was not accepted by the Retail Store. This usually means the Retail Store server database connection is not configured yet, or your sign-in has expired.</p>
           <div className="mt-4 flex justify-center gap-2">
             <button className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold" onClick={() => window.location.reload()}>Try again</button>
-            <button className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700" onClick={() => window.location.assign('/')}>Back to Business Intelligence</button>
+            <button className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700" onClick={() => window.location.assign('/')}>Back to Argus Business Intelligence</button>
           </div>
         </div>
       </div>
@@ -195,7 +195,7 @@ function Gate({ children, noSide, roles, perm }) {
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
           <h2 className="text-lg font-bold text-slate-800">Retail Store is turned off</h2>
           <p className="mt-2 text-sm text-slate-600">The Retail Store is not enabled for your company. Please contact your administrator.</p>
-          {!me.biOff && <div className="mt-4"><button className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold" onClick={() => window.location.assign('/')}>Go to Business Intelligence</button></div>}
+          {!me.biOff && <div className="mt-4"><button className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold" onClick={() => window.location.assign('/')}>Go to Argus Business Intelligence</button></div>}
         </div>
       </div>
     );

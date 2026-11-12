@@ -78,7 +78,7 @@ export function CommentsModal({ isOpen, onClose, recordId, recordTitle }: { isOp
   return (
     <Modal open={isOpen} onClose={onClose} title={`Comments: ${recordTitle}`} size="md" footer={<Button onClick={onClose}>Close</Button>}>
       <div className="flex flex-col h-[400px]">
-        {usingFallback && <div className="bg-amber-50 text-amber-600 text-[10px] p-2 text-center border-b border-amber-100 rounded-t-lg mb-2">Note: Saving locally. Create 'cnc_pipeline_comments' table in Supabase for cloud sync.</div>}
+        {usingFallback && <div className="bg-amber-50 text-amber-600 text-[10px] p-2 text-center border-b border-amber-100 rounded-t-lg mb-2">Note: Saving locally. Create 'cnc_pipeline_comments' table in the database for cloud sync.</div>}
         <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
           {loading ? (
             <div className="text-center text-slate-500 mt-10">Loading comments...</div>

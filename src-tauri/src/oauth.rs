@@ -33,7 +33,7 @@ const LISTEN_TIMEOUT: Duration = Duration::from_secs(300);
 static CANCELLED: AtomicBool = AtomicBool::new(false);
 
 const RELAY_HTML: &str = r#"<!doctype html>
-<html><head><meta charset="utf-8"><title>Business Intelligence — Signing in</title>
+<html><head><meta charset="utf-8"><title>Argus Business Intelligence — Signing in</title>
 <style>
   body { font-family: 'Segoe UI', system-ui, sans-serif; background:#0b1220; color:#e2e8f0;
          display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
@@ -46,7 +46,7 @@ const RELAY_HTML: &str = r#"<!doctype html>
   .done .spin { display:none; }
 </style></head>
 <body><div class="card" id="c"><div class="spin"></div>
-  <h2>Completing sign-in…</h2><p>You can return to Business Intelligence.</p></div>
+  <h2>Completing sign-in…</h2><p>You can return to Argus Business Intelligence.</p></div>
 <script>
 (function () {
   var payload = location.pathname + location.search + location.hash;
@@ -54,17 +54,17 @@ const RELAY_HTML: &str = r#"<!doctype html>
     .then(function () {
       var c = document.getElementById('c');
       c.className = 'done';
-      c.innerHTML = '<h2>Sign-in complete</h2><p>You can close this window and return to Business Intelligence.</p>';
+      c.innerHTML = '<h2>Sign-in complete</h2><p>You can close this window and return to Argus Business Intelligence.</p>';
     })
     .catch(function () {
       document.getElementById('c').innerHTML =
-        '<h2>Sign-in could not be forwarded</h2><p>Please return to Business Intelligence and try again.</p>';
+        '<h2>Sign-in could not be forwarded</h2><p>Please return to Argus Business Intelligence and try again.</p>';
     });
 })();
 </script></body></html>"#;
 
 const CAPTURE_OK_HTML: &str = r#"<!doctype html>
-<html><head><meta charset="utf-8"><title>Business Intelligence</title>
+<html><head><meta charset="utf-8"><title>Argus Business Intelligence</title>
 <style>body{font-family:'Segoe UI',system-ui,sans-serif;background:#0b1220;color:#e2e8f0;
 display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style></head>
 <body><div style="text-align:center"><h2>You can close this window</h2></div></body></html>"#;

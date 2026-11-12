@@ -65,7 +65,7 @@ function normalise(d: Record<string, any>): JobDescription {
 
 const missing = (e: { code?: string; message?: string }) => e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache|could not find the table/i.test(String(e.message ?? ''));
 const explain = (e: { code?: string; message?: string }) => missing(e)
-  ? 'The job descriptions table has not been created yet. Ask your administrator to run the SQL migration "20261031000000_jd_build_and_scheduled_tasks.sql" in Supabase.'
+  ? 'The job descriptions table has not been created yet. Ask your administrator to run the SQL migration "20261031000000_jd_build_and_scheduled_tasks.sql".'
   : String(e.message ?? 'Something went wrong.');
 
 const rowOf = (j: JobDescriptionInput) => ({

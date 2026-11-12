@@ -196,7 +196,7 @@ function ReportsPage({ initialSection = 'Overview' as Section }) {
       </div></Card>
     </div>
     <div className="flex gap-1 overflow-x-auto border-b">{sections.map(s=><button key={s} onClick={()=>{setSection(s);const path:Record<Section,string>={Overview:'/reports/production',Sales:'/reports/sales',Production:'/reports/production',Inventory:'/reports/inventory','Machine Utilization':'/reports/machine-utilization',Profitability:'/reports/cost-analysis','Custom Reports':'/reports/quality'};navigate(path[s]);}} className={'px-4 py-2 text-xs font-semibold border-b-2 whitespace-nowrap '+(section===s?'border-brand-600 text-brand-700':'border-transparent text-slate-500')}>{s}</button>)}</div>
-    {loading ? <Card className="p-12 text-center text-sm text-slate-500"><BarChart3 className="inline mr-2" size={18}/>Generating report from current BI records…</Card> : <>
+    {loading ? <Card className="p-12 text-center text-sm text-slate-500"><BarChart3 className="inline mr-2" size={18}/>Generating report from current Argus BI records…</Card> : <>
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <Metric title="Total Sales" value={money(salesTotal)} icon={<TrendingUp size={18}/>} tone="blue" note="Posted invoice totals in range"/>
         <Metric title="Total Production" value={`${productionTotal.toLocaleString('en-IN')} Nos`} icon={<Factory size={18}/>} tone="green" note="Completed work order quantity"/>

@@ -212,7 +212,7 @@ export function QuoteCostingPage() {
   const saveVersion = async (status: 'Draft' | 'Calculated' | 'Approved', approved: number | null) => {
     if (!quote) return;
     if (sheetsMissing) {
-      alert('Costing storage is not provisioned. Apply supabase/migrations/20260930000000_costing_sheets.sql first.');
+      alert('Costing storage is not provisioned. Apply the costing_sheets database migration (20260930000000_costing_sheets.sql) first.');
       return;
     }
     if (baseQty <= 0) {
@@ -303,7 +303,7 @@ export function QuoteCostingPage() {
         <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
           <span className="font-bold">Setup required: </span>
           the <span className="font-mono">cnc_costing_sheets</span> table does not exist yet. Apply{' '}
-          <span className="font-mono">supabase/migrations/20260930000000_costing_sheets.sql</span>. Costing calculates live, but versions cannot be saved until then.
+          <span className="font-mono">20260930000000_costing_sheets.sql</span>. Costing calculates live, but versions cannot be saved until then.
         </div>
       )}
 

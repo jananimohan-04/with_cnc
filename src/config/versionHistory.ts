@@ -31,7 +31,7 @@ export const VERSION_HISTORY: VersionRelease[] = [
   {
     version: '1.0.7',
     releaseDate: 'November 10, 2026',
-    title: 'Business Intelligence v1.0.7 — Bank Entry Inline Editing',
+    title: 'Argus Business Intelligence v1.0.7 — Bank Entry Inline Editing',
     isLatest: true,
     isCurrent: true,
     highlights: [
@@ -52,12 +52,12 @@ export const VERSION_HISTORY: VersionRelease[] = [
   {
     version: '1.0.6',
     releaseDate: 'November 10, 2026',
-    title: 'Business Intelligence v1.0.6 — Store, Payments, Bank Import & Glass UI',
+    title: 'Argus Business Intelligence v1.0.6 — Store, Payments, Bank Import & Glass UI',
     highlights: [
       'Quotation first: checkout generates, e-mails and WhatsApp-shares the quotation; the invoice and Razorpay payment link follow when the customer confirms',
       'Digital Store: per-company e-mail and Razorpay setup, invoice e-mail and pay-now redirect',
       'Bank statement import learns from your entries, marks unknown rows in red and follows the bank column order',
-      'Glass look across the whole app, and BI / Retail Store on-off per company',
+      'Glass look across the whole app, and Argus BI / Retail Store on-off per company',
     ],
     sections: [
       {
@@ -81,8 +81,8 @@ export const VERSION_HISTORY: VersionRelease[] = [
         title: 'Platform',
         type: 'feature',
         items: [
-          'Company Management: Business Intelligence and Retail Store can each be switched on or off per company.',
-          'New glass design with animations across Business Intelligence and the Retail Store.',
+          'Company Management: Argus Business Intelligence and Retail Store can each be switched on or off per company.',
+          'New glass design with animations across Argus Business Intelligence and the Retail Store.',
         ],
       },
     ],
@@ -90,7 +90,7 @@ export const VERSION_HISTORY: VersionRelease[] = [
   {
     version: '1.0.5',
     releaseDate: 'November 4, 2026',
-    title: 'Business Intelligence v1.0.5 — Single-Page Invoices & Finished Goods Stock',
+    title: 'Argus Business Intelligence v1.0.5 — Single-Page Invoices & Finished Goods Stock',
     highlights: [
       'Single-Page Sales Invoice: Compact 2-column GST footer fits invoice entirely on 1 page',
       'Finished Goods Stock Entry: Dedicated tracking for unordered products and buffer stock',
@@ -120,11 +120,11 @@ export const VERSION_HISTORY: VersionRelease[] = [
   {
     version: '1.0.0',
     releaseDate: 'November 3, 2026',
-    title: 'Business Intelligence — Initial Client Release',
+    title: 'Argus Business Intelligence — Initial Client Release',
     isLatest: true,
     isCurrent: true,
     highlights: [
-      'Business Intelligence Manufacturing Suite: Full operations management powered by ARGUS CNC',
+      'Argus Business Intelligence Manufacturing Suite: Full operations management powered by ARGUS CNC',
       'Multi-Format Invoicing & Series Auto-Numbering: Configure custom invoice formats per company',
       'Cross-Platform: Windows Desktop Application & Android Mobile Application',
     ],
@@ -151,7 +151,7 @@ export const VERSION_HISTORY: VersionRelease[] = [
         title: 'Platform & Experience',
         type: 'improvement',
         items: [
-          'Business Intelligence: Complete system branding with Powered by ARGUS CNC integration.',
+          'Argus Business Intelligence: Complete system branding with Powered by ARGUS CNC integration.',
           'Voice Assistant & Copilot: Intelligent voice navigation and workflow assistance.',
           'Auto-Updater: Built-in background updates with cryptographic signature verification.',
         ],
@@ -252,7 +252,7 @@ export async function fetchLiveVersionHistory(): Promise<VersionRelease[]> {
 
     return merged;
   } catch (err) {
-    console.warn('[versionHistory] Could not fetch GitHub releases:', err);
+    console.warn('[versionHistory] Could not fetch remote releases:', err);
     return VERSION_HISTORY;
   }
 }

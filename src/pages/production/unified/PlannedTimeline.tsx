@@ -333,19 +333,19 @@ export function PlannedTimeline() {
       if (r.error && /'quantity' column/.test(String(r.error.message))) {
         rows = rows.map(({ quantity: _q, ...rest }: any) => rest);
         r = await supabase.from('cnc_operation_plans').insert(rows);
-        if (!r.error && qtyNum != null) alert('Saved without the quantity: run migration 20261016000000_operation_plans_qty.sql in Supabase to keep quantities on plans.');
+        if (!r.error && qtyNum != null) alert('Saved without the quantity: apply database migration 20261016000000_operation_plans_qty.sql to keep quantities on plans.');
       }
       // Databases that have not run the operator migration yet save the plan without the man.
       if (r.error && /'operator' column/.test(String(r.error.message))) {
         rows = rows.map(({ operator: _o, ...rest }: any) => rest);
         r = await supabase.from('cnc_operation_plans').insert(rows);
-        if (!r.error && form.operator.trim()) alert('Saved without the operator: run migration 20261009010000_operation_plans_operator.sql in Supabase to keep the man on plans.');
+        if (!r.error && form.operator.trim()) alert('Saved without the operator: apply database migration 20261009010000_operation_plans_operator.sql to keep the man on plans.');
       }
       if (r.error) throw r.error;
       setShowPlan(false);
       await load();
     } catch (e: any) {
-      alert(isMissingTable(e) ? 'The planning table is not provisioned yet. Run migration 20261009000000_operation_plans.sql in Supabase.' : `Could not save the plan: ${e?.message ?? e}`);
+      alert(isMissingTable(e) ? 'The planning table is not provisioned yet. Apply database migration 20261009000000_operation_plans.sql.' : `Could not save the plan: ${e?.message ?? e}`);
     } finally { setSaving(false); }
   };
 

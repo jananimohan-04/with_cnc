@@ -481,7 +481,7 @@ export default function Product() {
 
             {/* Industrial Trust Badges */}
             <div className="pd-trust">
-              <div><ShieldCheck className="w-4 h-4" /> Live stock from BI</div>
+              <div><ShieldCheck className="w-4 h-4" /> Live stock from Argus BI</div>
               <div><ReceiptText className="w-4 h-4" /> GST invoice</div>
               <div><Truck className="w-4 h-4" /> Direct dispatch</div>
               <div><BadgeCheck className="w-4 h-4" /> Genuine product</div>

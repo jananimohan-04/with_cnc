@@ -1,7 +1,7 @@
 {
-  "name": "Business Intelligence",
-  "short_name": "Business Intelligence",
-  "description": "Business Intelligence — install from the browser, no installer file needed.",
+  "name": "Argus Business Intelligence",
+  "short_name": "Argus BI",
+  "description": "Argus Business Intelligence — install from the browser, no installer file needed.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -405,7 +405,7 @@ export function ProcessMasterPage() {
         <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
           <span className="font-bold">Setup required: </span>
           the <span className="font-mono">cnc_processes</span> table does not exist yet. Apply{' '}
-          <span className="font-mono">supabase/migrations/20260927000000_process_master.sql</span> to
+          <span className="font-mono">20260927000000_process_master.sql</span> to
           the database, then refresh this page.
         </div>
       )}

@@ -86,7 +86,7 @@ function createOverlayPopup(features?: string): Window {
     "color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;user-select:none;";
 
   const title = document.createElement('span');
-  title.textContent = 'CNCFORGE BI — Preview';
+  title.textContent = 'Argus BI — Preview';
   title.style.cssText = 'flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
 
   const buttonStyle =

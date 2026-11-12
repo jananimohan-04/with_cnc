@@ -78,7 +78,7 @@ export function WarehouseMasterModal({ onClose, onChanged }: { onClose: () => vo
       const s = await supabase.from('cnc_warehouses').update({ is_default: true }).eq('id', w.id);
       if (s.error) throw s.error;
       await load(); onChanged();
-    } catch (e) { setError(missingColumn(e) ? 'The default option needs the latest database migration (20261007000000_fg_warehouse.sql). Run it in Supabase, then try again.' : errText(e)); }
+    } catch (e) { setError(missingColumn(e) ? 'The default option needs the latest database migration (20261007000000_fg_warehouse.sql). Apply it to the database, then try again.' : errText(e)); }
     finally { setBusy(false); }
   };
 
@@ -200,7 +200,7 @@ export function useFinishedGoods(refreshKey: number) {
         if (!res.ok) setError(`Warehouse saved, but the Retail Store was not updated: ${res.error ?? 'sync failed'}.`);
       }
       await load();
-    } catch (e) { setError(missingColumn(e) ? 'Choosing a warehouse needs the latest database migration (20261007000000_fg_warehouse.sql). Run it in Supabase first.' : errText(e)); }
+    } catch (e) { setError(missingColumn(e) ? 'Choosing a warehouse needs the latest database migration (20261007000000_fg_warehouse.sql). Apply it to the database first.' : errText(e)); }
     finally { setBusyKey(''); }
   };
 

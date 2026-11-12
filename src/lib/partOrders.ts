@@ -202,7 +202,7 @@ export async function ensureRunWorkOrder(choice: PartChoice, allWos: any[], stat
   const { error } = await supabase.from('cnc_work_orders').insert([fresh]);
   if (error) {
     if (isPart && /product_name|is_part_order/.test(String(error.message))) {
-      throw new Error('Part runs need the database update 20261021000000_work_order_parts.sql. Run it in the Supabase SQL Editor, then try again.');
+      throw new Error('Part runs need the database update 20261021000000_work_order_parts.sql. Ask your administrator to apply it, then try again.');
     }
     throw new Error(`Could not record the production for ${choice.part}: ${error.message}`);
   }

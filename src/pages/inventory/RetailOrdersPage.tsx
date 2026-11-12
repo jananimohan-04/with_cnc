@@ -31,7 +31,7 @@ export function RetailOrdersPage() {
   const load = useCallback(async () => {
     const r = await supabase.from('retail_store_orders').select('*').order('ordered_at', { ascending: false }).limit(500);
     if (r.error) {
-      setNote(/retail_store_orders/.test(r.error.message) ? 'Retail orders are not set up yet. Run the migration 20261110000000_retail_store_orders.sql in Supabase.' : r.error.message);
+      setNote(/retail_store_orders/.test(r.error.message) ? 'Retail orders are not set up yet. Apply the database migration 20261110000000_retail_store_orders.sql.' : r.error.message);
       setOrders([]); return;
     }
     setNote(null); setOrders((r.data as RetailOrder[]) ?? []);

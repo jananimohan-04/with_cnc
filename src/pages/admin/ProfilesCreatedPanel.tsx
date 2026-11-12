@@ -52,7 +52,7 @@ export function ProfilesCreatedPanel() {
         ))}
       </div>
 
-      {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}. Run the latest SQL file (20261105000000_per_user_document_profiles.sql) in Supabase.</p>}
+      {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}. Apply the latest database SQL file (20261105000000_per_user_document_profiles.sql).</p>}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-sm">

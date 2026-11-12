@@ -125,7 +125,7 @@ function sendJson(res, status, data) {
 // Call a Supabase RPC. `token` is the signed-in user's JWT (the functions work out the company from it);
 // the service-role call for the order webhook passes the service key instead.
 async function callSupabaseRpc(fn, args, token, apiKey) {
-  if (!SUPABASE_URL || !(apiKey || SUPABASE_ANON_KEY)) return { ok: false, error: 'Supabase URL / key not configured on the server' };
+  if (!SUPABASE_URL || !(apiKey || SUPABASE_ANON_KEY)) return { ok: false, error: 'Database URL / key not configured on the server' };
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: 'POST',
@@ -155,7 +155,7 @@ async function restGet(pathAndQuery, token) {
 }
 async function authenticate(req) {
   const token = bearer(req);
-  if (!token) return { ok: false, status: 401, error: 'Sign in to Business Intelligence first' };
+  if (!token) return { ok: false, status: 401, error: 'Sign in to Argus Business Intelligence first' };
   const who = await callSupabaseRpc('erp_current_user', {}, token);
   const me = who.ok ? who.data : null;
   if (!me || !me.id) return { ok: false, status: 401, error: 'Your sign-in was not accepted (expired, inactive user or suspended company)' };
@@ -531,7 +531,7 @@ async function handleRetailSyncRequest(req, res) {
       return sendJson(res, 401, { success: false, error: 'Unauthorized: Invalid ERP integration key' });
     }
     if (!SUPABASE_SERVICE_ROLE_KEY) {
-      return sendJson(res, 503, { success: false, error: 'Order deduction is not configured: set SUPABASE_SERVICE_ROLE_KEY on the server. No stock was changed.' });
+      return sendJson(res, 503, { success: false, error: 'Order deduction is not configured on the server. No stock was changed.' });
     }
 
     const body = await parseBody(req);
@@ -568,7 +568,7 @@ async function handleRetailSyncRequest(req, res) {
   if (method === 'POST' && subpath === '/order-record') {
     if (!RETAIL_STORE_API_KEY) return sendJson(res, 503, { success: false, error: NOT_CONFIGURED });
     if (!sameKey(req.headers['x-erp-api-key'], RETAIL_STORE_API_KEY)) return sendJson(res, 401, { success: false, error: 'Unauthorized: Invalid ERP integration key' });
-    if (!SUPABASE_SERVICE_ROLE_KEY) return sendJson(res, 503, { success: false, error: 'Set SUPABASE_SERVICE_ROLE_KEY on the server.' });
+    if (!SUPABASE_SERVICE_ROLE_KEY) return sendJson(res, 503, { success: false, error: 'Server service key is not configured.' });
     const body = await parseBody(req);
     const retailCo = String(body.company_id || req.headers['x-company-id'] || '');
     let erpCompany = await erpCompanyForRetailCode(retailCo);

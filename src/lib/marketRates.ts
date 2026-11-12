@@ -75,11 +75,11 @@ export function describeRateIssue(step: 'table' | 'function', err: unknown, stat
   const code = String((err as { code?: unknown } | null)?.code ?? '');
   const detail = body && typeof body === 'object' && 'error' in body ? String((body as { error: unknown }).error) : '';
   if (step === 'table') {
-    if (code === 'PGRST205' || /schema cache|does not exist|Could not find the table/i.test(msg)) return 'The market_rates table is missing. Run the market_rates migrations in Supabase.';
+    if (code === 'PGRST205' || /schema cache|does not exist|Could not find the table/i.test(msg)) return 'The market_rates table is missing. Run the market_rates database migrations.';
     if (code === '42501' || /permission denied/i.test(msg)) return 'No permission to read market_rates. Re-run the market_rates migration.';
     return `Could not read market rates: ${msg || 'unknown error'}`;
   }
-  if (status === 404) return 'The refresh-metal-rates Edge Function is not deployed in Supabase.';
+  if (status === 404) return 'The refresh-metal-rates cloud function is not deployed.';
   if (status === 401 || status === 403) return 'The rate service refused the request (not signed in).';
   if (/METALS_DEV_KEY/.test(detail)) return 'The METALS_DEV_KEY secret is not set for the Edge Function.';
   if (/Metals\.Dev returned HTTP (401|403)/.test(detail)) return 'Metals.Dev rejected the API key. Check METALS_DEV_KEY.';

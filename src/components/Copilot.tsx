@@ -1365,14 +1365,14 @@ export function Copilot() {
     if (wake.matched) {
       playWakeChime();
       const welcomeMsg = L(
-        'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
-        'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+        'Welcome to Argus BI! Which stage would you like to add data to? (8 stages available)',
+        'Welcome to Argus BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
       );
       if (!wake.trailing) {
         add({ role: 'ai', text: welcomeMsg }, true);
         return;
       } else {
-        add({ role: 'ai', text: L('Welcome to BI!', 'Welcome to BI!') }, true, () => {
+        add({ role: 'ai', text: L('Welcome to Argus BI!', 'Welcome to Argus BI!') }, true, () => {
           void submitRef.current(wake.trailing);
         });
         return;
@@ -1746,14 +1746,14 @@ export function Copilot() {
     setOpen(true);
     greetedRef.current = true;
     const welcome = L(
-      'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
-      'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+      'Welcome to Argus BI! Which stage would you like to add data to? (8 stages available)',
+      'Welcome to Argus BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
     );
     const clean = trailingCmd.trim();
     if (!clean) {
       add({ role: 'ai', text: welcome }, true);
     } else {
-      add({ role: 'ai', text: L('Welcome to BI!', 'Welcome to BI!') }, true, () => {
+      add({ role: 'ai', text: L('Welcome to Argus BI!', 'Welcome to Argus BI!') }, true, () => {
         void submitRef.current(clean);
       });
     }
@@ -1766,8 +1766,8 @@ export function Copilot() {
     if (open && !greetedRef.current && msgs.length === 0) {
       greetedRef.current = true;
       const welcome = L(
-        'Welcome to BI! Which stage would you like to add data to? (8 stages available)',
-        'Welcome to BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
+        'Welcome to Argus BI! Which stage would you like to add data to? (8 stages available)',
+        'Welcome to Argus BI! எந்த stage-ல் தரவைச் சேர்க்க வேண்டும்? (8 நிலைகள் உள்ளன)'
       );
       add({ role: 'ai', text: welcome }, true);
     }

@@ -448,7 +448,7 @@ function SettingsPage() {
 
                   <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                     <AlertCircle className="w-5 h-5 inline mr-2 -mt-0.5" />
-                    <strong>Note:</strong> The Google Drive Edge Function must be deployed to your Supabase project before the Connect buttons will work. Run <code>npx supabase functions deploy drive-api</code> in your terminal.
+                    <strong>Note:</strong> The Google Drive cloud service must be deployed before the Connect buttons will work. Please contact your administrator.
                   </div>
                 </div>
 

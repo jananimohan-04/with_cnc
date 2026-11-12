@@ -539,7 +539,7 @@ export function PartRoutingTab() {
       <div className="p-4">
         <Card className="p-8 text-center text-sm text-slate-500">
           Part Routing storage is not provisioned yet. Apply{' '}
-          <span className="font-mono">supabase/migrations/20260929020000_part_routing.sql</span> to the database first.
+          <span className="font-mono">20260929020000_part_routing.sql</span> to the database first.
         </Card>
       </div>
     );

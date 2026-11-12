@@ -125,7 +125,7 @@ export default function Confirmation() {
                 </div>
               ) : (
                 <div className="text-slate-600">
-                  BI status recorded as <b className="text-slate-900">{o.status}</b>. GST invoice will be generated upon dispatch.
+                  Argus BI status recorded as <b className="text-slate-900">{o.status}</b>. GST invoice will be generated upon dispatch.
                 </div>
               )}
             </div>

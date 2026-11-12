@@ -527,7 +527,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
       <div className={embeddedCompanyId ? 'hidden' : 'lg:hidden'}>
         <PageHeader
           title="User Management"
-          description={isSuperAdmin ? 'All BI users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
+          description={isSuperAdmin ? 'All Argus BI users across companies. Users sign in with their Google account — no passwords.' : `Users of ${ownCompanyName}. Users sign in with their Google account — no passwords.`}
           actions={isSuperAdmin ? (
             <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className={`${inputClass} w-56`}>
               <option value="">All companies</option>
@@ -1301,7 +1301,7 @@ export function CompaniesPage() {
     // 4. Platform switches (BI / Retail Store)
     try {
       const { error: pErr } = await supabase.rpc('erp_set_company_platforms', { p_company_id: targetCompanyId, p_bi: biOn, p_retail: retailOn });
-      if (pErr && (!biOn || !retailOn || !/erp_set_company_platforms|schema cache/i.test(pErr.message))) window.alert('The company was saved, but the BI / Retail platform switches were not: ' + pErr.message + ' (If it mentions a missing function, run 20261110060000_company_platforms.sql in Supabase.)');
+      if (pErr && (!biOn || !retailOn || !/erp_set_company_platforms|schema cache/i.test(pErr.message))) window.alert('The company was saved, but the Argus BI / Retail platform switches were not: ' + pErr.message + ' (If it mentions a missing function, apply database update 20261110060000_company_platforms.sql.)');
     } catch { /* the company is saved; the switches can be set again */ }
 
     setSaving(false);
@@ -1444,7 +1444,7 @@ export function CompaniesPage() {
   return (
     <div className="p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2">
       <div className="lg:hidden">
-        <PageHeader title="Company Management" description="Companies using this BI. Each company's data is isolated by the database." />
+        <PageHeader title="Company Management" description="Companies using Argus BI. Each company's data is isolated by the database." />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <StatCard label="Companies" value={companies.length.toString()} icon={<Building2 size={20} />} accent="brand" />
           <StatCard label="Active" value={activeCount.toString()} icon={<Building2 size={20} />} accent="success" />
@@ -1469,13 +1469,13 @@ export function CompaniesPage() {
         open={showForm}
         onClose={() => !saving && setShowForm(false)}
         title={form.id ? 'Edit Company' : 'Create Company'}
-        subtitle="Configure company details and assign menu access for both BI and Retail platforms."
+        subtitle="Configure company details and assign menu access for both Argus BI and Retail platforms."
         size="xl"
         tall
         footer={
           <div className="flex items-center justify-between w-full">
             <div className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">{selectedBi.size}</span> BI modules · <span className="font-semibold text-slate-700">{selectedRetail.size}</span> Retail menus granted
+              <span className="font-semibold text-slate-700">{selectedBi.size}</span> Argus BI modules · <span className="font-semibold text-slate-700">{selectedRetail.size}</span> Retail menus granted
             </div>
             <div className="flex items-center gap-2">
               <Button variant="secondary" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
@@ -1547,7 +1547,7 @@ export function CompaniesPage() {
                   }`}
                 >
                   <Building2 size={13} className="text-brand-500" />
-                  <span>This BI Menus</span>
+                  <span>Argus BI Menus</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                     accessTab === 'bi' ? 'bg-brand-100 text-brand-800' : 'bg-slate-200 text-slate-600'
                   }`}>
@@ -1616,8 +1616,8 @@ export function CompaniesPage() {
             {/* Platform switches: whole BI app / whole Retail Store for this company */}
             <div className="grid gap-2 sm:grid-cols-2 px-3 py-2.5 border-b border-slate-200 bg-white">
               {([
-                { key: 'bi', title: 'Business Intelligence (BI)', on: biOn, set: setBiOn, other: retailOn, icon: Building2, tone: 'brand',
-                  hint: biOn ? 'On: users of this company can open BI.' : 'Off: users cannot open BI. When they sign in they go straight to the Retail Store.' },
+                { key: 'bi', title: 'Argus Business Intelligence (Argus BI)', on: biOn, set: setBiOn, other: retailOn, icon: Building2, tone: 'brand',
+                  hint: biOn ? 'On: users of this company can open Argus BI.' : 'Off: users cannot open Argus BI. When they sign in they go straight to the Retail Store.' },
                 { key: 'retail', title: 'Retail Store', on: retailOn, set: setRetailOn, other: biOn, icon: Store, tone: 'emerald',
                   hint: retailOn ? 'On: users of this company can open the Retail Store.' : 'Off: the Retail Store is hidden, and so are the pages linked to it (Digital Store, Retail Orders, Partner & Online Sales).' },
               ] as const).map((p) => (
@@ -1626,7 +1626,7 @@ export function CompaniesPage() {
                     type="button"
                     role="switch"
                     aria-checked={p.on}
-                    onClick={() => { if (p.on && !p.other) { setFormError('Keep at least one platform (BI or Retail Store) on for the company.'); return; } setFormError(null); p.set(!p.on); }}
+                    onClick={() => { if (p.on && !p.other) { setFormError('Keep at least one platform (Argus BI or Retail Store) on for the company.'); return; } setFormError(null); p.set(!p.on); }}
                     className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${p.on ? (p.tone === 'brand' ? 'bg-brand-600' : 'bg-emerald-600') : 'bg-slate-300'}`}
                   >
                     <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${p.on ? 'left-[18px]' : 'left-0.5'}`} />
@@ -1664,7 +1664,7 @@ export function CompaniesPage() {
               ) : accessTab === 'bi' ? (
                 /* BI Categories */
                 filteredBiCategories.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-8">No BI modules match your search.</p>
+                  <p className="text-center text-xs text-slate-400 py-8">No Argus BI modules match your search.</p>
                 ) : (
                   filteredBiCategories.map((catGroup) => {
                     const isCollapsed = collapsedCats.has(catGroup.category);

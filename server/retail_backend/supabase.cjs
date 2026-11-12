@@ -28,7 +28,7 @@ const MEDIA_MAX_BYTES = 50 * 1024 * 1024;
 const MEDIA_ALLOWED_MIME = ['image/*', 'video/*', 'application/pdf'];
 let bucketReady = null;
 function ensureMediaBucket() {
-  if (!admin) return Promise.reject(new Error('Supabase not configured'));
+  if (!admin) return Promise.reject(new Error('Database service not configured'));
   bucketReady = bucketReady || (async () => {
     const opts = { public: true, fileSizeLimit: MEDIA_MAX_BYTES, allowedMimeTypes: MEDIA_ALLOWED_MIME };
     const { data, error } = await admin.storage.getBucket(MEDIA_BUCKET);
