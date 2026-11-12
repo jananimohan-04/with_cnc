@@ -43,8 +43,8 @@ body::after { /* fine grain keeps big gradients from banding */
 main { background: transparent !important; }
 
 /* ---------- frosted cards ---------- */
-:is(main, .retail-shell, .retail-app) :is(.shadow-premium, .card, .glass),
-:is(main, .retail-shell, .retail-app) .bg-white:is([class*="rounded-xl"], [class*="rounded-2xl"], [class*="rounded-3xl"]):not(button):not(input):not(select):not(textarea):not(:hover) {
+:is(main, .retail-shell, .retail-app) :is(.shadow-premium, .card, .glass):not([class*="bg-gradient"]):not(.no-glass),
+:is(main, .retail-shell, .retail-app) .bg-white:is([class*="rounded-xl"], [class*="rounded-2xl"], [class*="rounded-3xl"]):not(button):not(input):not(select):not(textarea):not(:hover):not([class*="bg-gradient"]):not(.no-glass) {
   background: linear-gradient(135deg, var(--g-glass-strong), var(--g-glass)) !important;
   -webkit-backdrop-filter: blur(18px) saturate(165%); backdrop-filter: blur(18px) saturate(165%);
   border: 1px solid var(--g-edge) !important;
