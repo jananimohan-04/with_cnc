@@ -10,6 +10,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { xlsxToTsv } from '@/lib/xlsxRead';
+import { buildSheet, parseSheet, type SheetImport } from '@/lib/openingSheet';
 import {
   num, openingApi, parseStockCsv, stockValue, toIsoDate,
   type OpeningDraft, type OpeningEntry, type OpeningLookups, type OpeningPreview, type OpeningType,
@@ -189,6 +190,35 @@ export function OpeningBalancesPage() {
         e.entry_type === 'STOCK' ? e.item_code : e.party_code, e.balance_type, e.invoice_ref, e.due_date, e.warehouse_name,
         e.qty, e.unit_cost, e.amount, e.status, e.remarks]),
     ]);
+  };
+
+  // Export and Import use the same sheet: download it, fill in / edit the amounts in Excel, upload it back.
+  const sheetFile = useRef<HTMLInputElement>(null);
+  const [sheetImport, setSheetImport] = useState<{ result: SheetImport; busy: boolean } | null>(null);
+  const exportSheet = () => {
+    if (!lookups) return;
+    exportCsv(`Opening_${tab === 'PARTY' ? 'COMPANIES' : tab}_${todayISO()}`, buildSheet(tab, lookups, rows));
+  };
+  const readSheet = async (file: File | undefined) => {
+    if (!file || !lookups) return;
+    let text = '';
+    try {
+      const buf = await file.arrayBuffer();
+      const b = new Uint8Array(buf);
+      text = (b[0] === 0x50 && b[1] === 0x4B) || /\.xlsx$/i.test(file.name) ? await xlsxToTsv(buf) : new TextDecoder('utf-8').decode(buf);
+    } catch { text = await file.text(); }
+    setSheetImport({ result: parseSheet(tab, text, lookups, rows, todayISO()), busy: false });
+  };
+  const confirmSheet = async () => {
+    if (!sheetImport) return;
+    setSheetImport({ ...sheetImport, busy: true });
+    let saved = 0; const failed: string[] = [];
+    for (const d of sheetImport.result.drafts) {
+      try { await openingApi.save(d); saved++; } catch (e) { failed.push(errText(e)); }
+    }
+    setSheetImport(null);
+    say(failed.length ? 'err' : 'ok', `${saved} opening draft${saved === 1 ? '' : 's'} saved${failed.length ? `, ${failed.length} failed: ${failed[0]}` : '. Check them, then post.'}`);
+    await load();
   };
 
   const importCsv = async (file: File | undefined) => {
@@ -437,14 +467,16 @@ export function OpeningBalancesPage() {
             <option value="entries">Entered openings</option>
           </select>
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportRows} disabled={!shown.length}>Export CSV</Button>
-            {tab === 'STOCK' && (
+            <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportSheet} disabled={!lookups}>Export CSV</Button>
+            {canManage && (
               <>
-                <Button variant="secondary" size="sm" icon={<Rows3 size={14} />} onClick={() => setBulk([newBulkRow()])}>Bulk Entry</Button>
-                <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={() => fileRef.current?.click()}>Import CSV</Button>
-                <input ref={fileRef} type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" aria-label="Import opening stock CSV/Excel"
-                  onChange={e => { void importCsv(e.target.files?.[0]); e.target.value = ''; }} />
+                <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={() => sheetFile.current?.click()} disabled={!lookups}>Import</Button>
+                <input ref={sheetFile} type="file" accept=".xlsx,.csv,.tsv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" aria-label="Import openings (CSV or Excel)"
+                  onChange={e => { void readSheet(e.target.files?.[0]); e.target.value = ''; }} />
               </>
+            )}
+            {tab === 'STOCK' && (
+              <Button variant="secondary" size="sm" icon={<Rows3 size={14} />} onClick={() => setBulk([newBulkRow()])}>Bulk Entry</Button>
             )}
             <Button size="sm" icon={<Plus size={14} />} onClick={() => setForm({ type: addType })}>{addLabel}</Button>
           </div>
@@ -549,6 +581,25 @@ export function OpeningBalancesPage() {
           </div>
         )}
       </Card>
+
+      {sheetImport && (
+        <Modal open onClose={() => !sheetImport.busy && setSheetImport(null)} title="Import openings" subtitle="Nothing is posted: rows are saved as drafts you can check first" size="md"
+          footer={<div className="flex items-center justify-end gap-2 w-full">
+            <Button variant="secondary" onClick={() => setSheetImport(null)} disabled={sheetImport.busy}>Cancel</Button>
+            <Button onClick={() => void confirmSheet()} disabled={sheetImport.busy || !sheetImport.result.drafts.length}>
+              {sheetImport.busy ? 'Saving…' : `Save ${sheetImport.result.drafts.length} draft${sheetImport.result.drafts.length === 1 ? '' : 's'}`}</Button></div>}>
+          <div className="space-y-3 text-sm">
+            <p><b>{sheetImport.result.creates}</b> new opening{sheetImport.result.creates === 1 ? '' : 's'} · <b>{sheetImport.result.updates}</b> draft{sheetImport.result.updates === 1 ? '' : 's'} updated{sheetImport.result.problems.length ? <> · <b className="text-red-600">{sheetImport.result.problems.length}</b> row{sheetImport.result.problems.length === 1 ? '' : 's'} skipped</> : null}</p>
+            {sheetImport.result.problems.length > 0 && (
+              <ul className="max-h-56 overflow-y-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-1">
+                {sheetImport.result.problems.slice(0, 40).map((x, i) => <li key={i}>{x}</li>)}
+                {sheetImport.result.problems.length > 40 && <li>… and {sheetImport.result.problems.length - 40} more</li>}
+              </ul>
+            )}
+            <p className="text-xs text-slate-500">Use the same columns as Export CSV. A row with an Entry No updates that draft; a row without one makes a new draft. Rows with no amount are ignored.</p>
+          </div>
+        </Modal>
+      )}
 
       {form && lookups && (
         <EntryForm key={form.entry?.id ?? `new-${form.type}-${form.prefill?.account_id ?? form.prefill?.party_id ?? form.prefill?.item_id ?? ''}`} type={form.type} entry={form.entry} prefill={form.prefill} lookups={lookups} fyDefault={todayISO()}
