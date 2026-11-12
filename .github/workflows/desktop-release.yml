@@ -128,5 +128,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/downloads/latest.json
           git commit -m "chore(release): latest.json for v${VERSION} [skip ci]" || { echo "latest.json unchanged"; exit 0; }
+          git checkout -- .   # drop the version stamps this build wrote into other files; they are not part of the repository
           git pull --rebase origin main
           git push origin HEAD:main
