@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Info, Lightbulb, Loader2, RefreshCw, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, History, Info, Lightbulb, Loader2, RefreshCw, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
+import { serverChat, ServerAiError } from '@/lib/adviser/serverAi';
 import { buildReport, improvementIdeas, reportToFacts, reportToSpeech, type AdviserReport as Report, type Idea, type Insight, type Severity } from '@/lib/adviser/insights';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
@@ -21,8 +22,32 @@ const REVIEW_SYSTEM = (lang: Lang) => `You are the business Adviser of a CNC mac
 Write a short management report: (1) the 3 most urgent problems, each with the customer / order / invoice names and amounts given, (2) one concrete action for each, (3) 3 ideas to improve cash collection, delivery speed and profit over the next month.
 Use only the figures given; never invent customers, amounts or days. About 12 short lines, plain text, no markdown symbols, numbered lines. ${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
 
-const DAILY_SYSTEM = (lang: Lang, avoid: string[]) => `You are the business Adviser of a CNC machining company. From the figures given, write exactly 4 numbered improvement points for TODAY: practical things the owner can do this week to collect cash faster, deliver on time, cut rejections or win more orders.
-Each point: a short title, a colon, then one sentence on how (at most 28 words in all). Start with what the figures show is most wrong. Plain text, no markdown symbols. ${avoid.length ? `These were shown yesterday, so give different ones: ${avoid.join('; ')}. ` : ''}${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
+const FOCUS = ['cash collection and unpaid invoices', 'on-time delivery and late orders', 'enquiries and quotations (winning more orders)', 'production, rejections and machine use', 'stock and purchasing', 'customers: who to nurture and who is too big a share', 'profit, costing and pricing'];
+const DAILY_SYSTEM = (lang: Lang, avoid: string[]) => {
+  const d = new Date();
+  const focus = FOCUS[d.getDay() % FOCUS.length];
+  return `You are the business Adviser of a CNC machining company, talking to its owner. From the figures given, write exactly 4 numbered improvement points for TODAY (${d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).
+Today's main focus: ${focus}. At least 2 of the 4 points must be about that focus; the others come from whatever the figures show is most wrong.
+Each point: a short title, a colon, then one sentence on how (at most 28 words in all), concrete and doable this week, using the customer / order / invoice names and amounts in the figures where they help. Never invent figures. Plain text, no markdown symbols.
+${avoid.length ? `These were already advised on earlier days, so every point today must be genuinely different (a new angle, not the same advice reworded): ${avoid.slice(0, 40).join('; ')}. ` : ''}${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
+};
+
+// ---- every day's advice is kept, so any date can be read again ----
+const HIST_KEY = 'adviser.history.v1';
+interface HistoryDay { date: string; lang: string; ideas: { title: string; how: string }[]; ai: boolean; headline: string; at: string }
+const readHistory = (): HistoryDay[] => { try { const v = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+function saveHistory(day: HistoryDay) {
+  try {
+    const list = readHistory();
+    const i = list.findIndex((x) => x.date === day.date);
+    // an AI set replaces the quick set of the same day; a quick set never replaces an AI one
+    if (i >= 0 && list[i].ai && !day.ai) return;
+    if (i >= 0) list[i] = day; else list.unshift(day);
+    list.sort((a, b) => b.date.localeCompare(a.date));
+    localStorage.setItem(HIST_KEY, JSON.stringify(list.slice(0, 400)));
+  } catch { /* not saved */ }
+}
+const recentTitles = (days = 14) => readHistory().slice(0, days).flatMap((d) => d.ideas.map((x) => x.title));
 
 const DAILY_KEY = 'adviser.daily.v1';
 interface DailyCache { date: string; lang: string; ideas: { title: string; how: string }[]; prev: string[] }
@@ -78,8 +103,15 @@ async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[
     unreachable = true;
   }
   if (!unreachable) return;
+  try {
+    let got = false;
+    for await (const piece of serverChat(daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang), [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
+    if (got) return;
+  } catch (e) {
+    if (!(e instanceof ServerAiError && e.unreachable)) throw e;
+  }
   const key = getOpenAIApiKey();
-  if (!key) throw new Error('AI ideas need the help function to be deployed (supabase functions deploy help-assistant) or an OpenAI key saved in this browser. The report above does not need AI.');
+  if (!key) throw new Error('AI is not set up yet: add OPENAI_API_KEY in the server settings (Vercel > Environment Variables) and redeploy. The report above does not need AI.');
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -121,6 +153,8 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
   const [ideasBusy, setIdeasBusy] = useState(false);
   const [ideasError, setIdeasError] = useState('');
   const [reading, setReading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState<HistoryDay[]>([]);
   const canRef = useRef(can); canRef.current = can;
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; stopSpeaking(); }; }, [stopSpeaking]);
@@ -146,20 +180,23 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
     const base: Idea[] = improvementIdeas(report);
     const cache = readDaily();
     const today = todayKey();
-    if (cache && cache.date === today && cache.lang === lang && cache.ideas.length >= 3) { setDaily({ ideas: cache.ideas, ai: true }); return; }
+    const head = (r: Report) => (r.snapshot.overdue > 0 ? `${money(r.snapshot.overdue)} overdue` : 'Nothing overdue') + ` · ${r.snapshot.lateOrders} late orders`;
+    if (cache && cache.date === today && cache.lang === lang && cache.ideas.length >= 3) { setDaily({ ideas: cache.ideas, ai: true }); saveHistory({ date: today, lang, ideas: cache.ideas, ai: true, headline: head(report), at: new Date().toISOString() }); return; }
     setDaily({ ideas: base, ai: false });
+    saveHistory({ date: today, lang, ideas: base, ai: false, headline: head(report), at: new Date().toISOString() });
     // Only the totals and names go to the AI. If the assistant is not reachable the points above stay.
     let stop = false;
     setDailyBusy(true);
     (async () => {
       let text = '';
       try {
-        const avoid = cache && cache.date !== today ? cache.ideas.map((x) => x.title) : (cache?.prev ?? []);
+        const avoid = Array.from(new Set([...recentTitles(14).filter(() => true), ...(cache && cache.date !== today ? cache.ideas.map((x) => x.title) : (cache?.prev ?? []))]));
         for await (const piece of reviewStream(reportToFacts(report), lang, { avoid })) { if (stop) return; text += piece; }
         const pts = parsePoints(text);
         if (!stop && pts.length >= 3) {
           writeDaily({ date: today, lang, ideas: pts, prev: cache && cache.date !== today ? cache.ideas.map((x) => x.title) : (cache?.prev ?? []) });
           setDaily({ ideas: pts, ai: true });
+          saveHistory({ date: today, lang, ideas: pts, ai: true, headline: head(report), at: new Date().toISOString() });
         }
       } catch { /* the points from the records stay */ }
       finally { if (!stop) setDailyBusy(false); }
@@ -196,17 +233,37 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
     <div className="flex min-h-0 flex-1 flex-col" data-testid="adviser-report">
       <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
         <span className="text-[11px] font-semibold text-slate-600">{loading ? 'Reading your records…' : report ? `Report · ${new Date(report.generatedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}` : ''}</span>
+        <button type="button" onClick={() => { setHistoryList(readHistory()); setShowHistory((v) => !v); }} title="Every day's advice, date wise" aria-label="History"
+          className={`ml-auto flex h-6 items-center gap-1 rounded border px-1.5 text-[10px] font-semibold ${showHistory ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}><History size={11} />History</button>
         <button type="button" onClick={() => void load()} disabled={loading} title="Read the records again" aria-label="Refresh the report"
-          className="ml-auto flex h-6 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} />Refresh</button>
+          className="flex h-6 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} />Refresh</button>
         <button type="button" onClick={readAloud} disabled={!report || loading} title={reading ? 'Stop reading' : 'Read the main points aloud'} aria-label="Read the report aloud"
           className="flex h-6 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">{reading ? <VolumeX size={11} /> : <Volume2 size={11} />}{reading ? 'Stop' : 'Read'}</button>
         {onClose && <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-slate-400 hover:bg-slate-100"><X size={13} /></button>}
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        {loading && <div className="flex items-center gap-2 py-8 text-sm text-slate-400"><Loader2 size={16} className="animate-spin" />Checking payments, enquiries, orders, deliveries and stock…</div>}
+        {showHistory && (
+          <div className="space-y-2" data-testid="adviser-history">
+            <button type="button" onClick={() => setShowHistory(false)} className="text-[11px] font-bold text-violet-700 hover:text-violet-900">← Back to today</button>
+            {historyList.length === 0 && <p className="py-6 text-center text-[12px] text-slate-400">No advice saved yet. Each day's advice is kept here from now on.</p>}
+            {historyList.map((d) => (
+              <div key={d.date} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <span className="text-[11px] font-extrabold text-slate-800">{new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                  <span className={`ml-auto rounded-full px-1.5 py-px text-[9px] font-bold uppercase ${d.ai ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{d.ai ? 'AI' : 'Tips'}</span>
+                </div>
+                {d.headline && <p className="mb-1 text-[10px] text-slate-400">{d.headline}</p>}
+                <ol className="space-y-1">
+                  {d.ideas.map((x, n) => <li key={n} className="text-[12px] leading-snug text-slate-700"><b className="text-slate-900">{n + 1}. {x.title}.</b> {x.how}</li>)}
+                </ol>
+              </div>
+            ))}
+          </div>
+        )}
+        {!showHistory && loading && <div className="flex items-center gap-2 py-8 text-sm text-slate-400"><Loader2 size={16} className="animate-spin" />Checking payments, enquiries, orders, deliveries and stock…</div>}
 
-        {!loading && report && s && (
+        {!showHistory && !loading && report && s && (
           <>
             <div className="grid grid-cols-2 gap-1.5">
               {[

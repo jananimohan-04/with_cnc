@@ -629,7 +629,7 @@ const retailOffFor = (companyId) => { const c = companyId ? (db.companies || [])
 const biOffFor = (companyId) => { const c = companyId ? (db.companies || []).find(x => x.id === companyId || x.code === companyId) : null; return !!c && c.biEnabled === false; };
 app.use((req, res, next) => {
   if (req.ctx && req.ctx.role !== 'super_admin' && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)
-      && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/')
+      && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/') && !req.path.startsWith('/api/adviser/')
       && retailOffFor(req.ctx.companyId)) {
     return res.status(403).json({ error: 'The Retail Store is turned off for your company.', code: 'RETAIL_OFF' });
   }
@@ -638,7 +638,7 @@ app.use((req, res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/quote-confirm/')) return next();   // the mail route checks the sign-in token itself
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -1244,6 +1244,8 @@ app.get('/api/quote-confirm/:id', async (req, res) => {
     return page('Quotation confirmed', `Thank you! Your tax invoice ${done.invoiceNo} and the payment link have been e-mailed to ${q.email || 'you'}.`, true);
   } catch (e) { return page('Something went wrong', 'Please contact the seller. ' + String(e.message || e).slice(0, 120), false); }
 });
+
+require('../adviserRoutes.cjs')(app, SB);   // the Adviser's ChatGPT connection (key on the server)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString(), storage: { enabled: persist.enabled, saved: persist.ok, error: persist.error, at: persist.at } }));
 app.get('/api/config', (_req, res) => res.json({ data: SB.publicConfig() }));

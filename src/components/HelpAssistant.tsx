@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Bot, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AdviserReportPanel } from '@/components/AdviserReport';
+import { serverChat, serverSpeech, ServerAiError } from '@/lib/adviser/serverAi';
 import { boostAudio } from '@/lib/voiceBoost';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
@@ -28,6 +29,8 @@ const TAMIL = /[஀-௿]/;
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
 // "Guide me": starts the on-screen walkthrough of the current screen (GuideCoach) instead of answering by voice.
 const GUIDE_WORDS = /\b(guide me|walk me through|walkthrough|show me how|step by step|guide pannu|guide pannunga|vazhi ?kaattu)\b|வழிகாட்டு|வழி காட்டு|வழிகாட்டுங்கள்/i;
+/** The word that ends a turn when "over" mode is on (English, Tamil script and a common spelling of it). */
+const OVER_RE = /(?:^|[\s,.!?])(over|ஓவர்|ஓவர|ovar|ओवर)\s*[.!?]*\s*$/i;
 const STOP_WORDS = /^(stop|bye|goodbye|that'?s all|enough|exit|close|நிறுத்து|போதும்|நிறுத்தவும்|பை|nirutthu|nirutha|podhum|pothum|bye bye)\b/i;
 
 const GREETING: Record<Lang, string> = { ta: 'ஆம், சொல்லுங்கள்.', tanglish: 'Yes, sollunga.', en: 'Yes, tell me.' };
@@ -153,6 +156,8 @@ let serverVoiceDown = false;   // the server voice failed once: do not keep tryi
 let tamilVoiceFailed = false;  // neither online voice worked
 async function serverVoice(text: string): Promise<HTMLAudioElement | null> {
   if (serverVoiceDown) return null;
+  const ours = await serverSpeech(text, TAMIL.test(text) ? 'ta' : 'en');   // ChatGPT's voice through our own server
+  if (ours) return new Audio(URL.createObjectURL(ours));
   try {
     const { data } = await supabase.auth.getSession();
     const res = await fetch(ENDPOINT, {
@@ -235,8 +240,8 @@ async function neuralSpeech(piece: string): Promise<string | null> {
   const hit = speechCache.get(piece);
   if (hit) return hit;
   const lang = TAMIL.test(piece) ? 'ta' : 'en';
-  let blob: Blob | null = null;
-  try {
+  let blob: Blob | null = await serverSpeech(piece, lang);   // ChatGPT's voice through our own server
+  if (!blob) try {
     // 1) the help function (uses the server's OpenAI key)
     const { data } = await supabase.auth.getSession();
     const res = await fetch(ENDPOINT, {
@@ -528,6 +533,10 @@ export function HelpAssistant() {
   const [input, setInput] = useState('');
   const [speakOn, setSpeakOn] = useState(() => store.get('help.speak', '1') === '1');        // read the answers aloud
   const [handsFree, setHandsFree] = useState(() => store.get('help.handsfree', '1') === '1'); // listen again after each answer
+  const [overMode, setOverMode] = useState(() => store.get('help.over', '1') === '1');          // keep listening until the person says "over"
+  const overRef = useRef(overMode); overRef.current = overMode;
+  const accRef = useRef('');          // what was said so far in this turn (kept while the microphone restarts)
+  const overHit = useRef(false);      // the person said "over"
   const [tips, setTips] = useState(false);
   // The Adviser opens on its automatic report; "Ask" is the chat for questions.
   const [view, setView] = useState<'report' | 'chat'>('report');
@@ -649,9 +658,18 @@ export function HelpAssistant() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (full || !((e as { unreachable?: boolean }).unreachable || unreachable(msg))) throw e;
-        // the help function cannot be reached: ChatGPT with the key saved in this browser, then the built-in BI notes
-        const key = getOpenAIApiKey();
-        if (key) {
+        // the help function cannot be reached: ChatGPT through our server (key kept there), then the key saved in this browser, then the built-in BI notes
+        const notesNow = rankNotes(q, pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
+        let served = false;
+        try {
+          for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesNow), [...history.current.slice(-6), { role: 'user', text: q }], { maxTokens: 700 })) { served = true; push(piece); }
+        } catch (e2) {
+          if (!(e2 instanceof ServerAiError && e2.unreachable) && !served) throw e2;
+        }
+        const key = served ? '' : getOpenAIApiKey();
+        if (served) {
+          /* the server's ChatGPT answered */
+        } else if (key) {
           const notes = rankNotes(q, pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
           for await (const piece of openAiDirect(key, adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notes), [...history.current.slice(-6), { role: 'user', text: q }])) push(piece);
         } else {
@@ -683,7 +701,7 @@ export function HelpAssistant() {
     const r = new SR();
     r.lang = langRef.current === 'ta' ? 'ta-IN' : 'en-IN';
     r.interimResults = true;
-    r.continuous = false;
+    r.continuous = overRef.current;   // "over" mode: keep listening through pauses
     let finalText = '';
     r.onresult = (e: any) => {
       let interim = '';
@@ -691,7 +709,9 @@ export function HelpAssistant() {
         const tr = e.results[i][0].transcript;
         if (e.results[i].isFinal) finalText += tr; else interim += tr;
       }
-      setHeard((finalText + interim).trim());
+      const heardNow = `${accRef.current} ${finalText} ${interim}`.replace(/\s+/g, ' ').trim();
+      setHeard(heardNow);
+      if (overRef.current && OVER_RE.test(heardNow)) { overHit.current = true; try { r.stop(); } catch { /* ended */ } }
     };
     r.onerror = (e: any) => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -702,7 +722,17 @@ export function HelpAssistant() {
     r.onend = () => {
       if (!activeRef.current || recRef.current !== r) return;
       recRef.current = null;
-      const said = finalText.trim();
+      const said0 = `${accRef.current} ${finalText}`.replace(/\s+/g, ' ').trim();
+      if (overRef.current && !overHit.current) {
+        // the person has not said "over" yet: keep what was said and listen on (the browser ends a recording every now and then)
+        accRef.current = said0;
+        misses.current = said0 ? 0 : misses.current + 1;
+        if (misses.current >= 10) { accRef.current = ''; setHandsFree(false); handsFreeRef.current = false; setPhase('ready'); setNote('I did not hear anything, so the mic is off. Tap the mic to talk again.'); return; }
+        if (handsFreeRef.current || said0) listenRef.current(); else setPhase('ready');
+        return;
+      }
+      const said = said0.replace(OVER_RE, '').trim();
+      accRef.current = ''; overHit.current = false;
       if (!said) {
         misses.current += 1;
         if (misses.current >= 3) { setHandsFree(false); handsFreeRef.current = false; setPhase('ready'); setNote('I did not hear anything, so the mic is off. Tap the mic to talk again.'); return; }
@@ -824,7 +854,7 @@ export function HelpAssistant() {
       if (!busyRef.current) setPhase('ready');
       return;
     }
-    setHandsFree(true); handsFreeRef.current = true; misses.current = 0; setNote('');
+    setHandsFree(true); handsFreeRef.current = true; misses.current = 0; accRef.current = ''; overHit.current = false; setNote('');
     if (!busyRef.current) { stopSpeaking(); listenRef.current(); }
   };
 
@@ -833,7 +863,7 @@ export function HelpAssistant() {
   // Tell Co-worker when Adviser holds the microphone, so the two never listen at once.
   useEffect(() => { window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'adviser', on: active } })); }, [active]);
   const anyOn = active || modes.teaching || modes.coworker;
-  const status = phase === 'greeting' ? '…' : phase === 'listening' ? 'Listening… பேசுங்கள் / speak now' : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking…' : '';
+  const status = phase === 'greeting' ? '…' : phase === 'listening' ? (overMode ? 'Listening… பேசுங்கள். முடிந்ததும் "over" சொல்லுங்கள் / say "over" when you finish' : 'Listening… பேசுங்கள் / speak now') : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking…' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
   const kind: 'ta' | 'en' = lang === 'ta' ? 'ta' : 'en';
   const choices = voiceList(kind);
@@ -1021,6 +1051,9 @@ export function HelpAssistant() {
               {phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
               <Mic size={16} className="relative" />
             </button>
+            <button type="button" onClick={() => { const v = !overMode; setOverMode(v); store.set('help.over', v ? '1' : '0'); accRef.current = ''; overHit.current = false; }} aria-pressed={overMode}
+              title={overMode ? 'It keeps listening until you say "over" (click to turn off)' : 'Turn on: it keeps listening until you say "over"'}
+              className={`h-9 shrink-0 rounded-full px-2 text-[10px] font-extrabold uppercase ${overMode ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>over</button>
             <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'ta' ? 'உங்கள் கேள்வியை எழுதுங்கள்…' : 'Type your question…'} aria-label="Your question"
               className="h-9 min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none" />
             <button type="submit" disabled={!input.trim() || phase === 'thinking'} aria-label="Send" title="Send"
