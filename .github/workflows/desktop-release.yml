@@ -1,39 +1,66 @@
-# CNCFORGE ERP — Windows desktop release pipeline.
+# Business Intelligence — automatic Windows desktop release.
 #
-# Trigger: push a version tag (v*). The job builds the exact same web bundle the
-# Vercel deployment uses, gates on it succeeding, gates on the Rust shell
-# compiling, then produces the signed NSIS installer + updater artifacts
-# (latest.json + .sig) through tauri-action and uploads them to a draft GitHub
-# Release.
+# Every push to main builds the signed installer and publishes it as a new GitHub Release, and refreshes
+# public/downloads/latest.json, so installed desktop apps offer the update by themselves (Settings > Updates).
+# No token is typed by hand: the workflow uses GitHub's own built-in token.
 #
-# Secrets (repository Settings → Secrets and variables → Actions):
-#   TAURI_SIGNING_PRIVATE_KEY          — full contents of the minisign private key
-#                                        (generated with `npx tauri signer generate`
-#                                        OUTSIDE the repo; never commit it)
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password (empty string if none)
+# Version number: 1.1.<run number>, always higher than the one before, so installed apps always see it as newer.
 #
-# Release gating note: `npm run lint` (≈1960 errors) and `npm run typecheck`
-# (109 errors) have large pre-existing baselines in this codebase — they are not
-# usable as pass/fail gates yet. The gates below are the checks that actually
-# pass today: the production web build and `cargo check` of the desktop shell.
+# One-time setup (repository Settings > Secrets and variables > Actions > New repository secret):
+#   TAURI_SIGNING_PRIVATE_KEY   the full contents of C:\Users\Janan\.tauri\cncforge-erp.key
+#   VITE_SUPABASE_URL           the same value as in .env.local
+#   VITE_SUPABASE_ANON_KEY      the same value as in .env.local
+# (TAURI_SIGNING_PRIVATE_KEY_PASSWORD only if the key has a password; ours has none.)
 
-name: Desktop Release
+name: Desktop Auto Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths-ignore:
+      - 'public/downloads/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+# one build at a time; if several pushes arrive while one is building, only the newest waits its turn
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build & sign Windows installer
+    name: Build, sign and publish the Windows installer
     runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
+      - name: Check the one-time setup
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $missing = @()
+          if ([string]::IsNullOrEmpty($env:KEY)) { $missing += 'TAURI_SIGNING_PRIVATE_KEY' }
+          if ([string]::IsNullOrEmpty($env:VITE_SUPABASE_URL)) { $missing += 'VITE_SUPABASE_URL' }
+          if ([string]::IsNullOrEmpty($env:VITE_SUPABASE_ANON_KEY)) { $missing += 'VITE_SUPABASE_ANON_KEY' }
+          if ($missing.Count -gt 0) { Write-Error "Add these repository secrets first (Settings > Secrets and variables > Actions): $($missing -join ', ')"; exit 1 }
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Version for this build
+        shell: pwsh
+        run: |
+          $v = "1.1.$($env:GITHUB_RUN_NUMBER)"
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          node scripts/set-version.mjs $v
 
       - name: Node.js
         uses: actions/setup-node@v4
@@ -42,11 +69,8 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
-
-      # Gate 1: the production web bundle must build (same code the desktop app ships).
-      - name: Build web bundle
-        run: npm run build
+        shell: bash
+        run: npm ci || npm install
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -56,26 +80,14 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # Gate 2: the Tauri shell must compile (includes capability/ACL validation).
-      - name: Check desktop shell
-        working-directory: src-tauri
-        run: cargo check
-
-      # Windows code signing (optional, but needed so SmartScreen / Smart App Control / company
-      # antivirus stop blocking the installer). Runs only when the certificate secrets exist:
-      #   WINDOWS_CERTIFICATE           base64 of the .pfx code-signing certificate
-      #   WINDOWS_CERTIFICATE_PASSWORD  its password
-      # The certificate's thumbprint is written into tauri.conf.json for this build only.
+      # Optional Windows code-signing certificate (stops SmartScreen warnings). Skipped when the secrets do not exist.
       - name: Import code-signing certificate (if configured)
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE)) {
-            Write-Host "No WINDOWS_CERTIFICATE secret: building an UNSIGNED installer (Windows will warn)."
-            exit 0
-          }
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE)) { Write-Host "No WINDOWS_CERTIFICATE secret: unsigned installer."; exit 0 }
           $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           $pass = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
@@ -86,26 +98,35 @@ jobs:
           $conf.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue "sha256" -Force
           $conf.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue "http://timestamp.digicert.com" -Force
           $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
-          Write-Host "Signing with certificate $($cert.Subject)"
 
-      # Build the NSIS installer, sign the updater artifact with the private key,
-      # generate latest.json, and upload everything to a draft release for the tag.
-      - name: Tauri build & publish draft release
+      # Builds the web bundle (beforeBuildCommand), the Windows installer and the signed update package,
+      # then publishes the release together with latest.json.
+      - name: Build and publish the release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: CNCFORGE ERP ${{ github.ref_name }}
+          tagName: v${{ env.VERSION }}
+          releaseName: Business Intelligence v${{ env.VERSION }}
           releaseBody: |
-            Windows desktop release of CNCFORGE ERP.
-
-            **Install:** run the NSIS installer (`CNCFORGE ERP_x.y.z_x64-setup.exe`).
-            **Updates:** installed copies check this release automatically; the
-            update package is signature-verified before installation.
-
-            See docs/desktop/RELEASING.md for verification steps.
-          releaseDraft: true
+            Automatic build of Business Intelligence v${{ env.VERSION }} from the latest code on main.
+            Installed copies offer this update by themselves (Settings > Updates > Check for Updates).
+            New installs: download the `-setup.exe` file below.
+          releaseDraft: false
           prerelease: false
+
+      # Installed apps look at the website's latest.json first, so refresh it with the new release.
+      - name: Update latest.json on the website
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --pattern latest.json --dir public/downloads --clobber
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/downloads/latest.json
+          git commit -m "chore(release): latest.json for v${VERSION} [skip ci]" || { echo "latest.json unchanged"; exit 0; }
+          git pull --rebase origin main
+          git push origin HEAD:main
