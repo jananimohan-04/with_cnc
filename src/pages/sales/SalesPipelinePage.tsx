@@ -1765,6 +1765,30 @@ function InwardGroupSection({
             </div>
           )}
 
+          {/* Party DC No. (their delivery challan number; printed on the invoice) */}
+          {viewEditMode ? (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party DC No.</span>
+              <input
+                type="text"
+                className="w-full text-sm font-medium text-slate-800 border border-slate-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-brand-500"
+                placeholder="Their DC number"
+                defaultValue={g[0]?.party_dc_no || ''}
+                onBlur={(e) => {
+                  const val = e.target.value;
+                  if (val !== String(g[0]?.party_dc_no || '')) {
+                    void updateInwardGroup(g, { party_dc_no: val });
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Party DC No.</span>
+              <div className="text-sm font-medium text-slate-800">{g[0]?.party_dc_no || '—'}</div>
+            </div>
+          )}
+
           {/* Petty Cash */}
           {viewEditMode ? (
             <div className="col-span-full xl:col-span-auto">
@@ -3383,9 +3407,10 @@ export function SalesPipelinePage() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
           {title === 'Inward' ? (<>
             <div className="col-span-full">{inwardCellFor(raw, 'product_name', 'Product from Enquiry')}</div>
-            <div className="col-span-full grid grid-cols-3 gap-4">
+            <div className="col-span-full grid grid-cols-4 gap-4">
               {inwardCellFor(raw, 'category', 'Category')}
               {inwardCellFor(raw, 'reference_no', 'Reference No.')}
+              {inwardCellFor(raw, 'party_dc_no', 'Party DC No.')}
               {inwardCellFor(raw, 'inward_date', 'Inward Date')}
             </div>
             <div className="col-span-full">
@@ -3985,7 +4010,7 @@ export function SalesPipelinePage() {
   
 
   const emptyInwardItem = (defaults: any = {}) => ({ partyName: defaults.partyName || '', productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partName: '', partNumber: '', quantity: '', price: '', discount: '0', gst: '18', remarks: defaults.remarks || '', files: (defaults.files || []) as File[] });
-  const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
+  const emptyInwardPart = (defaults: any = {}) => ({ category: defaults.category || 'GOODS PURCHASE', referenceNo: defaults.referenceNo || '', partyDcNo: defaults.partyDcNo || '', inwardDate: defaults.inwardDate || new Date().toISOString().split('T')[0], remarks: defaults.remarks || '', files: [] as File[], productKey: defaults.productKey || '', productName: defaults.productName || '', enquiryId: defaults.enquiryId || '', projectName: defaults.projectName || '', partyName: defaults.partyName || '', items: [emptyInwardItem({ partyName: defaults.partyName || '' })] });
   const [inwardForm, setInwardForm] = useState<any>({
     inwardNo: '', category: 'GOODS PURCHASE', projectName: '', salesOrderRef: '', referenceNo: '', inwardDate: new Date().toISOString().split('T')[0], partyName: '', remarks: '',
     productName: '', productKey: '', productOptions: [], enquiryId: '', parts: [emptyInwardPart()],
@@ -6599,6 +6624,7 @@ export function SalesPipelinePage() {
           category: g.category || inwardForm.category, product_name: it.productName || g.productName || inwardForm.productName, enquiry_id: it.enquiryId || g.enquiryId || inwardForm.enquiryId || null,
           project_name: it.projectName || g.projectName || inwardForm.projectName, contact_person: cStr.person, phone: cStr.phone, email: cStr.email,
           sales_order_ref: inwardForm.salesOrderRef, reference_no: g.referenceNo ?? inwardForm.referenceNo,
+          ...(String(g.partyDcNo ?? '').trim() ? { party_dc_no: String(g.partyDcNo).trim() } : {}),
           inward_date: g.inwardDate || inwardForm.inwardDate || null, party_name: g.partyName || it.partyName || inwardForm.partyName, remarks: it.remarks ?? g.remarks ?? inwardForm.remarks,
           part_name: it.partName, part_number: it.partNumber || it.partCode || '', quantity: q, price: p,
           discount_percent: d, gst_percent: gg, total_amount: total, status: 'Pending', attachments,
@@ -8513,6 +8539,7 @@ export function SalesPipelinePage() {
                   </div>
                   <FormField label="Inward Date" required inline><input type="date" className={`${compactInput} w-[10.5rem]`} value={group.inwardDate || ''} onChange={e=>setGroup({ inwardDate: e.target.value })} /></FormField>
                   <FormField label="Reference No." inline><input className={`${compactInput} w-[10rem]`} value={group.referenceNo || ''} onChange={e=>setGroup({ referenceNo: e.target.value })} placeholder="e.g. DC/Invoice No" /></FormField>
+                  <FormField label="Party DC No." inline><input className={`${compactInput} w-[9rem]`} value={group.partyDcNo || ''} onChange={e=>setGroup({ partyDcNo: e.target.value })} placeholder="Their DC number" title="The delivery challan number the company sent with this material. It is printed on the invoice." /></FormField>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={inlineLbl}>Files</span>
                     <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach bills, DCs or any file (all formats)">

@@ -977,6 +977,21 @@ export function amountInWords(total: number): string {
   return `${inWordsIndian(rupees)} Rupees${paise ? ' and ' + wordsTwo(paise) + ' Paise' : ''} Only`;
 }
 
+/** The "Party DC No." entered on the inward(s) of the sales order(s) these delivery challans belong to. Empty when none was entered. */
+async function fetchPartyDcNos(dcNos: string | undefined): Promise<string> {
+  try {
+    const list = String(dcNos ?? '').split(/[,;/]+/).map((x) => x.trim()).filter(Boolean);
+    if (!list.length) return '';
+    const { supabase } = await import('@/lib/supabase');
+    const d = await supabase.from('cnc_deliveries').select('sales_order_no').in('delivery_no', list);
+    const orders = Array.from(new Set(((d.data ?? []) as { sales_order_no: string | null }[]).map((r) => r.sales_order_no).filter((x): x is string => !!x)));
+    if (!orders.length) return '';
+    const i = await supabase.from('cnc_inwards').select('party_dc_no').in('sales_order_ref', orders);
+    if (i.error) return '';   // the party DC column is not in the database yet
+    return Array.from(new Set(((i.data ?? []) as { party_dc_no: string | null }[]).map((r) => String(r.party_dc_no ?? '').trim()).filter(Boolean))).join(', ');
+  } catch { return ''; }
+}
+
 export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -1072,6 +1087,7 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
     ? 'Proforma Inv No.'
     : 'Invoice No.';
 
+  const partyDcNos = await fetchPartyDcNos(input.dcNo);
   autoTable(doc, {
     startY: y,
     body: [
@@ -1080,6 +1096,7 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
       ['Company Code', val(input.partyCode), 'Invoice Date', challanDate(input.invDate)],
       ['Company GSTIN', val(input.partyGstin), 'DC Number', val(input.dcNo)],
       ['P.O. Number', val(input.poNo), 'DC Date', challanDate(input.dcDate)],
+      ...(partyDcNos ? [['Party DC No.', partyDcNos, '', '']] : []),
     ],
     columnStyles: { 0: labelCell(25), 1: {}, 2: labelCell(26), 3: {} },
     ...gridOpts,
