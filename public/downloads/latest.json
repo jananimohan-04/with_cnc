@@ -1,15 +1,15 @@
 {
-  "version": "1.1.11",
-  "notes": "Automatic build of Business Intelligence v1.1.11 from the latest code on main.\nInstalled copies offer this update by themselves (Settings > Updates > Check for Updates).\nNew installs: download the `-setup.exe` file below.",
-  "pub_date": "2026-11-12T07:18:45.756Z",
+  "version": "1.1.12",
+  "notes": "Automatic build of Business Intelligence v1.1.12 from the latest code on main.\nInstalled copies offer this update by themselves (Settings > Updates > Check for Updates).\nNew installs: download the `-setup.exe` file below.",
+  "pub_date": "2026-11-12T07:26:29.246Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2M3dRNEJSQ1BJanlVcDI4K3R3b2ZSSnJLRjdCeW5USTNObHVjSU1GZ21WVSs1M1V6YUp1MnF1M1drMERVcmljQW8rNUsvbXZRTzdscm9JQnhXQUdSM2dvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY3OTIxCWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMS4xMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4xLjExClY4OXMxc2xJTUpmSkl4alB4MERlTmNHSmc5eDZtMU1rUTVJenhLeGFKcHZqdmw5ZUtYYklaTllqM0M1M252aCs1RkNrRFc4MGNvRUhkL3hJZ3FLdUJRPT0K",
-      "url": "https://github.com/jananimohan-04/with_cnc/releases/download/v1.1.11/Business.Intelligence_1.1.11_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2MzNGNzN5bzNVVGRtazIxTUNuT1VkRTQwZ3lqS3pMY2FJcFJSMDNZcEFlVGRZelFVb3Uya2NQb1Rja3JNeG1EbGkyWkNmL3lJNTFqSTJXL055clViUVEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Mzg0CWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMS4xMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4xLjEyCkliWSt2bzlXVmhLYWtITTdJdmVhSEV5eDZpNGFkZzFBNCt3R0labUE1NGh5RU1SWUc3bE5WN05yM2lhYlZ5TGVvbWVzTUJDTFZoTGt4akdzaTlFY0RnPT0K",
+      "url": "https://github.com/jananimohan-04/with_cnc/releases/download/v1.1.12/Business.Intelligence_1.1.12_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2M3dRNEJSQ1BJanlVcDI4K3R3b2ZSSnJLRjdCeW5USTNObHVjSU1GZ21WVSs1M1V6YUp1MnF1M1drMERVcmljQW8rNUsvbXZRTzdscm9JQnhXQUdSM2dvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY3OTIxCWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMS4xMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4xLjExClY4OXMxc2xJTUpmSkl4alB4MERlTmNHSmc5eDZtMU1rUTVJenhLeGFKcHZqdmw5ZUtYYklaTllqM0M1M252aCs1RkNrRFc4MGNvRUhkL3hJZ3FLdUJRPT0K",
-      "url": "https://github.com/jananimohan-04/with_cnc/releases/download/v1.1.11/Business.Intelligence_1.1.11_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdDRhNmVKRVY2MzNGNzN5bzNVVGRtazIxTUNuT1VkRTQwZ3lqS3pMY2FJcFJSMDNZcEFlVGRZelFVb3Uya2NQb1Rja3JNeG1EbGkyWkNmL3lJNTFqSTJXL055clViUVEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Mzg0CWZpbGU6QnVzaW5lc3MgSW50ZWxsaWdlbmNlXzEuMS4xMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MS4xLjEyCkliWSt2bzlXVmhLYWtITTdJdmVhSEV5eDZpNGFkZzFBNCt3R0labUE1NGh5RU1SWUc3bE5WN05yM2lhYlZ5TGVvbWVzTUJDTFZoTGt4akdzaTlFY0RnPT0K",
+      "url": "https://github.com/jananimohan-04/with_cnc/releases/download/v1.1.12/Business.Intelligence_1.1.12_x64-setup.exe"
     }
   }
 }
