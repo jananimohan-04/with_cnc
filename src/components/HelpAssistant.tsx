@@ -977,7 +977,7 @@ export function HelpAssistant() {
           </div>
           {([
             { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + CapsLock', on: modes.coworker },
-            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Chat or talk: Argus BI help and any CNC machining question (ChatGPT)', keys: 'Ctrl + Alt', on: active },
+            { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Chat or talk: Argus BI help and any CNC machining question', keys: 'Ctrl + Alt', on: active },
           ] as const).map((m) => (
             <button key={m.id} type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
               className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
