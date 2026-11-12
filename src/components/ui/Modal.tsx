@@ -170,7 +170,7 @@ export function Modal({
   if (inline) {
     return (
       <section className={`${accent ? accent.panel : 'bg-white border-slate-200'} rounded-xl shadow-sm border overflow-hidden flex flex-col`} data-testid="inline-form">
-        <div className={`flex-1 overflow-y-auto scrollbar-thin px-6 py-5 min-h-0 ${accent ? '' : 'bg-slate-50/30'}`}>{children}</div>
+        <div className={`modal-scroll flex-1 overflow-y-auto px-6 py-5 min-h-0 ${accent ? '' : 'bg-slate-50/30'}`}>{children}</div>
         {footer && (
           <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 ${accent ? 'border-white/60 bg-white/70' : 'border-slate-100 bg-slate-50'}`}>
             {footer}
@@ -329,7 +329,7 @@ export function Modal({
               </button>
             </div>
           </div>
-          <div className={`modal-scroll flex-1 overflow-y-auto scrollbar-thin pl-6 pr-4 py-5 mr-2 bg-slate-50/30 min-h-0 ${minimized ? 'hidden' : ''}`}>{children}</div>
+          <div className={`modal-scroll flex-1 overflow-y-auto pl-6 pr-4 py-5 mr-2 bg-slate-50/30 min-h-0 ${minimized ? 'hidden' : ''}`}>{children}</div>
           {footer && !minimized && (
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
               {footer}

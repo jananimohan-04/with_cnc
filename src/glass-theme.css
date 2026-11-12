@@ -139,7 +139,26 @@ aside nav button:hover { background: rgba(255, 255, 255, .10) !important; }
 .kpi:hover { transform: translateY(-4px) scale(1.01); }
 
 /* ---------- scrollbars ---------- */
-::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(251, 146, 60, .75), rgba(139, 92, 246, .65)) !important; border: 2px solid transparent !important; background-clip: padding-box !important; }
+::-webkit-scrollbar { width: 16px !important; height: 16px !important; }
+::-webkit-scrollbar-track { background: rgba(148, 163, 184, .20) !important; border-radius: 999px !important; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(251, 146, 60, .86), rgba(139, 92, 246, .78)) !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  border-radius: 999px !important;
+  min-height: 48px !important;
+  min-width: 48px !important;
+}
+::-webkit-scrollbar-thumb:horizontal {
+  background: linear-gradient(90deg, rgba(251, 146, 60, .86), rgba(139, 92, 246, .78)) !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(234, 88, 12, .96), rgba(109, 40, 217, .92)) !important;
+}
+::-webkit-scrollbar-thumb:horizontal:hover {
+  background: linear-gradient(90deg, rgba(234, 88, 12, .96), rgba(109, 40, 217, .92)) !important;
+}
+::-webkit-scrollbar-corner { background: transparent !important; }
 ::selection { background: rgba(251, 146, 60, .35); }
 
 /* soft entrance for panels (page-level motion already exists in animations.css) */
@@ -158,7 +177,47 @@ aside nav button:hover { background: rgba(255, 255, 255, .10) !important; }
   :is(main, .retail-shell, .retail-app) :is(.shadow-premium, .card) { background: rgba(255, 255, 255, .92) !important; }
 }
 
-/* popups: the scrollbar sits a little inside the window and is wider, so it is easy to grab */
-.modal-scroll::-webkit-scrollbar { width: 14px; height: 14px; }
-.modal-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .35); border-radius: 999px; }
-.modal-scroll::-webkit-scrollbar-thumb { border: 3px solid transparent !important; background-clip: padding-box !important; border-radius: 999px; min-height: 48px; }
+/* popups, dialogs & modal inner scroll areas: extra wide vertically and horizontally so they are easy to grab */
+.modal-scroll::-webkit-scrollbar,
+.modal-scroll ::-webkit-scrollbar,
+[role="dialog"]::-webkit-scrollbar,
+[role="dialog"] ::-webkit-scrollbar,
+[aria-modal="true"]::-webkit-scrollbar,
+[aria-modal="true"] ::-webkit-scrollbar,
+.modal::-webkit-scrollbar,
+.modal ::-webkit-scrollbar,
+.fixed.inset-0::-webkit-scrollbar,
+.fixed.inset-0 ::-webkit-scrollbar {
+  width: 18px !important;
+  height: 18px !important;
+}
+.modal-scroll::-webkit-scrollbar-track,
+.modal-scroll ::-webkit-scrollbar-track,
+[role="dialog"]::-webkit-scrollbar-track,
+[role="dialog"] ::-webkit-scrollbar-track,
+[aria-modal="true"]::-webkit-scrollbar-track,
+[aria-modal="true"] ::-webkit-scrollbar-track,
+.modal::-webkit-scrollbar-track,
+.modal ::-webkit-scrollbar-track,
+.fixed.inset-0::-webkit-scrollbar-track,
+.fixed.inset-0 ::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, .28) !important;
+  border-radius: 999px !important;
+}
+.modal-scroll::-webkit-scrollbar-thumb,
+.modal-scroll ::-webkit-scrollbar-thumb,
+[role="dialog"]::-webkit-scrollbar-thumb,
+[role="dialog"] ::-webkit-scrollbar-thumb,
+[aria-modal="true"]::-webkit-scrollbar-thumb,
+[aria-modal="true"] ::-webkit-scrollbar-thumb,
+.modal::-webkit-scrollbar-thumb,
+.modal ::-webkit-scrollbar-thumb,
+.fixed.inset-0::-webkit-scrollbar-thumb,
+.fixed.inset-0 ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  border-radius: 999px !important;
+  min-height: 56px !important;
+  min-width: 56px !important;
+}
+.scrollbar-none::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }

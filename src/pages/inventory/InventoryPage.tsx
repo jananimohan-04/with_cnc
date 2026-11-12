@@ -283,10 +283,9 @@ export function InventoryPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [purgingCorrupted, setPurgingCorrupted] = useState(false);
 
-  // Extra dashboard data: per-item last movement, open work orders (WIP), live status.
+  // Extra dashboard data: per-item last movement, open work orders (WIP).
   const [recentAll, setRecentAll] = useState<RecentTransaction[] | null>(null);
   const [wipCount, setWipCount] = useState<number | null>(null);
-  const [live, setLive] = useState(false);
 
   const canManage = filters?.can_manage ?? false;
   const categories = useMemo(() => [...(filters?.categories ?? [])].sort((a, b) => a.sort_order - b.sort_order), [filters]);
@@ -609,14 +608,13 @@ Cancel = Manufactured in-house (like Finished Goods)`);
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_stock_movements', filter: `company_id=eq.${companyId}` }, schedule)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_raw_materials', filter: `company_id=eq.${companyId}` }, schedule)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cnc_parts', filter: `company_id=eq.${companyId}` }, schedule)
-        .subscribe(status => { if (!cancelled && status === 'SUBSCRIBED') setLive(true); });
+        .subscribe();
     } catch {
       channel = null;
     }
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
-      setLive(false);
       if (channel) supabase.removeChannel(channel);
     };
   }, [companyId, refreshAll]);
@@ -1049,13 +1047,6 @@ Cancel = Manufactured in-house (like Finished Goods)`);
     }
 
     setHeader({ title: 'Inventory' });
-    setHeaderCenter(
-      live ? (
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
-        </span>
-      ) : null
-    );
 
     const topbarBtn = 'h-7 px-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 shadow-sm transition disabled:opacity-50 cursor-pointer whitespace-nowrap';
     const topbarPrimaryBtn = 'h-7 px-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition disabled:opacity-60 cursor-pointer whitespace-nowrap';
@@ -1115,7 +1106,6 @@ Cancel = Manufactured in-house (like Finished Goods)`);
     };
   }, [
     company,
-    live,
     canManage,
     exporting,
     ready,
@@ -1167,11 +1157,6 @@ Cancel = Manufactured in-house (like Finished Goods)`);
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
             Inventory
-            {live && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
-              </span>
-            )}
           </h1>
           <p className="text-sm text-slate-500 mt-1">Real-time visibility of raw materials, work-in-progress and finished goods.</p>
         </div>
@@ -1240,7 +1225,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
         {/* Main column: the table now uses the full page width */}
         <div className="w-full min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm">
           {/* Tabs + filters share one line */}
-          <div className="flex flex-nowrap items-center gap-2 px-4 py-2 border-b border-slate-200 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-1.5 border-b border-slate-200">
             {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-16 rounded bg-slate-100 animate-pulse" />)}
             {[...categories.map(c => ({ id: c.id, name: c.name })), { id: '', name: 'All Products' }].map(t => {
               if (!filters && t.id === '' && !filtersError) return null;
@@ -1252,26 +1237,26 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                 </button>
               );
             })}
-            <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
+            <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
             <input
               value={draft.search}
               onChange={e => setDraft({ ...draft, search: e.target.value })}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
               placeholder="Search by product name, code..."
-              className={`${selectCls} w-44`}
+              className={`${selectCls} !h-8 !px-2.5 !text-xs w-40`}
             />
-            <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else { const next = { ...draft, categoryId: e.target.value }; setDraft(next); applyFilters(next); } }} className={`${selectCls} max-w-[150px]`}>
+            <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else { const next = { ...draft, categoryId: e.target.value }; setDraft(next); applyFilters(next); } }} className={`${selectCls} !h-8 !px-2 !text-xs w-[124px]`}>
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               {canManage && <option value="__new__">+ New Category</option>}
             </select>
-            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => { const next = { ...draft, warehouseId: e.target.value }; setDraft(next); applyFilters(next); }} className={`${selectCls} max-w-[150px]`}>
+            <select aria-label="Warehouse" value={draft.warehouseId} onChange={e => { const next = { ...draft, warehouseId: e.target.value }; setDraft(next); applyFilters(next); }} className={`${selectCls} !h-8 !px-2 !text-xs w-[132px]`}>
               <option value="">All Warehouses</option>
               {(filters?.warehouses ?? []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
-            <button onClick={handleSearch} className={primaryBtn}>Search</button>
-            <button onClick={handleClear} className={outlineBtn}>Clear</button>
-            {canManage && <button onClick={() => void addCategory()} className={outlineBtn} title="Create a new category">+ New Category</button>}
+            <button onClick={handleSearch} className={`${primaryBtn} !h-8 !px-2.5 !text-xs`}>Search</button>
+            <button onClick={handleClear} className={`${outlineBtn} !h-8 !px-2.5 !text-xs`}>Clear</button>
+            {canManage && <button onClick={() => void addCategory()} className={`${outlineBtn} !h-8 !px-2.5 !text-xs`} title="Create a new category">+ New Category</button>}
 
             {canManage && SHOW_ADD_PRODUCT_BUTTONS && (
               fgTab ? (
@@ -1323,7 +1308,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
             <table className="inv-compact w-full text-[13px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-700 text-xs font-semibold border-b border-slate-200">
-                  <th className="px-3 py-3 text-left w-12">
+                  <th className="px-3 py-3 text-left w-8">
                     <ColumnHeaderFilter
                       label="#"
                       col="idx"
@@ -1333,7 +1318,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                       onClick={() => toggleSort('idx')}
                     />
                   </th>
-                  <th className="px-3 py-3 text-left">
+                  <th className="px-3 py-3 text-left min-w-[180px]">
                     <ColumnHeaderFilter
                       label="Product / Material Name"
                       col="name"
@@ -1501,12 +1486,12 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                   <tr key={rowKey(r)} className="border-b border-slate-100 hover:bg-slate-50/70">
                     <td className="px-3 py-2.5 text-slate-500">{firstShown + i}</td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2">
                         {r.image_url && imageUrls[r.image_url]
                           ? <img src={imageUrls[r.image_url]} alt="" className="w-8 h-8 rounded-md object-cover border border-slate-200 flex-shrink-0" />
-                          : <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><Package size={16} /></div>}
-                        <div className="max-w-[220px]">
-                          <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 text-left truncate block" title={r.name}>
+                          : <div className="w-8 h-8 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><Package size={14} /></div>}
+                        <div className="min-w-[180px] flex-1">
+                          <button onClick={() => setViewing({ row: r, tab: 'details' })} className="font-semibold text-slate-800 hover:text-blue-600 text-left whitespace-normal break-words leading-snug block" title={r.name}>
                             {r.name}
                           </button>
                           {r.item_status === 'Inactive' && <span className="text-[10px] font-semibold uppercase text-slate-400">Inactive</span>}
@@ -1528,7 +1513,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                           ))}
                         </select>
                       ) : (
-                        <span className="max-w-[110px] truncate block" title={r.category_name ?? ''}>{r.category_name ?? '—'}</span>
+                        <span className="max-w-[96px] truncate block" title={r.category_name ?? ''}>{r.category_name ?? '—'}</span>
                       )}
                     </td>
 
@@ -1548,7 +1533,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                           ))}
                         </select>
                       ) : (
-                        <span className="max-w-[240px] truncate block" title={r.warehouse_name || '—'}>
+                        <span className="max-w-[110px] truncate block" title={r.warehouse_name || '—'}>
                           {r.warehouse_name || '—'}
                         </span>
                       )}
@@ -1559,7 +1544,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                       {canManage ? (
                         <select
                           aria-label={`Unit for ${r.name}`}
-                          className="h-8 w-[72px] px-1 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                          className="h-8 w-[54px] px-1 text-[12px] bg-white border border-slate-200 hover:border-slate-400 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                           value={r.unit || 'Nos'}
                           disabled={rowBusyId === r.id}
                           onChange={e => void handleInlineUnitChange(r, e.target.value)}
@@ -1635,15 +1620,15 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                       {lastMovement[rowKey(r)] ? formatDate(lastMovement[rowKey(r)]) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1">
                         <button title="Edit" onClick={() => setEditing(r)}
-                          className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><Pencil size={14} /></button>
+                          className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><Pencil size={13} /></button>
                         <button title="More" data-floating-menu
                           onClick={e => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             setMenu(m => (m && rowKey(m.row) === rowKey(r) ? null : { row: r, x: rect.right, y: rect.bottom }));
                           }}
-                          className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><MoreVertical size={14} /></button>
+                          className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100"><MoreVertical size={13} /></button>
                       </div>
                     </td>
                   </tr>
@@ -1654,18 +1639,18 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                     <tr key={`fg:${r.key}`} data-testid="fg-row" className="border-b border-slate-100 hover:bg-slate-50/70">
                       <td className="px-3 py-2.5 text-slate-500">{firstShown + sortedItemsRows.length + j}</td>
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0"><Archive size={16} /></div>
-                          <div className="max-w-[220px]" title={`${r.product} · ${r.customer}`}>
-                            <div className="font-semibold text-slate-800 truncate">{r.product || '—'}</div>
-                            <div className="text-[11px] text-slate-400 truncate">{[r.salesOrder, r.customer].filter(Boolean).join(' · ')}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0"><Archive size={14} /></div>
+                          <div className="min-w-[180px] flex-1" title={`${r.product} · ${r.customer}`}>
+                            <div className="font-semibold text-slate-800 whitespace-normal break-words leading-snug">{r.product || '—'}</div>
+                            <div className="text-[11px] text-slate-400 whitespace-normal break-words leading-tight">{[r.salesOrder, r.customer].filter(Boolean).join(' · ')}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-slate-600">Finished Goods</td>
+                      <td className="px-3 py-2.5 text-slate-600 leading-tight">Finished Goods</td>
                       <td className="px-3 py-2">
                         {canManage && fg.canAssign ? (
-                          <select aria-label={`Warehouse for ${r.product}`} className="h-8 w-full max-w-[220px] px-2 text-[13px] bg-white border border-slate-300 rounded-md" value={r.warehouseId} disabled={fg.busyKey === r.key} onChange={e => void fg.assign(r, e.target.value)}>
+                          <select aria-label={`Warehouse for ${r.product}`} className="h-8 w-full px-2 text-[12px] bg-white border border-slate-300 rounded-md" value={r.warehouseId} disabled={fg.busyKey === r.key} onChange={e => void fg.assign(r, e.target.value)}>
                             <option value="">{fg.def ? `Default · ${fg.def.name}` : 'Not set'}</option>
                             {fg.whs.filter(w => w.status === 'Active').map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                           </select>
@@ -1679,7 +1664,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
                       <td className="px-3 py-2.5"><StatusPill status="In Stock" /></td>
                       <td className="px-3 py-2.5 text-slate-300">—</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
                           From Work Order
                         </span>
                       </td>

@@ -34,9 +34,9 @@
 :focus-visible{outline:2px solid var(--orange);outline-offset:2px;border-radius:6px}
 
 /* scrollbars */
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:#BAA794;border-radius:8px;border:2px solid var(--bg)}
-::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar{width:16px;height:16px}
+::-webkit-scrollbar-thumb{background:#BAA794;border-radius:999px;border:2px solid transparent;background-clip:padding-box;min-height:48px;min-width:48px}
+::-webkit-scrollbar-track{background:rgba(46,21,8,.08);border-radius:999px}
 
 /* numeric alignment for BI figures */
 .num{font-variant-numeric:tabular-nums;text-align:right}

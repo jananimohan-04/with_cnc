@@ -2383,6 +2383,26 @@ export function SalesPipelinePage() {
   const [listSearch, setListSearch] = useState('');
   const [listStage, setListStage] = useState('All');
   const listExportRef = useRef<(() => void) | null>(null);
+  const [boardZoom, setBoardZoom] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('cnc_pipeline_board_zoom'));
+      return Number.isFinite(saved) && saved >= 75 && saved <= 145 ? saved : 100;
+    } catch { return 100; }
+  });
+  const [dotsMenuOpen, setDotsMenuOpen] = useState(false);
+  const dotsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    try { localStorage.setItem('cnc_pipeline_board_zoom', String(boardZoom)); } catch { /* ignore */ }
+  }, [boardZoom]);
+  useEffect(() => {
+    if (!dotsMenuOpen) return;
+    const away = (e: MouseEvent) => { if (!dotsMenuRef.current?.contains(e.target as Node)) setDotsMenuOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setDotsMenuOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [dotsMenuOpen]);
+  const boardScale = boardZoom / 100;
   // Per-column kanban search: term typed in each column's own search box.
   const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -9063,9 +9083,84 @@ export function SalesPipelinePage() {
                 <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                 </button>
-                <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
-                </button>
+                <div ref={dotsMenuRef} className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDotsMenuOpen(o => !o)}
+                    aria-label="Board and card size options"
+                    aria-expanded={dotsMenuOpen}
+                    aria-haspopup="true"
+                    title={`Board & Card Size (${boardZoom}%)`}
+                    className={`p-2 border rounded-lg bg-white shadow-sm transition-colors ${boardZoom !== 100 || dotsMenuOpen ? 'border-orange-500 text-orange-600 ring-1 ring-orange-400 bg-orange-50/40' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                  </button>
+                  {dotsMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Display size options"
+                      className="no-glass absolute right-0 top-full mt-1.5 z-50 w-64 rounded-xl border border-slate-200 bg-white p-3.5 shadow-xl space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Display Size</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-orange-700 border border-orange-200">{boardZoom}%</span>
+                          {boardZoom !== 100 && (
+                            <button type="button" onClick={() => setBoardZoom(100)} className="text-[11px] font-semibold text-slate-500 hover:text-orange-600 underline">
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([['Small', 80], ['Normal', 100], ['Big', 125]] as const).map(([label, val]) => {
+                          const active = boardZoom === val;
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => setBoardZoom(val)}
+                              className={`h-8 rounded-lg border text-xs font-bold transition ${active ? 'border-orange-600 bg-orange-600 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-300 hover:bg-orange-50'}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          aria-label="Decrease size"
+                          disabled={boardZoom <= 75}
+                          onClick={() => setBoardZoom(z => Math.max(75, z - 5))}
+                          className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min={75}
+                          max={145}
+                          step={5}
+                          value={boardZoom}
+                          onChange={e => setBoardZoom(Number(e.target.value))}
+                          aria-label="Adjust board and card size"
+                          className="w-full accent-orange-600 cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Increase size"
+                          disabled={boardZoom >= 145}
+                          onClick={() => setBoardZoom(z => Math.min(145, z + 5))}
+                          className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-snug">Resize cards, columns, and table rows from compact to large.</p>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -9136,7 +9231,7 @@ export function SalesPipelinePage() {
           <LeadsPage hideHeader toolbarLeft={<div className="flex items-center gap-3 shrink-0">{viewTabs}{allCompaniesButton}</div>} />
         </div>
       ) : pipelineViewMode === 'list' ? (
-        <div>
+        <div style={boardZoom !== 100 ? { zoom: boardScale } : undefined}>
           <PipelineListView
             cards={listCards}
             search={listSearch}
@@ -9149,7 +9244,7 @@ export function SalesPipelinePage() {
           />
         </div>
       ) : pipelineViewMode === 'calendar' ? (
-        <div className="mb-2.5">
+        <div className="mb-2.5" style={boardZoom !== 100 ? { zoom: boardScale } : undefined}>
           <PipelineCalendarView cards={visibleCards} onView={openViewModal} />
         </div>
       ) : (
@@ -9208,7 +9303,13 @@ export function SalesPipelinePage() {
           </div>
         )}
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
-        <div className="flex gap-4 h-[550px] items-stretch min-w-max px-1">
+        <div
+          className="flex gap-4 items-stretch min-w-max px-1"
+          style={{
+            height: `${boardZoom < 100 ? Math.round(550 / boardScale) : 550}px`,
+            ...(boardZoom !== 100 ? { zoom: boardScale } : {}),
+          }}
+        >
           {[
             MODULE_THEMES.Enquiry.kanban,
             MODULE_THEMES.Quotation.kanban,

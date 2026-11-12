@@ -132,15 +132,13 @@
   overflow-x: auto;
   padding: 4px 2px 14px;
   margin-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #baa794 transparent;
 }
 .ls-cat-ribbon::-webkit-scrollbar {
-  height: 6px;
+  height: 14px;
 }
 .ls-cat-ribbon::-webkit-scrollbar-thumb {
   background: #baa794;
-  border-radius: 6px;
+  border-radius: 999px;
 }
 .ls-cat-btn {
   flex: 0 0 auto;
@@ -203,16 +201,14 @@
   gap: 10px;
   width: 100%;
   overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #baa794 transparent;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 .ls-toolbar-row::-webkit-scrollbar {
-  height: 4px;
+  height: 14px;
 }
 .ls-toolbar-row::-webkit-scrollbar-thumb {
   background: #baa794;
-  border-radius: 4px;
+  border-radius: 999px;
 }
 form.ls-input-wrap,
 .ls-input-wrap {

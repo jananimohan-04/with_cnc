@@ -44,33 +44,65 @@
 }
 
 @layer components {
+  ::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.18);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 9999px;
+    min-height: 48px;
+    min-width: 48px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(100, 116, 139, 0.8);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 16px;
+    height: 16px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(148, 163, 184, 0.18);
+    border-radius: 9999px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(148, 163, 184, 0.4);
+    background-color: rgba(148, 163, 184, 0.55);
+    border: 2px solid transparent;
+    background-clip: padding-box;
     border-radius: 9999px;
+    min-height: 48px;
+    min-width: 48px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(148, 163, 184, 0.6);
+    background-color: rgba(100, 116, 139, 0.8);
   }
   .scrollbar-dark::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 16px;
+    height: 16px;
   }
   .scrollbar-dark::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .scrollbar-dark::-webkit-scrollbar-thumb {
-    background-color: rgba(71, 85, 105, 0.5);
+    background: rgba(15, 23, 42, 0.25);
     border-radius: 9999px;
   }
+  .scrollbar-dark::-webkit-scrollbar-thumb {
+    background-color: rgba(71, 85, 105, 0.72);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 9999px;
+    min-height: 48px;
+    min-width: 48px;
+  }
   .scrollbar-dark::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(100, 116, 139, 0.7);
+    background-color: rgba(100, 116, 139, 0.9);
   }
 }
 
@@ -97,7 +129,7 @@
 @media print { body * { visibility: hidden; } #printable-po, #printable-po * { visibility: visible; } #printable-po { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; } }
 
 
-.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -294,16 +326,23 @@ body { font-size: 15px; }
   }
 }
 
-/* Inventory stock table: compact (tighter cells, smaller controls) so every column fits without sideways scrolling. */
-.inv-compact :is(th, td) { padding-left: 6px !important; padding-right: 6px !important; }
-.inv-compact td { padding-top: 4px !important; padding-bottom: 4px !important; }
-.inv-compact th { padding-top: 8px !important; padding-bottom: 8px !important; white-space: nowrap; }
-.inv-compact td select, .inv-compact td input { height: 28px !important; font-size: 12px !important; padding-left: 6px !important; padding-right: 4px !important; }
-.inv-compact td select { max-width: 124px !important; }
-.inv-compact td input[type="number"] { width: 68px !important; }
-.inv-compact td [class*="max-w-[220px]"] { max-width: 190px !important; }
-.inv-compact td img, .inv-compact td [class*="w-8"][class*="h-8"]:not(button) { width: 26px !important; height: 26px !important; }
-.inv-compact td button[title="Edit"], .inv-compact td button[title="More"] { width: 28px !important; height: 28px !important; }
+/* Inventory stock table: compact layout so all columns fit without sideways scrolling while full product names wrap cleanly. */
+.inv-compact { table-layout: auto; }
+.inv-compact :is(th, td) { padding-left: 4px !important; padding-right: 4px !important; }
+.inv-compact td { padding-top: 3px !important; padding-bottom: 3px !important; font-size: 12px !important; line-height: 1.25 !important; }
+.inv-compact th { padding-top: 6px !important; padding-bottom: 6px !important; font-size: 11px !important; line-height: 1.15 !important; vertical-align: middle; }
+.inv-compact th button { font-size: 11px !important; line-height: 1.15 !important; padding: 2px 3px !important; margin-left: -3px !important; margin-right: -3px !important; gap: 2px !important; }
+.inv-compact th button > span { white-space: normal !important; text-align: left; }
+.inv-compact th .justify-end button > span { text-align: right; }
+.inv-compact td select, .inv-compact td input { height: 25px !important; font-size: 11.5px !important; padding-left: 5px !important; padding-right: 4px !important; }
+.inv-compact td select { max-width: 102px !important; }
+.inv-compact td select[aria-label^="Category"] { width: 92px !important; max-width: 92px !important; }
+.inv-compact td select[aria-label^="Warehouse"] { width: 104px !important; max-width: 104px !important; }
+.inv-compact td select[aria-label^="Unit"] { width: 52px !important; max-width: 52px !important; padding-left: 4px !important; padding-right: 2px !important; }
+.inv-compact td input[type="number"] { width: 54px !important; padding-left: 4px !important; padding-right: 4px !important; }
+.inv-compact td img, .inv-compact td [class*="w-8"][class*="h-8"]:not(button) { width: 22px !important; height: 22px !important; }
+.inv-compact td button[title="Edit"], .inv-compact td button[title="More"] { width: 25px !important; height: 25px !important; }
+.inv-compact td span.rounded-full { font-size: 10.5px !important; padding: 1px 6px !important; line-height: 1.2 !important; }
 
 /* AI help + Co-worker buttons sit beside the movable arrow tab (AssistantDock) and show only while it is open. */
 html:not([data-dock="open"]) [data-assistant-launcher] { display: none !important; }
