@@ -609,6 +609,8 @@ export function HelpAssistant() {
   useEffect(() => { loadVoices(); try { window.speechSynthesis.onvoiceschanged = loadVoices; } catch { /* no speech */ } }, []);
   useEffect(() => { store.set('help.vlang', lang); }, [lang]);
   useEffect(() => { store.set('help.speak', speakOn ? '1' : '0'); if (!speakOn) stopSpeaking(); }, [speakOn]);
+  // Talking is a conversation: when the mic is switched on, the answers are spoken as well as shown in the chat.
+  useEffect(() => { if (handsFree && !speakRef.current) { speakRef.current = true; setSpeakOn(true); } }, [handsFree]);
   useEffect(() => { store.set('help.handsfree', handsFree ? '1' : '0'); }, [handsFree]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs, phase]);
 
