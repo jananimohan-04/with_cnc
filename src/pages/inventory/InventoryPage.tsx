@@ -3118,7 +3118,12 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               disabled={allItems === null}
               options={(allItems ?? []).map(r => ({ key: `${r.kind}:${r.id}`, label: `${r.code} · ${r.name} (available ${formatQty(r.current_stock)} ${r.unit ?? ''})` }))}
               value={item ? `${item.code} · ${item.name} (available ${formatQty(item.current_stock)} ${item.unit ?? ''})` : ''}
-              onPick={key => setItem((allItems ?? []).find(r => `${r.kind}:${r.id}` === key) ?? null)}
+              onPick={key => {
+                const it = (allItems ?? []).find(r => `${r.kind}:${r.id}` === key) ?? null;
+                setItem(it);
+                // the warehouse this product is saved in is the "from" warehouse
+                if (it?.warehouse_id) setFromId(it.warehouse_id);
+              }}
               onClear={() => setItem(null)}
               emptyText="No product matches"
             />
