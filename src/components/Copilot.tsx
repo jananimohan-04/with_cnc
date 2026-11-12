@@ -10,7 +10,7 @@ import { useResizable, ResizeGrip } from '@/lib/useResizable';
 import { isHardRequired, missingHard, namedDetails, parseAnswer, parseCommand, prefillFor, questionFor, stageFromSpeech } from '@/lib/copilot/wizard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBreadcrumbs } from '@/config/navigation';
-import { say, stopSpeaking, offlineAnswer, voiceBusy, takeFloor, releaseFloor } from '@/components/HelpAssistant';
+import { say, stopSpeaking, offlineAnswer, voiceBusy, takeFloor, releaseFloor, useAiVoice } from '@/components/HelpAssistant';
 import {
   findRecords, previewAction, runAction, fetchPipelineSummary, explainRecordStage,
   saveStageRecord, moveStageRecord, type ActionCtx, type Preview, type PipelineItem
@@ -483,7 +483,7 @@ export function Copilot() {
   const pillMoved = useRef(false);
   const pillPosRef = useRef(pillPos); pillPosRef.current = pillPos;
   const [lang, setLang] = useState<Lang>(readLang);
-  const [speak, setSpeak] = useState(() => ls.get('argus.copilot.speak', '1') === '1');
+  const [speak, setSpeak] = useAiVoice('coworker');   // off until switched on
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1786,7 +1786,6 @@ export function Copilot() {
   const toggleSpeak = () => {
     const n = !speak;
     setSpeak(n);
-    ls.set('argus.copilot.speak', n ? '1' : '0');
     if (!n) stopSpeaking();
   };
 

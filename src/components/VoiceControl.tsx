@@ -31,7 +31,7 @@ export function VoiceControl() {
   langRef.current = lang;
   outRef.current = out;
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const [replies, setReplies] = useState(() => store.get('voice.replies', '1') === '1');
+  const [replies, setReplies] = useState(() => store.get('voice.replies.v2', '0') === '1');
   const recRef = useRef<any>(null);
   const wantRef = useRef(false);
   const speakingRef = useRef(false);
@@ -188,7 +188,7 @@ export function VoiceControl() {
     if (wantRef.current) { try { recRef.current?.stop(); } catch { /* ignore */ } recRef.current = null; start(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
-  useEffect(() => { store.set('voice.replies', replies ? '1' : '0'); }, [replies]);
+  useEffect(() => { store.set('voice.replies.v2', replies ? '1' : '0'); }, [replies]);
   useEffect(() => { store.set('voice.out', out); }, [out]);
   useEffect(() => () => { wantRef.current = false; try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
   useEffect(() => {

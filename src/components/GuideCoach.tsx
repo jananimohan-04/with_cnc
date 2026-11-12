@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Compass, Database, HelpCircle, Languages, Volume2, VolumeX, X } from 'lucide-react';
 import { GUIDES } from '@/lib/guides';
 import { dialogTitle, findTarget, guidesFor, pick, stepSpeech, topDialog, type Guide, type GuideLang, type GuideStep } from '@/lib/guides/engine';
-import { offlineAnswer, say, stopSpeaking, takeFloor, releaseFloor } from '@/components/HelpAssistant';
+import { offlineAnswer, say, stopSpeaking, takeFloor, releaseFloor, useAiVoice } from '@/components/HelpAssistant';
 
 // Walkthrough coach: shows what to enter in each field, why, and where it is saved, with a spotlight on the field, a pointer,
 // spoken narration (the Help voice) and, after the real Save, a glowing dot that flies to the menu / tab holding the record.
@@ -36,7 +36,7 @@ export function GuideCoach() {
   const [picker, setPicker] = useState<Guide[] | null>(null);
   const [offer, setOffer] = useState<Guide | null>(null);
   const [lang, setLang] = useState<GuideLang>(readLang);
-  const [voice, setVoice] = useState(() => ls.get('argus.guide.voice', '1') === '1');
+  const [voice, setVoice] = useAiVoice('guide');   // shares Teaching's switch; off until switched on
   const [auto, setAuto] = useState(() => ls.get('argus.guide.auto', '0') === '1');
   const [rect, setRect] = useState<Rect | null>(null);
   const [toast, setToast] = useState('');
@@ -212,7 +212,7 @@ export function GuideCoach() {
 
   useEffect(() => () => stopSpeaking(), []);
   const toggleLang = () => { const n: GuideLang = lang === 'ta' ? 'en' : 'ta'; setLang(n); ls.set('help.vlang', n); };
-  const toggleVoice = () => { const n = !voice; setVoice(n); ls.set('argus.guide.voice', n ? '1' : '0'); if (!n) stopSpeaking(); };
+  const toggleVoice = () => { const n = !voice; setVoice(n); if (!n) stopSpeaking(); };
   const toggleAuto = () => { const n = !auto; setAuto(n); ls.set('argus.guide.auto', n ? '1' : '0'); };
 
   const ta = lang === 'ta';

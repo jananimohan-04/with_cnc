@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { GraduationCap, Languages, Pause, Play, SkipBack, SkipForward, FastForward, Square, Volume2, VolumeX } from 'lucide-react';
 import { pageTitles } from '@/config/navigation';
 import { useVisibleNavSections } from '@/lib/useVisibleNavSections';
-import { say, stopSpeaking, takeFloor, releaseFloor } from '@/components/HelpAssistant';
+import { say, stopSpeaking, takeFloor, releaseFloor, useAiVoice } from '@/components/HelpAssistant';
 import { topDialog, dialogTitle } from '@/lib/guides/engine';
 import { closeDialog, collectTourItems, describeItem, firstParagraph, type TourItem, type TourLang } from '@/lib/guides/tour';
 import { explainOptions } from '@/lib/guides/tourExplain';
@@ -50,7 +50,7 @@ export function TeachingTour() {
   const [rect, setRect] = useState<Rect | null>(null);
   const [paused, setPaused] = useState(false);
   const [lang, setLang] = useState<TourLang>(readLang);
-  const [voice, setVoice] = useState(() => ls.get('argus.guide.voice', '1') === '1');
+  const [voice, setVoice] = useAiVoice('teaching');   // off until switched on
 
   const token = useRef(0);
   const running = useRef(false);
@@ -332,7 +332,7 @@ export function TeachingTour() {
     if (p) cancelSpeak.current?.('pause');
   };
   const toggleLang = () => { const n: TourLang = langRef.current === 'ta' ? 'en' : 'ta'; setLang(n); ls.set('help.vlang', n); };
-  const toggleVoice = () => { const n = !voiceRef.current; setVoice(n); ls.set('argus.guide.voice', n ? '1' : '0'); if (!n) { stopSpeaking(); cancelSpeak.current?.('skip'); } };
+  const toggleVoice = () => { const n = !voiceRef.current; setVoice(n); if (!n) { stopSpeaking(); cancelSpeak.current?.('skip'); } };
 
   if (!view || typeof document === 'undefined') return null;
   const ta = lang === 'ta';

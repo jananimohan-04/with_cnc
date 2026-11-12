@@ -373,9 +373,46 @@ export function releaseFloor(mode: AiMode) {
   window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode, on: false } }));
 }
 
+// ---- VOICE ON / OFF PER AI ----------------------------------------------------------------------------------------
+// Every AI is silent until its voice is switched on (AI menu, or the speaker button inside it). The Guide uses Teaching's switch.
+// (New storage names, so everyone starts with the voice off.)
+const voiceGroup = (m: AiMode): AiMode => (m === 'guide' ? 'teaching' : m);
+const voiceKey = (m: AiMode) => `argus.voice.${voiceGroup(m)}`;
+export const aiVoiceOn = (m: AiMode) => store.get(voiceKey(m), '0') === '1';
+export function setAiVoice(m: AiMode, on: boolean) {
+  store.set(voiceKey(m), on ? '1' : '0');
+  if (!on) { stopSpeaking(voiceGroup(m)); if (voiceGroup(m) === 'teaching') stopSpeaking('guide'); }
+  window.dispatchEvent(new CustomEvent('argus:ai-voice', { detail: { mode: voiceGroup(m), on } }));
+}
+/** [voice on?, switch it] for one AI, kept in step everywhere it is shown. */
+export function useAiVoice(m: AiMode): [boolean, (v: boolean | ((prev: boolean) => boolean)) => void] {
+  const [on, setOn] = useState(() => aiVoiceOn(m));
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent<{ mode: AiMode; on: boolean }>).detail; if (d && d.mode === voiceGroup(m)) setOn(d.on); };
+    window.addEventListener('argus:ai-voice', h);
+    return () => window.removeEventListener('argus:ai-voice', h);
+  }, [m]);
+  const set = useCallback((v: boolean | ((prev: boolean) => boolean)) => setAiVoice(m, typeof v === 'function' ? v(aiVoiceOn(m)) : v), [m]);
+  return [on, set];
+}
+
+/** The small "Voice on / Voice off" switch shown for each AI in the AI menu. */
+function VoiceSwitch({ mode, label }: { mode: AiMode; label: string }) {
+  const [on, set] = useAiVoice(mode);
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={`${label} voice`}
+      title={on ? `${label} talks. Click to make it silent.` : `${label} is silent (text only). Click to let it talk.`}
+      onClick={(e) => { e.stopPropagation(); set(!on); }}
+      className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold transition-colors ${on ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+      {on ? <Volume2 size={12} /> : <VolumeX size={12} />}{on ? 'Voice on' : 'Voice off'}
+    </button>
+  );
+}
+
 /** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). `from` = the AI speaking. */
 export function say(text: string, onEnd: () => void, notify?: (m: string) => void, from?: AiMode) {
   if (from && floor && floor !== from) { onEnd(); return; }   // another AI is working: this one stays quiet
+  if (from && !aiVoiceOn(from)) { onEnd(); return; }          // this AI's voice is switched off: text only
   const sanitized = text
     .replace(/\bERP\b/gi, 'Argus Business Intelligence')
     .replace(/இ\.?ஆர்\.?பி/gi, 'Argus Business Intelligence');
@@ -601,7 +638,7 @@ export function HelpAssistant() {
   const [modes, setModes] = useState({ teaching: false, coworker: false });
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
-  const [speakOn, setSpeakOn] = useState(() => store.get('help.speak', '1') === '1');        // read the answers aloud
+  const [speakOn, setSpeakOn] = useAiVoice('adviser');        // read the answers aloud (off until switched on)
   const [handsFree, setHandsFree] = useState(() => store.get('help.handsfree', '1') === '1'); // listen again after each answer
   const [overMode, setOverMode] = useState(() => store.get('help.over', '1') === '1');          // keep listening until the person says "over"
   const overRef = useRef(overMode); overRef.current = overMode;
@@ -639,9 +676,6 @@ export function HelpAssistant() {
 
   useEffect(() => { loadVoices(); try { window.speechSynthesis.onvoiceschanged = loadVoices; } catch { /* no speech */ } }, []);
   useEffect(() => { store.set('help.vlang', lang); }, [lang]);
-  useEffect(() => { store.set('help.speak', speakOn ? '1' : '0'); if (!speakOn) stopSpeaking(); }, [speakOn]);
-  // Talking is a conversation: when the mic is switched on, the answers are spoken as well as shown in the chat.
-  useEffect(() => { if (handsFree && !speakRef.current) { speakRef.current = true; setSpeakOn(true); } }, [handsFree]);
   useEffect(() => { store.set('help.handsfree', handsFree ? '1' : '0'); }, [handsFree]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs, phase]);
 
@@ -989,8 +1023,9 @@ export function HelpAssistant() {
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={18} /></span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-sm font-bold text-slate-800">Teaching{modes.teaching && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On</span>}</span>
-                <span className="block text-[11px] leading-snug text-slate-500">Points at every option and explains it, one by one, with voice</span>
+                <span className="block text-[11px] leading-snug text-slate-500">Points at every option and explains it, one by one</span>
               </span>
+              <VoiceSwitch mode="teaching" label="Teaching" />
             </div>
             {modes.teaching ? (
               <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode('teaching'); }}
@@ -1016,17 +1051,20 @@ export function HelpAssistant() {
             { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + CapsLock', on: modes.coworker },
             { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Chat or talk: Argus BI help and any CNC machining question', keys: 'Ctrl + Alt', on: active },
           ] as const).map((m) => (
-            <button key={m.id} type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
-              className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={18} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-bold text-slate-800">{m.title}{m.on && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On · click to stop</span>}</span>
-                <span className="block text-[11px] leading-snug text-slate-500">{m.sub}</span>
-                <kbd className="mt-0.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">{m.keys}</kbd>
-              </span>
-            </button>
+            <div key={m.id} className={`mb-1 flex items-start gap-1 rounded-xl border pr-2 last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
+              <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 text-sm font-bold text-slate-800">{m.title}{m.on && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On · click to stop</span>}</span>
+                  <span className="block text-[11px] leading-snug text-slate-500">{m.sub}</span>
+                  <kbd className="mt-0.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">{m.keys}</kbd>
+                </span>
+              </button>
+              <span className="pt-2.5"><VoiceSwitch mode={m.id} label={m.title} /></span>
+            </div>
           ))}
-          <p className="px-2 pt-1 text-[10px] text-slate-400">Press the same keys again to switch it off. Alt + Shift + T / C / A also work.</p>
+          <p className="px-2 pt-1 text-[10px] text-slate-400">Voice is off until you switch it on. Press the same keys again to switch a mode off. Alt + Shift + T / C / A also work.</p>
         </div>
       )}
 
