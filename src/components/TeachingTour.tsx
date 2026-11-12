@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { GraduationCap, Languages, Pause, Play, SkipBack, SkipForward, FastForward, Square, Volume2, VolumeX } from 'lucide-react';
 import { pageTitles } from '@/config/navigation';
 import { useVisibleNavSections } from '@/lib/useVisibleNavSections';
-import { say, stopSpeaking } from '@/components/HelpAssistant';
+import { say, stopSpeaking, takeFloor, releaseFloor } from '@/components/HelpAssistant';
 import { topDialog, dialogTitle } from '@/lib/guides/engine';
 import { closeDialog, collectTourItems, describeItem, firstParagraph, type TourItem, type TourLang } from '@/lib/guides/tour';
 import { explainOptions } from '@/lib/guides/tourExplain';
@@ -82,7 +82,7 @@ export function TeachingTour() {
     // muted: leave the text on screen for about as long as it takes to read
     const timer = window.setTimeout(() => end('done'), voiceRef.current ? 120000 : Math.min(9000, 1800 + text.length * 55));
     cancelSpeak.current = (why) => { stopSpeaking(); end(why); };
-    if (voiceRef.current) say(text, () => end('done'), undefined);
+    if (voiceRef.current) say(text, () => end('done'), undefined, 'teaching');
     else { /* the timer above ends it */ }
     if (token.current !== t) end('skip');
   });
@@ -106,12 +106,12 @@ export function TeachingTour() {
     running.current = false;
     pausedRef.current = false;
     cancelSpeak.current = null;
-    stopSpeaking();
+    stopSpeaking('teaching');   // only our own voice: another AI may have just taken over
     if (openedDialog.current && openedDialog.current.isConnected) closeDialog(openedDialog.current);
     openedDialog.current = null;
     targetEl.current = null;
     setPaused(false); setRect(null); setView(null);
-    window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'teaching', on: false } }));
+    releaseFloor('teaching');
   }, []);
 
   /** Wait for the route to change, then until the screen stops changing (data may still be arriving); false when access is denied. */
@@ -223,8 +223,8 @@ export function TeachingTour() {
     const t = ++token.current;
     running.current = true;
     pausedRef.current = false; setPaused(false);
+    takeFloor('teaching');   // one AI at a time: Adviser / Guide / Co-worker stop before Teaching speaks
     window.dispatchEvent(new Event('argus:voice-pause'));
-    window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'teaching', on: true } }));
     ls.set('argus.teach.kind', kind);
     stopSpeaking();
     try {
@@ -269,6 +269,16 @@ export function TeachingTour() {
     }
     if (token.current === t) stop();
   }, [navigate, stop]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One AI at a time: when another AI starts, the tour stops.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail;
+      if (d?.on && d.mode !== 'teaching' && running.current) stop();
+    };
+    window.addEventListener('argus:mode', on);
+    return () => window.removeEventListener('argus:mode', on);
+  }, [stop]);
 
   // The Help area / shortcut asks for the tour: { on, fullErp }.
   useEffect(() => {

@@ -10,7 +10,7 @@ import { useResizable, ResizeGrip } from '@/lib/useResizable';
 import { isHardRequired, missingHard, namedDetails, parseAnswer, parseCommand, prefillFor, questionFor, stageFromSpeech } from '@/lib/copilot/wizard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBreadcrumbs } from '@/config/navigation';
-import { say, stopSpeaking, offlineAnswer, voiceBusy } from '@/components/HelpAssistant';
+import { say, stopSpeaking, offlineAnswer, voiceBusy, takeFloor, releaseFloor } from '@/components/HelpAssistant';
 import {
   findRecords, previewAction, runAction, fetchPipelineSummary, explainRecordStage,
   saveStageRecord, moveStageRecord, type ActionCtx, type Preview, type PipelineItem
@@ -754,7 +754,7 @@ export function Copilot() {
   }, []);
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'coworker', on: open } }));
+    if (open) takeFloor('coworker'); else releaseFloor('coworker');
   }, [open]);
 
   useEffect(() => {
@@ -791,6 +791,7 @@ export function Copilot() {
         pausedByRef.current.add(d.mode);
         abortRec();
         setListening(false);
+        setOpen(false);   // one AI at a time: Co-worker stops working while another AI runs
       } else if (pausedByRef.current.delete(d.mode) && pausedByRef.current.size === 0 && startedOnceRef.current) {
         scheduleRestart(500);
       }
@@ -838,7 +839,8 @@ export function Copilot() {
         clearTimeout(safetyTimer);
         cleanup();
       },
-      undefined
+      undefined,
+      'coworker'
     );
   }, [speak]);
 
@@ -1103,6 +1105,7 @@ export function Copilot() {
     haltedRef.current = false;
     setMicError(null);
     greetedRef.current = true;
+    takeFloor('coworker');
     setOpen(true);
   }, []);
 
@@ -1743,6 +1746,7 @@ export function Copilot() {
     setMicMuted(false);
     micMutedRef.current = false;
     setMicError(null);
+    takeFloor('coworker');
     setOpen(true);
     greetedRef.current = true;
     const welcome = L(
@@ -1844,6 +1848,7 @@ export function Copilot() {
           await requestMicPermission();
           startRecognition();
           playWakeChime();
+          takeFloor('coworker');
           setOpen(true);
         }}
         title="Co-worker is listening! Say 'Hi Raaju!' or click to open."

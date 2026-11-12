@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Compass, Database, HelpCircle, Languages, Volume2, VolumeX, X } from 'lucide-react';
 import { GUIDES } from '@/lib/guides';
 import { dialogTitle, findTarget, guidesFor, pick, stepSpeech, topDialog, type Guide, type GuideLang, type GuideStep } from '@/lib/guides/engine';
-import { offlineAnswer, say, stopSpeaking } from '@/components/HelpAssistant';
+import { offlineAnswer, say, stopSpeaking, takeFloor, releaseFloor } from '@/components/HelpAssistant';
 
 // Walkthrough coach: shows what to enter in each field, why, and where it is saved, with a spotlight on the field, a pointer,
 // spoken narration (the Help voice) and, after the real Save, a glowing dot that flies to the menu / tab holding the record.
@@ -64,7 +64,7 @@ export function GuideCoach() {
   const close = useCallback(() => {
     stepToken.current += 1;
     setToast('');
-    stopSpeaking();
+    stopSpeaking('guide');   // only our own voice: another AI may have just taken over
     setActive(null);
     setPicker(null);
     setFlight(null);
@@ -72,9 +72,21 @@ export function GuideCoach() {
     targetEl.current = null;
   }, []);
   const start = useCallback((g: Guide) => {
+    takeFloor('guide');   // one AI at a time: Adviser / Teaching / Co-worker stop before the guide speaks
     window.dispatchEvent(new Event('argus:voice-pause'));
     setOffer(null); setPicker(null); setFlight(null); setActive({ guide: g, i: 0 });
   }, []);
+
+  // One AI at a time: the floor is free again when the guide ends, and the guide stops when another AI starts.
+  useEffect(() => { if (!active) releaseFloor('guide'); }, [active]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail;
+      if (d?.on && d.mode !== 'guide' && active) close();
+    };
+    window.addEventListener('argus:mode', on);
+    return () => window.removeEventListener('argus:mode', on);
+  }, [active, close]);
 
   // "Guide me" from the Help area / voice
   useEffect(() => {
@@ -108,7 +120,7 @@ export function GuideCoach() {
   useEffect(() => {
     if (!active || !step) return;
     let off = false;
-    stopSpeaking();
+    stopSpeaking('guide');
     const go = async () => {
       if (step.open) {
         const b = findTarget({ button: step.open });
@@ -119,10 +131,10 @@ export function GuideCoach() {
       targetEl.current = el;
       if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       ++stepToken.current;
-      if (voice) say(stepSpeech(step, lang), () => {}, undefined);
+      if (voice) say(stepSpeech(step, lang), () => {}, undefined, 'guide');
     };
     void go();
-    return () => { off = true; stepToken.current += 1; stopSpeaking(); };
+    return () => { off = true; stepToken.current += 1; stopSpeaking('guide'); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.guide.id, active?.i, lang, voice]);
 
@@ -163,7 +175,7 @@ export function GuideCoach() {
         const dest = findTarget({ button: step.onSave!.flyTo }) ?? findTarget({ text: step.onSave!.flyTo });
         const caption = pick(step.onSave!.caption, lang);
         setFlight({ key: Date.now(), from: { x: from.x + from.w / 2, y: from.y + from.h / 2 }, to: rectOf(dest), caption, arrived: false });
-        if (voice) say(caption, () => {}, undefined);
+        if (voice) say(caption, () => {}, undefined, 'guide');
       }, 1000);
     };
     window.addEventListener('click', onClick, true);

@@ -352,14 +352,37 @@ let voiceActive = false;
 let quietUntil = 0;
 export const voiceBusy = () => voiceActive || Date.now() < quietUntil;
 
-/** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). */
-export function say(text: string, onEnd: () => void, notify?: (m: string) => void) {
+// ---- ONE AI AT A TIME ---------------------------------------------------------------------------------------------
+// Adviser, Teaching, Guide and Co-worker share the speakers and the microphone. When one starts, every other one stops
+// talking and working, and none of them may speak while another holds the floor.
+export type AiMode = 'adviser' | 'teaching' | 'coworker' | 'guide';
+let floor: AiMode | '' = '';     // the AI that is working now
+let speaker: AiMode | '' = '';   // the AI whose voice is playing now
+export const aiFloor = () => floor;
+/** `mode` starts: the voice of any other AI stops at once and the others switch themselves off. Call it BEFORE speaking. */
+export function takeFloor(mode: AiMode) {
+  if (speaker && speaker !== mode) stopSpeaking();
+  const changed = floor !== mode;
+  floor = mode;
+  if (changed) window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode, on: true } }));
+}
+/** `mode` has finished: the floor is free again. */
+export function releaseFloor(mode: AiMode) {
+  if (floor !== mode) return;
+  floor = '';
+  window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode, on: false } }));
+}
+
+/** Speaks one piece of text; `onEnd` runs when it has finished (or could not be spoken). `from` = the AI speaking. */
+export function say(text: string, onEnd: () => void, notify?: (m: string) => void, from?: AiMode) {
+  if (from && floor && floor !== from) { onEnd(); return; }   // another AI is working: this one stays quiet
   const sanitized = text
     .replace(/\bERP\b/gi, 'Argus Business Intelligence')
     .replace(/இ\.?ஆர்\.?பி/gi, 'Argus Business Intelligence');
   const t = sanitized.replace(/[*#_`]/g, '').trim();
   if (!t) { onEnd(); return; }
   stopSpeaking();   // cancel any prior speech
+  speaker = from || floor;
   voiceActive = true;
   const done = () => { voiceActive = false; quietUntil = Date.now() + 900; onEnd(); };
   if (TAMIL.test(t)) {
@@ -382,7 +405,9 @@ export function say(text: string, onEnd: () => void, notify?: (m: string) => voi
 
 /** The browser's own voice (and, for Tamil without an installed voice, the online Tamil voice). */
 function browserSay(t: string, onEnd: () => void, notify?: (m: string) => void) {
+  const who = speaker;
   stopSpeaking();
+  speaker = who;
   voiceActive = true;   // (stopSpeaking just cleared it)
 
   loadVoices();
@@ -476,7 +501,13 @@ export function offlineAnswer(question: string, page: string, lang: Lang): strin
   return out.length > 700 ? `${out.slice(0, 700).replace(/\s+\S*$/, '')}.` : out;
 }
 const OFFLINE_STOP = new Set(['how', 'what', 'where', 'when', 'why', 'the', 'and', 'for', 'this', 'that', 'with', 'eppadi', 'enna', 'podanum', 'pannanum', 'indha', 'page', 'screen', 'tell', 'about', 'explain', 'can', 'you', 'are', 'does', 'make', 'use']);
-export const stopSpeaking = () => {
+/**
+ * Stops the voice. `from` = the AI asking: it can only stop its OWN voice, so an AI that is being switched off never cuts off
+ * the AI that has just taken over. Without `from` any voice is stopped.
+ */
+export const stopSpeaking = (from?: AiMode) => {
+  if (from && speaker && speaker !== from) return;
+  speaker = '';
   if (voiceActive) quietUntil = Date.now() + 400;
   voiceActive = false;
   if (safetyTtsTimer) { clearTimeout(safetyTtsTimer); safetyTtsTimer = null; }
@@ -624,9 +655,9 @@ export function HelpAssistant() {
     activeRef.current = false;
     busyRef.current = false;
     stopListening();
-    stopSpeaking();
+    stopSpeaking('adviser');   // only our own voice: another AI may have just taken over
     setHeard('');
-    if (goodbye && wasActive && speakRef.current) { setPhase('speaking'); say(GOODBYE[langRef.current], () => setPhase('idle')); } else setPhase('idle');
+    if (goodbye && wasActive && speakRef.current) { setPhase('speaking'); say(GOODBYE[langRef.current], () => setPhase('idle'), undefined, 'adviser'); } else setPhase('idle');
   }, [stopListening]);
 
   // ------------------------------------------------ the answer: stream it, show it, and speak each sentence as it completes
@@ -654,7 +685,7 @@ export function HelpAssistant() {
       pending += 1;
       setPhase('speaking');
       lastSpoken.current = `${lastSpoken.current} ${chunk}`.slice(-1500);
-      say(chunk, () => { pending -= 1; finish(); }, setNote);
+      say(chunk, () => { pending -= 1; finish(); }, setNote, 'adviser');
     };
     const speakReady = (final: boolean) => {
       const rest = full.slice(spokenUpTo);
@@ -806,7 +837,10 @@ export function HelpAssistant() {
 
   // ------------------------------------------------ the three modes and their keyboard shortcuts
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail; if (d && (d.mode === 'teaching' || d.mode === 'coworker')) setModes((m) => ({ ...m, [d.mode]: d.on })); };
+    const on = (e: Event) => { const d = (e as CustomEvent<{ mode: string; on: boolean }>).detail; if (!d) return;
+      if (d.mode === 'teaching' || d.mode === 'coworker') setModes((m) => ({ ...m, [d.mode]: d.on }));
+      if (d.on && d.mode !== 'adviser' && activeRef.current) endSession(false);   // another AI started: the Adviser stops
+    };
     window.addEventListener('argus:mode', on);
     return () => window.removeEventListener('argus:mode', on);
   }, []);
@@ -867,6 +901,7 @@ export function HelpAssistant() {
   }, [menu]);
 
   const begin = () => {
+    takeFloor('adviser');   // one AI at a time: Teaching / Guide / Co-worker stop before the Adviser speaks
     window.dispatchEvent(new Event('argus:voice-pause')); // the form voice control would fight over the microphone
     activeRef.current = true;
     busyRef.current = false;
@@ -879,7 +914,7 @@ export function HelpAssistant() {
     const greet = `${first ? `${WELCOME[langRef.current]} ` : ''}${GREETING_CHAT[langRef.current]}`.trim();
     setMsgs([{ id: ++chatSeq, role: 'assistant', text: greet }]);
     const afterGreeting = () => { if (!activeRef.current) return; if (handsFreeRef.current && SR) listenRef.current(); else setPhase('ready'); };
-    if (speakRef.current) { setPhase('greeting'); say(greet, afterGreeting, setNote); } else afterGreeting();
+    if (speakRef.current) { setPhase('greeting'); say(greet, afterGreeting, setNote, 'adviser'); } else afterGreeting();
   };
   beginRef.current = begin;
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
@@ -914,7 +949,7 @@ export function HelpAssistant() {
   const active = phase !== 'idle';
   useEffect(() => { if (active) setView('report'); }, [active]);
   // Tell Co-worker when Adviser holds the microphone, so the two never listen at once.
-  useEffect(() => { window.dispatchEvent(new CustomEvent('argus:mode', { detail: { mode: 'adviser', on: active } })); }, [active]);
+  useEffect(() => { if (active) takeFloor('adviser'); else releaseFloor('adviser'); }, [active]);
   const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? (overMode ? 'Listening… பேசுங்கள். முடிந்ததும் "over" சொல்லுங்கள் / say "over" when you finish' : 'Listening… பேசுங்கள் / speak now') : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking… tap the mic to stop it and talk' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
@@ -1051,7 +1086,7 @@ export function HelpAssistant() {
           {view === 'report' ? (
             <AdviserReportPanel lang={lang} speakOn={speakOn} can={canView}
               onOpenPage={(pg) => { endSession(false); navigate(`/${pg}`); }}
-              say={(text, onEnd) => say(text, onEnd ?? (() => {}), setNote)} stopSpeaking={stopSpeaking} />
+              say={(text, onEnd) => say(text, onEnd ?? (() => {}), setNote, 'adviser')} stopSpeaking={stopSpeaking} />
           ) : (
           <>
           <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" aria-live="polite">
