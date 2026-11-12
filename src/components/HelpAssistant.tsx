@@ -624,7 +624,19 @@ export function HelpAssistant() {
     const push = (piece: string) => { full += piece; show(full); speakReady(false); };
     const unreachable = (msg: string) => /failed to fetch|networkerror|load failed|not deployed|HTTP 404|HTTP 5\d\d|Please sign in/i.test(msg);
     try {
+      // 1) ChatGPT through our own server first (OPENAI_API_KEY in Vercel). Only if that route is missing / not set up
+      //    do we try the Supabase help function (an old deployment of it refuses machining questions).
+      let servedFirst = false;
       try {
+        const notesFirst = rankNotes(q, pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
+        for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesFirst), [...history.current.slice(-6), { role: 'user', text: q }], { maxTokens: 700 })) {
+          if (!activeRef.current) break;
+          servedFirst = true; push(piece);
+        }
+      } catch (e0) {
+        if (servedFirst || !(e0 instanceof ServerAiError && e0.unreachable)) throw e0;
+      }
+      if (!servedFirst) try {
         const { data } = await supabase.auth.getSession();
         const res = await fetch(ENDPOINT, {
           method: 'POST',
@@ -658,15 +670,9 @@ export function HelpAssistant() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (full || !((e as { unreachable?: boolean }).unreachable || unreachable(msg))) throw e;
-        // the help function cannot be reached: ChatGPT through our server (key kept there), then the key saved in this browser, then the built-in BI notes
-        const notesNow = rankNotes(q, pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
-        let served = false;
-        try {
-          for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesNow), [...history.current.slice(-6), { role: 'user', text: q }], { maxTokens: 700 })) { served = true; push(piece); }
-        } catch (e2) {
-          if (!(e2 instanceof ServerAiError && e2.unreachable) && !served) throw e2;
-        }
-        const key = served ? '' : getOpenAIApiKey();
+        // neither our server nor the help function can be reached: the key saved in this browser, then the built-in BI notes
+        const served = false;
+        const key = getOpenAIApiKey();
         if (served) {
           /* the server's ChatGPT answered */
         } else if (key) {

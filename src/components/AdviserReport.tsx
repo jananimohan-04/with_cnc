@@ -64,6 +64,14 @@ function parsePoints(text: string): { title: string; how: string }[] {
 
 /** Streams the improvement ideas: the help function first, then the OpenAI key saved in this browser. */
 async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[] }): AsyncGenerator<string> {
+  // ChatGPT through our own server first (OPENAI_API_KEY in Vercel); the Supabase help function only if that is not set up.
+  try {
+    let got = false;
+    for await (const piece of serverChat(daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang), [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
+    if (got) return;
+  } catch (e) {
+    if (!(e instanceof ServerAiError && e.unreachable)) throw e;
+  }
   let unreachable = false;
   try {
     const { data } = await supabase.auth.getSession();
@@ -103,13 +111,6 @@ async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[
     unreachable = true;
   }
   if (!unreachable) return;
-  try {
-    let got = false;
-    for await (const piece of serverChat(daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang), [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
-    if (got) return;
-  } catch (e) {
-    if (!(e instanceof ServerAiError && e.unreachable)) throw e;
-  }
   const key = getOpenAIApiKey();
   if (!key) throw new Error('AI is not set up yet: add OPENAI_API_KEY in the server settings (Vercel > Environment Variables) and redeploy. The report above does not need AI.');
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
