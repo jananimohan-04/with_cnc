@@ -20,3 +20,5 @@ json('src-tauri/tauri.conf.json');
 edit('src-tauri/Cargo.toml', (raw) => raw.replace(/^version = ".*"$/m, `version = "${v}"`));
 edit('src/lib/desktopDownload.ts', (raw) => raw.replace(/DESKTOP_APP_VERSION = '[^']*'/, `DESKTOP_APP_VERSION = '${v}'`));
 edit('src/config/versionHistory.ts', (raw) => raw.replace(/CURRENT_APP_VERSION = '[^']*'/, `CURRENT_APP_VERSION = '${v}'`));
+
+// (first automatic release)
