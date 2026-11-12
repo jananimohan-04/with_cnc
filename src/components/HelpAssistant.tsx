@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Bot, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AdviserReportPanel } from '@/components/AdviserReport';
+import { boostAudio } from '@/lib/voiceBoost';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
@@ -168,7 +169,7 @@ function playOnline(text: string, tl: string, onEnd: () => void, notify?: (m: st
   const token = ++onlineToken;
   const play = (a: HTMLAudioElement) => new Promise<boolean>((resolve) => {
     onlineAudio = a;
-    a.volume = 1;
+    if (a.src.startsWith('blob:')) boostAudio(a); else a.volume = 1;   // the server voice is played through a gain stage: clearly louder
     try { a.playbackRate = tl === 'ta' ? 0.92 : 1; } catch { /* default speed */ }   // Tamil a little slower: easier to follow
     a.onended = () => resolve(true);
     a.onerror = () => resolve(false);
