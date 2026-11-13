@@ -27,8 +27,10 @@ const DAILY_SYSTEM = (lang: Lang, avoid: string[]) => {
   const d = new Date();
   const focus = FOCUS[d.getDay() % FOCUS.length];
   return `You are the business Adviser of a CNC machining company, talking to its owner. From the figures given, write exactly 4 numbered improvement points for TODAY (${d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).
-Today's main focus: ${focus}. At least 2 of the 4 points must be about that focus; the others come from whatever the figures show is most wrong.
-Each point: a short title, a colon, then one sentence on how (at most 28 words in all), concrete and doable this week, using the customer / order / invoice names and amounts in the figures where they help. Never invent figures. Plain text, no markdown symbols.
+This advice is for THIS company only, built from its own records below. Generic business tips (tips that would fit any company, like "hold a morning meeting" or "offer an early payment discount" without naming who) are NOT allowed.
+Every point MUST name at least one real customer, order number, invoice number, quotation, material or amount taken from the Records in the figures, and say exactly what to do about it this week (who to call, which invoice to chase, which order to expedite, which quotation to follow up, which material to reorder).
+Today's main focus, when the figures have records for it: ${focus}. If they do not, take the points from whatever the figures show is most wrong or most at risk. A [GOING WELL] item may give one point on how to repeat or grow that success with the named customer.
+Each point: a short title that includes the name or number, a colon, then one sentence on how (at most 32 words in all). Never invent names, numbers or amounts that are not in the figures. Plain text, no markdown symbols.
 ${avoid.length ? `These were already advised on earlier days, so every point today must be genuinely different (a new angle, not the same advice reworded): ${avoid.slice(0, 40).join('; ')}. ` : ''}${lang === 'ta' ? 'Reply in Tamil script; keep names and amounts in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.'}`;
 };
 
@@ -247,16 +249,16 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
         {showHistory && (
           <div className="space-y-2" data-testid="adviser-history">
             <button type="button" onClick={() => setShowHistory(false)} className="text-[11px] font-bold text-violet-700 hover:text-violet-900">← Back to today</button>
-            {historyList.length === 0 && <p className="py-6 text-center text-[12px] text-slate-400">No advice saved yet. Each day's advice is kept here from now on.</p>}
+            {historyList.length === 0 && <p className="py-6 text-center text-[12px] text-slate-600">No advice saved yet. Each day's advice is kept here from now on.</p>}
             {historyList.map((d) => (
-              <div key={d.date} className="rounded-lg border border-slate-200 bg-white p-2.5">
+              <div key={d.date} className="no-glass rounded-lg border border-violet-300 bg-violet-50 p-2.5 shadow-sm">
                 <div className="mb-1 flex items-center gap-1.5">
-                  <span className="text-[11px] font-extrabold text-slate-800">{new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                  <span className="text-[11px] font-extrabold text-violet-950">{new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   <span className={`ml-auto rounded-full px-1.5 py-px text-[9px] font-bold uppercase ${d.ai ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{d.ai ? 'AI' : 'Tips'}</span>
                 </div>
-                {d.headline && <p className="mb-1 text-[10px] text-slate-400">{d.headline}</p>}
+                {d.headline && <p className="mb-1 text-[10px] font-semibold text-violet-800">{d.headline}</p>}
                 <ol className="space-y-1">
-                  {d.ideas.map((x, n) => <li key={n} className="text-[12px] leading-snug text-slate-700"><b className="text-slate-900">{n + 1}. {x.title}.</b> {x.how}</li>)}
+                  {d.ideas.map((x, n) => <li key={n} className="text-[12px] leading-snug text-slate-900"><b className="text-black">{n + 1}. {x.title}.</b> {x.how}</li>)}
                 </ol>
               </div>
             ))}
@@ -274,18 +276,18 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
                 { label: 'Delivered, not billed', value: String(s.unbilledDcs), bad: s.unbilledDcs > 0, sub: 'delivery challans' },
               ].map((k) => (
                 <div key={k.label} className={`rounded-lg border px-2.5 py-1.5 ${k.bad ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{k.label}</p>
-                  <p className="text-base font-extrabold leading-tight text-slate-800">{k.value}</p>
-                  <p className="text-[10px] text-slate-500">{k.sub}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-700">{k.label}</p>
+                  <p className="text-base font-extrabold leading-tight text-slate-950">{k.value}</p>
+                  <p className="text-[10px] text-slate-700">{k.sub}</p>
                 </div>
               ))}
             </div>
-            <p className="px-0.5 text-[11px] text-slate-500">
+            <p className="px-0.5 text-[11px] text-slate-700">
               {counts.high + counts.medium === 0 ? 'Nothing urgent today.' : `${counts.high ? `${counts.high} urgent` : ''}${counts.high && counts.medium ? ' and ' : ''}${counts.medium ? `${counts.medium} to look at` : ''}. Tap a point to see the records behind it.`}
             </p>
 
             {daily && daily.ideas.length > 0 && (
-              <div className="rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-2.5" data-testid="daily-ideas">
+              <div className="rounded-lg border border-emerald-300 bg-gradient-to-br from-emerald-100 to-teal-100 p-2.5 shadow-sm" data-testid="daily-ideas">
                 <div className="mb-1.5 flex items-center gap-1.5">
                   <Lightbulb size={14} className="text-emerald-600" />
                   <span className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-800">{lang === 'ta' ? 'இன்றைய மேம்பாட்டு யோசனைகள்' : "Today's improvements"}</span>
@@ -294,7 +296,7 @@ export function AdviserReportPanel({ lang, speakOn, can, onOpenPage, say, stopSp
                 </div>
                 <ol className="space-y-1.5">
                   {daily.ideas.map((x, n) => (
-                    <li key={`${n}-${x.title}`} className="flex gap-2 text-[12px] leading-snug text-slate-700">
+                    <li key={`${n}-${x.title}`} className="flex gap-2 text-[12px] leading-snug text-slate-900">
                       <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">{n + 1}</span>
                       <span><b className="text-slate-900">{x.title}.</b> {x.how}</span>
                     </li>

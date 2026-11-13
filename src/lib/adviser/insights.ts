@@ -322,8 +322,9 @@ export async function buildReport(can: (module: string) => boolean = () => true)
 export function reportToFacts(r: AdviserReport): string {
   const s = r.snapshot;
   const head = `Today ${new Date().toISOString().slice(0, 10)}. Unpaid invoices ${money(s.outstanding)} (overdue ${money(s.overdue)}). Enquiries waiting for a quotation: ${s.openEnquiries}. Quotations without an order: ${s.pendingQuotes}. Orders past delivery date: ${s.lateOrders}. Delivery challans not invoiced: ${s.unbilledDcs}. Materials at minimum stock: ${s.lowStock}.`;
-  const body = r.insights.filter((i) => i.severity !== 'good').map((i) => `[${i.severity.toUpperCase()}] ${i.title}. ${i.detail}${i.items.length ? ' Details: ' + i.items.slice(0, 5).join('; ') : ''}`).join('\n');
-  return `${head}\n${body}`.slice(0, 5800);
+  const body = r.insights.filter((i) => i.severity !== 'good').map((i) => `[${i.severity.toUpperCase()}] ${i.title}. ${i.detail} Suggested action: ${i.action}${i.items.length ? ' Records: ' + i.items.slice(0, 8).join('; ') : ''}`).join('\n');
+  const good = r.insights.filter((i) => i.severity === 'good').map((i) => `[GOING WELL] ${i.title}. ${i.detail}${i.items.length ? ' Records: ' + i.items.slice(0, 4).join('; ') : ''}`).join('\n');
+  return `${head}\n${body}${good ? `\n${good}` : ''}`.slice(0, 7000);
 }
 
 /** A short spoken summary (read aloud when the person asks). */
@@ -389,11 +390,37 @@ const IDEA_POOL: Record<Insight['area'] | 'General', { title: string; how: strin
 /** The day number, so the same day gives the same points and the next day gives different ones. */
 const dayNumber = (d: Date) => Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY);
 
-/** Four improvement points for today: the first ones answer what the records show, the rest rotate through the other areas. */
+/**
+ * Four improvement points for today, taken from THIS company's records first: each problem the report found becomes a point
+ * that names the actual customers / orders / invoices / amounts and says what to do. Only when the records show fewer
+ * problems than that are the remaining places filled with a general tip for an area (rotating day by day).
+ */
 export function improvementIdeas(report: AdviserReport, now: Date = new Date(), count = 4): Idea[] {
   const day = dayNumber(now);
   const out: Idea[] = [];
   const seen = new Set<string>();
+
+  // 1. the company's own problems, most serious first; when there are more than fit, the less serious ones take turns by day
+  const rank: Record<Severity, number> = { high: 0, medium: 1, low: 2, good: 3 };
+  const problems = report.insights.filter((i) => i.severity !== 'good').sort((a, b) => rank[a.severity] - rank[b.severity]);
+  const urgent = problems.filter((i) => i.severity === 'high');
+  const others = problems.filter((i) => i.severity !== 'high');
+  const turn = others.length ? day % others.length : 0;
+  const ordered = [...urgent, ...others.slice(turn), ...others.slice(0, turn)];
+  for (const i of ordered) {
+    if (out.length >= count) break;
+    const names = i.items.slice(0, 3);
+    out.push({
+      area: i.area,
+      title: i.title,
+      how: `${i.action}${names.length ? ` Start with: ${names.join('; ')}.` : ''}`,
+      fromData: true,
+    });
+    seen.add(i.title);
+  }
+  if (out.length >= count) return out;
+
+  // 2. not enough problems in the records: fill with tips for the areas involved, then the others
   const add = (area: Idea['area'], i: number, fromData: boolean) => {
     const pool = IDEA_POOL[area];
     for (let k = 0; k < pool.length; k++) {

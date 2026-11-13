@@ -28,6 +28,8 @@ export async function* serverChat(system: string, messages: ChatPiece[], opts: {
     const j = await res.json().catch(() => ({} as { error?: string }));
     throw new ServerAiError(j?.error || `AI is not available (HTTP ${res.status}).`, res.status === 404 || res.status === 503 || res.status >= 500 || res.status === 401);
   }
+  // a web page instead of an answer (the route is not there, so the app's own page came back): try another way
+  if (/text\/html/i.test(res.headers.get('content-type') || '')) throw new ServerAiError('The AI route is not available here.', true);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
