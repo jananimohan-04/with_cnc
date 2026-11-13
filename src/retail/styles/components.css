@@ -24,21 +24,21 @@
 .footer{width:100%;padding:18px 24px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
 
 /* Dark navigation sidebar rules to guarantee high-contrast text and sleek scrollbars */
-aside, .sidebar-dark {
+.retail-app aside, .retail-app .sidebar-dark {
   color: #E8DDD5;
   background-color: #0E0704;
 }
-aside a, .sidebar-dark a {
+.retail-app aside a, .retail-app .sidebar-dark a {
   color: #D7C4B7;
 }
-aside a:hover, .sidebar-dark a:hover {
+.retail-app aside a:hover, .retail-app .sidebar-dark a:hover {
   color: #FFFFFF;
   background-color: rgba(34, 18, 10, 0.9);
 }
-aside a.active, .sidebar-dark a.active {
+.retail-app aside a.active, .retail-app .sidebar-dark a.active {
   color: #FFFFFF !important;
 }
-aside a.active span, .sidebar-dark a.active span {
+.retail-app aside a.active span, .retail-app .sidebar-dark a.active span {
   color: #FFFFFF !important;
 }
 
@@ -62,7 +62,7 @@ aside a.active span, .sidebar-dark a.active span {
 }
 
 /* Header specific input & select overrides for dark topbar */
-header input#headerSearchInput {
+.retail-app header input#headerSearchInput {
   background-color: #150A05 !important;
   color: #FDFBF7 !important;
   border: 1px solid #2C160B !important;
@@ -71,16 +71,16 @@ header input#headerSearchInput {
   border-radius: 12px !important;
   height: 36px !important;
 }
-header input#headerSearchInput:focus {
+.retail-app header input#headerSearchInput:focus {
   border-color: #7A3E1E !important;
   box-shadow: 0 0 0 2px rgba(122, 62, 30, 0.35) !important;
   background-color: #0E0704 !important;
 }
-header input#headerSearchInput::placeholder {
+.retail-app header input#headerSearchInput::placeholder {
   color: #A89080 !important;
 }
 
-header select.company-select {
+.retail-app header select.company-select {
   background-color: #150A05 !important;
   color: #FDFBF7 !important;
   border: 1px solid #2C160B !important;
@@ -91,11 +91,11 @@ header select.company-select {
   height: 36px !important;
   width: auto !important;
 }
-header select.company-select:focus {
+.retail-app header select.company-select:focus {
   border-color: #7A3E1E !important;
   box-shadow: 0 0 0 2px rgba(122, 62, 30, 0.35) !important;
 }
-header select.company-select option {
+.retail-app header select.company-select option {
   background-color: #0E0704 !important;
   color: #FDFBF7 !important;
 }
@@ -130,7 +130,7 @@ header select.company-select option {
 .section-head h2{margin:0;font-size:18px}
 .hint{font-size:12px;color:var(--muted)}
 .kpi{display:block;border-radius:var(--r);padding:16px;color:#fff;border:0;background:var(--navy);transition:transform var(--t-med),box-shadow var(--t-med)}
-a.kpi:hover,button.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.retail-app a.kpi:hover, .retail-app button.kpi:hover {transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .kpi h3{margin:0;font-size:26px;letter-spacing:-.02em}
 .kpi p{margin:4px 0 0;font-size:13px;opacity:.92;font-weight:600}
 .kpi small{opacity:.78;font-size:11.5px}
@@ -141,7 +141,7 @@ a.kpi:hover,button.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0}
 .mgmt-cards{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin:10px 0}
 .mgmt-cards .kpi{padding:10px 12px;min-height:60px} .mgmt-cards .kpi h3{font-size:18px} .mgmt-cards .kpi p{font-size:11px}
-button.kpi{cursor:pointer;font-family:inherit;text-align:left;width:100%}
+.retail-app button.kpi {cursor:pointer;font-family:inherit;text-align:left;width:100%}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid2e{display:grid;grid-template-columns:1.4fr .8fr;gap:14px}
 .ind-stat{background:#fff;border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow)}
@@ -150,11 +150,11 @@ button.kpi{cursor:pointer;font-family:inherit;text-align:left;width:100%}
 
 /* ---------- tables ---------- */
 .table-wrap{overflow:auto;border-radius:9px;border:1px solid var(--border)}
-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
-th{background:#F1F5F9;text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#475569;white-space:nowrap;position:sticky;top:0}
-td{padding:10px 12px;border-top:1px solid #F1F5F9;vertical-align:middle}
-tbody tr{transition:background var(--t-fast)}
-tbody tr:hover td{background:#F8FAFC}
+.retail-app table {width:100%;border-collapse:collapse;font-size:13px;background:#fff}
+.retail-app th {background:#F1F5F9;text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#475569;white-space:nowrap;position:sticky;top:0}
+.retail-app td {padding:10px 12px;border-top:1px solid #F1F5F9;vertical-align:middle}
+.retail-app tbody tr {transition:background var(--t-fast)}
+.retail-app tbody tr:hover td {background:#F8FAFC}
 .thumb{width:42px;height:42px;border-radius:7px;object-fit:cover;border:1px solid var(--border)}
 .status{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;display:inline-block}
 .s-pending{background:#FEF3C7;color:#92400E} .s-confirmed{background:#DBEAFE;color:#1E40AF}
@@ -176,11 +176,11 @@ tbody tr:hover td{background:#F8FAFC}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
 .field.full{grid-column:1/-1}
-label{font-size:12px;font-weight:700;color:#334155}
+.retail-app label {font-size:12px;font-weight:700;color:#334155}
 .req::after{content:' *';color:var(--red)}
-input,select,textarea{border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;font-size:13.5px;font-family:inherit;outline:0;background:#fff;width:100%;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
-input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-input.err,select.err{border-color:var(--red)}
+.retail-app input, .retail-app select, .retail-app textarea {border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;font-size:13.5px;font-family:inherit;outline:0;background:#fff;width:100%;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
+.retail-app input:focus, .retail-app select:focus, .retail-app textarea:focus {border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.retail-app input.err, .retail-app select.err {border-color:var(--red)}
 .ferr{font-size:12px;color:var(--red);font-weight:600}
 .spec-table{width:100%;font-size:12.5px} .spec-table td{padding:7px 4px;border-top:1px solid #F1F5F9}
 .spec-table td:first-child{color:var(--muted);width:42%}

@@ -9357,11 +9357,11 @@ export function SalesPipelinePage() {
                           />
                           <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-semibold">{card.date || 'No Date'}</span>
+                        <span className="text-[10px] text-slate-800 font-semibold">{card.date || 'No Date'}</span>
                       </div>
                       
                       <h4 className="font-bold text-[13px] text-slate-900 mb-0.5 line-clamp-1">{card.customer}</h4>
-                      <p className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</p>
+                      <p className="text-xs text-slate-800 mb-3 line-clamp-1">{card.part}</p>
                       
                       <div className="flex justify-between items-end">
                         <div>
@@ -9390,7 +9390,7 @@ export function SalesPipelinePage() {
                             </button>
                           )}
                           <div className="flex -space-x-1">
-                            <div className="w-5 h-5 rounded-full bg-slate-200 border border-white flex items-center justify-center text-[8px] font-bold text-slate-600" title="Assigned User">
+                            <div className="w-5 h-5 rounded-full bg-slate-200 border border-white flex items-center justify-center text-[8px] font-bold text-slate-800" title="Assigned User">
                               {card.raw?.contact_person ? card.raw.contact_person.substring(0, 2).toUpperCase() : (card.customer ? card.customer.substring(0, 2).toUpperCase() : 'AD')}
                             </div>
                           </div>
@@ -9399,7 +9399,7 @@ export function SalesPipelinePage() {
                       {card.type === 'order' && card.qtyTrack && (
                         <div className="mt-1.5 space-y-1">
                           <QtyProgress q={card.qtyTrack} />
-                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                          <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                             Ord {card.qtyTrack.ordered} · Good {card.qtyTrack.good} · Rej {card.qtyTrack.rejected} · Rem {card.qtyTrack.remaining} · Del {card.qtyTrack.delivered} · Inv {card.qtyTrack.invoiced}
                           </p>
                         </div>
@@ -9410,7 +9410,7 @@ export function SalesPipelinePage() {
                             <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-50">Finished / Available</p>
                             <p className="text-sm font-extrabold tabular-nums text-white leading-tight">{card.qtyTrack.fgAvailable} pcs</p>
                           </div>
-                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                          <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                             Order {card.qtyTrack.ordered} · Finished {card.qtyTrack.good} · Remaining {card.qtyTrack.remaining} · Delivered {card.qtyTrack.delivered} · Avail {card.qtyTrack.fgAvailable}
                           </p>
                           {card.qtyTrack.products.slice(0, 3).map((p) => (
@@ -9419,12 +9419,12 @@ export function SalesPipelinePage() {
                                 <span className="text-[10px] font-bold text-slate-700 truncate">{p.name}</span>
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
-                              <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                              <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                                 Finished {p.good} / {p.ordered} · Available {p.available}
                               </p>
                             </div>
                           ))}
-                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-400">+{card.qtyTrack.products.length - 3} more products</p>}
+                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-700">+{card.qtyTrack.products.length - 3} more products</p>}
                           <QtyProgress q={card.qtyTrack} />
                         </div>
                       ) : (
@@ -9452,9 +9452,9 @@ export function SalesPipelinePage() {
                                   {l.left != null && <b className="text-amber-700">· {l.left} left</b>}
                                 </span>
                               ))}
-                              {lines.length > 3 && <span className="text-[10px] text-slate-400">+{lines.length - 3} more</span>}
+                              {lines.length > 3 && <span className="text-[10px] text-slate-700">+{lines.length - 3} more</span>}
                             </div>
-                            <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                            <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                               Good {g} · Rej {rj}{card.qtyTrack ? ` · Order ${card.qtyTrack.good}/${card.qtyTrack.ordered} · Avail ${card.qtyTrack.fgAvailable}` : ''}
                             </p>
                           </div>
@@ -9462,7 +9462,7 @@ export function SalesPipelinePage() {
                       })())}
                       {card.type === 'inward' && card.qtyTrack && (card.qtyTrack.products ?? []).length > 0 ? (
                         <div className="mt-1.5 space-y-1">
-                          <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                          <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                             Ordered {card.qtyTrack.ordered} · Finished {card.qtyTrack.good}
                           </p>
                           {card.qtyTrack.remaining > 0 || card.qtyTrack.ordered <= 0 ? (
@@ -9481,12 +9481,12 @@ export function SalesPipelinePage() {
                                 <span className="text-[10px] font-bold text-slate-700 truncate">{p.name}</span>
                                 {p.rejected > 0 && <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1">Rej {p.rejected}</span>}
                               </div>
-                              <p className="text-[10px] text-slate-500 tabular-nums leading-tight">
+                              <p className="text-[10px] text-slate-800 tabular-nums leading-tight">
                                 {p.good} / {p.ordered} finished · <b className="text-amber-700">Remaining {p.remaining}</b>
                               </p>
                             </div>
                           ))}
-                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-400">+{card.qtyTrack.products.length - 3} more products</p>}
+                          {card.qtyTrack.products.length > 3 && <p className="text-[10px] text-slate-700">+{card.qtyTrack.products.length - 3} more products</p>}
                           <QtyProgress q={card.qtyTrack} />
                         </div>
                       ) : (
@@ -9495,37 +9495,37 @@ export function SalesPipelinePage() {
                           {card.raw._inwardProd.slice(0, 3).map((l: any) => (
                             <span key={l.name} className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] tabular-nums">
                               <span className="font-semibold text-slate-700">{l.name}</span>
-                              <span className="text-slate-500">{l.recv} in</span>
+                              <span className="text-slate-800">{l.recv} in</span>
                               <b className="text-amber-700">· {l.left} left</b>
                             </span>
                           ))}
-                          {card.raw._inwardProd.length > 3 && <span className="text-[10px] text-slate-400">+{card.raw._inwardProd.length - 3} more</span>}
+                          {card.raw._inwardProd.length > 3 && <span className="text-[10px] text-slate-700">+{card.raw._inwardProd.length - 3} more</span>}
                         </div>
                       ))}
                       {card.type === 'dc' && (
-                        <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
+                        <p className="mt-1.5 text-[10px] text-slate-800 tabular-nums leading-tight">
                           Dispatched {card.qty}{card.qtyTrack ? ` · Deliverable left ${card.qtyTrack.fgAvailable} of order ${card.qtyTrack.ordered}` : ''}
                         </p>
                       )}
                       {card.type === 'invoice' && card.qtyTrack && (
-                        <p className="mt-1.5 text-[10px] text-slate-500 tabular-nums leading-tight">
+                        <p className="mt-1.5 text-[10px] text-slate-800 tabular-nums leading-tight">
                           Invoiced {card.qtyTrack.invoiced} · Invoiceable left {card.qtyTrack.invoiceable}
                         </p>
                       )}
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
                         <span 
-                          className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-[1] relative"
+                          className="text-[10px] font-medium text-slate-800 flex items-center gap-1 hover:text-brand-600 transition-colors z-[1] relative"
                           onClick={(e) => { e.stopPropagation(); setActiveCommentTarget(card); }}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
                           {commentCounts[card.id] || 0}
                         </span>
                         <div className="flex items-center gap-3 z-[2] relative">
-                          <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View">
+                          <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-700 hover:text-brand-600 transition-colors" title="View">
                             <Eye size={14} />
                           </button>
                           {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'edit') && (
-                          <button onClick={(e) => { e.stopPropagation(); if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); openViewModal(card); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Inline Edit">
+                          <button onClick={(e) => { e.stopPropagation(); if (card.type === 'finished_goods') { void openFgPopup(card, 'edit'); return; } setViewEditMode(true); openViewModal(card); }} className="text-slate-700 hover:text-blue-600 transition-colors" title="Inline Edit">
                             <Edit2 size={14} />
                           </button>
                           )}
@@ -9533,14 +9533,14 @@ export function SalesPipelinePage() {
                             <button
                               onClick={(e) => { e.stopPropagation(); void duplicateEnquiry(card); }}
                               disabled={duplicatingEnquiryId === card.id}
-                              className={`transition-colors ${duplicatingEnquiryId === card.id ? 'opacity-50 cursor-not-allowed text-brand-600' : 'text-slate-400 hover:text-brand-600'}`}
+                              className={`transition-colors ${duplicatingEnquiryId === card.id ? 'opacity-50 cursor-not-allowed text-brand-600' : 'text-slate-700 hover:text-brand-600'}`}
                               title={duplicatingEnquiryId === card.id ? "Duplicating..." : "Duplicate Enquiry"}
                             >
                               <Copy size={14} className={duplicatingEnquiryId === card.id ? "animate-pulse" : ""} />
                             </button>
                           )}
                           {canDo(STAGE_MODULE[card.stage] ?? 'sales-pipeline', 'delete') && (
-                          <button onClick={(e) => handleDeleteCard(e, card)} className="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
+                          <button onClick={(e) => handleDeleteCard(e, card)} className="text-slate-700 hover:text-red-600 transition-colors" title="Delete">
                             <Trash2 size={14} />
                           </button>
                           )}
