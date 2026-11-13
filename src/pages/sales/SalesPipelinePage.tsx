@@ -8981,14 +8981,14 @@ export function SalesPipelinePage() {
   // reuse them INSIDE the table toolbar row (everything on one line) instead
   // of stacking a separate bar above the table.
   const viewTabs = (
-    <div className="flex p-1 shrink-0 bg-white rounded-lg shadow-sm border border-slate-200">
+    <div className="no-glass flex p-1 shrink-0 !bg-indigo-100 rounded-lg shadow-sm border border-indigo-300">
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
         className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'kanban'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
         }`}
       >
         Kanban Board
@@ -8999,7 +8999,7 @@ export function SalesPipelinePage() {
         className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'list'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
         }`}
       >
         List View
@@ -9010,7 +9010,7 @@ export function SalesPipelinePage() {
         className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'calendar'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
         }`}
       >
         Calendar
@@ -9023,9 +9023,9 @@ export function SalesPipelinePage() {
       type="button"
       onClick={openNewLeadModal}
       title="Add Company"
-      className="flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap"
+      className="no-glass flex items-center gap-2 px-3.5 py-1.5 text-sm font-bold rounded-lg border border-emerald-600 !bg-emerald-500 text-white hover:!bg-emerald-600 shadow-md shadow-emerald-500/30 transition-all cursor-pointer shrink-0 whitespace-nowrap"
     >
-      <Plus size={15} className="text-brand-500 stroke-[2.5]" />
+      <Plus size={15} className="text-white stroke-[2.5]" />
       <span>Add Company</span>
     </button>
   ) : null;
@@ -9041,10 +9041,10 @@ export function SalesPipelinePage() {
       className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap ${
         pipelineViewMode === 'companies'
           ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/25 ring-2 ring-brand-500/30'
-          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+          : 'no-glass !bg-sky-500 text-white border-sky-600 hover:!bg-sky-600 shadow-md shadow-sky-500/30'
       }`}
     >
-      <Building2 size={15} className={pipelineViewMode === 'companies' ? 'text-white' : 'text-brand-500'} />
+      <Building2 size={15} className="text-white" />
       <span>All Company Library</span>
     </button>
   ) : null;
@@ -9067,9 +9067,9 @@ export function SalesPipelinePage() {
             {viewTabs}
 
             {pipelineViewMode !== 'list' && pipelineViewMode !== 'companies' && (
-              <div className="relative flex items-center gap-1.5 sm:gap-2 px-3 py-1 bg-white border border-amber-500 rounded-full shadow-xs shrink-0">
-                <Building2 size={15} className="text-amber-500 shrink-0" />
-                <span className="text-[11px] font-extrabold text-slate-500 tracking-wider uppercase shrink-0">COMPANY:</span>
+              <div className="no-glass relative flex items-center gap-1.5 sm:gap-2 px-3 py-1 !bg-amber-200 border border-amber-500 rounded-full shadow-sm shrink-0">
+                <Building2 size={15} className="text-amber-700 shrink-0" />
+                <span className="text-[11px] font-extrabold text-amber-900 tracking-wider uppercase shrink-0">COMPANY:</span>
                 <CompanyFilterInput
                   value={customerFilter}
                   onChange={(val) => {
@@ -9097,8 +9097,8 @@ export function SalesPipelinePage() {
             {!onQuotationView && (
               <>
                 <div className="relative shrink-0">
-                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-brand-500 bg-white shadow-sm" />
-                  <svg className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="no-glass pl-8 pr-3 py-2 border border-violet-400 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-violet-600 !bg-violet-100 text-violet-950 placeholder:text-violet-600/70 shadow-sm" />
+                  <svg className="w-4 h-4 text-violet-600 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
                 {pipelineViewMode === 'list' && (
                   <select aria-label="Filter by stage" title="Filter by stage" value={listStage} onChange={e => setListStage(e.target.value)}
@@ -9109,12 +9109,12 @@ export function SalesPipelinePage() {
                 )}
                 {pipelineViewMode === 'list' && (
                   <button type="button" onClick={() => listExportRef.current?.()} title="Export CSV" aria-label="Export CSV"
-                    className="shrink-0 h-9 px-2.5 inline-flex items-center gap-1.5 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 text-xs font-semibold shadow-sm transition-colors">
+                    className="no-glass shrink-0 h-9 px-2.5 inline-flex items-center gap-1.5 border border-teal-600 rounded-lg !bg-teal-500 text-white hover:!bg-teal-600 text-xs font-bold shadow-md shadow-teal-500/30 transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12l-4 4m4-4l4 4" /></svg>
                     Export CSV
                   </button>
                 )}
-                <button className="p-2 border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 shadow-sm transition-colors shrink-0">
+                <button className="no-glass p-2 border border-fuchsia-600 rounded-lg !bg-fuchsia-500 text-white hover:!bg-fuchsia-600 shadow-md shadow-fuchsia-500/30 transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                 </button>
                 <DisplaySizeControl />

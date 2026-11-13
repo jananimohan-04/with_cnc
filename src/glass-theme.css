@@ -79,8 +79,18 @@ header.sticky.app-topbar {
   border-bottom: 1px solid rgba(255, 255, 255, .08) !important;
   box-shadow: 0 8px 24px -14px rgba(17, 28, 51, .7) !important;
 }
+/* the Sales Pipeline pages have a white top bar (their coloured count tiles sit on it) */
+header.sticky.app-topbar.app-topbar-light {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 6px 18px -12px rgba(15, 23, 42, .25) !important;
+}
+/* on the light tiles (lemon yellow, emerald, teal) the label and count are dark, so they can be read */
+header.sticky.app-topbar :is([class*="colors.yellow.3"], [class*="colors.emerald.4"], [class*="colors.teal.4"]) :is(span, svg) {
+  color: #1f2937 !important;
+}
 /* dark text that a page puts straight on the bar turns light; text inside white chips, menus and drop-downs keeps its colour */
-header.sticky.app-topbar :is(span, p, label, h2, h3, a, div, svg):is([class*="text-slate-"], [class*="text-gray-"])
+header.sticky.app-topbar:not(.app-topbar-light) :is(span, p, label, h2, h3, a, div, svg):is([class*="text-slate-"], [class*="text-gray-"])
   :not(:is([class*="bg-white"], [class*="bg-slate-50"], [class*="bg-slate-100"], [class*="bg-gray-50"], .absolute, [role="menu"], [role="dialog"], [role="listbox"]) *)
   :not([class*="bg-"]) {
   color: #e2e8f0 !important;
