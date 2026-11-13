@@ -9302,13 +9302,13 @@ export function SalesPipelinePage() {
                     onChange={(e) => setColumnSearch(prev => ({ ...prev, [stage.id]: e.target.value }))}
                     onClick={(e) => e.stopPropagation()}
                     placeholder={`Search ${stage.title.toLowerCase()}...`}
-                    className={`w-full pl-8 pr-7 py-1.5 text-xs ${stage.search} rounded-lg placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-white/40`}
+                    className={`w-full pl-8 pr-7 py-1.5 text-xs ${stage.search} rounded-lg placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400/60`}
                   />
                   {columnSearch[stage.id] && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setColumnSearch(prev => ({ ...prev, [stage.id]: '' })); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                       title="Clear search"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -9352,18 +9352,18 @@ export function SalesPipelinePage() {
                           />
                           <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-mono ${stage.code}`}>{card.refNo}</span>
                         </div>
-                        <span className="text-[10px] text-slate-300 font-semibold">{card.date || 'No Date'}</span>
+                        <span className="text-[10px] text-slate-500 font-semibold">{card.date || 'No Date'}</span>
                       </div>
                       
-                      <h4 className="font-bold text-[13px] text-white mb-0.5 line-clamp-1">{card.customer}</h4>
-                      <p className="text-xs text-slate-200 mb-3 line-clamp-1">{card.part}</p>
+                      <h4 className="font-bold text-[13px] text-slate-900 mb-0.5 line-clamp-1">{card.customer}</h4>
+                      <p className="text-xs text-slate-600 mb-3 line-clamp-1">{card.part}</p>
                       
                       <div className="flex justify-between items-end">
                         <div>
                           {card.value > 0 ? (
                              <p className={`text-sm font-bold ${stage.amount}`}>₹{Number(card.value).toLocaleString('en-IN')}</p>
                           ) : (
-                             <p className="text-xs font-semibold text-slate-200">{card.qty} pcs</p>
+                             <p className="text-xs font-semibold text-slate-700">{card.qty} pcs</p>
                           )}
                           {card.type === 'order' && (() => {
                             const raw = card.raw || {};
@@ -9663,7 +9663,7 @@ export function SalesPipelinePage() {
 
       {/* Quotation Modal */}
       <HsnDatalist />
-      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" width={1040} windowControls>
+      <Modal open={!!quotationModalTarget} onClose={closeQuotationPopup} accent={tint('Quotation')} title="Create Quotation" subtitle={quotationModalTarget?.customer ? `From enquiry · ${quotationModalTarget.customer}` : undefined} size="full" width={1040} windowControls>
         {quotationModalTarget && (
           <CreateQuotationPage key={quotationModalTarget.refNo + quoteForm.quoteNo} embed={quotationEmbed} />
         )}
@@ -9680,7 +9680,7 @@ export function SalesPipelinePage() {
       {costingModalTarget && !fgCostingInline && renderFgCosting(false, costingModalTarget)}
 
       {/* Add Finished Good: choose the inward, then the Finished Goods + Costing popup */}
-      <Modal open={fgPickOpen} onClose={() => setFgPickOpen(false)} title="Add Finished Good" size="sm" width={460}
+      <Modal open={fgPickOpen} onClose={() => setFgPickOpen(false)} accent={tint('Finished Goods')} title="Add Finished Good" size="sm" width={460}
         footer={<><Button variant="secondary" onClick={() => setFgPickOpen(false)}>Cancel</Button>
           <Button disabled={!fgPickId} onClick={() => {
             const c = cards.find(x => x.id === fgPickId);
@@ -9705,7 +9705,7 @@ export function SalesPipelinePage() {
       </Modal>
 
       {/* Finished Goods Modal */}
-      <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} title="Finished Goods Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
+      <Modal open={!!fgModalTarget} onClose={() => setFgModalTarget(null)} accent={tint('Finished Goods')} title="Finished Goods Entry" size="lg" width={720} footer={<><Button variant="secondary" onClick={() => setFgModalTarget(null)}>Cancel</Button><Button onClick={saveFinishedGoods}>Save</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Category" required><select className={inputClass}><option>Finished Goods</option></select></FormField>
           <FormField label="Date" required><input type="date" className={inputClass} value={fgForm.date || ''} onChange={e=>setFgForm({...fgForm, date: e.target.value})} /></FormField>
@@ -9732,7 +9732,7 @@ export function SalesPipelinePage() {
       )}
 
       {/* Invoice Modal */}
-      <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} title="Invoice Entry" size="lg" width={780} footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
+      <Modal open={!!invoiceModalTarget} onClose={() => setInvoiceModalTarget(null)} accent={tint('Invoice')} title="Invoice Entry" size="lg" width={780} footer={<><Button variant="secondary" onClick={() => setInvoiceModalTarget(null)}>Cancel</Button><Button onClick={saveInvoice}>Submit</Button></>}>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Document Type" required><select className={inputClass}><option>Tax Invoice</option></select></FormField>
           <CustomerAutocomplete
@@ -9816,7 +9816,7 @@ export function SalesPipelinePage() {
       {/* Shared View / Edit modal: opened from every stage list's View / Edit actions.
           The entry forms are inline now, so this popup is only for inspecting or
           revising a record that already exists. */}
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 1040} maxWidth={docKind ? 1700 : 1280} tall={!!docKind} footer={<>{viewModalTarget?.stage === 'Invoice' && viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('combined')}>View Invoice + DC</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('combined')}>Download Invoice + DC</Button></>}{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} accent={viewModalTarget ? tint(viewModalTarget.stage) : undefined} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 1040} maxWidth={docKind ? 1700 : 1280} tall={!!docKind} footer={<>{viewModalTarget?.stage === 'Invoice' && viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('combined')}>View Invoice + DC</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('combined')}>Download Invoice + DC</Button></>}{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;

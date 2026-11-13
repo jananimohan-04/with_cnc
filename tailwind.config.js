@@ -3,6 +3,13 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      // Text a little bigger everywhere (one step over Tailwind's defaults: 12 → 13, 14 → 15, 16 → 17 px).
+      // The fixed pixel sizes used in the pages (text-[10px] etc.) are raised to match in index.css.
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.125rem' }],
+        sm: ['0.9375rem', { lineHeight: '1.375rem' }],
+        base: ['1.0625rem', { lineHeight: '1.625rem' }],
+      },
       fontFamily: {
         sans: ['"Exo 2"', '"Montserrat"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],

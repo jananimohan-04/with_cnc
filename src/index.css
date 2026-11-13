@@ -371,3 +371,65 @@ html:not([data-dock="open"]) [data-assistant-launcher] { display: none !importan
 .dock-cowork { left: calc(var(--dock-x, 80px) + 32px) !important; bottom: calc(var(--dock-y, 20px) + 56px) !important; }
 html[data-dock-side="right"] .dock-help,
 html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(100vw - var(--dock-x, 0px) + 6px) !important; }
+
+/* ---------- text a little bigger everywhere ----------
+   The pages use fixed pixel sizes (text-[10px] ...). Each is raised one small step here, the same way tailwind.config.js
+   raises text-xs / text-sm / text-base, so every page and popup grows together. Responsive variants keep working. */
+.text-\[7\.5px\] { font-size: 9px; }
+.text-\[8px\] { font-size: 9.5px; }
+.text-\[9px\] { font-size: 10.5px; }
+.text-\[9\.5px\] { font-size: 11px; }
+.text-\[10px\] { font-size: 11.5px; }
+.text-\[10\.5px\] { font-size: 12px; }
+.text-\[11px\] { font-size: 12.5px; }
+.text-\[12px\] { font-size: 13px; }
+.text-\[12\.5px\] { font-size: 13.5px; }
+.text-\[13px\] { font-size: 14px; }
+@media (min-width: 640px) {
+  .sm\:text-\[7\.5px\] { font-size: 9px; }
+  .sm\:text-\[8px\] { font-size: 9.5px; }
+  .sm\:text-\[9px\] { font-size: 10.5px; }
+  .sm\:text-\[9\.5px\] { font-size: 11px; }
+  .sm\:text-\[10px\] { font-size: 11.5px; }
+  .sm\:text-\[10\.5px\] { font-size: 12px; }
+  .sm\:text-\[11px\] { font-size: 12.5px; }
+  .sm\:text-\[12px\] { font-size: 13px; }
+  .sm\:text-\[12\.5px\] { font-size: 13.5px; }
+  .sm\:text-\[13px\] { font-size: 14px; }
+}
+@media (min-width: 768px) {
+  .md\:text-\[7\.5px\] { font-size: 9px; }
+  .md\:text-\[8px\] { font-size: 9.5px; }
+  .md\:text-\[9px\] { font-size: 10.5px; }
+  .md\:text-\[9\.5px\] { font-size: 11px; }
+  .md\:text-\[10px\] { font-size: 11.5px; }
+  .md\:text-\[10\.5px\] { font-size: 12px; }
+  .md\:text-\[11px\] { font-size: 12.5px; }
+  .md\:text-\[12px\] { font-size: 13px; }
+  .md\:text-\[12\.5px\] { font-size: 13.5px; }
+  .md\:text-\[13px\] { font-size: 14px; }
+}
+@media (min-width: 1024px) {
+  .lg\:text-\[7\.5px\] { font-size: 9px; }
+  .lg\:text-\[8px\] { font-size: 9.5px; }
+  .lg\:text-\[9px\] { font-size: 10.5px; }
+  .lg\:text-\[9\.5px\] { font-size: 11px; }
+  .lg\:text-\[10px\] { font-size: 11.5px; }
+  .lg\:text-\[10\.5px\] { font-size: 12px; }
+  .lg\:text-\[11px\] { font-size: 12.5px; }
+  .lg\:text-\[12px\] { font-size: 13px; }
+  .lg\:text-\[12\.5px\] { font-size: 13.5px; }
+  .lg\:text-\[13px\] { font-size: 14px; }
+}
+@media (min-width: 1280px) {
+  .xl\:text-\[7\.5px\] { font-size: 9px; }
+  .xl\:text-\[8px\] { font-size: 9.5px; }
+  .xl\:text-\[9px\] { font-size: 10.5px; }
+  .xl\:text-\[9\.5px\] { font-size: 11px; }
+  .xl\:text-\[10px\] { font-size: 11.5px; }
+  .xl\:text-\[10\.5px\] { font-size: 12px; }
+  .xl\:text-\[11px\] { font-size: 12.5px; }
+  .xl\:text-\[12px\] { font-size: 13px; }
+  .xl\:text-\[12\.5px\] { font-size: 13.5px; }
+  .xl\:text-\[13px\] { font-size: 14px; }
+}

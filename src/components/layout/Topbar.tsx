@@ -76,20 +76,20 @@ export function Topbar({
   const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   return (
-    <header style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm min-h-[50px] flex items-center px-2 sm:px-3 md:px-4 gap-2 sm:gap-3">
+    <header style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className="app-topbar sticky top-0 z-20 bg-[#111c33] border-b border-white/10 shadow-md min-h-[50px] flex items-center px-2 sm:px-3 md:px-4 gap-2 sm:gap-3">
       {/* Mobile Menu Toggle (side positions; top/bottom positions own their mobile menu) */}
       {!hideMobileMenu && (
         <div className="flex items-center lg:hidden">
-          <button type="button" aria-label="Open menu" onClick={onMenuClick} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 active:bg-slate-200"><Menu size={22} className="flex-shrink-0" /></button>
+          <button type="button" aria-label="Open menu" onClick={onMenuClick} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/20"><Menu size={22} className="flex-shrink-0" /></button>
         </div>
       )}
 
       {/* Opt-in page title — same line as date/profile (page hides its own header) */}
       {header && (
         <div className="flex items-center gap-2 min-w-0 shrink">
-          <h1 className="text-sm font-bold text-slate-800 whitespace-nowrap shrink-0">{header.title}</h1>
-          {header.subtitle && <span className="text-[11px] text-slate-400 truncate hidden md:inline">{header.subtitle}</span>}
-          {(tabs.length > 0 || headerCenter) && <span className="h-5 w-px bg-slate-300 mx-1 hidden lg:inline shrink-0" aria-hidden="true" />}
+          <h1 className="text-sm font-bold text-white whitespace-nowrap shrink-0">{header.title}</h1>
+          {header.subtitle && <span className="text-[11px] text-slate-300 truncate hidden md:inline">{header.subtitle}</span>}
+          {(tabs.length > 0 || headerCenter) && <span className="h-5 w-px bg-white/20 mx-1 hidden lg:inline shrink-0" aria-hidden="true" />}
         </div>
       )}
 
@@ -108,7 +108,7 @@ export function Topbar({
               key={t.label}
               type="button"
               onClick={t.onClick}
-              className={`px-2 py-1 text-xs font-semibold rounded-md whitespace-nowrap transition-colors shrink-0 ${t.active ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`px-2 py-1 text-xs font-semibold rounded-md whitespace-nowrap transition-colors shrink-0 ${t.active ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
             >
               {t.label}
             </button>

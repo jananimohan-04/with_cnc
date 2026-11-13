@@ -1384,7 +1384,7 @@ export function ProjectCostingPage() {
       {error && <div className="border border-rose-200 bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
 
       {/* TOP CONTROLS & DROPDOWN BAR */}
-      <Card className="no-glass p-3.5 sm:p-4 !bg-[#111c33] shadow-md border !border-[#111c33] rounded-2xl">
+      <div className="no-glass p-3.5 sm:p-4 shadow-md rounded-2xl border border-[#111c33]" style={{ background: '#111c33' }}>
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           {/* Left: Project Selector Dropdown + Search Input */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
@@ -1483,7 +1483,7 @@ export function ProjectCostingPage() {
             </div>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* PROJECT-WISE COMPACT BOXES GRID */}
       <div>

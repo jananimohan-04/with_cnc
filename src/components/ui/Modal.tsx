@@ -272,7 +272,7 @@ export function Modal({
         }}
       >
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full border border-slate-200 flex flex-col animate-scale-in overflow-hidden"
+          className={`relative rounded-2xl shadow-2xl w-full border flex flex-col animate-scale-in overflow-hidden ${accent ? `${accent.panel} no-glass` : 'bg-white border-slate-200'}`}
           style={maximized ? { height: '100%' } : { height: dim.h && !minimized ? `${dim.h}px` : undefined, maxHeight: tall ? 'min(95vh, 1100px)' : 'min(80vh, 850px)' }}
           onChange={() => setTouched(true)}
         >
@@ -329,9 +329,9 @@ export function Modal({
               </button>
             </div>
           </div>
-          <div className={`modal-scroll flex-1 overflow-y-auto pl-6 pr-4 py-5 mr-2 bg-slate-50/30 min-h-0 ${minimized ? 'hidden' : ''}`}>{children}</div>
+          <div className={`modal-scroll flex-1 overflow-y-auto pl-6 pr-4 py-5 mr-2 min-h-0 ${accent ? '' : 'bg-slate-50/30'} ${minimized ? 'hidden' : ''}`}>{children}</div>
           {footer && !minimized && (
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0">
+            <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 ${accent ? 'border-white/60 bg-white/50' : 'border-slate-100 bg-slate-50'}`}>
               {footer}
             </div>
           )}
