@@ -1298,7 +1298,7 @@ export function Shell({ counts, noSide, children }) {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#DAC8B8] text-[#1A0A03] font-sans w-full relative">
+    <div className="min-h-screen flex flex-col bg-white text-[#1A0A03] font-sans w-full relative">
       {/* Topbar */}
       <Topbar 
         ref={headerRef}
@@ -1514,7 +1514,7 @@ export function Shell({ counts, noSide, children }) {
         )}
 
         {/* MAIN PAGE CONTENT CONTAINER */}
-        <div className={`flex-1 min-w-0 flex flex-col justify-between w-full transition-colors duration-200 bg-[#DAC8B8] ${
+        <div className={`flex-1 min-w-0 flex flex-col justify-between w-full transition-colors duration-200 bg-white ${
           menuPosition === 'bottom' ? 'pb-24 sm:pb-28' : ''
         }`}>
           <main className="w-full flex-1 px-3 py-2 sm:px-5 sm:py-3 lg:px-5 lg:py-3">

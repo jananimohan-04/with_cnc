@@ -187,7 +187,7 @@
 /* Toolbar & Filters Card */
 .ls-toolbar-card {
   border-radius: 20px;
-  background: #EDE1D3;
+  background: #ffffff;
   border: 1px solid #BAA794;
   padding: 10px 14px;
   box-shadow: 0 4px 16px rgba(46, 21, 8, 0.05);
@@ -250,7 +250,7 @@ form.ls-input-wrap,
   width: 20px;
   height: 20px;
   border: 0;
-  background: #EDE1D3;
+  background: #ffffff;
   color: #6B503E;
   border-radius: 50%;
   display: flex;
@@ -700,7 +700,7 @@ form.ls-input-wrap,
   text-decoration: none;
 }
 .prod-btn-details:hover {
-  background: #EDE1D3;
+  background: #ffffff;
   border-color: #2E1508;
   transform: translateY(-1px);
 }
@@ -719,7 +719,7 @@ form.ls-input-wrap,
   transition: all 0.2s;
 }
 .prod-btn-share:hover {
-  background: #EDE1D3;
+  background: #ffffff;
   border-color: #2E1508;
   color: #ea580c;
   transform: translateY(-1px);
@@ -1635,7 +1635,7 @@ form.ls-input-wrap,
   display: flex;
   gap: 8px;
   padding: 12px 20px 0;
-  background: #EDE1D3;
+  background: #ffffff;
   border-bottom: 1px solid #BAA794;
   overflow-x: auto;
   scrollbar-width: none;

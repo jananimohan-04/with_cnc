@@ -56,7 +56,7 @@ export default function Dashboard() {
         }
       />
       {co && (
-        <div className="flex items-center justify-between gap-3 p-3.5 mb-4 bg-[#EDE1D3] border border-[#BAA794] rounded-2xl shadow-2xs">
+        <div className="flex items-center justify-between gap-3 p-3.5 mb-4 bg-white border border-[#BAA794] rounded-2xl shadow-2xs">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{co.logo || '🏭'}</span>
             <div>

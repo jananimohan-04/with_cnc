@@ -330,7 +330,7 @@ export function Modal({ title, onClose, wide, children }) {
           maxHeight: '100vh'
         }}
         onClick={(e) => e.stopPropagation()}
-        className="modal bg-[#EDE1D3] rounded-2xl shadow-2xl border border-[#BAA794] overflow-hidden flex flex-col relative select-text"
+        className="modal bg-white rounded-2xl shadow-2xl border border-[#BAA794] overflow-hidden flex flex-col relative select-text"
       >
         {/* Resize Handles (4 Sides + 4 Corners) */}
         {!isMaximized && (
@@ -436,7 +436,7 @@ export function Tabs({ tabs = [], active, onTab, onChange, className = '', compa
             onClick={() => handler(id)}
             className={`flex items-center gap-2 ${compact ? 'px-3 py-1.5 rounded-xl' : 'px-4 py-2 rounded-xl'} text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
               isActive
-                ? 'bg-[#EDE1D3] text-[#1A0A03] shadow-xs border border-[#BAA794]'
+                ? 'bg-white text-[#1A0A03] shadow-xs border border-[#BAA794]'
                 : 'text-[#6B503E] hover:text-[#1A0A03] hover:bg-[#D4C2B0]/60'
             }`}
           >
@@ -566,7 +566,7 @@ export function DataTable({ cols, rows = [], rowKey = (r, i) => r.id || i, empty
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#BAA794] bg-[#EDE1D3] shadow-2xs">
+    <div className="overflow-x-auto rounded-2xl border border-[#BAA794] bg-white shadow-2xs">
       <table className="w-full text-left text-xs">
         <thead className="bg-[#DECDBE] border-b border-[#BAA794] text-[10px] uppercase font-bold text-[#2E1508] tracking-wider">
           <tr>

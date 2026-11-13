@@ -79,7 +79,7 @@ export class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#DAC8B8] text-[#2E1508]">
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white text-[#2E1508]">
           <div className="bg-[#FAF6F1] border border-[#BAA794] rounded-2xl p-8 max-w-md w-full shadow-lg text-center">
             <div className="text-4xl mb-3">⚠️</div>
             <h2 className="text-xl font-bold mb-2">Display Notice</h2>
@@ -158,7 +158,7 @@ function Gate({ children, noSide, roles, perm }) {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#DAC8B8] gap-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
         <div className="bg-white/95 backdrop-blur-md px-8 py-5 rounded-2xl shadow-xl border border-white/60 flex items-center justify-center transition-all animate-pulse">
           <img 
             src={ARGUS_LOGO_BASE64 || "/assets/argus-logo.png"} 

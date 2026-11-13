@@ -536,7 +536,7 @@ export function generateCatalogHtml(products, companyInfo = {}) {
       font-size: 8pt;
       padding: 2px 6px;
       border-radius: 3px;
-      background: #EDE1D3;
+      background: #ffffff;
       border: 1px solid #D4C2B0;
       color: #2E1508;
     }

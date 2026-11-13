@@ -316,14 +316,14 @@ export default function Login() {
             <button
               type="button"
               onClick={() => { setLocalEmail('jananimohan44@gmail.com'); doEmailLogin('jananimohan44@gmail.com'); }}
-              className="px-2 py-1 rounded bg-[#EDE1D3] hover:bg-[#DECDBE] text-[#2E1508] font-semibold border border-[#BAA794] cursor-pointer"
+              className="px-2 py-1 rounded bg-white hover:bg-[#DECDBE] text-[#2E1508] font-semibold border border-[#BAA794] cursor-pointer"
             >
               👑 Janani Mohan (Super Admin)
             </button>
             <button
               type="button"
               onClick={() => { setLocalEmail('technologiesargus@gmail.com'); doEmailLogin('technologiesargus@gmail.com'); }}
-              className="px-2 py-1 rounded bg-[#EDE1D3] hover:bg-[#DECDBE] text-[#2E1508] font-semibold border border-[#BAA794] cursor-pointer"
+              className="px-2 py-1 rounded bg-white hover:bg-[#DECDBE] text-[#2E1508] font-semibold border border-[#BAA794] cursor-pointer"
             >
               👑 Technologies Argus (Super Admin)
             </button>
