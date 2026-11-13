@@ -9050,7 +9050,7 @@ export function SalesPipelinePage() {
   ) : null;
 
   return (
-    <div className="p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: getSalesStageTheme(activeView).gradient }}>
+    <div className="p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: activeView === 'pipeline' ? '#ffffff' : getSalesStageTheme(activeView).gradient }}>
 
 
 
