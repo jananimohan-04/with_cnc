@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { DISPLAY_MAX, DISPLAY_MIN, DISPLAY_PRESETS, DISPLAY_STEP, useDisplaySize } from '@/lib/displaySize';
+import { DISPLAY_DEFAULT, DISPLAY_MAX, DISPLAY_MIN, DISPLAY_PRESETS, DISPLAY_STEP, useDisplaySize } from '@/lib/displaySize';
 
 /** The "⋮" button with the Display Size menu (50% – 145%). Shown in the top bar, and in the Sales Pipeline toolbar. */
 export function DisplaySizeControl() {
@@ -25,7 +25,7 @@ export function DisplaySizeControl() {
         aria-expanded={open}
         aria-haspopup="true"
         title={`Display Size (${size}%)`}
-        className={`p-2 border rounded-lg bg-white shadow-sm transition-colors ${size !== 100 || open ? 'border-orange-500 text-orange-600 ring-1 ring-orange-400 bg-orange-50/40' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+        className={`p-2 border rounded-lg bg-white shadow-sm transition-colors ${size !== DISPLAY_DEFAULT || open ? 'border-orange-500 text-orange-600 ring-1 ring-orange-400 bg-orange-50/40' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
       </button>
@@ -39,8 +39,8 @@ export function DisplaySizeControl() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Display Size</span>
             <div className="flex items-center gap-1.5">
               <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-orange-700 border border-orange-200">{size}%</span>
-              {size !== 100 && (
-                <button type="button" onClick={() => setSize(100)} className="text-[11px] font-semibold text-slate-500 hover:text-orange-600 underline">
+              {size !== DISPLAY_DEFAULT && (
+                <button type="button" onClick={() => setSize(DISPLAY_DEFAULT)} className="text-[11px] font-semibold text-slate-500 hover:text-orange-600 underline">
                   Reset
                 </button>
               )}

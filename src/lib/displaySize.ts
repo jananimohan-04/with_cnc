@@ -4,20 +4,21 @@ import { useCallback, useEffect, useState } from 'react';
 export const DISPLAY_MIN = 50;
 export const DISPLAY_MAX = 145;
 export const DISPLAY_STEP = 5;
+export const DISPLAY_DEFAULT = 65;   // the size every browser starts with (and Reset goes back to)
 export const DISPLAY_PRESETS = [['Small', 80], ['Normal', 100], ['Big', 125]] as const;
 
-const KEY = 'cnc_display_size';
-const OLD_KEY = 'cnc_pipeline_board_zoom';   // the Sales Pipeline's own size before it became app-wide
+const KEY = 'cnc_display_size';   // (the old Sales Pipeline value is not carried over, so everyone starts at the default)
+
 const EVENT = 'argus:display-size';
 
 const clamp = (n: number) => Math.min(DISPLAY_MAX, Math.max(DISPLAY_MIN, Math.round(n / DISPLAY_STEP) * DISPLAY_STEP));
 
 export function getDisplaySize(): number {
   try {
-    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
+    const raw = localStorage.getItem(KEY);
     const n = Number(raw);
-    return raw !== null && Number.isFinite(n) && n > 0 ? clamp(n) : 100;
-  } catch { return 100; }
+    return raw !== null && Number.isFinite(n) && n > 0 ? clamp(n) : DISPLAY_DEFAULT;
+  } catch { return DISPLAY_DEFAULT; }
 }
 
 export function setDisplaySize(n: number) {

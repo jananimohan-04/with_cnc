@@ -9272,12 +9272,9 @@ export function SalesPipelinePage() {
                 onDragOver={(e) => e.preventDefault()} 
                 onDrop={(e) => handleDrop(e, stage.id as Stage)}
               >
-                <div className="flex justify-between items-start mb-3 px-1">
-                  <div>
-                    <h3 className={`font-bold text-sm tracking-wide ${stage.text}`}>{stage.title}</h3>
-                    <p className="text-[10px] text-slate-300 font-semibold">{stage.desc}</p>
-                  </div>
-                  <span className={`${stage.badge} text-xs font-bold px-2 py-0.5 rounded-full shadow-sm`}>{stageCards.length}</span>
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <h3 title={stage.desc} className={`min-w-0 flex-1 truncate text-xl font-extrabold leading-tight tracking-wide ${stage.text}`}>{stage.title}</h3>
+                  <span className={`${stage.badge} shrink-0 text-sm font-bold px-2.5 py-0.5 rounded-full shadow-sm`}>{stageCards.length}</span>
                 </div>
 
                 {/* Per-column search */}
