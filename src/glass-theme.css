@@ -95,7 +95,10 @@ aside nav button:hover { background: rgba(255, 255, 255, .10) !important; }
 }
 .fixed.inset-0:is([class*="bg-slate-900"], [class*="bg-black"], [class*="bg-gray-900"]), .modal-bg, [role="dialog"] > [class*="absolute inset-0"] {
   background: radial-gradient(circle at 25% 15%, rgba(251, 146, 60, .30), rgba(20, 10, 40, .62) 62%) !important;
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+/* the page behind a popup stays sharp (only dimmed), also where a popup asks for backdrop-blur itself */
+.fixed.inset-0:is([class*="bg-slate-900"], [class*="bg-black"], [class*="bg-gray-900"], [class*="backdrop-blur"]), .modal-bg, [role="dialog"] > [class*="absolute inset-0"] {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 .modal-head { background: linear-gradient(90deg, rgba(255, 237, 213, .75), rgba(255, 255, 255, .35)) !important; }
 

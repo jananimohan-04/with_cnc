@@ -107,6 +107,7 @@ import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
 import { useDisplaySize } from '@/lib/displaySize';
+import { useFitPage } from '@/lib/fitPage';
 import { MODULE_CATALOG } from '@/config/permissions';
 import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
@@ -144,6 +145,7 @@ function MainLayout() {
   const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page
   const displayScale = displaySize / 100;
   useStickyTableHeads(mainRef, location.pathname);
+  const pageRef = useRef<HTMLDivElement>(null);
   // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
   const { position: chosenPosition } = useNavPosition();
   // On a phone (the Android app too) the menu is always the bottom bar (thumb-reachable) with its All Modules panel, whatever position was chosen.
@@ -165,6 +167,8 @@ function MainLayout() {
   };
 
   const { signOut, company, refreshPermissions } = useAuth();
+  // every page fills the screen at every display size (re-attached when <main> is rebuilt for another company)
+  useFitPage(mainRef, pageRef, displayScale, `${location.pathname}|${company?.id ?? ''}`);
 
   // Re-read effective permissions on every navigation so an admin's change
   // applies without forcing the affected user to log in again.
@@ -208,8 +212,9 @@ function MainLayout() {
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
-          {/* Display size: the page content is scaled; the height is stretched back so a page still fills the screen when smaller */}
-          <div style={displaySize !== 100 ? { zoom: displayScale, minHeight: `${100 / displayScale}%` } : undefined} className="min-h-full">
+          {/* Display size: the page content is scaled. useFitPage keeps this box exactly as tall as the screen, and the grid
+              stretches the page inside it, so every page reaches the bottom at every size. */}
+          <div ref={pageRef} style={{ ...(displaySize !== 100 ? { zoom: displayScale } : {}), display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
