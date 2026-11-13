@@ -40,7 +40,9 @@ body::after { /* fine grain keeps big gradients from banding */
 #root > div,
 #root .bg-slate-50:is(.h-screen, .min-h-screen),
 :is(.retail-shell, .retail-app) { background: transparent !important; }
-main { background: transparent !important; }
+/* every page sits on plain white (the colourful backdrop only shows outside the page area) */
+main { background: #ffffff !important; }
+main .bg-grid { background-color: #ffffff !important; background-image: none !important; }
 
 /* ---------- frosted cards ---------- */
 :is(main, .retail-shell, .retail-app) :is(.shadow-premium, .card, .glass):not([class*="bg-gradient"]):not(.no-glass),

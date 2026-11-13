@@ -34,7 +34,7 @@ import { HsnDatalist } from '../../components/HsnDatalist';
 import { HSN_LIST_ID } from '@/lib/hsnMaster';
 import { tint } from '@/lib/entryTints';
 import { compactInput, compactCell, inlineLbl } from '@/lib/compactFields';
-import { getSalesStageTheme, MODULE_THEMES } from '@/lib/pageThemes';
+import { MODULE_THEMES } from '@/lib/pageThemes';
 import { CreateQuotationPage, type QuotationEmbed } from '../quotation/CreateQuotationPage';
 import { SalesOrderModule } from './SalesOrderModule';
 import { InwardModule } from './InwardModule';
@@ -9050,7 +9050,7 @@ export function SalesPipelinePage() {
   ) : null;
 
   return (
-    <div className="p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: activeView === 'pipeline' ? '#ffffff' : getSalesStageTheme(activeView).gradient }}>
+    <div className="p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: '#ffffff' }}>
 
 
 
