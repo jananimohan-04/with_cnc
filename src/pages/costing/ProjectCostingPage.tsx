@@ -968,13 +968,13 @@ function ProjectCostingBox({
   }, [services, processes]);
 
   return (
-    <Card className="flex flex-col border border-slate-200/90 shadow-2xs rounded-2xl bg-white overflow-hidden hover:shadow-md transition-shadow">
-      {/* Box Header */}
-      <div className="p-3 sm:p-3.5 border-b border-slate-100 bg-gradient-to-r from-amber-50/40 via-white to-slate-50/50">
+    <Card className="no-glass flex flex-col border border-slate-200/70 shadow-md rounded-2xl bg-white overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all">
+      {/* Box Header: the same dark blue as every table heading in the app (white text) */}
+      <div className="p-3 sm:p-3.5 bg-[#111c33]">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap mb-1">
-              <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-100/80 border border-amber-300 px-1.5 py-0.2 rounded">
+              <span className="font-mono text-[10px] font-bold text-white bg-white/20 border border-white/40 px-1.5 py-0.2 rounded">
                 {project.project_name}
               </span>
               {jobs.map((w) => (
@@ -983,10 +983,10 @@ function ProjectCostingBox({
                 </Badge>
               ))}
             </div>
-            <h3 className="text-sm font-extrabold text-slate-900 truncate leading-snug" title={project.part_name}>
+            <h3 className="text-sm font-extrabold text-white truncate leading-snug drop-shadow-sm" title={project.part_name}>
               {project.part_name}
             </h3>
-            <p className="text-[11px] text-slate-500 font-medium truncate" title={project.party_name}>
+            <p className="text-[11px] text-white/85 font-semibold truncate" title={project.party_name}>
               {project.party_name}
             </p>
           </div>
@@ -994,7 +994,7 @@ function ProjectCostingBox({
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+            className="p-1 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors cursor-pointer shrink-0"
             title={expanded ? 'Collapse' : 'Expand'}
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1004,194 +1004,110 @@ function ProjectCostingBox({
 
       {/* Box Body: Costings */}
       {expanded && (
-        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between bg-white text-xs">
+        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between bg-gradient-to-br from-indigo-100 via-sky-50 to-fuchsia-100 text-xs">
           {loading ? (
             <div className="p-6 text-center text-xs text-slate-400 font-medium">Loading costings...</div>
           ) : (
             <div className="space-y-2">
-              {/* 1. MACHINE COST */}
-              {processOps.length > 0 ? (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      ⚙️ Machine
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-900">
-                      {money(processOpsTotal)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
-                    {processOps.map((op: any) => (
-                      <div
-                        key={`op-${op.id}`}
-                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-bold text-slate-800 truncate text-[11px]">
-                            {op.operation || 'Operation'}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {op.machine || '—'} · {Number(op.hours).toFixed(2).replace(/\.00$/, '')}h @ {op.matched ? money(op.rate) : '—'}/h
-                          </div>
-                        </div>
-                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
-                          {money(op.cost)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
-                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
-                    ⚙️ Machine
-                  </span>
-                  <span className="font-mono text-slate-400">—</span>
-                </div>
-              )}
-
-              {/* 2. GOODS PURCHASE */}
-              {materials.length > 0 ? (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      📦 Goods Purchase
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-900">
-                      {money(totalMaterialsAmount)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
-                    {materials.map((m: any) => (
-                      <div
-                        key={`mat-${m.id}`}
-                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-bold text-slate-800 truncate text-[11px]">{m.item}</div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {m.quantity} {m.unit || 'pcs'} @ {money(m.rate)} {m.reference ? `· ${m.reference}` : ''}
-                          </div>
-                        </div>
-                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
-                          {money(m.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
-                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
-                    📦 Goods Purchase
-                  </span>
-                  <span className="font-mono text-slate-400">—</span>
-                </div>
-              )}
-
-              {/* 3. SERVICE PURCHASE */}
-              {allServices.length > 0 ? (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      🛠️ Service Purchase
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-900">
-                      {money(totalServiceAmount)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
-                    {allServices.map((s: any) => (
-                      <div
-                        key={`srv-${s.id}`}
-                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-bold text-slate-800 truncate text-[11px]">{s.name}</div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {s.qty} @ {money(s.rate)} {s.sub ? `· ${s.sub}` : ''}
-                          </div>
-                        </div>
-                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
-                          {money(s.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
-                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
-                    🛠️ Service Purchase
-                  </span>
-                  <span className="font-mono text-slate-400">—</span>
-                </div>
-              )}
-
-              {/* 4. EXPENSES */}
-              {expenses.length > 0 ? (
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      📋 Expenses
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-900">
-                      {money(totalExpensesAmount)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
-                    {expenses.map((e: any) => (
-                      <div
-                        key={`exp-${e.id}`}
-                        className="flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border border-slate-200/50 text-xs"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-bold text-slate-800 truncate text-[11px]">
-                            {e.part_name || e.product_name || 'Expense'}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {e.party_name || e.inward_no}
-                          </div>
-                        </div>
-                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
-                          {money(e.total_amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-slate-50/70 text-slate-400 border border-slate-100">
-                  <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
-                    📋 Expenses
-                  </span>
-                  <span className="font-mono text-slate-400">—</span>
-                </div>
-              )}
+              <CostSection tone="machine" icon="⚙️" title="Machine" total={processOpsTotal} money={money}
+                rows={processOps.map((op: any) => ({
+                  key: `op-${op.id}`,
+                  name: op.operation || 'Operation',
+                  sub: `${op.machine || '—'} · ${Number(op.hours).toFixed(2).replace(/\.00$/, '')}h @ ${op.matched ? money(op.rate) : '—'}/h`,
+                  amount: op.cost,
+                }))} />
+              <CostSection tone="goods" icon="📦" title="Goods Purchase" total={totalMaterialsAmount} money={money}
+                rows={materials.map((m: any) => ({
+                  key: `mat-${m.id}`,
+                  name: m.item,
+                  sub: `${m.quantity} ${m.unit || 'pcs'} @ ${money(m.rate)}${m.reference ? ` · ${m.reference}` : ''}`,
+                  amount: m.amount,
+                }))} />
+              <CostSection tone="service" icon="🛠️" title="Service Purchase" total={totalServiceAmount} money={money}
+                rows={allServices.map((sv: any) => ({
+                  key: `srv-${sv.id}`,
+                  name: sv.name,
+                  sub: `${sv.qty} @ ${money(sv.rate)}${sv.sub ? ` · ${sv.sub}` : ''}`,
+                  amount: sv.amount,
+                }))} />
+              <CostSection tone="expense" icon="📋" title="Expenses" total={totalExpensesAmount} money={money}
+                rows={expenses.map((e: any) => ({
+                  key: `exp-${e.id}`,
+                  name: e.part_name || e.product_name || 'Expense',
+                  sub: e.party_name || e.inward_no,
+                  amount: e.total_amount,
+                }))} />
             </div>
           )}
 
           {/* Box Footer Summary */}
-          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-            <div>
-              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Total Cost</span>
-              <span className="font-mono font-black text-slate-900 text-xs sm:text-sm">{money(totalActual)}</span>
+          <div className="pt-2.5 mt-2 grid grid-cols-3 gap-1.5 text-xs">
+            <div className="rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 px-2 py-1.5 text-white shadow-sm">
+              <span className="text-[9px] uppercase font-bold text-white/80 block leading-tight">Total Cost</span>
+              <span className="font-mono font-black text-xs sm:text-sm">{money(totalActual)}</span>
             </div>
-            <div className="text-center">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Sales Value</span>
-              <span className="font-mono font-bold text-slate-700 text-xs sm:text-sm">{money(pData.sales_value)}</span>
+            <div className="rounded-xl bg-gradient-to-br from-sky-500 to-cyan-600 px-2 py-1.5 text-white shadow-sm text-center">
+              <span className="text-[9px] uppercase font-bold text-white/80 block leading-tight">Sales Value</span>
+              <span className="font-mono font-black text-xs sm:text-sm">{money(pData.sales_value)}</span>
             </div>
-            <div className="text-right">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Margin</span>
-              <span className={`font-mono font-black text-xs sm:text-sm ${Number(profit) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+            <div className={`rounded-xl bg-gradient-to-br px-2 py-1.5 text-white shadow-sm text-right ${Number(profit) >= 0 ? 'from-emerald-500 to-teal-600' : 'from-rose-500 to-red-600'}`}>
+              <span className="text-[9px] uppercase font-bold text-white/80 block leading-tight">Margin</span>
+              <span className="font-mono font-black text-xs sm:text-sm">
                 {money(profit)}
-                {profitPct && <span className="text-[9px] font-bold ml-1">({profitPct}%)</span>}
+                {profitPct && <span className="text-[9px] font-bold ml-1 text-white/90">({profitPct}%)</span>}
               </span>
             </div>
           </div>
         </div>
       )}
     </Card>
+  );
+}
+
+// ---- colours ------------------------------------------------------------------------------------------------------
+/** One colour per kind of cost. */
+const COST_TONES = {
+  machine: { box: 'from-violet-100 to-indigo-100 border-violet-300', edge: 'border-l-violet-500', title: 'text-violet-800', total: 'text-violet-900', row: 'border-violet-100', empty: 'bg-violet-100 border-violet-200 text-violet-800' },
+  goods:   { box: 'from-sky-100 to-blue-100 border-sky-300',          edge: 'border-l-sky-500',    title: 'text-sky-800',    total: 'text-sky-900',    row: 'border-sky-100',    empty: 'bg-sky-100 border-sky-200 text-sky-800' },
+  service: { box: 'from-amber-100 to-orange-100 border-amber-300',    edge: 'border-l-amber-500',  title: 'text-amber-800',  total: 'text-amber-900',  row: 'border-amber-100',  empty: 'bg-amber-100 border-amber-200 text-amber-800' },
+  expense: { box: 'from-rose-100 to-pink-100 border-rose-300',        edge: 'border-l-rose-500',   title: 'text-rose-800',   total: 'text-rose-900',   row: 'border-rose-100',   empty: 'bg-rose-100 border-rose-200 text-rose-800' },
+} as const;
+
+function CostSection({ tone, icon, title, total, rows, money }: {
+  tone: keyof typeof COST_TONES;
+  icon: string;
+  title: string;
+  total: number;
+  rows: { key: string; name: string; sub?: string; amount: number }[];
+  money: (n: any) => string;
+}) {
+  const t = COST_TONES[tone];
+  if (!rows.length) {
+    return (
+      <div className={`flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl border border-l-4 ${t.empty} ${t.edge}`}>
+        <span className="font-semibold text-[11px] flex items-center gap-1">{icon} {title}</span>
+        <span className="font-mono opacity-60">—</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`rounded-xl border border-l-4 bg-gradient-to-br p-2.5 shadow-sm ${t.box} ${t.edge}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 ${t.title}`}>{icon} {title}</span>
+        <span className={`font-mono text-xs font-black ${t.total}`}>{money(total)}</span>
+      </div>
+      <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+        {rows.map((r) => (
+          <div key={r.key} className={`no-glass flex items-center justify-between py-1 px-1.5 rounded-lg bg-white border text-xs ${t.row}`}>
+            <div className="min-w-0 pr-2">
+              <div className="font-bold text-slate-800 truncate text-[11px]">{r.name}</div>
+              {r.sub && <div className="text-[10px] text-slate-500 truncate">{r.sub}</div>}
+            </div>
+            <span className={`font-mono font-bold text-xs shrink-0 ${t.total}`}>{money(r.amount)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1468,20 +1384,20 @@ export function ProjectCostingPage() {
       {error && <div className="border border-rose-200 bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
 
       {/* TOP CONTROLS & DROPDOWN BAR */}
-      <Card className="p-3.5 sm:p-4 bg-white shadow-xs border border-slate-200/90 rounded-2xl">
+      <Card className="no-glass p-3.5 sm:p-4 !bg-[#111c33] shadow-md border !border-[#111c33] rounded-2xl">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           {/* Left: Project Selector Dropdown + Search Input */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
             {/* Project / Work Order Dropdown */}
             <div className="min-w-[280px] sm:min-w-[340px]">
-              <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1 block">
+              <label className="text-[10px] uppercase font-extrabold text-white tracking-wider mb-1 block">
                 Filter by Product / Work Order
               </label>
               <div className="relative">
                 <select
                   value={selectedProjectKey}
                   onChange={(e) => setSelectedProjectKey(e.target.value)}
-                  className="w-full text-xs font-bold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 pr-8 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all cursor-pointer shadow-2xs"
+                  className="w-full text-xs font-bold !text-slate-900 !bg-white !border-white/20 border rounded-xl px-3 py-2 pr-8 focus:ring-2 focus:ring-violet-500 focus:!border-violet-500 transition-all cursor-pointer shadow-2xs"
                 >
                   <option value="all">📁 All Products / Work Orders ({projects.length})</option>
                   {projects.map((p) => {
@@ -1498,7 +1414,7 @@ export function ProjectCostingPage() {
 
             {/* Quick Search */}
             <div className="flex-1 min-w-[200px]">
-              <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1 block">
+              <label className="text-[10px] uppercase font-extrabold text-white tracking-wider mb-1 block">
                 Search Part / Customer / Work Order
               </label>
               <div className="relative">
@@ -1506,9 +1422,9 @@ export function ProjectCostingPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search product, part, company..."
-                  className="w-full pl-8 pr-8 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
+                  className="w-full pl-8 pr-8 py-2 text-xs font-medium !text-slate-900 !bg-white !border-white/20 border rounded-xl focus:ring-2 focus:ring-sky-500 focus:!border-sky-500 transition-all shadow-2xs placeholder:text-slate-400"
                 />
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                 {search && (
                   <button
                     type="button"
@@ -1523,9 +1439,9 @@ export function ProjectCostingPage() {
           </div>
 
           {/* Right: Global Tab Shortcut & Page Size */}
-          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100 justify-between lg:justify-end">
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/10 justify-between lg:justify-end">
             {/* Page Size & Pagination */}
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <div className="flex items-center gap-2 text-xs font-semibold text-white">
               <label className="flex items-center gap-1">
                 Show
                 <select
@@ -1535,7 +1451,7 @@ export function ProjectCostingPage() {
                     setPageSize(sz);
                     void loadData(1, search, sz);
                   }}
-                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 cursor-pointer shadow-2xs"
+                  className="rounded-lg border !border-white/20 !bg-white px-2 py-1 text-xs font-bold !text-slate-900 cursor-pointer shadow-2xs"
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
@@ -1545,21 +1461,21 @@ export function ProjectCostingPage() {
               </label>
 
               <span className="text-slate-400">·</span>
-              <span className="text-slate-500 font-medium">{total} total</span>
+              <span className="rounded-full bg-amber-500 px-2 py-0.5 font-bold text-white shadow-sm">{total} total</span>
 
               <div className="flex items-center gap-1 ml-1">
                 <button
                   disabled={page <= 1}
                   onClick={() => void loadData(page - 1, search, pageSize)}
-                  className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                  className="px-2 py-1 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
                 >
                   ‹
                 </button>
-                <span className="px-1.5 font-bold font-mono text-slate-800">{page}</span>
+                <span className="px-1.5 font-black font-mono text-white">{page}</span>
                 <button
                   disabled={page * pageSize >= total}
                   onClick={() => void loadData(page + 1, search, pageSize)}
-                  className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                  className="px-2 py-1 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
                 >
                   ›
                 </button>
