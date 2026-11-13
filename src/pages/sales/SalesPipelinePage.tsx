@@ -1,4 +1,4 @@
-import { useDisplaySize } from '@/lib/displaySize';
+import { useDisplaySize, setDisplayScope } from '@/lib/displaySize';
 import { DisplaySizeControl } from '@/components/layout/DisplaySizeControl';
 import { getInvoiceSeriesState, registerInvoiceSeries, findNextAvailableInvoiceNo } from '@/lib/invoiceNumberFormats';
 import { InvoiceSeriesPicker } from '@/components/sales/InvoiceSeriesPicker';
@@ -2411,6 +2411,11 @@ export function SalesPipelinePage() {
   const listExportRef = useRef<(() => void) | null>(null);
   // Display size is app-wide now (App.tsx scales every page); the board only uses it to keep its columns full height.
   const [boardZoom] = useDisplaySize();
+  // The Kanban board has its own display size (starts at 70%); the list views and every other page use the page size.
+  useEffect(() => {
+    setDisplayScope(activeView === 'pipeline' && pipelineViewMode === 'kanban' ? 'kanban' : 'page');
+  }, [activeView, pipelineViewMode]);
+  useEffect(() => () => setDisplayScope('page'), []);
   const boardScale = boardZoom / 100;
   // The board reaches down to the bottom of the window at every display size (no empty band under it).
   const boardRef = useRef<HTMLDivElement>(null);

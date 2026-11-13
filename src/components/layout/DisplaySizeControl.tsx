@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { DISPLAY_DEFAULT, DISPLAY_MAX, DISPLAY_MIN, DISPLAY_PRESETS, DISPLAY_STEP, useDisplaySize } from '@/lib/displaySize';
+import { DISPLAY_MAX, DISPLAY_MIN, DISPLAY_PRESETS, DISPLAY_STEP, useDisplaySize } from '@/lib/displaySize';
 
 /** The "⋮" button with the Display Size menu (50% – 145%). Shown in the top bar, and in the Sales Pipeline toolbar. */
 export function DisplaySizeControl() {
-  const [size, setSize] = useDisplaySize();
+  const [size, setSize, DISPLAY_DEFAULT] = useDisplaySize();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

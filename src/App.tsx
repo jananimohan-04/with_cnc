@@ -106,7 +106,7 @@ import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
-import { useDisplaySize } from '@/lib/displaySize';
+import { useDisplaySize, useDisplaySizeShortcuts } from '@/lib/displaySize';
 import { useFitPage } from '@/lib/fitPage';
 import { MODULE_CATALOG } from '@/config/permissions';
 import { getPageTheme } from './lib/pageThemes';
@@ -142,7 +142,8 @@ function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page
+  const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page (the Kanban board has its own)
+  useDisplaySizeShortcuts();                  // Ctrl + / Ctrl - / Ctrl 0
   const displayScale = displaySize / 100;
   useStickyTableHeads(mainRef, location.pathname);
   const pageRef = useRef<HTMLDivElement>(null);
