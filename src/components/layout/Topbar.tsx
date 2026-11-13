@@ -17,6 +17,7 @@ import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
 import { MenuPositionSelector } from './MenuPositionSelector';
+import { DisplaySizeControl } from './DisplaySizeControl';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -166,6 +167,9 @@ export function Topbar({
             {company.company_name}
           </div>
         )}
+
+        {/* Display size (50% – 145%) for every page; the Sales Pipeline shows the same control in its own toolbar */}
+        {!/sales\/(pipeline|in-house)/.test(currentPage) && <DisplaySizeControl />}
 
         {/* Date + profile box */}
         <div className="relative shrink-0" ref={profileRef}>

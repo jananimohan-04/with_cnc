@@ -106,6 +106,7 @@ import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
+import { useDisplaySize } from '@/lib/displaySize';
 import { MODULE_CATALOG } from '@/config/permissions';
 import { getPageTheme } from './lib/pageThemes';
 import { isTauri } from './lib/desktop/isTauri';
@@ -140,6 +141,8 @@ function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
+  const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page
+  const displayScale = displaySize / 100;
   useStickyTableHeads(mainRef, location.pathname);
   // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
   const { position: chosenPosition } = useNavPosition();
@@ -205,6 +208,8 @@ function MainLayout() {
         />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
+          {/* Display size: the page content is scaled; the height is stretched back so a page still fills the screen when smaller */}
+          <div style={displaySize !== 100 ? { zoom: displayScale, minHeight: `${100 / displayScale}%` } : undefined} className="min-h-full">
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
@@ -335,6 +340,7 @@ function MainLayout() {
             <Route path="*" element={<PlaceholderPage title="Page Not Found" />} />
           </Routes>
           </RequireModule>
+          </div>
         </main>
         {/* Bottom menu position: compact bar docked to the bottom edge (reserves its own space). */}
         {position === 'bottom' && (
