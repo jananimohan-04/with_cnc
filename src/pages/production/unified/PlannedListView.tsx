@@ -8,6 +8,7 @@ import { fmtTime24, parseYmd, toMinutes, ymd } from '@/lib/operationPlans';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { AddRunsModal, defaultPlanSlot } from './AddRunsModal';
 import { Button } from '@/components/ui/Card';
+import { HeaderSelect } from '../../../components/ui/HeaderFilter';
 
 interface PlanRow {
   id: string;
@@ -684,7 +685,7 @@ export function PlannedListView() {
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Product / Part</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Product"
                       title="Filter by Product"
                       value={fProduct}
@@ -695,7 +696,7 @@ export function PlannedListView() {
                       {productNames.map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
@@ -705,7 +706,7 @@ export function PlannedListView() {
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Machine</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Machine"
                       title="Filter by Machine"
                       value={fMachine}
@@ -716,13 +717,13 @@ export function PlannedListView() {
                       {machines.map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Operator</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Operator"
                       title="Filter by Operator"
                       value={fOperator}
@@ -733,14 +734,14 @@ export function PlannedListView() {
                       {operators.map((op) => (
                         <option key={op} value={op}>{op}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 text-right bg-slate-100 text-slate-700">Qty</th>
                 <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">
                   <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Status</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={fStatus}
@@ -751,7 +752,7 @@ export function PlannedListView() {
                       <option value="Today">Today</option>
                       <option value="Upcoming">Upcoming</option>
                       <option value="Past">Past</option>
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">Actions</th>

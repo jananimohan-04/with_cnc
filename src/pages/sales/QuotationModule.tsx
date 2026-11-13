@@ -11,6 +11,7 @@ import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
 import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onView, toolbar }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; /** Quotation tool strip, rendered on the same line as the title and actions. */ toolbar?: React.ReactNode }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -224,6 +225,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={companies}
@@ -235,7 +237,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Status" col="status" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
@@ -246,7 +248,7 @@ export function QuotationModule({ onBack, onEdit, onDelete, refreshSignal, onVie
                       {statuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">Actions</th>

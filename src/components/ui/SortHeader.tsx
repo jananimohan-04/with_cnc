@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -64,10 +64,10 @@ export function SortLabel<T>({
   light?: boolean;
 }) {
   const active = sort.key === col;
-  const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  const Icon = sort.dir === 'asc' ? ArrowUp : ArrowDown;
   const defaultClass = light
     ? 'inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 font-semibold transition-colors cursor-pointer text-xs'
-    : 'flex items-center gap-1.5 hover:text-brand-300 transition-colors cursor-pointer';
+    : 'inline-flex items-center gap-1 font-semibold text-white hover:text-sky-200 transition-colors cursor-pointer';
 
   return (
     <button
@@ -77,7 +77,8 @@ export function SortLabel<T>({
       className={className ?? defaultClass}
     >
       <span className="whitespace-nowrap">{label}</span>
-      <Icon size={12} className={active ? (light ? 'text-blue-600 font-bold' : 'text-brand-300') : 'text-slate-400'} />
+      {/* Inventory style: no icon until the column is sorted, then a light-blue arrow. */}
+      {active && <Icon size={12} className={light ? 'text-blue-600 font-bold' : 'text-sky-300'} />}
     </button>
   );
 }

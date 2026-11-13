@@ -17,6 +17,7 @@ import { summarizeSalesOrder, type OrderQtySummary } from '@/lib/orderQuantities
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { PipelineReportPage } from './PipelineReportPage';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-IN');
 
@@ -396,7 +397,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                     <th className="px-3 py-2">
                       <span className="flex items-center gap-1.5">
                         <span>Company</span>
-                        <select
+                        <HeaderSelect
                           value={colFilters.company}
                           onChange={(e) => setColFilters((p) => ({ ...p, company: e.target.value }))}
                           aria-label="Filter by Company"
@@ -404,13 +405,13 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                         >
                           <option value="">ALL</option>
                           {companyOpts.map((v) => <option key={v} value={v}>{v}</option>)}
-                        </select>
+                        </HeaderSelect>
                       </span>
                     </th>
                     <th className="px-3 py-2">
                       <span className="flex items-center gap-1.5">
                         <span>Product</span>
-                        <select
+                        <HeaderSelect
                           value={colFilters.product}
                           onChange={(e) => setColFilters((p) => ({ ...p, product: e.target.value }))}
                           aria-label="Filter by Product"
@@ -418,7 +419,7 @@ export function QuantityTrackingPage({ embedded = false }: { embedded?: boolean 
                         >
                           <option value="">ALL</option>
                           {productOpts.map((v) => <option key={v} value={v}>{v}</option>)}
-                        </select>
+                        </HeaderSelect>
                       </span>
                     </th>
                     <th className="px-3 py-2 text-right">Ordered</th><th className="px-3 py-2 text-right">Good</th>

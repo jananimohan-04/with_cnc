@@ -8,6 +8,7 @@ import { InvoicesPage } from '@/pages/finance/InvoicesPage';
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -108,6 +109,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Company</span>
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={companies}
@@ -120,7 +122,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Status</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
@@ -131,7 +133,7 @@ export function LegacyInvoiceModule({ onBack }: { onBack: () => void }) {
                       {statuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">Actions</th>

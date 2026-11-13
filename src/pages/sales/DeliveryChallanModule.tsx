@@ -10,6 +10,7 @@ import { DocumentProfileButton } from '@/components/DocumentProfileButton';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { recordDateOf } from '@/lib/globalDate';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal, onView, entryForm }: { onBack: () => void; onEdit?: (record: any) => void; onDelete?: (record: any) => void; refreshSignal?: number; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { companyFilter, setCompanyFilter, companyOptions } = useHeaderKpis();
@@ -146,7 +147,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Company"
                       title="Filter by Company"
                       value={companyFilter || 'All Companies'}
@@ -157,7 +158,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                       {companies.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold"><SortLabel label="Product Name" col="product" sort={sort} /></th>
@@ -165,7 +166,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                 <th className="p-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Status" col="status" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
@@ -176,7 +177,7 @@ export function DeliveryChallanModule({ onBack, onEdit, onDelete, refreshSignal,
                       {statuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">Actions</th>

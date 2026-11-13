@@ -12,6 +12,7 @@ import { downloadBrandedDocument, viewBrandedDocument } from '@/lib/brandedDocum
 import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
 import { useSort, SortLabel } from '@/components/ui/SortHeader';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, entryForm }: { onBack: () => void; refreshSignal?: number; onEdit?: (record: any) => void; onDelete?: (record: any) => void; onView?: (record: any) => void; entryForm?: ReactNode | ((props: { onBack: () => void; searchSlot: ReactNode }) => ReactNode) }) {
   const { company } = useAuth();
@@ -267,6 +268,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={companies}
@@ -276,7 +278,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Category" col="category" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Category"
                       title="Filter by Category"
                       value={categoryFilter}
@@ -287,13 +289,13 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                       {categories.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Part Name" col="part" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Part Name"
                       title="Filter by Part Name"
                       value={partNameFilter}
@@ -304,7 +306,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                       {partNames.map(p => (
                         <option key={p} value={p}>{p}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2 px-3 font-semibold"><SortLabel label="Quantity" col="quantity" sort={sort} /></th>
@@ -312,7 +314,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                 <th className="py-2 px-3 font-semibold">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Status" col="status" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
@@ -323,7 +325,7 @@ export function InwardModule({ onBack, refreshSignal, onEdit, onDelete, onView, 
                       {statuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2 px-3 font-semibold">Actions</th>

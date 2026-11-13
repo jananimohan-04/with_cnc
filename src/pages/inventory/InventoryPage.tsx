@@ -126,16 +126,16 @@ function ColumnHeaderFilter({
           isFiltered
             ? 'text-blue-700 bg-blue-50 hover:bg-blue-100/80 border border-blue-200'
             : isSorted
-              ? 'text-blue-600 bg-slate-100 hover:bg-slate-200/70'
-              : 'text-slate-700 hover:text-blue-600 hover:bg-slate-100'
+              ? 'text-white bg-blue-500/40 hover:bg-blue-500/50'
+              : 'text-white hover:text-sky-200 hover:bg-blue-500/30'
         }`}
         title={`Filter & sort by ${label}`}
       >
         <span className="whitespace-nowrap">{label}</span>
         {isSorted && (
           sortDir === 'asc'
-            ? <ArrowUp size={12} className="text-blue-600 shrink-0 font-bold" />
-            : <ArrowDown size={12} className="text-blue-600 shrink-0 font-bold" />
+            ? <ArrowUp size={12} className="text-sky-300 shrink-0 font-bold" />
+            : <ArrowDown size={12} className="text-sky-300 shrink-0 font-bold" />
         )}
         {showFilterIcon && (
           <Filter
@@ -143,7 +143,7 @@ function ColumnHeaderFilter({
             className={`shrink-0 transition-colors ${
               isFiltered
                 ? 'text-blue-600 fill-blue-600'
-                : 'text-slate-400 group-hover:text-blue-600'
+                : 'text-white group-hover:text-sky-200'
             }`}
           />
         )}

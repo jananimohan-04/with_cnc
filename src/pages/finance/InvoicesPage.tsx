@@ -19,6 +19,7 @@ import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { downloadSalesInvoice, fetchCompanyPrintDetails, salesInvoicePreviewUrl } from '@/lib/brandedDocument';
 import { splitProductAndRef, combineProductAndRef, formatFullReference } from '@/lib/productLabel';
 import { loadTerms } from '@/lib/termsLibrary';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 const PAGE_SIZE_OPTIONS: { value: number; label: string }[] = [
   { value: 10, label: '10' },
@@ -1467,6 +1468,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={allCompanies}
@@ -1484,7 +1486,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                 <th className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Status" col="status" sort={sort} />
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={tableStatusFilter}
@@ -1495,7 +1497,7 @@ export function InvoicesPage({ onBack, onView, onEdit, onDelete }: { onBack?: ()
                       {allStatuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="px-2 py-2"></th>

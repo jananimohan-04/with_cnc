@@ -423,6 +423,7 @@ export function RejectedModule({ onBack, refreshSignal, onChanged }: { onBack: (
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company (Order)" col="company" sort={sort} />
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={companies}

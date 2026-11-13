@@ -12,6 +12,7 @@ import { buildRunPartChoices, ensureRunWorkOrder, workOrdersForPart } from '@/li
 import { processKey, runExceeds, syncWorkOrderCompleted } from '@/lib/workOrderProgress';
 import { getProductBaseName } from '@/pages/sales/SalesPipelinePage';
 import { dt, dur, jobSpan } from './ComparisonPage';
+import { HeaderSelect } from '../../../components/ui/HeaderFilter';
 
 const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const baseKey = (s: unknown) => norm(getProductBaseName(String(s ?? '')));
@@ -580,7 +581,7 @@ export function ActualListView() {
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Product / Part</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Product"
                       title="Filter by Product"
                       value={fProduct}
@@ -591,14 +592,14 @@ export function ActualListView() {
                       {productNames.map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Operation / Process</th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Machine</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Machine"
                       title="Filter by Machine"
                       value={fMachine}
@@ -609,13 +610,13 @@ export function ActualListView() {
                       {machines.map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Operator</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Operator"
                       title="Filter by Operator"
                       value={fOperator}
@@ -626,7 +627,7 @@ export function ActualListView() {
                       {operators.map((op) => (
                         <option key={op} value={op}>{op}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 bg-slate-100 text-slate-700">Start Time</th>
@@ -636,7 +637,7 @@ export function ActualListView() {
                 <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">
                   <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                     <span className="whitespace-nowrap">Status</span>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={fStatus}
@@ -647,7 +648,7 @@ export function ActualListView() {
                       <option value="Running">Running</option>
                       <option value="Completed">Completed</option>
                       <option value="Paused">Paused</option>
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="py-2.5 px-3 text-center bg-slate-100 text-slate-700">Actions</th>

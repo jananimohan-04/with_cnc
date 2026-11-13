@@ -2,6 +2,7 @@ import { useState, useMemo, type ReactNode } from 'react';
 import { ChevronUp, ChevronDown, Search, Upload, SlidersHorizontal, Plus } from 'lucide-react';
 import { Button } from './Card';
 import { PagerFooter, usePager } from './TablePager';
+import { HeaderSelect } from './HeaderFilter';
 
 export interface Column<T> {
   key: string;
@@ -245,7 +246,7 @@ export function DataTable<T extends Record<string, any>>({
                     col.label
                   )}
                   {columnValues[col.key] && (
-                    <select
+                    <HeaderSelect
                       value={colFilters[col.key] ?? ''}
                       onChange={(e) => setColFilters((f) => { const c = { ...f }; if (e.target.value) c[col.key] = e.target.value; else delete c[col.key]; return c; })}
                       onClick={(e) => e.stopPropagation()}
@@ -254,7 +255,7 @@ export function DataTable<T extends Record<string, any>>({
                     >
                       <option value="">All</option>
                       {columnValues[col.key].map((v) => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    </HeaderSelect>
                   )}
                 </th>
               ))}

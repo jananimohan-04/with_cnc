@@ -17,6 +17,7 @@ import {
   applyTypeDefaults, loadOthers, loadTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
 } from '@/lib/bankImport';
+import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
 
 // Bank Entry: paste or upload a statement, tag each row with a Type and ledger, save it as bank transactions,
 // and browse / filter / export the saved bank data. Saving uses the same erp_add_bank_entry as Manual Entry,
@@ -807,15 +808,15 @@ export function BankEntryPage() {
                       <div className={`flex items-center gap-1 ${i >= 3 && i <= 5 ? 'justify-end' : 'justify-start'} whitespace-nowrap`}>
                         <SortLabel label={label} col={key} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-wider text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer shrink-0" />
                         {kind === 'list' && (
-                          <select aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
+                          <HeaderSelect aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
                             className={`h-5 max-w-[54px] rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
                             <option value="">All</option>
                             {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
-                          </select>
+                          </HeaderSelect>
                         )}
                         {kind === 'text' && (
-                          <input aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder={key === 'debit' || key === 'credit' ? 'Filter' : 'Filter…'} onClick={e => e.stopPropagation()}
+                          <HeaderInput aria-label={`Filter ${label}`} value={colFilters[key] ?? ''} placeholder={key === 'debit' || key === 'credit' ? 'Filter' : 'Filter…'} onClick={e => e.stopPropagation()}
                             onChange={e => setColFilters(f => { const c = { ...f }; if (e.target.value) c[key] = e.target.value; else delete c[key]; return c; })}
                             className={`h-5 ${key === 'debit' || key === 'credit' ? 'w-12' : 'w-16'} rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colFilters[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
@@ -1606,7 +1607,7 @@ function ManualEntryModal({
                 <tr className="text-left">
                   <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top">
                     <div>Date</div>
-                    <input
+                    <HeaderInput
                       placeholder="Filter…"
                       value={filterDate}
                       onChange={e => setFilterDate(e.target.value)}
@@ -1617,7 +1618,7 @@ function ManualEntryModal({
                   <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top"><div>Type</div></th>
                   <th className="px-3 py-2 text-slate-500 font-bold uppercase tracking-wider text-[10px] align-top">
                     <div>Description</div>
-                    <input
+                    <HeaderInput
                       placeholder="Filter…"
                       value={filterDesc}
                       onChange={e => setFilterDesc(e.target.value)}

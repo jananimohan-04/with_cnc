@@ -10,6 +10,7 @@ import { exportCsv } from '@/lib/reportExport';
 import { formatTimestamp, formatDate, lastEditedAt } from '@/lib/format';
 import { useSort, SortLabel } from '@/components/ui/SortHeader';
 import { todayISO } from '@/lib/format';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 interface PipelineListViewProps {
   cards: KanbanCard[];
@@ -131,6 +132,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete, search: sear
                 <div className="flex items-center gap-1.5 flex-nowrap">
                   <SortLabel label="Company" col="company" sort={sort} />
                   <CompanyFilterInput
+                      variant="header"
                     value={companyFilter || 'All Companies'}
                     onChange={setCompanyFilter}
                     options={customers}
@@ -141,7 +143,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete, search: sear
               <th className="bg-slate-800 px-4 py-3.5">
                 <div className="flex items-center gap-1.5 flex-nowrap">
                   <SortLabel label="Stage" col="stage" sort={sort} />
-                  <select
+                  <HeaderSelect
                     aria-label="Filter by Stage"
                     title="Filter by Stage"
                     value={stageFilter}
@@ -152,7 +154,7 @@ export function PipelineListView({ cards, onView, onEdit, onDelete, search: sear
                     {stageOptions.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
-                  </select>
+                  </HeaderSelect>
                 </div>
               </th>
               <th className="bg-slate-800 px-4 py-3.5 text-right"><SortLabel label="Qty" col="qty" sort={sort} /></th>

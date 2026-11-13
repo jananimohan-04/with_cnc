@@ -10,6 +10,7 @@ import { financeApi, type BankFilters } from '@/lib/finance';
 import { accountingApi, type Account } from '@/lib/accounting';
 import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 // Petty Cash Entry: record small cash / bank payments and receipts against a ledger, then browse and filter them.
 // Debit = money paid out of the chosen bank / cash account, Credit = money received into it (same as the bank statement).
@@ -509,7 +510,7 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
                   <th key={h.label} className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 whitespace-nowrap ${h.right ? 'text-right' : ''}`}>
                     {h.label}
                     {h.fk && hfOptions[h.fk].length > 0 && (
-                      <select
+                      <HeaderSelect
                         value={hf[h.fk]}
                         onChange={e => { const k = h.fk as HeaderFilterKey; const v = e.target.value; setHf(f => ({ ...f, [k]: v })); }}
                         aria-label={`Filter ${h.label}`}
@@ -517,7 +518,7 @@ export function PettyCashPage({ prefill }: { prefill?: { member: string; amount:
                       >
                         <option value="">All</option>
                         {hfOptions[h.fk].map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
+                      </HeaderSelect>
                     )}
                   </th>
                 ))}

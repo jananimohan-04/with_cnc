@@ -201,6 +201,7 @@ export function SalesOrderModule({ onBack, onDelete, refreshSignal, onView, onEd
                   <div className="flex items-center gap-1.5 flex-nowrap">
                     <SortLabel label="Company" col="company" sort={sort} />
                     <CompanyFilterInput
+                      variant="header"
                       value={companyFilter || 'All Companies'}
                       onChange={setCompanyFilter}
                       options={companies}

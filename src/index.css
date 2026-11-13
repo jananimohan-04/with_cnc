@@ -155,10 +155,12 @@
   color: #ffffff !important;
 }
 :is(main, [role="dialog"]) thead th :is(span, button, a, label, svg, div, p, b, strong, small, i)
-  :not(:is(.absolute, .fixed, [role="listbox"], [role="menu"], [role="dialog"], ul, [class*="bg-white"], [class*="bg-slate-50"], [class*="bg-slate-100"], [class*="bg-gray-50"]) *)
-  :not(.absolute):not([role="listbox"]):not([role="menu"]):not([class*="bg-white"]):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]):not([class*="bg-gray-50"]) {
+  :not(:is(.absolute, .fixed, [role="listbox"], [role="menu"], [role="dialog"], ul, [class^="bg-white"], [class*=" bg-white"], [class^="bg-slate-50"], [class*=" bg-slate-50"], [class^="bg-slate-100"], [class*=" bg-slate-100"], [class*=" bg-gray-50"]) *)
+  :not(.absolute):not([role="listbox"]):not([role="menu"]):not([class^="bg-white"]):not([class*=" bg-white"]):not([class^="bg-slate-50"]):not([class*=" bg-slate-50"]):not([class^="bg-slate-100"]):not([class*=" bg-slate-100"]):not([class*=" bg-gray-50"]) {
   color: inherit !important;
 }
+/* Column titles: bold white, like the Inventory stock table (only light chips / boxes keep their own colours above). */
+:is(main, [role="dialog"]) thead th { font-weight: 600; }
 :is(main, [role="dialog"]) thead th :is(input, select, textarea) {
   color: #0f172a !important;
   background-color: #ffffff !important;

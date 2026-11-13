@@ -9,6 +9,7 @@ import { PagerFooter, usePager } from '@/components/ui/TablePager';
 import { formatTimestamp, formatDate } from '@/lib/format';
 
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
+import { HeaderSelect } from '../../components/ui/HeaderFilter';
 
 type SortKey = 'date' | 'enquiry_date' | 'customer' | 'products' | 'quantity' | 'status' | null;
 
@@ -240,7 +241,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       <span className="whitespace-nowrap">Company</span>
                       <SortIcon column="customer" />
                     </button>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Company"
                       title="Filter by Company"
                       value={companyFilter || 'All Companies'}
@@ -251,7 +252,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       {companies.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">
@@ -260,7 +261,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       <span className="whitespace-nowrap">Products</span>
                       <SortIcon column="products" />
                     </button>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Product"
                       title="Filter by Product"
                       value={productFilter}
@@ -271,7 +272,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       {allProducts.map(p => (
                         <option key={p} value={p}>{p}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">
@@ -280,7 +281,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       <span className="whitespace-nowrap">Stage</span>
                       <SortIcon column="status" />
                     </button>
-                    <select
+                    <HeaderSelect
                       aria-label="Filter by Status"
                       title="Filter by Status"
                       value={statusFilter}
@@ -291,7 +292,7 @@ export function EnquiryModule({ onBack, onEdit, onDelete, refreshSignal, onView,
                       {statuses.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </HeaderSelect>
                   </div>
                 </th>
                 <th className="p-3 font-semibold">

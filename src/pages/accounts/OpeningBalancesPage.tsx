@@ -5,6 +5,7 @@ import { Badge, Button, Card } from '@/components/ui/Card';
 import { EmptyState, LoadingState } from '@/components/ui/PageHeader';
 import { FormField, Modal, inputClass } from '@/components/ui/Modal';
 import { SortLabel, useSort } from '@/components/ui/SortHeader';
+import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { formatDate, formatINR, todayISO } from '@/lib/format';
@@ -884,15 +885,15 @@ function HeadingCell<T>({ label, colKey, sort, filterValue, onFilter, options, a
   return (
     <th className={`${thClass} py-1.5 align-middle`}>
       <div className={`inline-flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
-        <SortLabel label={label} col={colKey} sort={sort} className="inline-flex items-center gap-1 uppercase tracking-widest text-[10px] font-bold text-slate-500 hover:text-orange-600 cursor-pointer shrink-0" />
+        <SortLabel label={label} col={colKey} sort={sort} />
         {options ? (
-          <select aria-label={`Filter ${label}`} value={filterValue} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
+          <HeaderSelect aria-label={`Filter ${label}`} value={filterValue} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
             className={`h-5 ${optionWidth} rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${filterValue ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
             <option value="">All</option>
             {options.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
+          </HeaderSelect>
         ) : (
-          <input aria-label={`Filter ${label}`} value={filterValue} placeholder={placeholder ?? 'Filter…'} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
+          <HeaderInput aria-label={`Filter ${label}`} value={filterValue} placeholder={placeholder ?? 'Filter…'} onClick={e => e.stopPropagation()} onChange={e => onFilter(colKey, e.target.value)}
             className={`h-5 ${inputWidth} rounded border bg-white px-1.5 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${filterValue ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
         )}
       </div>

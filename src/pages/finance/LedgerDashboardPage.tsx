@@ -15,6 +15,7 @@ import {
   dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, hasPaymentWord, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
+import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
 
 // Ledger Dashboard: every bank entry, invoice and inward in one party ledger, with filters, a party statement
 // and a party-wise ledger book. Read-only: it reads the same records the rest of the BI writes.
@@ -329,14 +330,14 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                           </button>
                         ) : <span>{label}</span>}
                         {kind === 'list' && (
-                          <select aria-label={`Filter ${label}`} value={colF[key] ?? ''} onChange={e => setCol(key, e.target.value)}
+                          <HeaderSelect aria-label={`Filter ${label}`} value={colF[key] ?? ''} onChange={e => setCol(key, e.target.value)}
                             className={`h-5 w-[64px] rounded border bg-white px-1 text-[10px] font-semibold normal-case tracking-normal text-slate-800 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`}>
                             <option value="">All</option>
                             {(colValues[key] ?? []).map(v => <option key={v} value={v}>{v}</option>)}
-                          </select>
+                          </HeaderSelect>
                         )}
                         {kind === 'text' && (
-                          <input aria-label={`Filter ${label}`} value={colF[key] ?? ''} placeholder="Filter…" onChange={e => setCol(key, e.target.value)}
+                          <HeaderInput aria-label={`Filter ${label}`} value={colF[key] ?? ''} placeholder="Filter…" onChange={e => setCol(key, e.target.value)}
                             className={`h-5 ${right ? 'w-[56px]' : 'w-[64px]'} rounded border bg-white px-1 text-[10px] font-medium normal-case tracking-normal text-slate-800 placeholder:text-slate-400 focus:outline-none ${colF[key] ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-300'}`} />
                         )}
                       </div>
