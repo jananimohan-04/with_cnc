@@ -76,7 +76,7 @@ export function Topbar({
   const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   return (
-    <header style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className={`app-topbar ${/sales\/(pipeline|in-house)/.test(currentPage) ? 'app-topbar-light' : ''} sticky top-0 z-20 bg-[#111c33] border-b border-white/10 shadow-md min-h-[50px] flex items-center px-2 sm:px-3 md:px-4 gap-2 sm:gap-3`}>
+    <header style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className={`app-topbar ${/sales\/(pipeline|in-house)/.test(currentPage) ? 'app-topbar-light' : ''} sticky top-0 z-30 bg-[#111c33] border-b border-white/10 shadow-md min-h-[50px] flex items-center px-2 sm:px-3 md:px-4 gap-2 sm:gap-3`}>
       {/* Mobile Menu Toggle (side positions; top/bottom positions own their mobile menu) */}
       {!hideMobileMenu && (
         <div className="flex items-center lg:hidden">

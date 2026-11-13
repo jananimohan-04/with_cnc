@@ -9514,13 +9514,13 @@ export function SalesPipelinePage() {
                       )}
                       <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center transition-opacity">
                         <span 
-                          className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-10 relative"
+                          className="text-[10px] font-medium text-slate-500 flex items-center gap-1 hover:text-brand-600 transition-colors z-[1] relative"
                           onClick={(e) => { e.stopPropagation(); setActiveCommentTarget(card); }}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> 
                           {commentCounts[card.id] || 0}
                         </span>
-                        <div className="flex items-center gap-3 z-20 relative">
+                        <div className="flex items-center gap-3 z-[2] relative">
                           <button onClick={(e) => { e.stopPropagation(); openViewModal(card); }} className="text-slate-400 hover:text-brand-600 transition-colors" title="View">
                             <Eye size={14} />
                           </button>
