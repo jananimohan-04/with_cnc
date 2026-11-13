@@ -106,7 +106,7 @@ import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { AssistantDock } from '@/components/AssistantDock';
 import { RequireModule, moduleForPage } from '@/components/auth/RequireModule';
-import { useDisplaySize, useDisplaySizeShortcuts } from '@/lib/displaySize';
+import { displayScale as scaleOf, useDisplaySize, useDisplaySizeShortcuts } from '@/lib/displaySize';
 import { useFitPage } from '@/lib/fitPage';
 import { MODULE_CATALOG } from '@/config/permissions';
 import { getPageTheme } from './lib/pageThemes';
@@ -144,7 +144,7 @@ function MainLayout() {
   const mainRef = useRef<HTMLElement>(null);
   const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page (the Kanban board has its own)
   useDisplaySizeShortcuts();                  // Ctrl + / Ctrl - / Ctrl 0
-  const displayScale = displaySize / 100;
+  const displayScale = scaleOf(displaySize);   // the real factor (the Kanban board's 100% is its compact look)
   useStickyTableHeads(mainRef, location.pathname);
   const pageRef = useRef<HTMLDivElement>(null);
   // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
@@ -215,7 +215,7 @@ function MainLayout() {
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           {/* Display size: the page content is scaled. useFitPage keeps this box exactly as tall as the screen, and the grid
               stretches the page inside it, so every page reaches the bottom at every size. */}
-          <div ref={pageRef} style={{ ...(displaySize !== 100 ? { zoom: displayScale } : {}), display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+          <div ref={pageRef} style={{ ...(displayScale !== 1 ? { zoom: displayScale } : {}), display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<HomeRedirect />} />

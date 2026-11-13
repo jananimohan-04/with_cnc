@@ -1,5 +1,5 @@
 // Display size (50% – 145%), kept separately for two kinds of screen:
-//   'kanban' - the Sales Pipeline Kanban board (starts at 70%)
+//   'kanban' - the Sales Pipeline Kanban board (its 100% is the compact board look: 65% of normal size)
 //   'page'   - every other page (starts at 100%)
 // The page that is showing tells which one applies (setDisplayScope); the menu, the Ctrl + / Ctrl - keys and the scaling
 // all work on that one. Saved in this browser.
@@ -9,10 +9,12 @@ export const DISPLAY_MIN = 50;
 export const DISPLAY_MAX = 145;
 export const DISPLAY_STEP = 5;
 export type DisplayScope = 'page' | 'kanban';
-export const DISPLAY_DEFAULTS: Record<DisplayScope, number> = { page: 100, kanban: 70 };
+export const DISPLAY_DEFAULTS: Record<DisplayScope, number> = { page: 100, kanban: 100 };
+/** What 100% means on each kind of screen: the Kanban board's 100% is the compact look (65% of normal size). */
+export const DISPLAY_BASE: Record<DisplayScope, number> = { page: 1, kanban: 0.65 };
 export const DISPLAY_PRESETS = [['Small', 80], ['Normal', 100], ['Big', 125]] as const;
 
-const key = (scope: DisplayScope) => `cnc_display_size.${scope}`;
+const key = (scope: DisplayScope) => (scope === 'kanban' ? 'cnc_display_size.kanban.v2' : `cnc_display_size.${scope}`);
 const EVENT = 'argus:display-size';
 
 const clamp = (n: number) => Math.min(DISPLAY_MAX, Math.max(DISPLAY_MIN, Math.round(n / DISPLAY_STEP) * DISPLAY_STEP));
@@ -38,6 +40,9 @@ export function setDisplaySize(n: number, scope: DisplayScope = activeScope) {
   try { localStorage.setItem(key(scope), String(clamp(n))); } catch { /* not saved */ }
   window.dispatchEvent(new Event(EVENT));
 }
+
+/** The real scale factor for a size shown in the menu (the Kanban board's 100% is 0.65). */
+export const displayScale = (size: number = getDisplaySize(), scope: DisplayScope = activeScope) => (size / 100) * DISPLAY_BASE[scope];
 
 /** [size in % for the screen showing now, set it, its starting size] — every user of it stays in step. */
 export function useDisplaySize(): [number, (v: number | ((prev: number) => number)) => void, number] {

@@ -1,4 +1,4 @@
-import { useDisplaySize, setDisplayScope } from '@/lib/displaySize';
+import { useDisplaySize, setDisplayScope, displayScale } from '@/lib/displaySize';
 import { DisplaySizeControl } from '@/components/layout/DisplaySizeControl';
 import { getInvoiceSeriesState, registerInvoiceSeries, findNextAvailableInvoiceNo } from '@/lib/invoiceNumberFormats';
 import { InvoiceSeriesPicker } from '@/components/sales/InvoiceSeriesPicker';
@@ -2416,7 +2416,7 @@ export function SalesPipelinePage() {
     setDisplayScope(activeView === 'pipeline' && pipelineViewMode === 'kanban' ? 'kanban' : 'page');
   }, [activeView, pipelineViewMode]);
   useEffect(() => () => setDisplayScope('page'), []);
-  const boardScale = boardZoom / 100;
+  const boardScale = displayScale(boardZoom);   // the real factor the page is drawn at
   // The board reaches down to the bottom of the window at every display size (no empty band under it).
   const boardRef = useRef<HTMLDivElement>(null);
   const [boardHeight, setBoardHeight] = useState(550);

@@ -433,3 +433,6 @@ html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(1
   .xl\:text-\[12\.5px\] { font-size: 13.5px; }
   .xl\:text-\[13px\] { font-size: 14px; }
 }
+
+/* ---------- Sales Pipeline columns and the matching top count tiles: a still surface (no moving shine) ---------- */
+.kanban-shine { position: relative; overflow: hidden; }
