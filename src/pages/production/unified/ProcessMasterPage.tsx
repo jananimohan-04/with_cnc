@@ -482,8 +482,8 @@ export function ProcessMasterPage() {
           </div>
         </FormSection>
 
-        <FormSection title="Costing">
-          <div className="grid grid-cols-1 gap-4">
+        <FormSection title="Costing & Status">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <FormField label="Cost Per Hour (₹)" required>
                 <input
@@ -498,11 +498,6 @@ export function ProcessMasterPage() {
               </FormField>
               {errText('costPerHour')}
             </div>
-          </div>
-        </FormSection>
-
-        <FormSection title="Configuration">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField label="Status">
               <select value={form.status} onChange={(e) => set('status', e.target.value)} className={inputClass}>
                 <option value="Active">Active</option>

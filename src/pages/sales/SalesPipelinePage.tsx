@@ -1066,46 +1066,46 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
       </div>
       <div className="border-t border-slate-100 pt-4">
         <h4 className="font-semibold text-sm text-slate-800 mb-3">Products Breakdown</h4>
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto scrollbar-thin">
+          <table className="w-full min-w-[940px] text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[4%]">#</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[22%]">Product Name</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[10%]">Qty</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[13%]">Unit Price (₹)</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[9%]">Disc %</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[12%]">Unit Disc (₹)</th>
-                <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[8%]">GST %</th>
-                <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase w-[14%]">Total (₹)</th>
-                <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">File</th>
-                <th className="text-center px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Action</th>
+                <th className="text-center px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-10 min-w-[2.5rem]">#</th>
+                <th className="text-left px-2.5 py-2 text-[10px] font-bold text-slate-500 uppercase min-w-[180px]">Product Name</th>
+                <th className="text-left px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-20 min-w-[5rem]">Qty</th>
+                <th className="text-left px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-28 min-w-[6.5rem]">Unit Price (₹)</th>
+                <th className="text-left px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-24 min-w-[5.5rem]">Disc %</th>
+                <th className="text-left px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-28 min-w-[6.5rem]">Unit Disc (₹)</th>
+                <th className="text-left px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-20 min-w-[4.5rem]">GST %</th>
+                <th className="text-right px-2.5 py-2 text-[10px] font-bold text-slate-500 uppercase w-32 min-w-[7.5rem]">Total (₹)</th>
+                <th className="text-center px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-28 min-w-[6.5rem]">File</th>
+                <th className="text-center px-2 py-2 text-[10px] font-bold text-slate-500 uppercase w-12 min-w-[2.5rem]">Action</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
                 <tr key={item.id || idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                  <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
-                  <td className="px-3 py-2">
-                    <input className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" list="quotation-edit-product-list" value={item.partName || ''} onChange={(e) => upd(idx, { partName: e.target.value })} />
+                  <td className="px-2 py-2 text-center text-slate-400 font-medium">{idx + 1}</td>
+                  <td className="px-2 py-2">
+                    <input className="w-full min-w-[170px] text-sm border border-slate-200 rounded px-2.5 py-1.5 focus:outline-none focus:border-brand-500" placeholder="Product name" list="quotation-edit-product-list" value={item.partName || ''} onChange={(e) => upd(idx, { partName: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} className="w-full min-w-[72px] tabular-nums text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.quantity ?? ''} onChange={(e) => upd(idx, { quantity: e.target.value })} />
+                  <td className="px-2 py-2">
+                    <input type="number" min={0} className="w-full min-w-[4.5rem] tabular-nums text-sm text-center border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.quantity ?? ''} onChange={(e) => upd(idx, { quantity: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitPrice ?? ''} onChange={(e) => upd(idx, { unitPrice: e.target.value })} />
+                  <td className="px-2 py-2">
+                    <input type="number" min={0} className="w-full min-w-[6rem] tabular-nums text-sm text-right border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0.00" value={item.unitPrice ?? ''} onChange={(e) => upd(idx, { unitPrice: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0" value={item.discount ?? ''} onChange={(e) => upd(idx, { discount: e.target.value })} />
+                  <td className="px-2 py-2">
+                    <input type="number" min={0} className="w-full min-w-[5rem] tabular-nums text-sm text-center border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0" value={item.discount ?? ''} onChange={(e) => upd(idx, { discount: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="0.00" value={item.unitDiscount ?? ''} onChange={(e) => upd(idx, { unitDiscount: e.target.value })} />
+                  <td className="px-2 py-2">
+                    <input type="number" min={0} className="w-full min-w-[6rem] tabular-nums text-sm text-right border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="0.00" value={item.unitDiscount ?? ''} onChange={(e) => upd(idx, { unitDiscount: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500" placeholder="18" value={item.gst ?? ''} onChange={(e) => upd(idx, { gst: e.target.value })} />
+                  <td className="px-2 py-2">
+                    <input type="number" min={0} className="w-full min-w-[4rem] tabular-nums text-sm text-center border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0" placeholder="18" value={item.gst ?? ''} onChange={(e) => upd(idx, { gst: e.target.value })} />
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-slate-700 tabular-nums">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-2.5 py-2 text-right font-semibold text-slate-700 tabular-nums whitespace-nowrap">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                  <td className="px-2 py-2 text-center">
                     <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
                       <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
                       <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
@@ -1145,7 +1145,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-2 py-2 text-center">
                     <button onClick={() => setItems(items.filter((_: any, i: number) => i !== idx))} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove product">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
@@ -1156,7 +1156,7 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
             <tfoot className="bg-slate-50 border-t border-slate-200">
               <tr>
                 <td colSpan={7} className="px-3 py-2 text-right font-bold text-sm text-slate-600 uppercase">Grand Total</td>
-                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                <td className="px-3 py-2 text-right font-bold text-base text-brand-700 tabular-nums whitespace-nowrap">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -9816,7 +9816,7 @@ export function SalesPipelinePage() {
       {/* Shared View / Edit modal: opened from every stage list's View / Edit actions.
           The entry forms are inline now, so this popup is only for inspecting or
           revising a record that already exists. */}
-<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 900} maxWidth={docKind ? 1700 : undefined} tall={!!docKind} footer={<>{viewModalTarget?.stage === 'Invoice' && viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('combined')}>View Invoice + DC</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('combined')}>Download Invoice + DC</Button></>}{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
+<Modal open={!!viewModalTarget} onClose={closeViewModal} title={`${stageDetailsTitle(viewModalTarget?.stage)} — Company ID: ${viewModalData?.order?.lead_no || viewModalData?.enquiry?.lead_no || viewModalData?.enquiry?.enquiry_no || viewModalTarget?.refNo}`} size="xl" width={docKind ? 1500 : 1040} maxWidth={docKind ? 1700 : 1280} tall={!!docKind} footer={<>{viewModalTarget?.stage === 'Invoice' && viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('combined')}>View Invoice + DC</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('combined')}>Download Invoice + DC</Button></>}{viewModalData?.dc && <><Button variant="secondary" onClick={() => void viewPipelineDocument('dc')}>View DC PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('dc')}>Download DC</Button></>}{viewModalData?.invoice && <><Button variant="secondary" onClick={() => void viewPipelineDocument('invoice')}>View Invoice PDF</Button><Button variant="secondary" icon={<Download size={14}/>} onClick={() => void downloadPipelineDocument('invoice')}>Download Invoice</Button></>}<Button variant={viewEditMode ? 'primary' : 'secondary'} onClick={() => { void (async () => {
                       if (viewEditMode && viewModalTarget?.stage === 'Sales Order' && soSaveRef.current) {
                         const ok = await soSaveRef.current();
                         if (!ok) return;
@@ -9837,7 +9837,7 @@ export function SalesPipelinePage() {
                     })(); }}>{viewEditMode ? 'Done Editing' : 'Enable Inline Editing'}</Button><Button variant="secondary" onClick={closeViewModal}>Close</Button></>}>
         <div className={docKind ? 'doc-compact grid grid-cols-1 gap-3 xl:grid-cols-2' : ''}>
         {viewModalData ? (
-          <div className={docKind ? 'flex flex-col' : 'flex flex-col max-h-[75vh] overflow-y-auto pr-2'}>
+          <div className="flex flex-col">
             {(() => {
               // Show the opened card's own stage details first, then the rest in pipeline order.
               const sections = [

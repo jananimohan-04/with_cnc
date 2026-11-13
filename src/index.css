@@ -140,7 +140,28 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background-color: #f8fafc;
+}
+
+/* Every table heading in the app is the same dark blue bar with white titles (pages and popups alike).
+   Filter boxes / selects inside a heading keep their own light look, and so do drop-down lists that open from it. */
+:is(main, [role="dialog"]) thead,
+:is(main, [role="dialog"]) thead tr,
+:is(main, [role="dialog"]) thead th {
+  background-color: #111c33 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, .08) !important;
+}
+:is(main, [role="dialog"]) thead th {
+  color: #ffffff !important;
+}
+:is(main, [role="dialog"]) thead th :is(span, button, a, label, svg, div, p, b, strong, small, i)
+  :not(:is(.absolute, .fixed, [role="listbox"], [role="menu"], [role="dialog"], ul, [class*="bg-white"], [class*="bg-slate-50"], [class*="bg-slate-100"], [class*="bg-gray-50"]) *)
+  :not(.absolute):not([role="listbox"]):not([role="menu"]):not([class*="bg-white"]):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]):not([class*="bg-gray-50"]) {
+  color: inherit !important;
+}
+:is(main, [role="dialog"]) thead th :is(input, select, textarea) {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
 }
 
 /* A table inside a horizontally scrolling wrapper (overflow-x-auto) is its own scroll container, so the sticky heading above
