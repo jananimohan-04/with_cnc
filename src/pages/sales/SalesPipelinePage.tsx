@@ -2412,6 +2412,23 @@ export function SalesPipelinePage() {
   // Display size is app-wide now (App.tsx scales every page); the board only uses it to keep its columns full height.
   const [boardZoom] = useDisplaySize();
   const boardScale = boardZoom / 100;
+  // The board reaches down to the bottom of the window at every display size (no empty band under it).
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [boardHeight, setBoardHeight] = useState(550);
+  const fitBoard = useCallback(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;                  // on-screen pixels (already scaled)
+    const room = window.innerHeight - top - 28;                  // leave room for the scrollbar and a small margin
+    const h = Math.max(380, Math.round(room / boardScale));      // back to the board's own (unscaled) pixels
+    setBoardHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+  }, [boardScale]);
+  useLayoutEffect(() => { fitBoard(); });
+  useEffect(() => {
+    window.addEventListener('resize', fitBoard);
+    const t = window.setTimeout(fitBoard, 300);                  // after fonts / the top bar have settled
+    return () => { window.removeEventListener('resize', fitBoard); window.clearTimeout(t); };
+  }, [fitBoard]);
   // Per-column kanban search: term typed in each column's own search box.
   const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -9239,10 +9256,9 @@ export function SalesPipelinePage() {
         )}
       <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
         <div
+          ref={boardRef}
           className="flex gap-4 items-stretch min-w-max px-1"
-          style={{
-            height: `${boardZoom < 100 ? Math.round(550 / boardScale) : 550}px`,
-          }}
+          style={{ height: `${boardHeight}px` }}
         >
           {[
             MODULE_THEMES.Enquiry.kanban,
