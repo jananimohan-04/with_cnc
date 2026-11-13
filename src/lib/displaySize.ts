@@ -9,12 +9,12 @@ export const DISPLAY_MIN = 50;
 export const DISPLAY_MAX = 145;
 export const DISPLAY_STEP = 5;
 export type DisplayScope = 'page' | 'kanban';
-export const DISPLAY_DEFAULTS: Record<DisplayScope, number> = { page: 100, kanban: 100 };
+export const DISPLAY_DEFAULTS: Record<DisplayScope, number> = { page: 100, kanban: 125 };   // the Kanban board starts on Big
 /** What 100% means on each kind of screen: the Kanban board's 100% is the compact look (65% of normal size). */
 export const DISPLAY_BASE: Record<DisplayScope, number> = { page: 1, kanban: 0.65 };
 export const DISPLAY_PRESETS = [['Small', 80], ['Normal', 100], ['Big', 125]] as const;
 
-const key = (scope: DisplayScope) => (scope === 'kanban' ? 'cnc_display_size.kanban.v2' : `cnc_display_size.${scope}`);
+const key = (scope: DisplayScope) => (scope === 'kanban' ? 'cnc_display_size.kanban.v3' : `cnc_display_size.${scope}`);
 const EVENT = 'argus:display-size';
 
 const clamp = (n: number) => Math.min(DISPLAY_MAX, Math.max(DISPLAY_MIN, Math.round(n / DISPLAY_STEP) * DISPLAY_STEP));
