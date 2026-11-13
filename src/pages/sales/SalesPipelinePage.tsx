@@ -766,7 +766,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
 
   return (
     <div className="mb-6">
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_13rem] gap-x-4 gap-y-3">
         {editMode ? (
           <CustomerAutocomplete
             label="Company Name"
@@ -801,11 +801,11 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
             <input readOnly aria-label="Enquiry date" className={fieldClass(false)} value={receivedDate} />
           )}
         </FormField>
-        <div>
+        <div className="md:col-span-2">
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Products Required *</label>
           <div className="space-y-2">
             {items.map((item: any, idx: number) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto] gap-2 items-center rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <div key={idx} className={`grid grid-cols-1 gap-2 items-center rounded-lg border border-slate-200 bg-slate-50 p-2 ${editMode || ((item.files || []).length + fileEntries(item.filePaths).length) > 0 ? 'md:grid-cols-[minmax(0,1fr)_5.5rem_11rem_minmax(0,1fr)_auto]' : 'md:grid-cols-[minmax(0,1.4fr)_5.5rem_minmax(0,1fr)]'}`}>
                 <div>
                   {editMode ? (
                     <input className={inputClass} placeholder="Product Name" list="enquiry-edit-product-list" value={item.productName ?? item.partName ?? ''} onChange={(e) => {
@@ -828,7 +828,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                     <input readOnly aria-label="Quantity" className={fieldClass(false)} value={item.quantity === '' || item.quantity == null ? '' : String(item.quantity)} />
                   )}
                 </div>
-                <div>
+                {(editMode || ((item.files || []).length + fileEntries(item.filePaths).length) > 0) && <div>
                   {editMode && (
                     <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
                       <UploadCloud size={15} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s) selected` : 'Upload image / file / PDF'}
@@ -867,7 +867,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                       ))}
                     </div>
                   )}
-                </div>
+                </div>}
                 <div>
                   {editMode ? (
                     <input className={inputClass} placeholder="Remarks..." value={item.remarks || ''} onChange={(e) => {
@@ -900,7 +900,7 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
           </div>
         </div>
         {!editMode && extraFields.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
+          <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-4 mt-1">
             {extraFields.map(([label, v]) => (
               <div key={label}>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label}</span>
