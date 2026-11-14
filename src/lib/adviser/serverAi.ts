@@ -22,6 +22,22 @@ async function fetch(input: string, init?: RequestInit): Promise<Response> {
   }
   return window.fetch(input, init);
 }
+/** POST to one of our own server routes (works on the website and in the desktop app). Throws with the server's message. */
+export async function serverPost<T = Record<string, unknown>>(path: string, body: Record<string, unknown>): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE || (isTauri() ? WEB_ORIGIN : '')}${path}`, { method: 'POST', headers: await headers(), body: JSON.stringify(body) });
+  } catch { throw new Error('The server could not be reached. Check the internet connection.'); }
+  if (/text\/html/i.test(res.headers.get('content-type') || '')) throw new Error('This feature is not available on this server yet.');
+  const j = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok || (j as { ok?: boolean }).ok === false) {
+    const err = new Error(String((j as { error?: string }).error || `The request failed (${res.status}).`)) as Error & { needConnect?: boolean };
+    err.needConnect = !!(j as { needConnect?: boolean }).needConnect;
+    throw err;
+  }
+  return j as T;
+}
+
 const headers = async () => {
   const { data } = await supabase.auth.getSession();
   return { Authorization: `Bearer ${data.session?.access_token ?? ''}`, 'content-type': 'application/json' };

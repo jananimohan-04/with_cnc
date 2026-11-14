@@ -468,13 +468,13 @@ html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(1
 .col-menu-big .max-h-56 { max-height: 20rem; }
 
 /* Adviser split screen: while the Adviser is open the app gives up the right side, so the page and the chat sit side by side
-   (drag the divider on the chat's left edge). Small screens: the chat covers the screen instead. */
+   (the chat on the left; drag the divider on its right edge). Small screens: the chat covers the screen instead. */
 .adviser-split { width: var(--adviser-w, 460px); }
 @media (min-width: 1024px) {
-  html[data-adviser-split] .app-shell { padding-right: var(--adviser-w, 460px); }
+  html[data-adviser-split] .app-shell { padding-left: var(--adviser-w, 460px); }
   /* the floating AI buttons step aside so they do not sit under the chat */
-  html[data-adviser-split][data-dock-side="right"] [data-dock-handle] { display: none !important; }
-  html[data-adviser-split][data-dock-side="right"] .dock-help { right: calc(var(--adviser-w, 460px) + 12px) !important; }
+  html[data-adviser-split]:not([data-dock-side="right"]) [data-dock-handle] { display: none !important; }
+  html[data-adviser-split]:not([data-dock-side="right"]) .dock-help { left: calc(var(--adviser-w, 460px) + 12px) !important; }
 }
 @media (max-width: 1023px) {
   .adviser-split { width: 100%; }

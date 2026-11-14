@@ -110,6 +110,12 @@ async function build(can: (m: string) => boolean): Promise<string> {
     const bad = wo.reduce((a, w) => a + num(w.rejected), 0);
     out.push(`PRODUCTION (work orders): ${wo.length} in total, ${open.length} open. Pieces completed ${made}, rejected ${bad}${made + bad ? ` (${((bad / (made + bad)) * 100).toFixed(1)}% rejection)` : ''}. By status: ${countBy(wo, (w) => str(w.status))}.`);
   }
+  // customer contacts (for e-mails the Adviser drafts)
+  const cust = can('companies') || can('enquiries') ? await load('cnc_customers', 'name') : null;
+  if (cust) {
+    const withMail = cust.filter((c) => /@/.test(str(c.email)));
+    out.push(`CUSTOMER CONTACTS (name — contact person — e-mail), ${withMail.length} with e-mail: ${withMail.slice(0, 200).map((c) => `${str(c.name)} — ${str(first(c, ['contact', 'contact_person'])) || '-'} — ${str(c.email)}`).join('; ')}`);
+  }
   // month by month for the last 6 months (for graphs and trends)
   const last6 = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - i)); return { ym: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, name: d.toLocaleString('en-IN', { month: 'short', year: '2-digit' }) }; });
   const monthly = (label: string, rows: Row[] | null, dateKeys: string[], value?: (r: Row) => number) => rows
@@ -126,7 +132,7 @@ async function build(can: (m: string) => boolean): Promise<string> {
   ].filter(Boolean);
   if (trend.length) out.push(`MONTH BY MONTH (last 6 months, oldest first):\n${trend.join('\n')}`);
   if (report) out.push(`PROBLEMS AND HIGHLIGHTS FOUND:\n${reportToFacts(report)}`);
-  return out.join('\n').slice(0, 16000);
+  return out.join('\n').slice(0, 22000);
 }
 
 let cache: { at: number; key: string; text: Promise<string> } | null = null;

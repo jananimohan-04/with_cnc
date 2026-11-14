@@ -902,6 +902,92 @@ app.post('/api/digital-mail/remove', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
+/* ---- Adviser e-mail: each person links their OWN account (inside the Adviser) and sends the e-mails the AI drafts ----
+   The password is stored encrypted (same key as the Digital Store mail) and never goes back to a browser. Nothing is sent
+   unless the person presses Send on the draft. */
+async function adviserMailUser(req, res) {
+  if (!SB.enabled) { res.status(503).json({ ok: false, error: 'The server is not connected to the database.' }); return null; }
+  const h = String(req.headers.authorization || '');
+  const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
+  if (!user || !user.id) { res.status(401).json({ ok: false, error: 'Please sign in again.' }); return null; }
+  const { data: rows } = await SB.admin.from('company_users').select('status, full_name').eq('email', String(user.email || '').toLowerCase()).limit(5);
+  const bi = (rows || []).find((r) => r.status === 'Active') || (rows || [])[0];
+  if (!bi || bi.status !== 'Active') { res.status(403).json({ ok: false, error: 'Your account is not active.' }); return null; }
+  return { user, name: bi.full_name || '' };
+}
+const adviserMailMissing = (e) => /adviser_user_mail/.test(String((e && e.message) || e || '')) ? 'Apply database migration 20261114000000_adviser_user_mail.sql first.' : null;
+async function adviserMailCfg(userId) {
+  const { data, error } = await SB.admin.from('adviser_user_mail').select('*').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  if (!data || !data.smtp_pass_enc) return null;
+  try { return { host: data.smtp_host, port: Number(data.smtp_port) || 587, user: data.smtp_user, pass: mailDec(data.smtp_pass_enc), fromName: data.from_name || '', provider: data.provider || '' }; } catch { return null; }
+}
+app.post('/api/adviser-mail/status', async (req, res) => {
+  try {
+    const a = await adviserMailUser(req, res); if (!a) return;
+    const { data, error } = await SB.admin.from('adviser_user_mail').select('provider, smtp_host, smtp_port, smtp_user, from_name, verified_at, last_error').eq('user_id', a.user.id).maybeSingle();
+    if (error) return res.status(500).json({ ok: false, error: adviserMailMissing(error) || error.message });
+    res.json({ ok: true, connected: !!data, mail: data || null, suggestedName: a.name });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+app.post('/api/adviser-mail/save', async (req, res) => {
+  try {
+    const a = await adviserMailUser(req, res); if (!a) return;
+    const b = req.body || {};
+    const host = String(b.host || '').trim(), user = String(b.user || '').trim(), port = Number(b.port) || 587;
+    let pass = String(b.pass || '').replace(/\s+/g, '');   // app passwords are often shown with spaces
+    if (!host || /\s/.test(host)) return res.status(400).json({ ok: false, error: 'Enter the mail server name (for example smtp.gmail.com).' });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user)) return res.status(400).json({ ok: false, error: 'Enter the e-mail address you want to send from.' });
+    if (!pass) { const old = await adviserMailCfg(a.user.id).catch(() => null); if (old && old.user === user) pass = old.pass; }
+    if (!pass) return res.status(400).json({ ok: false, error: 'Enter the app password.' });
+    try { await mailTransport({ host, port, user, pass }).verify(); }   // prove the sign-in works before saving it
+    catch (e) { return res.status(400).json({ ok: false, error: mailProblem(e) }); }
+    const row = { user_id: a.user.id, email_owner: String(a.user.email || '').toLowerCase(), provider: String(b.provider || '').slice(0, 30) || null, smtp_host: host, smtp_port: port, smtp_user: user,
+      smtp_pass_enc: mailEnc(pass), from_name: String(b.from_name || a.name || '').trim().slice(0, 80) || null, verified_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() };
+    const { error } = await SB.admin.from('adviser_user_mail').upsert(row, { onConflict: 'user_id' });
+    if (error) return res.status(500).json({ ok: false, error: adviserMailMissing(error) || error.message });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: mailProblem(e) }); }
+});
+app.post('/api/adviser-mail/remove', async (req, res) => {
+  try {
+    const a = await adviserMailUser(req, res); if (!a) return;
+    await SB.admin.from('adviser_user_mail').delete().eq('user_id', a.user.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+const adviserMailHits = new Map();   // person -> send times (a small limit against mistakes / runaway use)
+app.post('/api/adviser-mail/send', async (req, res) => {
+  try {
+    const a = await adviserMailUser(req, res); if (!a) return;
+    const b = req.body || {};
+    const list = (v) => String(v || '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+    const to = list(b.to), cc = list(b.cc);
+    const bad = [...to, ...cc].filter((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    if (!to.length) return res.status(400).json({ ok: false, error: 'Enter who the e-mail goes to.' });
+    if (bad.length) return res.status(400).json({ ok: false, error: 'These addresses do not look right: ' + bad.join(', ') });
+    if (to.length + cc.length > 20) return res.status(400).json({ ok: false, error: 'At most 20 people per e-mail.' });
+    const subject = String(b.subject || '').trim().slice(0, 200);
+    const body = String(b.body || '').trim().slice(0, 20000);
+    if (!subject || !body) return res.status(400).json({ ok: false, error: 'The e-mail needs a subject and a message.' });
+    const now = Date.now();
+    const hits = (adviserMailHits.get(a.user.id) || []).filter((t) => now - t < 3600000);
+    if (hits.length >= 60) return res.status(429).json({ ok: false, error: 'You have sent many e-mails in the last hour. Please wait a little.' });
+    let cfg;
+    try { cfg = await adviserMailCfg(a.user.id); } catch (e) { return res.status(500).json({ ok: false, error: adviserMailMissing(e) || String(e.message || e) }); }
+    if (!cfg) return res.status(400).json({ ok: false, error: 'Connect your e-mail first.', needConnect: true });
+    const html = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.55;color:#1e293b">' + escHtml(body).replace(/\n/g, '<br>') + '</div>';
+    try {
+      const info = await mailTransport(cfg).sendMail({ from: cfg.fromName ? `"${cfg.fromName.replace(/"/g, '')}" <${cfg.user}>` : cfg.user, to: to.join(', '), cc: cc.length ? cc.join(', ') : undefined, subject, text: body, html });
+      hits.push(now); adviserMailHits.set(a.user.id, hits);
+      res.json({ ok: true, to, cc, messageId: info && info.messageId });
+    } catch (e) {
+      await SB.admin.from('adviser_user_mail').update({ last_error: mailProblem(e) }).eq('user_id', a.user.id);
+      res.status(502).json({ ok: false, error: mailProblem(e) });
+    }
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
+});
+
 const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const inr = (n) => '\u20B9' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 /* ---- each company links its OWN Razorpay account; payment links are created with it ---- */

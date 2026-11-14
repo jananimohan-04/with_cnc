@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiAccess } from '@/lib/aiAccess';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, Columns2, Download, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { BarChart3, Bot, Columns2, Download, Mail, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X, History, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AdviserReportPanel } from '@/components/AdviserReport';
 import { serverChat, serverSpeech, ServerAiError } from '@/lib/adviser/serverAi';
 import { businessData } from '@/lib/adviser/dataContext';
 import { ChartView, parseBlocks, saveReportPdf, speakablePart } from '@/lib/adviser/charts';
+import { EmailCard, MailConnect, useAdviserMail } from '@/lib/adviser/mail';
+import { deleteChat, groupByDay, loadChats, saveChat, type SavedChat } from '@/lib/adviser/chatHistory';
 import { boostAudio } from '@/lib/voiceBoost';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
@@ -607,6 +609,9 @@ Use it for every question about reports, figures, customers, enquiries, quotatio
 GRAPHS AND PDF REPORTS: when the person asks for a graph, chart, diagram, trend or a PDF / printable / downloadable report, first write the short explanation (the findings in plain words), then at the VERY END add one block per chart, each on its own line, exactly in this form (valid JSON, plain numbers without commas or symbols):
 [[CHART {"title":"Billing per month","type":"bar","labels":["Jun 26","Jul 26"],"series":[{"name":"Billed","values":[120000,98000]}],"unit":"₹"}]]
 type is "bar" (compare), "line" (trend over time) or "pie" (share of a whole, one series only). Use only figures from COMPANY DATA (month by month, by customer, by status...). Give 1 to 4 useful charts. When they ask for a PDF or a report to download / print / share, also add on its own last line: [[PDF {"title":"<report title>"}]]. Never put these blocks in the middle of the text and never read them out.
+E-MAILS: when the person asks you to write, draft or send an e-mail (payment reminder, quotation follow-up, delivery update, thank-you, anything), write one short line saying the draft is below for them to check, then at the VERY END add exactly one block per e-mail, on its own line (valid JSON; use \n for new lines in the body):
+[[EMAIL {"to":"customer@example.com","cc":"","subject":"...","body":"Dear ...,\n\n...\n\nRegards,\n<sender name>\n<company>"}]]
+Write a polite, clear, professional e-mail in the language they ask for (English by default), with the real figures, invoice / order numbers and dates from COMPANY DATA. Take the receiver's address from CUSTOMER CONTACTS; if it is not there, leave "to" empty and say they must type it. Sign it with the SENDER's name and company. Never say the e-mail was sent: the person checks it and presses Send.
 ${data}` : ''}`;
 }
 
@@ -681,14 +686,24 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   const [natural, setNatural] = useState(neuralVoiceOn);
   const [tamilPick, setTamilPick] = useState<TamilEngine>(tamilEngine);
   useEffect(() => { store.set(NEURAL_KEY, natural ? '1' : '0'); if (natural) neuralDownUntil = 0; }, [natural]);
-  const { canView, company } = useAuth();
+  const { canView, company, profile } = useAuth();
+  const senderRef = useRef(''); senderRef.current = `SENDER (the person using this chat): ${profile?.full_name ?? ''}${profile?.email ? ` <${profile.email}>` : ''}, company ${company?.company_name ?? ''}`;
+  const [mailOpen, setMailOpen] = useState(false);
+  // chat history (kept per person and company)
+  const owner = `${profile?.id ?? profile?.email ?? ''}.${company?.id ?? 'all'}`;
+  const ownerRef = useRef(owner); ownerRef.current = owner;
+  const chatIdRef = useRef<string | null>(null);
+  const [chatTitle, setChatTitle] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const [chatList, setChatList] = useState<SavedChat[]>([]);
+  const mail = useAdviserMail();
   const canRef = useRef(canView); canRef.current = canView;
   const companyRef = useRef(company?.id ?? ''); companyRef.current = company?.id ?? '';
   /** The company's live figures for the chat (at most 8 s wait; empty if they cannot be read). */
   const liveData = useCallback(() => Promise.race([
     businessData((m) => canRef.current(m), companyRef.current),
     new Promise<string>((r) => setTimeout(() => r(''), 8000)),
-  ]), []);
+  ]).then((d) => `${senderRef.current}\n${d}`), []);
   const navigate = useNavigate();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -733,7 +748,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   // ------------------------------------------------ the answer: stream it, show it, and speak each sentence as it completes
   const ask = useCallback(async (question: string) => {
     const q = question.trim();
-    const wantsChart = /graph|chart|plot|diagram|pie|bar|trend|pdf|report|download|print|வரைபட|அறிக்கை|ரிப்போர்ட்|கிராப்/i.test(q);
+    const wantsChart = /graph|chart|plot|diagram|pie|bar|trend|pdf|report|download|print|mail|e-mail|letter|மெயில்|கடிதம்|வரைபட|அறிக்கை|ரிப்போர்ட்|கிராப்/i.test(q);
     if (!q || busyRef.current) return;
     busyRef.current = true;
     const aid = ++chatSeq;
@@ -985,12 +1000,46 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
     stopSpeaking();
     const first = !welcomedOnce();
     markWelcomed();
+    const last = loadChats(ownerRef.current)[0];
+    if (last && !first) {   // reopening: carry on with the last conversation
+      openChatRef.current(last);
+      if (handsFreeRef.current && SR) listenRef.current(); else setPhase('ready');
+      return;
+    }
+    chatIdRef.current = null; setChatTitle('');
     const greet = `${first ? `${WELCOME[langRef.current]} ` : ''}${GREETING_CHAT[langRef.current]}`.trim();
     setMsgs([{ id: ++chatSeq, role: 'assistant', text: greet }]);
     const afterGreeting = () => { if (!activeRef.current) return; if (handsFreeRef.current && SR) listenRef.current(); else setPhase('ready'); };
     if (speakRef.current) { setPhase('greeting'); say(greet, afterGreeting, setNote, 'adviser'); } else afterGreeting();
   };
   beginRef.current = begin;
+  /** Opens a saved chat: its messages come back and the AI remembers the last few turns. */
+  const openChat = (c: SavedChat) => {
+    stopSpeaking('adviser');
+    chatIdRef.current = c.id;
+    setChatTitle(c.title);
+    setMsgs(c.msgs.map((m) => ({ id: ++chatSeq, role: m.role, text: m.text, error: m.error })));
+    history.current = c.msgs.filter((m) => !m.error).slice(-8).map((m) => ({ role: m.role, text: m.text }));
+    setShowHistory(false);
+  };
+  const openChatRef = useRef(openChat); openChatRef.current = openChat;
+  /** A fresh conversation (the old one stays in History). */
+  const newChat = () => {
+    if (busyRef.current) return;
+    stopSpeaking('adviser');
+    chatIdRef.current = null;
+    setChatTitle('');
+    history.current = [];
+    setMsgs([{ id: ++chatSeq, role: 'assistant', text: GREETING_CHAT[langRef.current] }]);
+    setShowHistory(false);
+  };
+  // every finished answer is saved into the open chat
+  useEffect(() => {
+    if (!msgs.length || msgs.some((m) => m.pending)) return;
+    const id = saveChat(ownerRef.current, chatIdRef.current, msgs.map((m) => ({ role: m.role, text: m.text, error: m.error })));
+    if (id && id !== chatIdRef.current) { chatIdRef.current = id; setChatTitle(loadChats(ownerRef.current).find((c) => c.id === id)?.title ?? ''); }
+  }, [msgs]);
+  useEffect(() => { if (showHistory) setChatList(loadChats(owner)); }, [showHistory, owner]);
   useEffect(() => () => { activeRef.current = false; try { recRef.current?.abort?.(); } catch { /* ignore */ } stopSpeaking(); }, []);
 
   const send = () => {
@@ -1131,15 +1180,15 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
         <div role="status" className="max-w-[20rem] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500 shadow-lg backdrop-blur">{note}</div>
       )}
 
-      {/* Adviser chat: split screen (the page on the left, this chat docked on the right) */}
+      {/* Adviser chat: split screen (this chat docked on the left, the page on the right) */}
       {active && createPortal(
         <div role="dialog" aria-label="Adviser" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
-          className="adviser-split fixed inset-y-0 right-0 z-[70] flex flex-col overflow-hidden border-l-2 border-emerald-500 bg-white shadow-2xl">
+          className="adviser-split fixed inset-y-0 left-0 z-[70] flex flex-col overflow-hidden border-r-2 border-emerald-500 bg-white shadow-2xl">
           {/* divider: drag to give the page or the chat more room (double-click = default) */}
           <div role="separator" aria-orientation="vertical" aria-label="Resize the Adviser" title="Drag to resize · double-click to reset"
-            className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1 cursor-col-resize touch-none hover:bg-emerald-400/40 max-lg:hidden"
+            className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1 cursor-col-resize touch-none hover:bg-emerald-400/40 max-lg:hidden"
             onPointerDown={(e) => { splitDrag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ } }}
-            onPointerMove={(e) => { if (!splitDrag.current) return; setSplitW(Math.min(splitMax(), Math.max(320, Math.round(window.innerWidth - e.clientX)))); }}
+            onPointerMove={(e) => { if (!splitDrag.current) return; setSplitW(Math.min(splitMax(), Math.max(320, Math.round(e.clientX)))); }}
             onPointerUp={() => { if (!splitDrag.current) return; splitDrag.current = false; store.set(SPLIT_KEY, String(splitW)); }}
             onDoubleClick={() => { const d = Math.round(Math.min(560, Math.max(380, window.innerWidth * 0.34))); setSplitW(d); store.set(SPLIT_KEY, String(d)); }} />
           <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2.5 text-white">
@@ -1148,10 +1197,16 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
               <p className="text-sm font-bold leading-tight">Adviser</p>
               <p className="truncate text-[10px] text-emerald-50">Ask anything · Argus BI, CNC machining and more</p>
             </div>
+            <button type="button" aria-label="E-mail" title={mail.state?.connected ? `E-mail connected: ${mail.state.mail?.smtp_user ?? ''}` : 'Connect your e-mail so the Adviser can send e-mails for you'}
+              onClick={() => setMailOpen((v) => !v)} className={`relative rounded p-1.5 hover:bg-white/15 ${mailOpen ? 'bg-white/20' : ''}`}>
+              <Mail size={16} />
+              <span className={`absolute right-0.5 top-0.5 h-2 w-2 rounded-full border border-emerald-700 ${mail.state?.connected ? 'bg-lime-300' : 'bg-amber-300'}`} />
+            </button>
             <button type="button" aria-label={speakOn ? 'Mute answers' : 'Read answers aloud'} title={speakOn ? 'Answers are read aloud (click to mute)' : 'Answers are silent (click to read aloud)'}
               onClick={() => setSpeakOn((v) => !v)} className="rounded p-1.5 hover:bg-white/15">{speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}</button>
             <button type="button" aria-label="Close the Adviser" title="Close" onClick={() => endSession(false)} className="rounded p-1.5 hover:bg-white/15"><X size={17} /></button>
           </div>
+          {mailOpen && <MailConnect onClose={() => setMailOpen(false)} />}
 
           <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
             <span className="text-[10px] font-semibold uppercase text-slate-400">Language</span>
@@ -1212,6 +1267,38 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
             </div>
           )}
           <>
+          <div className="flex items-center gap-1.5 border-b border-slate-100 bg-white px-2.5 py-1.5">
+            <button type="button" onClick={() => setShowHistory((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold ${showHistory ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-400 hover:text-emerald-700'}`}>
+              <History size={12} />History
+            </button>
+            <button type="button" onClick={newChat} disabled={phase === 'thinking'}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50">
+              <Plus size={12} />New chat
+            </button>
+            <span className="min-w-0 flex-1 truncate text-right text-[11px] text-slate-400" title={chatTitle}>{chatTitle || 'New chat'}</span>
+          </div>
+          {showHistory ? (
+          <div className="flex-1 overflow-y-auto px-2.5 py-2">
+            {chatList.length === 0 && <p className="px-1 py-6 text-center text-xs text-slate-400">No saved chats yet. Ask something and it is kept here.</p>}
+            {groupByDay(chatList).map((g) => (
+              <div key={g.day} className="mb-2">
+                <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{g.day}</p>
+                {g.chats.map((c) => (
+                  <div key={c.id} className={`group mb-1 flex items-center gap-1 rounded-lg border px-2 py-1.5 ${c.id === chatIdRef.current ? 'border-emerald-300 bg-emerald-50' : 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/40'}`}>
+                    <button type="button" onClick={() => openChat(c)} className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-xs font-semibold text-slate-800">{c.title}</span>
+                      <span className="block text-[10px] text-slate-400">{new Date(c.updatedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} · {c.msgs.filter((m) => m.role === 'user').length} questions</span>
+                    </button>
+                    <button type="button" title="Delete this chat" aria-label={`Delete chat ${c.title}`}
+                      onClick={() => { deleteChat(owner, c.id); if (c.id === chatIdRef.current) newChat(); setChatList(loadChats(owner)); setShowHistory(true); }}
+                      className="rounded p-1 text-slate-300 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"><Trash2 size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          ) : (
           <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" aria-live="polite">
             {msgs.map((m) => (
               <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
@@ -1224,6 +1311,8 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
                         {b.visible}
                         {m.pending && m.text.includes('[[') && <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-400"><Loader2 size={12} className="animate-spin" />Drawing the graphs…</span>}
                         {b.charts.map((c, i) => <ChartView key={i} chart={c} />)}
+                        {m.pending && /\[\[\s*EMAIL/.test(m.text) && <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-400"><Loader2 size={12} className="animate-spin" />Writing the e-mail…</span>}
+                        {!m.pending && b.emails.map((e, i) => <EmailCard key={i} draft={e} onConnect={() => setMailOpen(true)} />)}
                         {!m.pending && (b.charts.length > 0 || b.pdf) && (
                           <button type="button" onClick={() => void saveReportPdf(b.pdf?.title || b.charts[0]?.title || 'Adviser report', b.visible, b.charts, company?.company_name ?? '')}
                             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">
@@ -1263,6 +1352,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
             )}
             <div ref={endRef} />
           </div>
+          )}
 
           {(status || note) && (
             <div className="border-t border-slate-100 bg-white px-3 py-1 text-[11px]">

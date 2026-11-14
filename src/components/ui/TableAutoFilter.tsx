@@ -162,7 +162,16 @@ function setup(t: HTMLTableElement) {
   if (first && first.querySelectorAll('input:not([type=checkbox]):not([type=radio]), textarea').length >= 2) return;
   for (const th of Array.from(head.cells) as HTMLTableCellElement[]) {
     if (th.tagName !== 'TH') continue;
-    if (th.querySelector('[data-af-btn], [data-colfilter], button[title^="Filter & sort"], input[type=checkbox]')) continue;
+    // the page added its own filter to this column after our funnel went in (it loads with the data): keep only theirs
+    const own = th.querySelector('[data-colfilter], button[title^="Filter & sort"]:not([data-af-btn])');
+    const mine = th.querySelector('[data-af-btn]');
+    if (own && mine) {
+      mine.remove();
+      const s = state.get(t);
+      if (s?.filters.delete(columnOf(th))) apply(t);
+      continue;
+    }
+    if (mine || own || th.querySelector('input[type=checkbox]')) continue;
     const label = labelOf(th);
     if (SKIP_LABEL.test(label) || label.length > 60) continue;
     const col = columnOf(th);
