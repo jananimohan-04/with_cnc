@@ -178,16 +178,6 @@ function MainLayout() {
   // applies without forcing the affected user to log in again.
   useEffect(() => { void refreshPermissions(); }, [location.pathname, refreshPermissions]);
 
-  const [adviserDocked, setAdviserDocked] = useState(false);
-  useEffect(() => {
-    const onDock = (e: Event) => {
-      const ce = e as CustomEvent<{ open: boolean }>;
-      setAdviserDocked(Boolean(ce.detail?.open));
-    };
-    window.addEventListener('argus:adviser-dock', onDock);
-    return () => window.removeEventListener('argus:adviser-dock', onDock);
-  }, []);
-
   const handleLogout = async () => {
     await signOut();
     navigate('/', { replace: true });
@@ -195,7 +185,7 @@ function MainLayout() {
 
   return (
     <HeaderKpiProvider>
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="app-shell flex h-screen overflow-hidden bg-slate-50">
       {/* Left menu position: the classic sidebar (default). */}
       {position === 'left' && (
         <Sidebar
@@ -208,12 +198,7 @@ function MainLayout() {
           side="left"
         />
       )}
-      <div
-        className="flex-1 flex flex-col min-w-0 overflow-hidden transition-[margin-right] duration-200"
-        style={{
-          marginRight: adviserDocked && !narrow ? 'min(62vw, 1200px)' : undefined,
-        }}
-      >
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top menu position: logo + category bar above the page header. */}
         {position === 'top' && (
           <TopNav

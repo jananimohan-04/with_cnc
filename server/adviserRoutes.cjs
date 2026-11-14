@@ -52,7 +52,7 @@ module.exports = function mountAdviser(app, SB) {
     if (!(await who(req, res))) return;
     if (!key()) return res.status(503).json({ error: 'The AI is not set up yet. Please ask your administrator to switch it on.' });
     const b = req.body || {};
-    const system = String(b.system || '').slice(0, 14000);
+    const system = String(b.system || '').slice(0, 40000);   // room for the company's live figures
     const msgs = (Array.isArray(b.messages) ? b.messages : []).slice(-14).map((m) => ({
       role: m && m.role === 'assistant' ? 'assistant' : 'user',
       content: String((m && (m.text ?? m.content)) || '').slice(0, 5000),

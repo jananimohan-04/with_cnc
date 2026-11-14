@@ -86,7 +86,7 @@ export function Topbar({
 
       {/* Opt-in page title — same line as date/profile (page hides its own header) */}
       {header && (
-        <div className="flex items-center gap-2 min-w-0 shrink">
+        <div className="tb-title flex items-center gap-2 min-w-0 shrink">
           <h1 className="text-sm font-bold text-white whitespace-nowrap shrink-0">{header.title}</h1>
           {header.subtitle && <span className="text-[11px] text-slate-300 truncate hidden md:inline">{header.subtitle}</span>}
           {(tabs.length > 0 || headerCenter) && <span className="h-5 w-px bg-white/20 mx-1 hidden lg:inline shrink-0" aria-hidden="true" />}
@@ -95,7 +95,7 @@ export function Topbar({
 
       {/* Opt-in center content (e.g. Process Master KPI chips) */}
       {headerCenter && (
-        <div className="hidden lg:flex items-center gap-2 min-w-0">
+        <div className="tb-center hidden lg:flex items-center gap-2 min-w-0">
           {headerCenter}
         </div>
       )}
@@ -120,14 +120,14 @@ export function Topbar({
       {kpis.length > 0 && (() => {
         const hasAnyActive = kpis.some(k => k.active);
         return (
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0 py-1">
+          <div className="kpi-strip flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0 py-1">
             {kpis.map(kpi => (
               <button
                 key={kpi.key}
                 type="button"
                 onClick={kpi.onClick}
                 title={`${kpi.label}: ${kpi.count}`}
-                className={`${kpi.tile} flex-1 min-w-0 max-w-[130px] rounded-md px-1 sm:px-1.5 md:px-2 py-1 shadow-sm border cursor-pointer flex items-center justify-between gap-1 transition-all duration-200 ${
+                className={`${kpi.tile} kpi-tile flex-1 min-w-0 max-w-[130px] rounded-md px-1 sm:px-1.5 md:px-2 py-1 shadow-sm border cursor-pointer flex items-center justify-between gap-1 transition-all duration-200 ${
                   kpi.active
                     ? (kpi.activeClass ?? '!opacity-100 ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900 border-2 border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.7)] brightness-110 font-black scale-[1.03] z-10')
                     : hasAnyActive
@@ -136,13 +136,13 @@ export function Topbar({
                 }`}
               >
                 <span className="flex items-baseline gap-1 min-w-0 flex-1">
-                  <span className="text-[7.5px] sm:text-[8px] md:text-[9px] font-bold text-white uppercase tracking-tight whitespace-nowrap truncate flex items-center gap-0.5 min-w-0">
+                  <span className="kpi-label text-[7.5px] sm:text-[8px] md:text-[9px] font-bold text-white uppercase tracking-tight whitespace-nowrap truncate flex items-center gap-0.5 min-w-0">
                     {kpi.active && <span className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${kpi.dotClass ?? 'bg-amber-300'} animate-ping inline-block shrink-0`} />}
                     <span className="truncate">{kpi.label}</span>
                   </span>
                   <span className="text-xs sm:text-sm font-black leading-tight text-white tabular-nums shrink-0">{kpi.count}</span>
                 </span>
-                <span className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center ${kpi.icon} ${kpi.active ? 'ring-1 sm:ring-2 ring-white/60 shadow-[0_0_8px_rgba(255,255,255,0.6)]' : ''}`}>
+                <span className={`kpi-icon w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center ${kpi.icon} ${kpi.active ? 'ring-1 sm:ring-2 ring-white/60 shadow-[0_0_8px_rgba(255,255,255,0.6)]' : ''}`}>
                   <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={kpi.iconPath} /></svg>
                 </span>
               </button>
@@ -155,7 +155,7 @@ export function Topbar({
       <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Opt-in tab actions (e.g. + Create Production Order) */}
         {tabActions && (
-          <div className="hidden lg:flex items-center gap-2 min-w-0 max-w-full overflow-x-auto scrollbar-thin shrink-0">
+          <div className="tb-actions hidden lg:flex items-center gap-2 min-w-0 max-w-full overflow-x-auto scrollbar-thin shrink-0">
             {tabActions}
           </div>
         )}
@@ -191,13 +191,13 @@ export function Topbar({
               <CalendarDays size={12} />
               {!globalAllTime && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 ring-1 ring-white" />}
             </div>
-            <p className="text-[9px] font-extrabold text-slate-700 whitespace-nowrap tabular-nums leading-none">{datePart} <span className="text-brand-600 font-bold">{timePart}</span></p>
+            <p className="tb-date text-[9px] font-extrabold text-slate-700 whitespace-nowrap tabular-nums leading-none">{datePart} <span className="text-brand-600 font-bold">{timePart}</span></p>
             <span className="h-6 w-px shrink-0 bg-slate-200 mx-0.5" aria-hidden="true" />
           </div>
           <div className="w-6 h-6 rounded bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
             {initials}
           </div>
-          <div className="hidden lg:flex items-center gap-1.5 text-left leading-none min-w-0">
+          <div className="tb-name hidden lg:flex items-center gap-1.5 text-left leading-none min-w-0">
             <p className="text-[9px] font-bold text-slate-700 max-w-[120px] truncate">{displayName}</p>
             <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider whitespace-nowrap">· {ROLE_LABELS[profile?.role ?? ''] ?? ''}</span>
           </div>

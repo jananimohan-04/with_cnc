@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiAccess } from '@/lib/aiAccess';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, CheckCircle2, Columns2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, PanelRight, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { BarChart3, Bot, Columns2, Download, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AdviserReportPanel } from '@/components/AdviserReport';
 import { serverChat, serverSpeech, ServerAiError } from '@/lib/adviser/serverAi';
+import { businessData } from '@/lib/adviser/dataContext';
+import { ChartView, parseBlocks, saveReportPdf, speakablePart } from '@/lib/adviser/charts';
 import { boostAudio } from '@/lib/voiceBoost';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
@@ -21,7 +23,6 @@ import { rankNotes } from '../../supabase/functions/help-assistant/knowledge';
 
 type Lang = 'ta' | 'tanglish' | 'en';
 type Phase = 'idle' | 'greeting' | 'ready' | 'listening' | 'thinking' | 'speaking';
-export type AdviserViewMode = 'both' | 'report' | 'chat';
 
 const LANGS: { code: Lang; label: string }[] = [{ code: 'ta', label: 'தமிழ்' }, { code: 'tanglish', label: 'Tanglish' }, { code: 'en', label: 'English' }];
 const store = {
@@ -579,6 +580,8 @@ const NO_NET_CNC: Record<Lang, string> = {
   en: 'I need the internet connection to answer this question. Please check it and ask again.',
 };
 const STARTERS: { en: string; ta: string }[] = [
+  { en: 'How much payment is pending, and from which customers?', ta: 'எவ்வளவு பணம் நிலுவையில் உள்ளது, எந்த வாடிக்கையாளர்களிடம்?' },
+  { en: 'Compare this month\'s sales with last month.', ta: 'இந்த மாத விற்பனையை கடந்த மாதத்துடன் ஒப்பிடுக.' },
   { en: 'How do I use this page?', ta: 'இந்தப் பக்கத்தை எப்படி பயன்படுத்துவது?' },
   { en: 'What cutting speed should I use to mill aluminium?', ta: 'அலுமினியத்தை milling செய்ய என்ன cutting speed வைக்க வேண்டும்?' },
   { en: 'What is the difference between G-code and M-code?', ta: 'G-code மற்றும் M-code வேறுபாடு என்ன?' },
@@ -587,7 +590,7 @@ const STARTERS: { en: string; ta: string }[] = [
 ];
 
 /** The same rules as the server's prompt, used only when the browser's own key answers. */
-function adviserPrompt(lang: Lang, page: string, title: string, notes: string): string {
+function adviserPrompt(lang: Lang, page: string, title: string, notes: string, data = ''): string {
   const langRule = lang === 'ta' ? 'Reply in Tamil script; keep technical terms and screen / button names in English.' : lang === 'tanglish' ? 'Reply in Tanglish (Tamil in English letters).' : 'Reply in simple English.';
   return `You are the Adviser of Argus Business Intelligence, used by a CNC machining company. Answer ANY question on ANY topic the person asks (general knowledge, maths, science, coding, writing, business, health basics, language, ideas, anything) with a genuinely helpful answer. You are also an expert who (1) teaches staff how to use Argus BI and (2) answers CNC machining and manufacturing questions like an experienced production engineer: milling, turning, drilling, grinding, EDM, sheet metal, G-code / M-code, CAD/CAM, tooling, speeds and feeds, materials, workholding, tolerances / GD&T, inspection and quality, machine maintenance and troubleshooting, safety, production planning, OEE and machining cost estimating.
 HOW PEOPLE ASK: staff talk in a mix of Tamil and English, often by voice. The speech-to-text writes English words in Tamil letters and makes mistakes, e.g. என்குயரி = enquiry, கொட்டேஷன் = quotation, இன்வாய்ஸ் = invoice, ஆர்டர் = order, சலான் = challan, ஸ்டாக் = stock, ஷெட்யூல் = schedule. A stray word at the end like ஓர் / ஓவர் / over is just the person saying "over" to finish; ignore it. Always work out what they mean by sound before deciding anything; if it is still unclear, ask one short question back instead of refusing.
@@ -597,7 +600,14 @@ For how-to steps in Argus BI use the NOTES; if they do not cover the exact steps
 Talk like a friendly colleague in a real conversation: short natural sentences, plain words, no lists or markdown symbols, because it is read aloud. Keep it to about 8 short lines. ${langRule}
 PAGE: ${page}${title ? ` (${title})` : ''}
 NOTES (about Argus BI)
-${notes}`;
+${notes}${data ? `
+
+COMPANY DATA (live from this company's records in Argus BI, read just now)
+Use it for every question about reports, figures, customers, enquiries, quotations, orders, deliveries, invoices, payments, stock or production: answer with the exact numbers, amounts and names from it, and compare (this month vs last month, top customers) when useful. If the answer is not in it, say what you can see and which Argus BI screen or report shows the rest. Never invent figures.
+GRAPHS AND PDF REPORTS: when the person asks for a graph, chart, diagram, trend or a PDF / printable / downloadable report, first write the short explanation (the findings in plain words), then at the VERY END add one block per chart, each on its own line, exactly in this form (valid JSON, plain numbers without commas or symbols):
+[[CHART {"title":"Billing per month","type":"bar","labels":["Jun 26","Jul 26"],"series":[{"name":"Billed","values":[120000,98000]}],"unit":"₹"}]]
+type is "bar" (compare), "line" (trend over time) or "pie" (share of a whole, one series only). Use only figures from COMPANY DATA (month by month, by customer, by status...). Give 1 to 4 useful charts. When they ask for a PDF or a report to download / print / share, also add on its own last line: [[PDF {"title":"<report title>"}]]. Never put these blocks in the middle of the text and never read them out.
+${data}` : ''}`;
 }
 
 /** Streams the browser key's answer as plain text pieces. */
@@ -657,18 +667,28 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   const accRef = useRef('');          // what was said so far in this turn (kept while the microphone restarts)
   const overHit = useRef(false);      // the person said "over"
   const [tips, setTips] = useState(false);
-  // The Adviser opens with both tabs side-by-side (Report & ideas + Chat), or single tab.
-  const [view, setView] = useState<AdviserViewMode>(() => {
-    const v = store.get('help.adviser.view', 'both') as AdviserViewMode;
-    return v === 'both' || v === 'report' || v === 'chat' ? v : 'both';
+  // The Adviser opens on its automatic report; "Ask" is the chat for questions.
+  const [view, setView] = useState<'both' | 'report' | 'chat'>('both');
+  // The Adviser panel can be dragged bigger or smaller by its top corner.
+  const advSize = useResizable('adviser-panel-size', { w: 432, h: 576 }, { w: 320, h: 360 });
+  const SPLIT_KEY = 'adviser-split-w';
+  const splitMax = () => Math.max(360, Math.round(window.innerWidth * 0.7));
+  const [splitW, setSplitW] = useState<number>(() => {
+    const n = Number(store.get(SPLIT_KEY, ''));
+    return Number.isFinite(n) && n >= 320 ? n : Math.round(Math.min(560, Math.max(380, window.innerWidth * 0.34)));
   });
-  const [dockSidePanel, setDockSidePanel] = useState<boolean>(() => store.get('help.adviser.docked', '0') === '1');
-  // The Adviser panel can be dragged bigger or smaller by its top corner. Default is wider for side-by-side split.
-  const advSize = useResizable('adviser-panel-size-v2', { w: 920, h: 620 }, { w: 360, h: 360 });
+  const splitDrag = useRef(false);
   const [natural, setNatural] = useState(neuralVoiceOn);
   const [tamilPick, setTamilPick] = useState<TamilEngine>(tamilEngine);
   useEffect(() => { store.set(NEURAL_KEY, natural ? '1' : '0'); if (natural) neuralDownUntil = 0; }, [natural]);
-  const { canView } = useAuth();
+  const { canView, company } = useAuth();
+  const canRef = useRef(canView); canRef.current = canView;
+  const companyRef = useRef(company?.id ?? ''); companyRef.current = company?.id ?? '';
+  /** The company's live figures for the chat (at most 8 s wait; empty if they cannot be read). */
+  const liveData = useCallback(() => Promise.race([
+    businessData((m) => canRef.current(m), companyRef.current),
+    new Promise<string>((r) => setTimeout(() => r(''), 8000)),
+  ]), []);
   const navigate = useNavigate();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -713,6 +733,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   // ------------------------------------------------ the answer: stream it, show it, and speak each sentence as it completes
   const ask = useCallback(async (question: string) => {
     const q = question.trim();
+    const wantsChart = /graph|chart|plot|diagram|pie|bar|trend|pdf|report|download|print|வரைபட|அறிக்கை|ரிப்போர்ட்|கிராப்/i.test(q);
     if (!q || busyRef.current) return;
     busyRef.current = true;
     const aid = ++chatSeq;
@@ -738,7 +759,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
       say(chunk, () => { pending -= 1; finish(); }, setNote, 'adviser');
     };
     const speakReady = (final: boolean) => {
-      const rest = full.slice(spokenUpTo);
+      const rest = speakablePart(full).slice(spokenUpTo);
       const done = rest.match(/^[\s\S]*?[.!?।\n]+(?=\s|$)/g)?.join('') ?? '';
       const chunk = final ? rest : done;
       if (chunk.trim()) { speakPart(chunk); spokenUpTo += chunk.length; }
@@ -751,7 +772,8 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
       let servedFirst = false;
       try {
         const notesFirst = rankNotes(withEnglishTerms(q), pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
-        for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesFirst), [...history.current.slice(-6), { role: 'user', text: q }], { maxTokens: 700 })) {
+        const data = await liveData();
+        for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesFirst, data), [...history.current.slice(-6), { role: 'user', text: q }], { maxTokens: wantsChart ? 1600 : 700 })) {
           if (!activeRef.current) break;
           servedFirst = true; push(piece);
         }
@@ -799,7 +821,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
           /* the server's ChatGPT answered */
         } else if (key) {
           const notes = rankNotes(withEnglishTerms(q), pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
-          for await (const piece of openAiDirect(key, adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notes), [...history.current.slice(-6), { role: 'user', text: q }])) push(piece);
+          for await (const piece of openAiDirect(key, adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notes, await liveData()), [...history.current.slice(-6), { role: 'user', text: q }])) push(piece);
         } else {
           setNote('The online help service is not reachable, so this answer is read from the built-in notes.');
           const off = offlineAnswer(withEnglishTerms(q), pageRef.current.page, langRef.current);
@@ -999,37 +1021,26 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   };
 
   const active = phase !== 'idle';
-  useEffect(() => {
-    if (active) {
-      const v = store.get('help.adviser.view', 'both') as AdviserViewMode;
-      setView(v === 'both' || v === 'report' || v === 'chat' ? v : 'both');
-    }
-  }, [active]);
-  // Keep App informed whether Adviser is docked so the ERP page can adjust margin beside it
-  useEffect(() => {
-    const isDocked = active && dockSidePanel;
-    window.dispatchEvent(new CustomEvent('argus:adviser-dock', { detail: { open: isDocked } }));
-    return () => {
-      window.dispatchEvent(new CustomEvent('argus:adviser-dock', { detail: { open: false } }));
-    };
-  }, [active, dockSidePanel]);
-  // Esc key closes the Adviser
-  useEffect(() => {
-    if (!active) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') endSession(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [active, endSession]);
+  useEffect(() => { if (active) setView(Math.min(splitW, splitMax()) >= 640 ? 'both' : 'report'); }, [active]);   // eslint-disable-line react-hooks/exhaustive-deps
   // Tell Co-worker when Adviser holds the microphone, so the two never listen at once.
   useEffect(() => { if (active) takeFloor('adviser'); else releaseFloor('adviser'); }, [active]);
+  useEffect(() => { if (active) void liveData(); }, [active, liveData]);
   // A mode switched off in Access Management while it is running stops at once.
   useEffect(() => {
     if (!allowed.teaching && modes.teaching) setModes((m) => ({ ...m, teaching: false }));
     if (!allowed.coworker && modes.coworker) setModes((m) => ({ ...m, coworker: false }));
     if (!allowed.adviser && activeRef.current) endSession(false);
   }, [allowed.teaching, allowed.coworker, allowed.adviser, modes.teaching, modes.coworker, endSession]);
+  useEffect(() => {
+    const el = document.documentElement;
+    if (!active) { el.removeAttribute('data-adviser-split'); window.dispatchEvent(new Event('resize')); return; }
+    const w = Math.min(splitW, splitMax());
+    el.setAttribute('data-adviser-split', '');
+    el.style.setProperty('--adviser-w', `${w}px`);
+    const id = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(id);
+  }, [active, splitW]);
+  useEffect(() => () => { document.documentElement.removeAttribute('data-adviser-split'); }, []);
   const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? (overMode ? 'Listening… பேசுங்கள். முடிந்ததும் "over" சொல்லுங்கள் / say "over" when you finish' : 'Listening… பேசுங்கள் / speak now') : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking… tap the mic to stop it and talk' : '';
   const rightSide = document.documentElement.getAttribute('data-dock-side') === 'right' || (!!drag.pos && drag.pos.x > window.innerWidth / 2 && !document.documentElement.hasAttribute('data-dock-side'));
@@ -1120,248 +1131,168 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
         <div role="status" className="max-w-[20rem] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500 shadow-lg backdrop-blur">{note}</div>
       )}
 
-      {/* Adviser dialog */}
-      {(() => {
-        if (!active) return null;
-
-        const effectiveW = view === 'both' ? Math.max(advSize.size.w, 880) : advSize.size.w;
-        const floatingStyle: CSSProperties = {
-          width: `min(${effectiveW}px, calc(100vw - 1.5rem))`,
-          height: `min(${advSize.size.h}px, calc(100vh - 6rem))`,
-        };
-
-        const renderReportContent = () => (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <AdviserReportPanel
-              lang={lang}
-              speakOn={speakOn}
-              can={canView}
-              onOpenPage={(pg) => { endSession(false); navigate(`/${pg}`); }}
-              say={(text, onEnd) => say(text, onEnd ?? (() => {}), setNote, 'adviser')}
-              stopSpeaking={stopSpeaking}
-            />
-          </div>
-        );
-
-        const renderChatContent = () => (
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white">
-            <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" aria-live="polite">
-              {msgs.map((m) => (
-                <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
-                  <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${m.role === 'user' ? 'bg-emerald-600 text-white' : m.error ? 'border border-red-200 bg-red-50 text-red-800' : 'border border-slate-100 bg-slate-100 text-slate-800'}`}>
-                    {m.text || (m.pending ? <span className="inline-flex items-center gap-1 text-slate-400"><Loader2 size={13} className="animate-spin" />Thinking…</span> : '')}
-                  </div>
-                </div>
-              ))}
-              {msgs.length <= 1 && (
-                <div className="pt-1">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{lang === 'ta' ? 'இவற்றைக் கேட்டுப் பாருங்கள்' : 'Try asking'}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {STARTERS.map((s) => (
-                      <button key={s.en} type="button" onClick={() => { stopListening(); stopSpeaking(); void ask(lang === 'ta' ? s.ta : s.en); }}
-                        className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-left text-[11px] font-medium text-emerald-800 hover:bg-emerald-100">{lang === 'ta' ? s.ta : s.en}</button>
-                    ))}
-                  </div>
-                  {suggestions.length > 0 && (
-                    <div className="mt-2.5">
-                      <button type="button" onClick={() => setTips((v) => !v)} className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800">
-                        <Lightbulb size={12} />{tips ? 'Hide tips for this page' : 'Tips for this page'}
-                      </button>
-                      {tips && (
-                        <ul className="mt-1.5 space-y-1 rounded-lg border border-emerald-100 bg-emerald-50 p-2">
-                          {suggestions.map((s, i) => (
-                            <li key={i} className="flex items-start gap-1.5 text-[11px] text-emerald-900"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" /><span>{lang === 'ta' ? s.ta : s.en}</span></li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div ref={endRef} />
+      {/* Adviser chat: split screen (the page on the left, this chat docked on the right) */}
+      {active && createPortal(
+        <div role="dialog" aria-label="Adviser" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
+          className="adviser-split fixed inset-y-0 right-0 z-[70] flex flex-col overflow-hidden border-l-2 border-emerald-500 bg-white shadow-2xl">
+          {/* divider: drag to give the page or the chat more room (double-click = default) */}
+          <div role="separator" aria-orientation="vertical" aria-label="Resize the Adviser" title="Drag to resize · double-click to reset"
+            className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1 cursor-col-resize touch-none hover:bg-emerald-400/40 max-lg:hidden"
+            onPointerDown={(e) => { splitDrag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ } }}
+            onPointerMove={(e) => { if (!splitDrag.current) return; setSplitW(Math.min(splitMax(), Math.max(320, Math.round(window.innerWidth - e.clientX)))); }}
+            onPointerUp={() => { if (!splitDrag.current) return; splitDrag.current = false; store.set(SPLIT_KEY, String(splitW)); }}
+            onDoubleClick={() => { const d = Math.round(Math.min(560, Math.max(380, window.innerWidth * 0.34))); setSplitW(d); store.set(SPLIT_KEY, String(d)); }} />
+          <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2.5 text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20"><Lightbulb size={17} /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold leading-tight">Adviser</p>
+              <p className="truncate text-[10px] text-emerald-50">Ask anything · Argus BI, CNC machining and more</p>
             </div>
-
-            {(status || note) && (
-              <div className="border-t border-slate-100 bg-white px-3 py-1 text-[11px] shrink-0">
-                {status && <span className="font-semibold text-red-600">{status}</span>}
-                {heard && phase === 'listening' && <span className="ml-1.5 text-slate-600">“{heard}”</span>}
-                {note && !status && <span className="text-slate-500">{note}</span>}
-              </div>
-            )}
-            <form className="flex items-center gap-1.5 border-t border-slate-200 bg-white p-2 shrink-0" onSubmit={(e) => { e.preventDefault(); send(); }}>
-              <button type="button" onClick={toggleMic} aria-pressed={handsFree} aria-label={handsFree ? 'Turn the microphone off' : 'Talk using the microphone'}
-                title={handsFree ? 'Voice conversation is on (click to turn off)' : 'Talk using the microphone'}
-                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${handsFree ? 'bg-red-600 text-white' : 'border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
-                {phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
-                <Mic size={16} className="relative" />
-              </button>
-              <button type="button" onClick={() => { const v = !overMode; setOverMode(v); store.set('help.over', v ? '1' : '0'); accRef.current = ''; overHit.current = false; }} aria-pressed={overMode}
-                title={overMode ? 'It keeps listening until you say "over" (click to turn off)' : 'Turn on: it keeps listening until you say "over"'}
-                className={`h-9 shrink-0 rounded-full px-2 text-[10px] font-extrabold uppercase ${overMode ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>over</button>
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'ta' ? 'உங்கள் கேள்வியை எழுதுங்கள்…' : 'Type your question…'} aria-label="Your question"
-                className="h-9 min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none" />
-              <button type="submit" disabled={!input.trim() || phase === 'thinking'} aria-label="Send" title="Send"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"><Send size={15} /></button>
-            </form>
+            <button type="button" aria-label={speakOn ? 'Mute answers' : 'Read answers aloud'} title={speakOn ? 'Answers are read aloud (click to mute)' : 'Answers are silent (click to read aloud)'}
+              onClick={() => setSpeakOn((v) => !v)} className="rounded p-1.5 hover:bg-white/15">{speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}</button>
+            <button type="button" aria-label="Close the Adviser" title="Close" onClick={() => endSession(false)} className="rounded p-1.5 hover:bg-white/15"><X size={17} /></button>
           </div>
-        );
 
-        const dialog = (
-          <div
-            role="dialog"
-            aria-label="Adviser"
-            data-voice-ignore
-            onMouseDown={(e) => e.stopPropagation()}
-            style={dockSidePanel ? undefined : floatingStyle}
-            className={
-              dockSidePanel
-                ? "fixed top-0 sm:top-[50px] right-0 bottom-0 z-[65] flex flex-col w-full sm:w-[560px] md:w-[720px] lg:w-[62vw] max-w-[1200px] border-l border-slate-300 bg-white shadow-2xl overflow-hidden font-sans"
-                : `absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`
-            }
-          >
-            {!dockSidePanel && (
-              <ResizeGrip corner={rightSide ? 'left' : 'right'} onPointerDown={advSize.begin(rightSide ? -1 : 1)} onDoubleClick={advSize.reset} />
+          <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
+            <span className="text-[10px] font-semibold uppercase text-slate-400">Language</span>
+            {LANGS.map((l) => (
+              <button key={l.code} type="button" onClick={() => setLang(l.code)}
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${lang === l.code ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>{l.label}</button>
+            ))}
+            <button type="button" role="switch" aria-checked={natural} onClick={() => setNatural((v) => !v)}
+              title={natural ? 'A natural, human-sounding voice is used (click for the plain browser voice)' : 'The plain browser voice is used (click for the natural voice)'}
+              className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${natural ? 'bg-violet-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>Natural voice</button>
+            {lang === 'ta' && (
+              <select aria-label="Tamil voice" value={tamilPick} onChange={(e) => { const v = e.target.value as TamilEngine; setTamilEngine(v); setTamilPick(v); stopSpeaking(); }}
+                title="Which voice speaks Tamil. Clear is the easiest to follow." className="ml-1 h-6 rounded border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-700">
+                <option value="clear">Tamil: Clear</option>
+                <option value="natural">Tamil: Natural</option>
+                <option value="browser">Tamil: Browser</option>
+              </select>
             )}
+            {choices.length > 1 && !natural && (
+              <select aria-label="Choose the voice" value={chosen} onChange={(e) => pickVoice(e.target.value)} className="ml-auto h-6 max-w-[7.5rem] rounded border border-slate-200 bg-white px-1 text-[10px]">
+                {choices.map((v) => <option key={v.name} value={v.name}>{v.name.replace(/^(Microsoft|Google)\s+/, '$1 ')}</option>)}
+              </select>
+            )}
+          </div>
 
-            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2.5 text-white shrink-0">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20"><Lightbulb size={17} /></span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-bold leading-tight">Adviser</p>
-                  {view === 'both' && (
-                    <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
-                      Split view
-                    </span>
-                  )}
-                </div>
-                <p className="truncate text-[10px] text-emerald-50">Argus BI help and CNC machining questions</p>
-              </div>
-
-              <button
-                type="button"
-                aria-label={dockSidePanel ? 'Switch to floating window' : 'Dock to right (split screen with page)'}
-                title={dockSidePanel ? 'Switch to floating window' : 'Dock to right (split screen with page)'}
+          <div className="flex border-b border-slate-100 bg-white text-[12px] font-bold" role="tablist">
+            {([{ id: 'both', label: 'Both (Side by side)', icon: Columns2 }, { id: 'report', label: 'Report & ideas', icon: BarChart3 }, { id: 'chat', label: 'Ask', icon: MessageCircle }] as const).map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={view === t.id}
                 onClick={() => {
-                  setDockSidePanel((v) => {
-                    const next = !v;
-                    store.set('help.adviser.docked', next ? '1' : '0');
-                    return next;
-                  });
+                  setView(t.id);
+                  if (t.id === 'report') { stopListening(); stopSpeaking(); }
+                  // two halves need room: widen the chat panel when it is narrow
+                  if (t.id === 'both' && splitW < 720) { const w = Math.min(splitMax(), 760); setSplitW(w); store.set(SPLIT_KEY, String(w)); }
                 }}
-                className={`rounded p-1.5 transition-colors hover:bg-white/15 ${dockSidePanel ? 'bg-white/25 text-white' : 'text-white/80'}`}
-              >
-                <PanelRight size={16} />
-              </button>
-
-              <button
-                type="button"
-                aria-label={speakOn ? 'Mute answers' : 'Read answers aloud'}
-                title={speakOn ? 'Answers are read aloud (click to mute)' : 'Answers are silent (click to read aloud)'}
-                onClick={() => setSpeakOn((v) => !v)}
-                className="rounded p-1.5 hover:bg-white/15"
-              >
-                {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
-              </button>
-
-              <button
-                type="button"
-                aria-label="Close the Adviser"
-                title="Close (Esc)"
-                onClick={() => endSession(false)}
-                className="rounded p-1.5 hover:bg-white/15"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-1.5 shrink-0 flex-wrap">
-              <span className="text-[10px] font-semibold uppercase text-slate-400">Language</span>
-              {LANGS.map((l) => (
-                <button key={l.code} type="button" onClick={() => setLang(l.code)}
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${lang === l.code ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>{l.label}</button>
-              ))}
-              <button type="button" role="switch" aria-checked={natural} onClick={() => setNatural((v) => !v)}
-                title={natural ? 'A natural, human-sounding voice is used (click for the plain browser voice)' : 'The plain browser voice is used (click for the natural voice)'}
-                className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${natural ? 'bg-violet-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>Natural voice</button>
-              {lang === 'ta' && (
-                <select aria-label="Tamil voice" value={tamilPick} onChange={(e) => { const v = e.target.value as TamilEngine; setTamilEngine(v); setTamilPick(v); stopSpeaking(); }}
-                  title="Which voice speaks Tamil. Clear is the easiest to follow." className="ml-1 h-6 rounded border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-700">
-                  <option value="clear">Tamil: Clear</option>
-                  <option value="natural">Tamil: Natural</option>
-                  <option value="browser">Tamil: Browser</option>
-                </select>
-              )}
-              {choices.length > 1 && !natural && (
-                <select aria-label="Choose the voice" value={chosen} onChange={(e) => pickVoice(e.target.value)} className="ml-auto h-6 max-w-[7.5rem] rounded border border-slate-200 bg-white px-1 text-[10px]">
-                  {choices.map((v) => <option key={v.name} value={v.name}>{v.name.replace(/^(Microsoft|Google)\s+/, '$1 ')}</option>)}
-                </select>
-              )}
-            </div>
-
-            <div className="flex border-b border-slate-100 bg-white text-[12px] font-bold shrink-0" role="tablist">
-              {([
-                { id: 'both', label: 'Both (Side by side)', icon: Columns2 },
-                { id: 'report', label: 'Report & ideas', icon: BarChart3 },
-                { id: 'chat', label: 'Ask', icon: MessageCircle },
-              ] as const).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === t.id}
-                  onClick={() => {
-                    setView(t.id);
-                    store.set('help.adviser.view', t.id);
-                    if (t.id === 'report') { stopListening(); stopSpeaking(); }
-                  }}
-                  className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 transition-colors ${
-                    view === t.id
-                      ? 'border-emerald-600 text-emerald-700 bg-emerald-50/40'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <t.icon size={13} />
-                  <span>{t.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {view === 'both' ? (
-              <div className="flex flex-1 min-h-0 overflow-hidden divide-x divide-slate-200 max-md:flex-col max-md:divide-x-0 max-md:divide-y">
-                {/* Left: That screen (Report & ideas) */}
-                <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-slate-50/20">
-                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/90 px-3 py-1 text-[11px] font-bold text-slate-700 shrink-0">
-                    <span className="flex items-center gap-1.5 text-emerald-800">
-                      <BarChart3 size={13} className="text-emerald-600" />
-                      Report & ideas
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">Business summary</span>
-                  </div>
-                  {renderReportContent()}
+                className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 ${view === t.id ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><t.icon size={13} />{t.label}</button>
+            ))}
+          </div>
+          <div className={view === 'both' ? 'flex min-h-0 flex-1' : 'contents'}>
+          {view !== 'chat' && (
+            <div className={view === 'both' ? 'flex min-h-0 w-1/2 min-w-0 flex-col border-r border-slate-200 bg-slate-50/40' : 'contents'}>
+              {view === 'both' && (
+                <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-1.5">
+                  <span className="flex items-center gap-1.5 text-[12px] font-bold text-emerald-700"><BarChart3 size={13} />Report &amp; ideas</span>
+                  <span className="text-[10px] text-slate-400">Business summary</span>
                 </div>
-
-                {/* Right: Chat */}
-                <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-white">
-                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/90 px-3 py-1 text-[11px] font-bold text-slate-700 shrink-0">
-                    <span className="flex items-center gap-1.5 text-emerald-800">
-                      <MessageCircle size={13} className="text-emerald-600" />
-                      Ask · Chat & Voice
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">Ask anything</span>
-                  </div>
-                  {renderChatContent()}
+              )}
+              <AdviserReportPanel lang={lang} speakOn={speakOn} can={canView}
+                onOpenPage={(pg) => { endSession(false); navigate(`/${pg}`); }}
+                say={(text, onEnd) => say(text, onEnd ?? (() => {}), setNote, 'adviser')} stopSpeaking={stopSpeaking} />
+            </div>
+          )}
+          {view !== 'report' && (
+          <div className={view === 'both' ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'contents'}>
+          {view === 'both' && (
+            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-1.5">
+              <span className="flex items-center gap-1.5 text-[12px] font-bold text-emerald-700"><MessageCircle size={13} />Ask · Chat &amp; Voice</span>
+              <span className="text-[10px] text-slate-400">Ask anything</span>
+            </div>
+          )}
+          <>
+          <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" aria-live="polite">
+            {msgs.map((m) => (
+              <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
+                <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${m.role === 'user' ? 'bg-emerald-600 text-white' : m.error ? 'border border-red-200 bg-red-50 text-red-800' : 'border border-slate-100 bg-slate-100 text-slate-800'}`}>
+                  {m.role === 'assistant' && !m.error ? (() => {
+                    const b = parseBlocks(m.text);
+                    if (!b.visible && !b.charts.length) return m.pending ? <span className="inline-flex items-center gap-1 text-slate-400"><Loader2 size={13} className="animate-spin" />Thinking…</span> : '';
+                    return (
+                      <>
+                        {b.visible}
+                        {m.pending && m.text.includes('[[') && <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-400"><Loader2 size={12} className="animate-spin" />Drawing the graphs…</span>}
+                        {b.charts.map((c, i) => <ChartView key={i} chart={c} />)}
+                        {!m.pending && (b.charts.length > 0 || b.pdf) && (
+                          <button type="button" onClick={() => void saveReportPdf(b.pdf?.title || b.charts[0]?.title || 'Adviser report', b.visible, b.charts, company?.company_name ?? '')}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">
+                            <Download size={13} />Download PDF{b.pdf ? '' : ' report'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })() : (m.text || (m.pending ? <span className="inline-flex items-center gap-1 text-slate-400"><Loader2 size={13} className="animate-spin" />Thinking…</span> : ''))}
                 </div>
               </div>
-            ) : view === 'report' ? (
-              renderReportContent()
-            ) : (
-              renderChatContent()
+            ))}
+            {msgs.length <= 1 && (
+              <div className="pt-1">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{lang === 'ta' ? 'இவற்றைக் கேட்டுப் பாருங்கள்' : 'Try asking'}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {STARTERS.map((s) => (
+                    <button key={s.en} type="button" onClick={() => { stopListening(); stopSpeaking(); void ask(lang === 'ta' ? s.ta : s.en); }}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-left text-[11px] font-medium text-emerald-800 hover:bg-emerald-100">{lang === 'ta' ? s.ta : s.en}</button>
+                  ))}
+                </div>
+                {suggestions.length > 0 && (
+                  <div className="mt-2.5">
+                    <button type="button" onClick={() => setTips((v) => !v)} className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800">
+                      <Lightbulb size={12} />{tips ? 'Hide tips for this page' : 'Tips for this page'}
+                    </button>
+                    {tips && (
+                      <ul className="mt-1.5 space-y-1 rounded-lg border border-emerald-100 bg-emerald-50 p-2">
+                        {suggestions.map((s, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-[11px] text-emerald-900"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" /><span>{lang === 'ta' ? s.ta : s.en}</span></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
+            <div ref={endRef} />
           </div>
-        );
 
-        return dockSidePanel ? createPortal(dialog, document.body) : dialog;
-      })()}
+          {(status || note) && (
+            <div className="border-t border-slate-100 bg-white px-3 py-1 text-[11px]">
+              {status && <span className="font-semibold text-red-600">{status}</span>}
+              {heard && phase === 'listening' && <span className="ml-1.5 text-slate-600">“{heard}”</span>}
+              {note && !status && <span className="text-slate-500">{note}</span>}
+            </div>
+          )}
+          <form className="flex items-center gap-1.5 border-t border-slate-200 bg-white p-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
+            <button type="button" onClick={toggleMic} aria-pressed={handsFree} aria-label={handsFree ? 'Turn the microphone off' : 'Talk using the microphone'}
+              title={handsFree ? 'Voice conversation is on (click to turn off)' : 'Talk using the microphone'}
+              className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${handsFree ? 'bg-red-600 text-white' : 'border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+              {phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
+              <Mic size={16} className="relative" />
+            </button>
+            <button type="button" onClick={() => { const v = !overMode; setOverMode(v); store.set('help.over', v ? '1' : '0'); accRef.current = ''; overHit.current = false; }} aria-pressed={overMode}
+              title={overMode ? 'It keeps listening until you say "over" (click to turn off)' : 'Turn on: it keeps listening until you say "over"'}
+              className={`h-9 shrink-0 rounded-full px-2 text-[10px] font-extrabold uppercase ${overMode ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>over</button>
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={lang === 'ta' ? 'உங்கள் கேள்வியை எழுதுங்கள்…' : 'Type your question…'} aria-label="Your question"
+              className="h-9 min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none" />
+            <button type="submit" disabled={!input.trim() || phase === 'thinking'} aria-label="Send" title="Send"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"><Send size={15} /></button>
+          </form>
+          </>
+          </div>
+          )}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
     </>
   );

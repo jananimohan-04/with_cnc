@@ -466,3 +466,41 @@ html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(1
 .col-menu-big button { padding-top: 0.5rem; padding-bottom: 0.5rem; }
 .col-menu-big input { padding: 0.5rem 0.75rem; }
 .col-menu-big .max-h-56 { max-height: 20rem; }
+
+/* Adviser split screen: while the Adviser is open the app gives up the right side, so the page and the chat sit side by side
+   (drag the divider on the chat's left edge). Small screens: the chat covers the screen instead. */
+.adviser-split { width: var(--adviser-w, 460px); }
+@media (min-width: 1024px) {
+  html[data-adviser-split] .app-shell { padding-right: var(--adviser-w, 460px); }
+  /* the floating AI buttons step aside so they do not sit under the chat */
+  html[data-adviser-split][data-dock-side="right"] [data-dock-handle] { display: none !important; }
+  html[data-adviser-split][data-dock-side="right"] .dock-help { right: calc(var(--adviser-w, 460px) + 12px) !important; }
+}
+@media (max-width: 1023px) {
+  .adviser-split { width: 100%; }
+}
+
+/* Adviser split screen: the header keeps every count tile on one line. The tiles drop their icons and side padding, sit with
+   no gaps, and the date and the user's name fold to their icons (click them to see the details). */
+@media (min-width: 1024px) {
+  html[data-adviser-split] .kpi-strip { gap: 3px !important; }
+  html[data-adviser-split] .kpi-strip .kpi-icon { display: none !important; }
+  html[data-adviser-split] .kpi-strip .kpi-tile { padding-left: 5px !important; padding-right: 5px !important; justify-content: center; }
+  html[data-adviser-split] .kpi-strip .kpi-label { font-size: 8px !important; }
+  html[data-adviser-split] .tb-date,
+  html[data-adviser-split] .tb-date + span,
+  html[data-adviser-split] .tb-name { display: none !important; }
+}
+
+/* Adviser split screen, every page: the top bar has less room, so instead of squashing (overlapping buttons, a cut-off
+   title, a date range broken over several lines) it may use a second line. Nothing inside it shrinks or wraps. */
+@media (min-width: 1024px) {
+  html[data-adviser-split] header.app-topbar { flex-wrap: wrap; row-gap: 6px; padding-top: 6px; padding-bottom: 6px; }
+  html[data-adviser-split] header.app-topbar .tb-title,
+  html[data-adviser-split] header.app-topbar .tb-center,
+  html[data-adviser-split] header.app-topbar .tb-actions { flex-shrink: 0; min-width: max-content; }
+  html[data-adviser-split] header.app-topbar .tb-center *,
+  html[data-adviser-split] header.app-topbar .tb-actions *,
+  html[data-adviser-split] header.app-topbar .tb-title * { white-space: nowrap; }
+  html[data-adviser-split] header.app-topbar .tb-actions { overflow: visible; }
+}
