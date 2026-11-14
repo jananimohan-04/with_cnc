@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useStickyTableHeads } from './lib/useStickyTableHeads';
+import { TableAutoFilter } from './components/ui/TableAutoFilter';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
@@ -211,6 +212,8 @@ function MainLayout() {
           onMenuClick={() => setMobileMenuOpen(true)}
           hideMobileMenu={position === 'top' || position === 'bottom'}
         />
+        {/* Excel-style funnel + column menu on every table heading */}
+        <TableAutoFilter />
         {/* Keyed by company so every page refetches when the Super Admin switches company */}
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           {/* Display size: the page content is scaled. useFitPage keeps this box exactly as tall as the screen, and the grid

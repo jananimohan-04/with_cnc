@@ -119,6 +119,7 @@ export function CompanyFilterInput({
             onClick={openMenu}
             className="relative inline-flex items-center justify-center w-5 h-5 rounded cursor-pointer transition-colors hover:bg-blue-500/30"
             title="Filter by company"
+            data-colfilter
           >
             <FunnelIcon active={!isAllSelected} />
           </button>

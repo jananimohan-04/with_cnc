@@ -438,3 +438,9 @@ html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(1
 
 /* ---------- Sales Pipeline columns and the matching top count tiles: a still surface (no moving shine) ---------- */
 .kanban-shine { position: relative; overflow: hidden; }
+
+/* Excel-style column filter funnel added to every table heading (TableAutoFilter). */
+.af-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 4px; border-radius: 4px; vertical-align: middle; cursor: pointer; color: #ffffff; background: transparent; border: 0; padding: 0; flex-shrink: 0; }
+.af-btn:hover { background: rgba(59, 130, 246, .35); }
+.af-btn.af-on svg { fill: #7dd3fc; }
+.af-btn.af-sorted { box-shadow: inset 0 -2px 0 #7dd3fc; }

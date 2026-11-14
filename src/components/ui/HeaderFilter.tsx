@@ -1,10 +1,13 @@
-import { Children, isValidElement, useEffect, useRef, useState } from 'react';
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import { Children, isValidElement, useRef, useState } from 'react';
+import type { InputHTMLAttributes, ReactElement, ReactNode, SelectHTMLAttributes } from 'react';
 import { Filter, X } from 'lucide-react';
+import { ColumnFilterMenu } from './ColumnFilterMenu';
+import { headerSortDir, headerValues, sortByHeader } from './TableAutoFilter';
 
 /**
- * Column-heading filters in the Inventory style: a small white funnel beside the column title (no box), and when a filter
- * is on, the funnel turns light blue and a rounded chip with the chosen value and an × appears next to it.
+ * Column-heading filters in the Inventory style: a small white funnel beside the column title. Clicking it opens the
+ * Excel-style column menu (search, the column's values, sort). When a filter is on, the funnel turns light blue and a chip
+ * with the chosen value and an × appears next to it.
  */
 
 const fakeChange = (value: string) =>
@@ -34,77 +37,103 @@ export function FilterChip({ text, onClear }: { text: string; onClear?: () => vo
 }
 
 export function FunnelIcon({ active }: { active: boolean }) {
-  return <Filter size={12} className={`shrink-0 ${active ? 'text-sky-300 fill-sky-300' : 'text-white'}`} style={{ color: active ? '#7dd3fc' : '#ffffff' }} />;
+  return <Filter size={12} className={`shrink-0 ${active ? 'fill-sky-300' : ''}`} />;
 }
 
 /** Text of an <option> child (strings / numbers joined). */
 const textOf = (n: ReactNode): string =>
   Children.toArray(n).map((c) => (typeof c === 'string' || typeof c === 'number' ? String(c) : isValidElement(c) ? textOf((c.props as { children?: ReactNode }).children) : '')).join('');
 
+/** The column's title, taken from the heading cell (falls back to the aria-label). */
+const titleFor = (el: HTMLElement | null, fallback?: string) => {
+  const th = el?.closest('th');
+  const own = th ? Array.from(th.querySelectorAll('span, button')).map((x) => (x.closest('[data-colfilter]') ? '' : x.textContent?.trim() ?? '')).find(Boolean) : '';
+  return own || (fallback ?? 'Filter').replace(/^Filter( by)?\s*/i, '') || 'Filter';
+};
+
+type Opt = ReactElement<{ value?: unknown; children?: ReactNode }>;
+
 /** Drop-in replacement for a <select> inside a table heading: the same props and <option> children. */
-export function HeaderSelect({ children, className: _c, style: _s, value, onChange, title, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function HeaderSelect({ children, value, onChange, title, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
   const options = Children.toArray(children).flatMap((c) =>
     isValidElement(c) && c.type === 'optgroup' ? Children.toArray((c.props as { children?: ReactNode }).children) : [c],
-  ).filter(isValidElement) as React.ReactElement<{ value?: unknown; children?: ReactNode }>[];
-  const optValue = (o: React.ReactElement<{ value?: unknown; children?: ReactNode }>) => String(o.props.value ?? textOf(o.props.children));
+  ).filter(isValidElement) as Opt[];
+  const optValue = (o: Opt) => String(o.props.value ?? textOf(o.props.children));
   const allValue = options.length ? optValue(options[0]) : '';
   const current = value == null ? '' : String(value);
   const active = current !== '' && current !== allValue;
-  const chosen = options.find((o) => optValue(o) === current);
-  const label = chosen ? textOf(chosen.props.children) || current : current;
+  const label = (v: string) => { const o = options.find((x) => optValue(x) === v); return o ? textOf(o.props.children) || v : v; };
+  const rest_ = options.slice(1);
+  const byText = new Map(rest_.map((o) => [textOf(o.props.children) || optValue(o), optValue(o)]));
+  const set = (v: string) => onChange?.(fakeChange(v));
 
   return (
-    <span className="inline-flex items-center gap-1 align-middle normal-case tracking-normal">
-      <span className={FUNNEL} title={title ?? rest['aria-label'] ?? 'Filter'}>
+    <span data-colfilter className="inline-flex items-center gap-1 align-middle normal-case tracking-normal">
+      <button
+        ref={btn}
+        type="button"
+        className={FUNNEL}
+        title={title ?? rest['aria-label'] ?? 'Filter'}
+        disabled={rest.disabled}
+        onClick={(e) => { e.stopPropagation(); setRect(e.currentTarget.getBoundingClientRect()); }}
+      >
         <FunnelIcon active={active} />
-        <select
-          {...rest}
-          value={value}
-          onChange={onChange}
-          title={title}
-          className="absolute inset-0 w-full h-full cursor-pointer appearance-none"
-          style={{ opacity: 0, fontSize: 12 }}
-        >
-          {children}
-        </select>
-      </span>
-      {active && <FilterChip text={label} onClear={onChange ? () => onChange(fakeChange(allValue)) : undefined} />}
+      </button>
+      {active && <FilterChip text={label(current)} onClear={() => set(allValue)} />}
+      {rect && (
+        <ColumnFilterMenu
+          anchor={rect}
+          title={titleFor(btn.current, rest['aria-label'] ?? title)}
+          values={Array.from(byText.keys())}
+          selected={active ? new Set([label(current)]) : null}
+          multi={false}
+          allLabel={options.length ? textOf(options[0].props.children) || 'All' : 'All'}
+          onChange={(next) => set(next ? byText.get(Array.from(next)[0]) ?? allValue : allValue)}
+          sortDir={headerSortDir(btn.current)}
+          onSort={(d) => sortByHeader(btn.current, d)}
+          onClose={() => setRect(null)}
+        />
+      )}
     </span>
   );
 }
 
-/** Drop-in replacement for a text <input> filter inside a table heading: the funnel opens a small search box. */
-export function HeaderInput({ className: _c, style: _s, value, onChange, placeholder, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLSpanElement>(null);
+/** Drop-in replacement for a text <input> filter inside a table heading: the funnel opens the column menu with a search box. */
+export function HeaderInput({ value, onChange, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
   const current = value == null ? '' : String(value);
   const active = current.trim() !== '';
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', away);
-    return () => document.removeEventListener('mousedown', away);
-  }, [open]);
+  const set = (v: string) => onChange?.(fakeChange(v));
 
   return (
-    <span ref={wrap} className="relative inline-flex items-center gap-1 align-middle normal-case tracking-normal">
-      <button type="button" className={FUNNEL} title={rest['aria-label'] ?? 'Filter'} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>
+    <span data-colfilter className="inline-flex items-center gap-1 align-middle normal-case tracking-normal">
+      <button
+        ref={btn}
+        type="button"
+        className={FUNNEL}
+        title={rest['aria-label'] ?? 'Filter'}
+        onClick={(e) => { e.stopPropagation(); setRect(e.currentTarget.getBoundingClientRect()); }}
+      >
         <FunnelIcon active={active} />
       </button>
-      {active && <FilterChip text={current} onClear={onChange ? () => onChange(fakeChange('')) : undefined} />}
-      {open && (
-        <span className="absolute left-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-xl p-1.5" onClick={(e) => e.stopPropagation()}>
-          <input
-            {...rest}
-            autoFocus
-            value={value}
-            onChange={onChange}
-            placeholder={placeholder ?? 'Filter…'}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setOpen(false); rest.onKeyDown?.(e); }}
-            className="h-7 w-44 rounded border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-          />
-        </span>
+      {active && <FilterChip text={current} onClear={() => set('')} />}
+      {rect && (
+        <ColumnFilterMenu
+          anchor={rect}
+          title={titleFor(btn.current, rest['aria-label'])}
+          values={headerValues(btn.current)}
+          selected={active ? new Set([current]) : null}
+          multi={false}
+          search={current}
+          onSearch={set}
+          onChange={(next) => set(next ? Array.from(next)[0] : '')}
+          sortDir={headerSortDir(btn.current)}
+          onSort={(d) => sortByHeader(btn.current, d)}
+          onClose={() => setRect(null)}
+        />
       )}
     </span>
   );
