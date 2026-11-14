@@ -639,6 +639,12 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   const rootRef = useRef<HTMLDivElement>(null);
   const drag = useDraggable('argus.help.pos', rootRef);
   const dockDrag = useDockDrag();   // dragging the AI button moves the whole group (arrow tab + buttons)
+  const [cw, setCw] = useState<string>(() => (window as unknown as { __coworkerState?: string }).__coworkerState ?? 'off');
+  useEffect(() => {
+    const h = (e: Event) => setCw((e as CustomEvent<{ state: string }>).detail?.state ?? 'off');
+    window.addEventListener('argus:coworker-status', h);
+    return () => window.removeEventListener('argus:coworker-status', h);
+  }, []);
   const [menu, setMenu] = useState(false);
   const [modes, setModes] = useState({ teaching: false, coworker: false });
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -1023,6 +1029,12 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
         aria-label="AI assistant" aria-expanded={menu} title="AI assistant: Teaching, Co-worker, Adviser · ask anything"
         className={`relative flex h-12 touch-none cursor-grab select-none items-center gap-2 rounded-full pl-4 pr-5 text-white shadow-lg active:cursor-grabbing ${anyOn ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
         {active && phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
+        {allowed.coworker && (cw === 'listening' || cw === 'start' || cw === 'error') && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5" title={cw === 'listening' ? 'Co-worker is listening: say "Hi Raaju"' : 'Co-worker: open the menu and click Co-worker to start the mic'}>
+            {cw === 'listening' && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75" />}
+            <span className={`relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-white ${cw === 'listening' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          </span>
+        )}
         <span className="relative">
           {active && phase === 'listening' ? <Mic size={20} /> : active && phase === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : active && phase === 'speaking' ? <Volume2 size={20} /> : <Sparkles size={20} />}
         </span>
@@ -1065,6 +1077,8 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
                 <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={15} /></span>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">
                   {m.title}{m.on && <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On</span>}
+                  {m.id === 'coworker' && !m.on && cw === 'listening' && <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">Say "Hi Raaju"</span>}
+                  {m.id === 'coworker' && !m.on && (cw === 'start' || cw === 'error') && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{cw === 'error' ? 'Mic problem' : 'Start mic'}</span>}
                 </span>
               </button>
               <VoiceSwitch mode={m.id} label={m.title} />

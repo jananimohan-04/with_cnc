@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useDockDrag } from './AssistantDock';
 import { askAnything } from '@/lib/adviser/openAnswer';
 import {
   Bot, CheckCircle2, Languages, Loader2, Mic, MicOff, Send, Volume2, VolumeX, X,
@@ -483,7 +482,7 @@ export function Copilot() {
   // The Co-worker panel can be dragged bigger or smaller by its top-right corner (a little bigger than before by default).
   const panelSize = useResizable('coworker-panel-size', { w: 496, h: 640 }, { w: 340, h: 380 });
   const pillMoved = useRef(false);
-  const dockDrag = useDockDrag();   // dragging the pill moves the whole AI group
+  const wakeRef = useRef<() => Promise<void>>(async () => {});
   const pillPosRef = useRef(pillPos); pillPosRef.current = pillPos;
   const [lang, setLang] = useState<Lang>(readLang);
   const [speak, setSpeak] = useAiVoice('coworker');   // off until switched on
@@ -750,6 +749,7 @@ export function Copilot() {
   useEffect(() => {
     const on = (e: Event) => {
       const want = (e as CustomEvent<{ on?: boolean }>).detail?.on;
+      if (want === true) { void wakeRef.current(); return; }
       setOpen((o) => (typeof want === 'boolean' ? want : !o));
     };
     window.addEventListener('argus:copilot', on);
@@ -1838,58 +1838,34 @@ export function Copilot() {
     });
   }, [pipelineCards, cardFilter, cardSearch]);
 
-  // Standby pill when Co-worker is closed: Shows active always-on listening status
-  if (!open) {
-    return (
-      <div
-        data-assistant-launcher
-        className="dock-cowork fixed bottom-4 left-[5.5rem] max-lg:bottom-20 max-lg:left-2 z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs hover:shadow-xl cursor-pointer select-none"
-        {...dockDrag.bind}
-        onClick={async () => {
-          if (dockDrag.wasDragged() || pillMoved.current) return;
-          setMicMuted(false);
-          micMutedRef.current = false;
-          haltedRef.current = false;
-          netFailRef.current = 0;
-          startedOnceRef.current = true;
-          setMicError(null);
-          await requestMicPermission();
-          startRecognition();
-          playWakeChime();
-          takeFloor('coworker');
-          setOpen(true);
-        }}
-        title="Co-worker is listening! Say 'Hi Raaju!' or click to open."
-      >
-        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-white shadow-xs">
-          <Sparkles size={13} />
-        </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="font-bold text-slate-800">Co-worker</span>
-          {!micMuted && listening ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>Say "Hi Raaju !"</span>
-            </span>
-          ) : !micMuted ? (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" title={micError ?? 'Click once anywhere on the page so the browser lets the microphone start.'}>
-              {micError ? 'Mic problem · click' : 'Click to start mic'}
-            </span>
-          ) : (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-              Mic Muted
-            </span>
-          )}
-          {!micMuted && /^Heard|^Submitted|error|unreach|not reach/i.test(speechStatusText) && (
-            <span className="max-w-[11rem] truncate text-[10px] text-slate-500" title={speechStatusText}>{speechStatusText}</span>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Wake the Co-worker (start the mic and open it): used when it is picked in the AI menu.
+  const wake = async () => {
+    setMicMuted(false);
+    micMutedRef.current = false;
+    haltedRef.current = false;
+    netFailRef.current = 0;
+    startedOnceRef.current = true;
+    setMicError(null);
+    await requestMicPermission();
+    startRecognition();
+    playWakeChime();
+    takeFloor('coworker');
+    setOpen(true);
+  };
+  wakeRef.current = wake;
+  // The AI button shows whether the Co-worker is listening for "Hi Raaju".
+  const cwState = micMuted ? 'muted' : listening ? 'listening' : micError ? 'error' : 'start';
+  useEffect(() => {
+    (window as unknown as { __coworkerState?: string }).__coworkerState = cwState;
+    window.dispatchEvent(new CustomEvent('argus:coworker-status', { detail: { state: cwState, note: micError ?? '' } }));
+  }, [cwState, micError]);
+  useEffect(() => () => {
+    (window as unknown as { __coworkerState?: string }).__coworkerState = 'off';
+    window.dispatchEvent(new CustomEvent('argus:coworker-status', { detail: { state: 'off', note: '' } }));
+  }, []);
+
+  // No separate pill: the Co-worker lives in the AI button (its menu shows this status; the button gets a small dot).
+  if (!open) return null;
 
   return (
     <div
