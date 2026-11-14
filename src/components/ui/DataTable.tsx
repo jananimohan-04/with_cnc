@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from 'react';
-import { ChevronUp, ChevronDown, Search, Upload, SlidersHorizontal, Plus } from 'lucide-react';
+import { Search, Upload, SlidersHorizontal, Plus } from 'lucide-react';
 import { Button } from './Card';
 import { PagerFooter, usePager } from './TablePager';
 import { HeaderSelect } from './HeaderFilter';
@@ -230,21 +230,8 @@ export function DataTable<T extends Record<string, any>>({
                     col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                   }`}
                 >
-                  {col.sortable ? (
-                    <button
-                      onClick={() => handleSort(col.key)}
-                      className="inline-flex items-center gap-1.5 hover:text-brand-600 transition-colors focus:outline-none"
-                    >
-                      {col.label}
-                      {sortKey === col.key ? (
-                        sortDir === 'asc' ? <ChevronUp size={14} className="text-brand-500" /> : <ChevronDown size={14} className="text-brand-500" />
-                      ) : (
-                        <span className="text-slate-300 group-hover:text-slate-400 transition-colors"><ChevronUp size={14} /></span>
-                      )}
-                    </button>
-                  ) : (
-                    col.label
-                  )}
+                  {/* sorting lives in the column's funnel menu (TableAutoFilter), so the title is plain text */}
+                  {col.label}
                   {columnValues[col.key] && (
                     <HeaderSelect
                       value={colFilters[col.key] ?? ''}

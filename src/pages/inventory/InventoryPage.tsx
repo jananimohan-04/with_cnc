@@ -206,7 +206,7 @@ function HeaderFilterMenuPopover({
     };
   }, [onClose]);
 
-  const estW = 240;
+  const estW = 340;
   const left = Math.min(Math.max(12, target.left), window.innerWidth - estW - 16);
   const top = target.bottom + 4;
 
@@ -214,7 +214,7 @@ function HeaderFilterMenuPopover({
     <div
       ref={popoverRef}
       style={{ top: `${top}px`, left: `${left}px` }}
-      className="fixed z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-2 min-w-[220px] max-w-[280px] text-xs animate-in fade-in zoom-in-95 duration-100"
+      className="col-menu-big fixed z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 w-[340px] text-sm animate-in fade-in zoom-in-95 duration-100"
     >
       {children}
     </div>,

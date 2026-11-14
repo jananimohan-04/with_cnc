@@ -183,7 +183,10 @@ function setup(t: HTMLTableElement) {
     btn.addEventListener('mousedown', (e) => e.stopPropagation());
     // sit on the same line as the title
     const only = th.children.length === 1 ? (th.children[0] as HTMLElement) : null;
-    const host = only && only.tagName === 'DIV' && /flex/.test(getComputedStyle(only).display) ? only : th;
+    const display = only ? getComputedStyle(only).display : '';
+    // a full-width title button (display:flex) would push the funnel onto a second line: make it inline
+    if (only && only.tagName !== 'DIV' && (display === 'flex' || display === 'block')) only.style.display = 'inline-flex';
+    const host = only && only.tagName === 'DIV' && /flex/.test(display) ? only : th;
     host.appendChild(btn);
     if (host === th) th.style.whiteSpace = 'nowrap';
   }

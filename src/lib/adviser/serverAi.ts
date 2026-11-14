@@ -1,8 +1,9 @@
-// The Adviser's ChatGPT connection through our own server (the OpenAI key stays on the server: OPENAI_API_KEY).
+// The Adviser's AI connection through our own server (the AI key stays on the server).
 // Answers stream back as small pieces so they can be spoken while they are still being written.
 
 import { supabase } from '@/lib/supabase';
 import { API_BASE } from '@/retail/api';
+import { isTauri } from '@/lib/desktop/isTauri';
 
 export class ServerAiError extends Error {
   /** true = the server route is not there / not set up / down: the caller may try another way to answer. */
@@ -10,7 +11,17 @@ export class ServerAiError extends Error {
   constructor(message: string, unreachable: boolean) { super(message); this.unreachable = unreachable; }
 }
 
-const url = (path: string) => `${API_BASE || ''}/api/adviser/${path}`;
+// The desktop app's own pages are not the website, so there the AI is reached at the website itself, through the desktop's
+// network helper (allowed for this address in src-tauri/capabilities/default.json; no browser cross-site limits).
+const WEB_ORIGIN = 'https://with-cnc.vercel.app';
+const url = (path: string) => `${API_BASE || (isTauri() ? WEB_ORIGIN : '')}/api/adviser/${path}`;
+async function fetch(input: string, init?: RequestInit): Promise<Response> {
+  if (isTauri()) {
+    const { fetch: desktopFetch } = await import('@tauri-apps/plugin-http');
+    return desktopFetch(input, init);
+  }
+  return window.fetch(input, init);
+}
 const headers = async () => {
   const { data } = await supabase.auth.getSession();
   return { Authorization: `Bearer ${data.session?.access_token ?? ''}`, 'content-type': 'application/json' };

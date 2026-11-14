@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { ArrowUp, ArrowDown } from 'lucide-react';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -47,11 +46,9 @@ export function useSort<T>(accessors: Record<string, (row: T) => string | number
   return { key, dir, toggle, set, apply, sortRows: apply };
 }
 
-/** A column title that sorts its column when clicked, with the up / down arrow beside it. */
+/** A column title. Sorting now lives in the column's funnel menu (Excel-style filter), so the title is plain text. */
 export function SortLabel<T>({
   label,
-  col,
-  sort,
   title,
   className,
   light = false,
@@ -63,22 +60,12 @@ export function SortLabel<T>({
   className?: string;
   light?: boolean;
 }) {
-  const active = sort.key === col;
-  const Icon = sort.dir === 'asc' ? ArrowUp : ArrowDown;
   const defaultClass = light
-    ? 'inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 font-semibold transition-colors cursor-pointer text-xs'
-    : 'inline-flex items-center gap-1 font-semibold text-white hover:text-sky-200 transition-colors cursor-pointer';
-
+    ? 'inline-flex items-center text-slate-700 font-semibold text-xs'
+    : 'inline-flex items-center font-semibold text-white';
   return (
-    <button
-      type="button"
-      onClick={() => sort.toggle(col)}
-      title={title ?? `Sort by ${label}`}
-      className={className ?? defaultClass}
-    >
+    <span title={title} className={className ? className.replace(/\b(cursor-pointer|hover:\S+)/g, '') : defaultClass}>
       <span className="whitespace-nowrap">{label}</span>
-      {/* Inventory style: no icon until the column is sorted, then a light-blue arrow. */}
-      {active && <Icon size={12} className={light ? 'text-blue-600 font-bold' : 'text-sky-300'} />}
-    </button>
+    </span>
   );
 }

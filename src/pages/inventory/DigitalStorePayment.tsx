@@ -79,13 +79,13 @@ export function DigitalStorePayment() {
           <div className="font-extrabold text-slate-900">Link your Razorpay account</div>
           <ol className="space-y-2">
             {['Sign in to Razorpay (dashboard.razorpay.com). If you have no account yet, create one; it is free to start in Test mode.',
-              'Open Settings → API Keys and press Generate Key.',
+              'Open Settings → Keys and press Generate Key.',
               'Copy the Key ID (starts with rzp_live_ or rzp_test_) and the Key Secret. Razorpay shows the secret only once.',
               'Paste both below and press Connect. We check them with Razorpay before saving.'].map((t, i) => (
               <li key={i} className="flex gap-2.5 text-sm text-slate-700"><span className="w-5 h-5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-black flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>{t}</li>
             ))}
           </ol>
-          <a href="https://dashboard.razorpay.com/app/website-app-settings/api-keys" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-700 hover:underline"><ExternalLink size={13} /> Open Razorpay API Keys</a>
+          <a href="https://dashboard.razorpay.com/app/website-app-settings/api-keys" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-700 hover:underline"><ExternalLink size={13} /> Open Razorpay key settings</a>
           <div className="grid sm:grid-cols-2 gap-3">
             <div><label className={label}>Key ID</label><input className={input} value={f.keyId} onChange={e => setF(v => ({ ...v, keyId: e.target.value.trim() }))} placeholder="rzp_live_xxxxxxxxxxxx" autoComplete="off" /></div>
             <div><label className={label}>Key Secret</label><input className={input} type="password" value={f.secret} onChange={e => setF(v => ({ ...v, secret: e.target.value.trim() }))} placeholder={info ? 'Leave empty to keep the saved secret' : 'Paste the secret'} autoComplete="new-password" /></div>

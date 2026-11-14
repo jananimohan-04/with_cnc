@@ -109,10 +109,10 @@ export function ColumnFilterMenu({
   }, [values, query]);
 
   const numeric = isNumericList(values);
-  const width = 260;
+  const width = 340;
   const left = Math.min(Math.max(12, anchor.left), window.innerWidth - width - 16);
   const below = window.innerHeight - anchor.bottom;
-  const pos = below < 300 && anchor.top > below ? { bottom: window.innerHeight - anchor.top + 4 } : { top: anchor.bottom + 4 };
+  const pos = below < 460 && anchor.top > below ? { bottom: window.innerHeight - anchor.top + 4 } : { top: anchor.bottom + 4 };
 
   const isAll = selected == null;
   const pick = (v: string) => {
@@ -121,20 +121,20 @@ export function ColumnFilterMenu({
     if (next.has(v)) next.delete(v); else next.add(v);
     onChange(next.size === 0 || next.size === values.length ? null : next);
   };
-  const row = 'w-full text-left px-2.5 py-1.5 text-xs rounded-md flex items-center gap-2 hover:bg-slate-50 transition-colors';
+  const row = 'w-full text-left px-3 py-2 text-sm rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-colors';
   const on = 'font-bold text-blue-600 bg-blue-50/70';
 
   return createPortal(
     <div
       ref={box}
       style={{ left, width, ...pos }}
-      className="no-glass fixed z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl p-2 text-xs"
+      className="no-glass fixed z-[9999] bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 text-sm"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+      <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 text-sm font-bold text-slate-700 uppercase tracking-wider">
         <span className="truncate">{title}</span>
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 p-0.5 rounded" title="Close">
-          <X size={12} />
+          <X size={16} />
         </button>
       </div>
 
@@ -146,37 +146,37 @@ export function ColumnFilterMenu({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !onSearch && shown.length === 1) pick(shown[0]); }}
           placeholder={`Search ${title.toLowerCase()}...`}
-          className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-slate-800"
+          className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-800"
         />
       </div>
 
-      <div className="max-h-56 overflow-y-auto space-y-0.5">
+      <div className="max-h-80 overflow-y-auto space-y-0.5">
         <button type="button" onClick={() => { onChange(null); if (onSearch) onSearch(''); if (!multi) onClose(); }} className={`${row} justify-between ${isAll && !(onSearch && query) ? on : 'text-slate-700'}`}>
           <span>{allLabel}</span>
-          {isAll && !(onSearch && query) && <Check size={12} className="text-blue-600 shrink-0" />}
+          {isAll && !(onSearch && query) && <Check size={15} className="text-blue-600 shrink-0" />}
         </button>
         {shown.map((v) => {
           const sel = !isAll && selected.has(v);
           return (
             <button key={v} type="button" onClick={() => pick(v)} className={`${row} justify-between ${sel ? on : 'text-slate-700'}`} title={v}>
               <span className="truncate">{v}</span>
-              {sel && <Check size={12} className="text-blue-600 shrink-0" />}
+              {sel && <Check size={15} className="text-blue-600 shrink-0" />}
             </button>
           );
         })}
-        {!shown.length && <div className="px-2.5 py-2 text-slate-400 italic">No matching values</div>}
+        {!shown.length && <div className="px-3 py-2 text-slate-400 italic">No matching values</div>}
       </div>
 
       {extra}
 
       {onSort && (
         <div className="pt-1 mt-1 border-t border-slate-100 space-y-0.5">
-          <div className="px-2 py-0.5 font-bold text-[10px] text-slate-400 uppercase tracking-wider">Sort</div>
+          <div className="px-2 py-1 font-bold text-xs text-slate-500 uppercase tracking-wider">Sort</div>
           {(['asc', 'desc'] as const).map((d) => (
             <button key={d} type="button" onClick={() => { onSort(d); onClose(); }} className={`${row} ${sortDir === d ? on : 'text-slate-700'}`}>
-              {d === 'asc' ? <ArrowUp size={12} className="text-slate-400 shrink-0" /> : <ArrowDown size={12} className="text-slate-400 shrink-0" />}
+              {d === 'asc' ? <ArrowUp size={15} className="text-slate-400 shrink-0" /> : <ArrowDown size={15} className="text-slate-400 shrink-0" />}
               <span>{numeric ? (d === 'asc' ? 'Low → High' : 'High → Low') : d === 'asc' ? 'A → Z (Ascending)' : 'Z → A (Descending)'}</span>
-              {sortDir === d && <Check size={12} className="text-blue-600 ml-auto shrink-0" />}
+              {sortDir === d && <Check size={15} className="text-blue-600 ml-auto shrink-0" />}
             </button>
           ))}
         </div>

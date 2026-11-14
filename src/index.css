@@ -444,3 +444,19 @@ html[data-dock-side="right"] .dock-cowork { left: auto !important; right: calc(1
 .af-btn:hover { background: rgba(59, 130, 246, .35); }
 .af-btn.af-on svg { fill: #7dd3fc; }
 .af-btn.af-sorted { box-shadow: inset 0 -2px 0 #7dd3fc; }
+
+/* Sorting lives in each column's funnel menu, so the separate up / down sort arrows next to column titles are hidden
+   everywhere, and clicking a title no longer sorts on its own (the Inventory title still opens its menu). */
+:is(main, [role="dialog"]) thead th svg:is(.lucide-arrow-up-down, .lucide-arrow-down-up, .lucide-arrow-up, .lucide-arrow-down, .lucide-chevrons-up-down, .lucide-arrow-up-narrow-wide, .lucide-arrow-down-wide-narrow, .lucide-arrow-down-narrow-wide, .lucide-arrow-up-wide-narrow) {
+  display: none !important;
+}
+:is(main, [role="dialog"]) thead th button:not([title^="Filter & sort"]):not([data-af-btn]):has(svg:is(.lucide-arrow-up-down, .lucide-arrow-down-up, .lucide-arrow-up, .lucide-arrow-down, .lucide-chevrons-up-down)) {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Inventory's column menu: same bigger size as the shared column filter menu. */
+.col-menu-big :is(button, input, span, div) { font-size: 0.875rem !important; }
+.col-menu-big button { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.col-menu-big input { padding: 0.5rem 0.75rem; }
+.col-menu-big .max-h-56 { max-height: 20rem; }

@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import { FilterChip, FunnelIcon } from './HeaderFilter';
+import { ColumnFilterMenu } from './ColumnFilterMenu';
+import { headerSortDir, sortByHeader } from './TableAutoFilter';
 
 interface CompanyFilterInputProps {
   value: string;
@@ -28,6 +30,8 @@ export function CompanyFilterInput({
   variant = 'box',
 }: CompanyFilterInputProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [headRect, setHeadRect] = useState<DOMRect | null>(null);
+  const headBtn = useRef<HTMLButtonElement>(null);
   const [searchText, setSearchText] = useState('');
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,8 +119,9 @@ export function CompanyFilterInput({
       {variant === 'header' ? (
         <>
           <button
+            ref={headBtn}
             type="button"
-            onClick={openMenu}
+            onClick={(e) => { e.stopPropagation(); setHeadRect(e.currentTarget.getBoundingClientRect()); }}
             className="relative inline-flex items-center justify-center w-5 h-5 rounded cursor-pointer transition-colors hover:bg-blue-500/30"
             title="Filter by company"
             data-colfilter
@@ -124,6 +129,19 @@ export function CompanyFilterInput({
             <FunnelIcon active={!isAllSelected} />
           </button>
           {!isAllSelected && <FilterChip text={value} onClear={() => onChange(allLabel)} />}
+          {headRect && (
+            <ColumnFilterMenu
+              anchor={headRect}
+              title="Company"
+              values={options}
+              selected={isAllSelected ? null : new Set([value])}
+              multi={false}
+              onChange={(next) => onChange(next ? Array.from(next)[0] : allLabel)}
+              sortDir={headerSortDir(headBtn.current)}
+              onSort={(d) => sortByHeader(headBtn.current, d)}
+              onClose={() => setHeadRect(null)}
+            />
+          )}
         </>
       ) : (
       <button

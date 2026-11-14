@@ -955,7 +955,7 @@ app.post('/api/digital-pay/save', async (req, res) => {
     const b = req.body || {};
     const keyId = String(b.key_id || '').trim();
     let secret = String(b.key_secret || '').trim();
-    if (!/^rzp_(test|live)_\w+$/.test(keyId)) return res.status(400).json({ ok: false, error: 'The Key ID looks like rzp_live_xxxxxxxx or rzp_test_xxxxxxxx. Copy it from Razorpay → Settings → API Keys.' });
+    if (!/^rzp_(test|live)_\w+$/.test(keyId)) return res.status(400).json({ ok: false, error: 'The Key ID looks like rzp_live_xxxxxxxx or rzp_test_xxxxxxxx. Copy it from Razorpay → Settings → Keys.' });
     if (!secret) { const old = await loadPayCfg(a.companyId); if (old && old.keyId === keyId) secret = old.secret; }
     if (!secret) return res.status(400).json({ ok: false, error: 'Enter the Key Secret.' });
     let out;

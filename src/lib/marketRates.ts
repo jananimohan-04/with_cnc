@@ -82,7 +82,7 @@ export function describeRateIssue(step: 'table' | 'function', err: unknown, stat
   if (status === 404) return 'The refresh-metal-rates cloud function is not deployed.';
   if (status === 401 || status === 403) return 'The rate service refused the request (not signed in).';
   if (/METALS_DEV_KEY/.test(detail)) return 'The METALS_DEV_KEY secret is not set for the Edge Function.';
-  if (/Metals\.Dev returned HTTP (401|403)/.test(detail)) return 'Metals.Dev rejected the API key. Check METALS_DEV_KEY.';
+  if (/Metals\.Dev returned HTTP (401|403)/.test(detail)) return 'The metal price service did not accept our key. Please ask your administrator to check it.';
   if (detail) return `Rate service error: ${detail}`;
   return `Rate service error${status ? ` (HTTP ${status})` : ''}: ${msg || 'unknown'}`;
 }
