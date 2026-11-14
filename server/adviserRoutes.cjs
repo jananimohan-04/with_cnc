@@ -50,7 +50,7 @@ module.exports = function mountAdviser(app, SB) {
 
   app.post('/api/adviser/chat', async (req, res) => {
     if (!(await who(req, res))) return;
-    if (!key()) return res.status(503).json({ error: 'The AI is not set up on the server yet (OPENAI_API_KEY is missing).' });
+    if (!key()) return res.status(503).json({ error: 'The AI is not set up yet. Please ask your administrator to switch it on.' });
     const b = req.body || {};
     const system = String(b.system || '').slice(0, 14000);
     const msgs = (Array.isArray(b.messages) ? b.messages : []).slice(-14).map((m) => ({
@@ -71,12 +71,13 @@ module.exports = function mountAdviser(app, SB) {
         body: JSON.stringify({ model: model(), stream: true, temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, ...msgs] }),
         signal: ctl.signal,
       });
-    } catch (e) { return res.status(502).json({ error: 'ChatGPT could not be reached. Please try again.' }); }
+    } catch (e) { return res.status(502).json({ error: 'The AI could not be reached. Please try again.' }); }
     if (!up.ok || !up.body) {
       const t = await up.text().catch(() => '');
-      const msg = up.status === 401 ? 'The OpenAI key on the server was rejected. Check OPENAI_API_KEY.'
-        : up.status === 429 ? 'The OpenAI limit or quota was reached for now. Check the OpenAI billing, or try again in a minute.'
-        : `ChatGPT error (HTTP ${up.status}) ${t.slice(0, 120)}`;
+      const msg = up.status === 401 ? 'The AI key was rejected. Please ask your administrator to check it.'
+        : up.status === 429 ? 'The AI usage limit was reached for now. Please try again in a minute.'
+        : `The AI is not available right now (code ${up.status}). Please try again.`;
+      if (t) console.warn('AI upstream error', up.status, t.slice(0, 300));   // details stay in the server log
       return res.status(up.status === 401 ? 502 : 502).json({ error: msg });
     }
     res.status(200);
@@ -108,7 +109,7 @@ module.exports = function mountAdviser(app, SB) {
 
   app.post('/api/adviser/tts', async (req, res) => {
     if (!(await who(req, res))) return;
-    if (!key()) return res.status(503).json({ error: 'The AI is not set up on the server yet (OPENAI_API_KEY is missing).' });
+    if (!key()) return res.status(503).json({ error: 'The AI is not set up yet. Please ask your administrator to switch it on.' });
     const text = String((req.body || {}).text || '').trim().slice(0, 1800);
     const lang = ['ta', 'en', 'tanglish'].includes((req.body || {}).lang) ? req.body.lang : 'en';
     if (!text) return res.status(400).json({ error: 'No text.' });

@@ -44,7 +44,7 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
       ];
       const message = `Missing database environment variable(s): ${missing.join(', ')}.`;
       console.error(`[Database] ${message}`);
-      throw new Error(message);
+      throw new Error('The database connection is not set up. Please contact your administrator.');
     }
     
     const request = getRequest();

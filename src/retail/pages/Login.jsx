@@ -347,10 +347,10 @@ export default function Login() {
             <div className="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-left text-xs text-amber-900">
               <div className="font-bold flex items-center gap-1.5 text-amber-800 mb-1">
                 <AlertCircle size={14} className="text-amber-600 flex-shrink-0" />
-                <span>Google OAuth Credentials Pending</span>
+                <span>Google sign-in is not ready yet</span>
               </div>
               <p className="text-[11px] text-amber-700 leading-relaxed">
-                Please configure Supabase Google OAuth in backend/.env to sign in with your company account.
+                Please ask your administrator to set up Google sign-in for your company account.
               </p>
             </div>
           )}

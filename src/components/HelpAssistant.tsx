@@ -572,9 +572,9 @@ const GREETING_CHAT: Record<Lang, string> = {
   en: 'Hello! Ask me anything about Argus BI or about CNC machining. You can type, or talk using the mic.',
 };
 const NO_NET_CNC: Record<Lang, string> = {
-  ta: 'CNC தொடர்பான கேள்விகளுக்கு பதிலளிக்க இணைய இணைப்பு (ChatGPT) தேவை. இணைப்பைச் சரிபார்த்து மீண்டும் கேளுங்கள்.',
-  tanglish: 'CNC kelvigalukku answer panna internet (ChatGPT) venum. Connection check pannittu marubadi kelunga.',
-  en: 'I need the internet connection (ChatGPT) to answer machining questions. Please check it and ask again.',
+  ta: 'CNC தொடர்பான கேள்விகளுக்கு பதிலளிக்க இணைய இணைப்பு தேவை. இணைப்பைச் சரிபார்த்து மீண்டும் கேளுங்கள்.',
+  tanglish: 'CNC kelvigalukku answer panna internet venum. Connection check pannittu marubadi kelunga.',
+  en: 'I need the internet connection to answer machining questions. Please check it and ask again.',
 };
 const STARTERS: { en: string; ta: string }[] = [
   { en: 'How do I use this page?', ta: 'இந்தப் பக்கத்தை எப்படி பயன்படுத்துவது?' },
@@ -605,7 +605,7 @@ async function* openAiDirect(key: string, system: string, hist: { role: 'user' |
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, temperature: 0.2, max_tokens: 700, messages: [{ role: 'system', content: system }, ...hist.map((m) => ({ role: m.role, content: m.text }))] }),
   });
-  if (!res.ok || !res.body) throw new Error(res.status === 401 ? 'The OpenAI key saved in this browser was rejected.' : `ChatGPT is not available right now (HTTP ${res.status}).`);
+  if (!res.ok || !res.body) throw new Error(res.status === 401 ? 'The AI key saved in this browser was rejected.' : `The AI is not available right now (code ${res.status}).`);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';

@@ -111,9 +111,8 @@ jobs:
           tagName: v${{ env.VERSION }}
           releaseName: Business Intelligence v${{ env.VERSION }}
           releaseBody: |
-            Automatic build of Business Intelligence v${{ env.VERSION }} from the latest code on main.
+            Business Intelligence v${{ env.VERSION }}: the latest improvements and fixes.
             Installed copies offer this update by themselves (Settings > Updates > Check for Updates).
-            New installs: download the `-setup.exe` file below.
           releaseDraft: false
           prerelease: false
 

@@ -114,13 +114,13 @@ async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[
   }
   if (!unreachable) return;
   const key = getOpenAIApiKey();
-  if (!key) throw new Error('AI is not set up yet: add OPENAI_API_KEY in the server settings (Vercel > Environment Variables) and redeploy. The report above does not need AI.');
+  if (!key) throw new Error('AI is not set up yet. Please ask your administrator to switch it on. The report above does not need AI.');
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, temperature: 0.3, max_tokens: 700, messages: [{ role: 'system', content: daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang) }, { role: 'user', content: facts }] }),
   });
-  if (!res.ok || !res.body) throw new Error(res.status === 401 ? 'The OpenAI key saved in this browser was rejected.' : `ChatGPT is not available right now (HTTP ${res.status}).`);
+  if (!res.ok || !res.body) throw new Error(res.status === 401 ? 'The AI key saved in this browser was rejected.' : `The AI is not available right now (code ${res.status}).`);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';

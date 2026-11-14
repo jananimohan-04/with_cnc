@@ -11,7 +11,7 @@
 //   * Direct desktop installer (.exe) download on web
 
 import { useEffect, useState } from 'react';
-import { Download, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Download, CheckCircle2, RefreshCw } from 'lucide-react';
 import { isTauri } from '@/lib/desktop/isTauri';
 import {
   runUpdateCheck,
@@ -144,9 +144,6 @@ export function UpdatesSettingsPage() {
               <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[11px] font-semibold">
                 Build: v{appVersion}
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1">
-                <ShieldCheck size={11} /> Cryptographically Signed
-              </span>
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
@@ -166,8 +163,6 @@ export function UpdatesSettingsPage() {
                 'Downloading update packages. Signature will be verified before installation.'}
               {status.kind === 'ready' &&
                 'The update package has been downloaded and verified. Click the restart button to apply the update immediately.'}
-              {status.kind === 'uptodate' &&
-                `You are currently running the latest stable release (v${appVersion}). All features and bug fixes are up to date.`}
               {status.kind === 'checking' &&
                 'Contacting release server and verifying update manifests…'}
               {status.kind === 'error' &&

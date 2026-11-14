@@ -271,7 +271,7 @@ export function understandLocal(
   const keyMatch = /\b(sk-[A-Za-z0-9_-]{20,})\b/i.exec(msg);
   if (keyMatch) {
     setOpenAIApiKey(keyMatch[1]);
-    return done('help', {}, '✓ OpenAI API Key சேமிக்கப்பட்டது! ChatGPT குரல் ஆய்வு இயங்குகிறது.');
+    return done('help', {}, '✓ AI key சேமிக்கப்பட்டது! AI குரல் ஆய்வு இயங்குகிறது.');
   }
 
   // A new command always wins over a half-finished one.

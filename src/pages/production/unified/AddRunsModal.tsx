@@ -201,9 +201,9 @@ export function AddRunsModal({ open, onClose, initial, mode = 'actual', onSaved 
     } catch (err: any) {
       const msg = String(err?.message ?? err);
       alert(plan && /cnc_operation_plans|relation|schema cache/.test(msg) && /does not exist|Could not find the table/.test(msg)
-        ? 'The planning table is not provisioned yet. Apply database migration 20261009000000_operation_plans.sql.'
+        ? 'Saving plans is not ready yet. Please ask your administrator to finish the planning setup.'
         : /'(actual_start|actual_end|completed_at)' column/.test(msg)
-          ? `Your database has no actual start / end on job cards yet (${msg}). Ask your administrator to run this SQL update:\n\nalter table public.cnc_job_cards add column if not exists actual_start timestamptz, add column if not exists actual_end timestamptz, add column if not exists completed_at timestamptz;\nnotify pgrst, 'reload schema';`
+          ? 'Saving actual start / end times is not ready yet. Please ask your administrator to finish the job card setup.'
           : `Could not save the ${plan ? 'plans' : 'runs'}: ${msg}`);
     } finally {
       setSaving(false);

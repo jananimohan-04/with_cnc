@@ -1592,8 +1592,8 @@ export function Copilot() {
         add({
           role: 'ai',
           text: L(
-            '✓ OpenAI API Key saved! ChatGPT voice intelligence is now active.',
-            '✓ OpenAI API Key சேமிக்கப்பட்டது! இனி குரல் கட்டளைகள் ChatGPT மூலம் ஆராயப்படும்.'
+            '✓ AI key saved! AI voice understanding is now active.',
+            '✓ AI key சேமிக்கப்பட்டது! இனி குரல் கட்டளைகள் AI மூலம் ஆராயப்படும்.'
           ),
         });
         return;
@@ -1797,8 +1797,8 @@ export function Copilot() {
     add({
       role: 'ai',
       text: cleanKey
-        ? L('✓ ChatGPT API Key saved! Voice commands will now be analyzed by ChatGPT.', '✓ ChatGPT API Key சேமிக்கப்பட்டது! இனி குரல் கட்டளைகள் ChatGPT மூலம் ஆராயப்படும்.')
-        : L('ChatGPT API Key removed. Using built-in local NLP.', 'ChatGPT API Key நீக்கப்பட்டது. உள்ளமைக்கப்பட்ட முறை பயன்படுத்தப்படும்.'),
+        ? L('✓ AI key saved! Voice commands will now be understood by the AI.', '✓ AI key சேமிக்கப்பட்டது! இனி குரல் கட்டளைகள் AI மூலம் ஆராயப்படும்.')
+        : L('AI key removed. Using the built-in understanding.', 'AI key நீக்கப்பட்டது. உள்ளமைக்கப்பட்ட முறை பயன்படுத்தப்படும்.'),
     });
   };
 
@@ -1903,10 +1903,10 @@ export function Copilot() {
               className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[9px] font-semibold ${
                 hasApiKey ? 'bg-emerald-500/30 text-emerald-100' : 'bg-blue-400/20 text-blue-100'
               }`}
-              title={hasApiKey ? 'ChatGPT API Connected' : 'Built-in Local NLP Engine'}
+              title={hasApiKey ? 'Online AI connected' : 'Built-in understanding'}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${hasApiKey ? 'bg-emerald-300 animate-pulse' : 'bg-blue-200'}`} />
-              {hasApiKey ? 'ChatGPT' : 'Local'}
+              {hasApiKey ? 'Online AI' : 'Local'}
             </span>
 
             {/* Continuous Microphone status badge */}
@@ -1937,8 +1937,8 @@ export function Copilot() {
         {/* API Key settings toggle */}
         <button
           type="button"
-          aria-label="OpenAI Settings"
-          title="Configure OpenAI ChatGPT API Key"
+          aria-label="AI settings"
+          title="Set the AI key"
           onClick={() => setShowKeyModal((v) => !v)}
           className={`rounded p-1.5 transition-colors ${showKeyModal ? 'bg-white/30 text-amber-300' : 'hover:bg-white/15 text-white/90'}`}
         >
@@ -1992,7 +1992,7 @@ export function Copilot() {
           <div className="flex items-center justify-between font-bold text-violet-900 mb-1.5">
             <span className="flex items-center gap-1.5">
               <Key size={13} className="text-violet-600" />
-              OpenAI ChatGPT API Key
+              AI key
             </span>
             <button
               type="button"
@@ -2003,7 +2003,7 @@ export function Copilot() {
             </button>
           </div>
           <p className="text-[11px] text-slate-600 mb-2">
-            Paste your OpenAI API key below (e.g. <code>sk-...</code>). Voice commands will be sent to ChatGPT for real-time analysis before saving to the database.
+            Paste your AI key below (e.g. <code>sk-...</code>). Voice commands will be understood by the online AI before saving.
           </p>
           <div className="flex items-center gap-1.5">
             <input
@@ -2545,7 +2545,7 @@ export function Copilot() {
         {busy && (
           <div className="flex items-center gap-2 text-xs text-slate-500 py-1">
             <Loader2 size={14} className="animate-spin text-violet-600" />
-            <span>{hasApiKey ? L('Analyzing voice with ChatGPT & saving to database…', 'ChatGPT மூலம் குரலை ஆராய்ந்து டேட்டாபேஸில் சேமிக்கிறேன்…') : L('Working…', 'செய்கிறேன்…')}</span>
+            <span>{hasApiKey ? L('Understanding your voice & saving…', 'AI மூலம் குரலை ஆராய்ந்து சேமிக்கிறேன்…') : L('Working…', 'செய்கிறேன்…')}</span>
           </div>
         )}
         {/* The guided entry: one question at a time, then a check before saving (below the conversation, so it is always in view) */}
