@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useDockDrag } from './AssistantDock';
 import {
   Bot, CheckCircle2, Languages, Loader2, Mic, MicOff, Send, Volume2, VolumeX, X,
   Key, Sparkles, Search, ChevronDown, ChevronUp, Edit3, Trash2, PlusCircle, RefreshCw,
@@ -481,6 +482,7 @@ export function Copilot() {
   // The Co-worker panel can be dragged bigger or smaller by its top-right corner (a little bigger than before by default).
   const panelSize = useResizable('coworker-panel-size', { w: 496, h: 640 }, { w: 340, h: 380 });
   const pillMoved = useRef(false);
+  const dockDrag = useDockDrag();   // dragging the pill moves the whole AI group
   const pillPosRef = useRef(pillPos); pillPosRef.current = pillPos;
   const [lang, setLang] = useState<Lang>(readLang);
   const [speak, setSpeak] = useAiVoice('coworker');   // off until switched on
@@ -1836,8 +1838,9 @@ export function Copilot() {
       <div
         data-assistant-launcher
         className="dock-cowork fixed bottom-4 left-[5.5rem] max-lg:bottom-20 max-lg:left-2 z-[60] flex items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-xs hover:shadow-xl cursor-pointer select-none"
+        {...dockDrag.bind}
         onClick={async () => {
-          if (pillMoved.current) return;
+          if (dockDrag.wasDragged() || pillMoved.current) return;
           setMicMuted(false);
           micMutedRef.current = false;
           haltedRef.current = false;
