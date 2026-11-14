@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDockDrag } from './AssistantDock';
+import { askAnything } from '@/lib/adviser/openAnswer';
 import {
   Bot, CheckCircle2, Languages, Loader2, Mic, MicOff, Send, Volume2, VolumeX, X,
   Key, Sparkles, Search, ChevronDown, ChevronUp, Edit3, Trash2, PlusCircle, RefreshCw,
@@ -1652,7 +1653,9 @@ export function Copilot() {
           add({ role: 'ai', text: ans });
           return;
         }
-        add({ role: 'ai', text: await askHelp(String(u.params.question ?? text), page, pageTitle, lang) });
+        const q = String(u.params.question ?? text);
+        const open = await askAnything(q, lang === 'ta' ? 'ta' : 'en', msgs.slice(-6).map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', text: m.text })), `The person is on the "${pageTitle || page}" page of Argus BI.`);
+        add({ role: 'ai', text: open ?? await askHelp(q, page, pageTitle, lang) });
         return;
       }
 
@@ -1672,6 +1675,9 @@ export function Copilot() {
 
       if (u.intent === 'unknown') {
         setPending(null);
+        // not a command: answer it like a normal question (any topic)
+        const open = await askAnything(text, lang === 'ta' ? 'ta' : 'en', msgs.slice(-6).map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', text: m.text })), `The person is on the "${pageTitle || page}" page of Argus BI. If what they said looks like an unfinished command for the app, answer briefly and say they can say it as a command, for example "add enquiry for ABC".`);
+        if (open) { add({ role: 'ai', text: open }); return; }
         add({
           role: 'ai',
           text: u.reply || L(
