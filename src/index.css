@@ -188,14 +188,20 @@
 .erp-table thead tr {
   background-color: #111c33;
 }
-.erp-table thead th,
-.erp-table thead th button {
+.erp-table thead th {
   position: sticky;
   top: 0;
   z-index: 20;
   background-color: #111c33 !important;
   color: #ffffff;
 }
+/* Buttons inside a heading (titles, funnels) take the heading's own colour: no darker box behind them. */
+:is(main, [role="dialog"]) thead th button:not([class*="bg-white"]):not([class*="bg-blue-50"]) {
+  background-color: transparent !important;
+  color: inherit;
+}
+:is(main, [role="dialog"]) thead th button.af-btn:hover,
+:is(main, [role="dialog"]) thead th [data-colfilter] button:hover { background-color: rgba(255, 255, 255, .15) !important; }
 .erp-table thead th {
   font-size: 12px;
   font-weight: 700;
