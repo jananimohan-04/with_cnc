@@ -1991,6 +1991,19 @@ const CATEGORY_THEMES: Record<string, {
     accent: 'accent-rose-600',
     toggleOn: 'bg-rose-600',
   },
+  'AI Assistants': {
+    cardBg: 'bg-violet-50/40',
+    cardBorder: 'border-violet-200/80',
+    headerBg: 'bg-violet-100/70',
+    headerBorder: 'border-violet-200',
+    headerText: 'text-violet-900',
+    badgeBg: 'bg-violet-200/60',
+    badgeText: 'text-violet-800',
+    divider: 'divide-violet-100/70',
+    rowHover: 'hover:bg-violet-100/30',
+    accent: 'accent-violet-600',
+    toggleOn: 'bg-violet-600',
+  },
 };
 
 function TriCheckbox({ checked, indeterminate, onChange, label, disabled, title, accentClass }: {
@@ -2278,7 +2291,7 @@ export function PermissionEditor({ userId, userEmail, userRole, companyId, compa
         };
 
         // Distribute categories across two vertical columns so cards stack tightly with no blank gaps below shorter boxes
-        const leftCategories = ['Overview', 'Production', 'Inventory & Purchasing'];
+        const leftCategories = ['Overview', 'Production', 'Inventory & Purchasing', 'AI Assistants'];
         const rightCategories = ['Sales', 'Sales Pipeline Columns', 'Logistics', 'Finance', 'Administration'];
 
         return (

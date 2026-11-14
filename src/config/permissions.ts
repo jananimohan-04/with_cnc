@@ -18,6 +18,8 @@ export interface ModuleDef {
   parent?: string;
   /** No row of its own in Access Management (it has no menu entry): it always follows `parent`. */
   hidden?: boolean;
+  /** On for everyone until an administrator switches it off (the AI assistants): a missing row means "on". */
+  defaultOn?: boolean;
 }
 
 export const PERM_CATEGORIES = [
@@ -29,6 +31,7 @@ export const PERM_CATEGORIES = [
   'Finance',
   'Inventory & Purchasing',
   'Administration',
+  'AI Assistants',
 ] as const;
 
 const V: PermAction[] = ['view'];
@@ -93,6 +96,10 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'audit-logs', label: 'Audit Logs', category: 'Administration', actions: [...V], pages: ['admin/audit-logs'] },
 
   { key: 'support', label: 'Technical Support', category: 'Administration', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['support/center', 'support/technical'] },
+  { key: 'ai-teaching', label: 'Teaching (AI)', category: 'AI Assistants', actions: [...V], pages: [], defaultOn: true },
+  { key: 'ai-guide', label: 'Guide (AI)', category: 'AI Assistants', actions: [...V], pages: [], defaultOn: true },
+  { key: 'ai-coworker', label: 'Co-worker (AI)', category: 'AI Assistants', actions: [...V], pages: [], defaultOn: true },
+  { key: 'ai-adviser', label: 'Adviser (AI)', category: 'AI Assistants', actions: [...V], pages: [], defaultOn: true },
   { key: 'onsite-support', label: 'On-site Support', category: 'Administration', actions: ['view', 'create', 'edit', 'delete', 'approve', 'export'], pages: ['support/onsite'], parent: 'support' },
 ];
 
@@ -148,6 +155,8 @@ export function rowsToMatrix(rows: { module_key: string; can_view: boolean; can_
   // A menu entry that was never saved on its own follows the module it shares data with (so nobody loses access on upgrade).
   const have = new Set((rows ?? []).map((r) => r.module_key));
   MODULE_CATALOG.forEach((d) => { if (d.parent && (d.hidden || !have.has(d.key)) && m[d.parent]) m[d.key] = { ...m[d.parent] }; });
+  // The AI assistants are on until they are switched off for this user.
+  MODULE_CATALOG.forEach((d) => { if (d.defaultOn && !have.has(d.key)) m[d.key] = { ...emptyFlags(), view: true }; });
   return m;
 }
 
@@ -180,9 +189,12 @@ export function matrixToPayload(matrix: PermMatrix): Record<string, Record<strin
   const out: Record<string, Record<string, boolean>> = {};
   const parentOf = Object.fromEntries(MODULE_CATALOG.filter((d) => d.parent).map((d) => [d.key, d.parent as string]));
   const hiddenKeys = new Set(MODULE_CATALOG.filter((d) => d.hidden).map((d) => d.key));
+  const defaultOnKeys = new Set(MODULE_CATALOG.filter((d) => d.defaultOn).map((d) => d.key));
   const any = (f: ActionFlags | undefined) => !!f && (f.view || f.create || f.edit || f.delete || f.approve || f.export);
   for (const [k, f] of Object.entries(matrix)) {
     if (hiddenKeys.has(k)) continue;
+    // always saved (even when off), so "off" is remembered instead of falling back to the default "on"
+    if (defaultOnKeys.has(k)) { out[k] = { view: f.view, create: f.create, edit: f.edit, delete: f.delete, approve: f.approve, export: f.export }; continue; }
     // A separate menu entry is always sent once its parent has rights, so switching it off stays off.
     if (any(f) || (parentOf[k] && any(matrix[parentOf[k]]))) {
       out[k] = { view: f.view, create: f.create, edit: f.edit, delete: f.delete, approve: f.approve, export: f.export };
@@ -190,3 +202,6 @@ export function matrixToPayload(matrix: PermMatrix): Record<string, Record<strin
   }
   return out;
 }
+
+/** The four AI assistants and their Access Management switches. */
+export const AI_MODULES = { teaching: 'ai-teaching', guide: 'ai-guide', coworker: 'ai-coworker', adviser: 'ai-adviser' } as const;

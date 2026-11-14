@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useStickyTableHeads } from './lib/useStickyTableHeads';
 import { TableAutoFilter } from './components/ui/TableAutoFilter';
+import { useAiAccess } from './lib/aiAccess';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { PortalApp } from './pages/portal/PortalApp';
 import { LoginScreen } from './components/LoginScreen';
@@ -169,6 +170,7 @@ function MainLayout() {
   };
 
   const { signOut, company, refreshPermissions } = useAuth();
+  const ai = useAiAccess();
   // every page fills the screen at every display size (re-attached when <main> is rebuilt for another company)
   useFitPage(mainRef, pageRef, displayScale, `${location.pathname}|${company?.id ?? ''}`);
 
@@ -380,11 +382,12 @@ function MainLayout() {
           onCloseMobile={() => setMobileMenuOpen(false)}
         />
       )}
-      <AssistantDock />
-      <HelpAssistant />
-      <GuideCoach />
-      <TeachingTour />
-      <Copilot />
+      {/* AI assistants: each one can be switched off in Access Management (for a company or a user) */}
+      {(ai.teaching || ai.guide || ai.coworker || ai.adviser) && <AssistantDock />}
+      {(ai.teaching || ai.coworker || ai.adviser) && <HelpAssistant allowed={ai} />}
+      {ai.guide && <GuideCoach />}
+      {ai.teaching && <TeachingTour />}
+      {ai.coworker && <Copilot />}
       <SavedProductsDatalist />
       <Time24Normalizer />
       <DatalistOpenAll />

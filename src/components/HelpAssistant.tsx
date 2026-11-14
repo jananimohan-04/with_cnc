@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AiAccess } from '@/lib/aiAccess';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Bot, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
@@ -624,8 +625,10 @@ async function* openAiDirect(key: string, system: string, hist: { role: 'user' |
   }
 }
 
-export function HelpAssistant() {
+export function HelpAssistant({ allowed = { teaching: true, guide: true, coworker: true, adviser: true } }: { allowed?: AiAccess } = {}) {
   const location = useLocation();
+  const allowedRef = useRef(allowed);
+  allowedRef.current = allowed;
   const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
   const [phase, setPhase] = useState<Phase>('idle');
   const [heard, setHeard] = useState('');
@@ -885,6 +888,8 @@ export function HelpAssistant() {
     const m = modesRef.current;
     const adviserOn = activeRef.current;
     const wasOn = id === 'teaching' ? m.teaching : id === 'coworker' ? m.coworker : adviserOn;
+    // switched off in Access Management (for this company or this user): it cannot be started
+    if (!wasOn && !allowedRef.current[id]) { setNote(`${id === 'teaching' ? 'Teaching' : id === 'coworker' ? 'Co-worker' : 'Adviser'} is switched off for you in Access Management.`); return; }
     // one mode at a time: the other two are switched off first
     if (id !== 'teaching' && m.teaching) window.dispatchEvent(new CustomEvent('argus:teach', { detail: { on: false } }));
     if (id !== 'coworker' && m.coworker) window.dispatchEvent(new CustomEvent('argus:copilot', { detail: { on: false } }));
@@ -984,6 +989,12 @@ export function HelpAssistant() {
   useEffect(() => { if (active) setView('report'); }, [active]);
   // Tell Co-worker when Adviser holds the microphone, so the two never listen at once.
   useEffect(() => { if (active) takeFloor('adviser'); else releaseFloor('adviser'); }, [active]);
+  // A mode switched off in Access Management while it is running stops at once.
+  useEffect(() => {
+    if (!allowed.teaching && modes.teaching) setModes((m) => ({ ...m, teaching: false }));
+    if (!allowed.coworker && modes.coworker) setModes((m) => ({ ...m, coworker: false }));
+    if (!allowed.adviser && activeRef.current) endSession(false);
+  }, [allowed.teaching, allowed.coworker, allowed.adviser, modes.teaching, modes.coworker, endSession]);
   const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? (overMode ? 'Listening… பேசுங்கள். முடிந்ததும் "over" சொல்லுங்கள் / say "over" when you finish' : 'Listening… பேசுங்கள் / speak now') : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking… tap the mic to stop it and talk' : '';
   const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
@@ -1018,7 +1029,7 @@ export function HelpAssistant() {
         <div role="menu" aria-label="AI modes" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
           className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl`}>
           {/* Teaching: two kinds */}
-          <div className={`mb-1 rounded-xl border px-3 py-2 ${modes.teaching ? 'border-red-300 bg-red-50' : 'border-transparent'}`}>
+          {allowed.teaching && <div className={`mb-1 rounded-xl border px-3 py-2 ${modes.teaching ? 'border-red-300 bg-red-50' : 'border-transparent'}`}>
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={18} /></span>
               <span className="min-w-0 flex-1">
@@ -1046,11 +1057,11 @@ export function HelpAssistant() {
             )}
             <kbd className="mt-1.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">Ctrl + Shift</kbd>
             <span className="ml-1 text-[10px] text-slate-400">repeats the last kind ({lastTeachKind === 'erp' ? 'Whole Argus BI' : 'This page'})</span>
-          </div>
+          </div>}
           {([
             { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + CapsLock', on: modes.coworker },
             { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Chat or talk: Argus BI help and any CNC machining question', keys: 'Ctrl + Alt', on: active },
-          ] as const).map((m) => (
+          ] as const).filter((m) => allowed[m.id]).map((m) => (
             <div key={m.id} className={`mb-1 flex items-start gap-1 rounded-xl border pr-2 last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
               <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
                 className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left">
