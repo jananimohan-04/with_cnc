@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // One small arrow tab instead of two floating pills. Point at it (or click it) and the AI help + Co-worker buttons appear next to it;
@@ -28,8 +28,51 @@ function publish(p: { x: number; y: number }) {
   document.documentElement.setAttribute('data-dock-side', p.x > window.innerWidth / 2 ? 'right' : 'left');
 }
 
+/**
+ * Lets the AI button / Co-worker pill be dragged too: dragging either one moves the whole group (the arrow tab and its buttons).
+ * Spread `bind` on the button and, in its onClick, return early when `wasDragged()` is true.
+ */
+export function useDockDrag() {
+  const start = useRef<{ sx: number; sy: number; x: number; y: number } | null>(null);
+  const moved = useRef(false);
+  const onPointerDown = (e: RPointerEvent<HTMLElement>) => {
+    const s = getComputedStyle(document.documentElement);
+    const x = parseFloat(s.getPropertyValue('--dock-x')) || 0;
+    const y = parseFloat(s.getPropertyValue('--dock-y')) || 0;
+    start.current = { sx: e.clientX, sy: e.clientY, x, y };
+    moved.current = false;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+  };
+  const onPointerMove = (e: RPointerEvent<HTMLElement>) => {
+    const s = start.current;
+    if (!s) return;
+    if (!moved.current && Math.hypot(e.clientX - s.sx, e.clientY - s.sy) < 5) return;   // a small wobble is still a click
+    moved.current = true;
+    window.dispatchEvent(new CustomEvent('argus:dock-move', { detail: { x: s.x + (e.clientX - s.sx), y: s.y - (e.clientY - s.sy), save: false } }));
+  };
+  const onPointerUp = (e: RPointerEvent<HTMLElement>) => {
+    const s = start.current;
+    start.current = null;
+    if (s && moved.current) window.dispatchEvent(new CustomEvent('argus:dock-move', { detail: { x: s.x + (e.clientX - s.sx), y: s.y - (e.clientY - s.sy), save: true } }));
+  };
+  const wasDragged = () => { const m = moved.current; moved.current = false; return m; };
+  return { bind: { onPointerDown, onPointerMove, onPointerUp }, wasDragged };
+}
+
 export function AssistantDock() {
   const [pos, setPos] = useState(read);
+  // the AI button / Co-worker pill being dragged (useDockDrag)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ x: number; y: number; save: boolean }>).detail;
+      if (!d) return;
+      const p = clamp({ x: d.x, y: d.y });
+      setPos(p);
+      if (d.save) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* not saved */ } }
+    };
+    window.addEventListener('argus:dock-move', h);
+    return () => window.removeEventListener('argus:dock-move', h);
+  }, []);
   const [open, setOpen] = useState(false);
   const pinned = useRef(false);
   const timer = useRef<number | null>(null);
