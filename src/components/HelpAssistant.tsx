@@ -10,6 +10,7 @@ import { boostAudio } from '@/lib/voiceBoost';
 import { supabase } from '@/lib/supabase';
 import { getBreadcrumbs } from '@/config/navigation';
 import { useDraggable } from '@/lib/useDraggable';
+import { useDockDrag } from './AssistantDock';
 import { useResizable, ResizeGrip } from '@/lib/useResizable';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
 import { rankNotes } from '../../supabase/functions/help-assistant/knowledge';
@@ -404,8 +405,8 @@ function VoiceSwitch({ mode, label }: { mode: AiMode; label: string }) {
     <button type="button" role="switch" aria-checked={on} aria-label={`${label} voice`}
       title={on ? `${label} talks. Click to make it silent.` : `${label} is silent (text only). Click to let it talk.`}
       onClick={(e) => { e.stopPropagation(); set(!on); }}
-      className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold transition-colors ${on ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
-      {on ? <Volume2 size={12} /> : <VolumeX size={12} />}{on ? 'Voice on' : 'Voice off'}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors ${on ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+      {on ? <Volume2 size={14} /> : <VolumeX size={14} />}
     </button>
   );
 }
@@ -637,6 +638,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   const [lang, setLang] = useState<Lang>(() => (store.get('help.vlang', 'ta') as Lang));
   const rootRef = useRef<HTMLDivElement>(null);
   const drag = useDraggable('argus.help.pos', rootRef);
+  const dockDrag = useDockDrag();   // dragging the AI button moves the whole group (arrow tab + buttons)
   const [menu, setMenu] = useState(false);
   const [modes, setModes] = useState({ teaching: false, coworker: false });
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -997,7 +999,7 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
   }, [allowed.teaching, allowed.coworker, allowed.adviser, modes.teaching, modes.coworker, endSession]);
   const anyOn = active || modes.teaching || modes.coworker;
   const status = phase === 'greeting' ? '…' : phase === 'listening' ? (overMode ? 'Listening… பேசுங்கள். முடிந்ததும் "over" சொல்லுங்கள் / say "over" when you finish' : 'Listening… பேசுங்கள் / speak now') : phase === 'thinking' ? 'Thinking…' : phase === 'speaking' ? 'Speaking… tap the mic to stop it and talk' : '';
-  const rightSide = !!drag.pos && drag.pos.x > window.innerWidth / 2;
+  const rightSide = document.documentElement.getAttribute('data-dock-side') === 'right' || (!!drag.pos && drag.pos.x > window.innerWidth / 2 && !document.documentElement.hasAttribute('data-dock-side'));
   const kind: 'ta' | 'en' = lang === 'ta' ? 'ta' : 'en';
   const choices = voiceList(kind);
   const chosen = voiceFor(kind === 'ta' ? 'ta அ' : 'en')?.name ?? '';
@@ -1016,7 +1018,8 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
       className={`dock-help fixed bottom-5 max-lg:bottom-[4.75rem] left-[5.5rem] z-[60] flex items-end gap-2 font-sans ${rightSide ? 'flex-row-reverse' : ''}`}>
       <button type="button" data-assistant-launcher
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => { if (drag.wasDragged()) return; setMenu((m) => !m); }}
+        {...dockDrag.bind}
+        onClick={() => { if (dockDrag.wasDragged() || drag.wasDragged()) return; setMenu((m) => !m); }}
         aria-label="AI assistant" aria-expanded={menu} title="AI assistant: Teaching, Co-worker, Adviser"
         className={`relative flex h-12 touch-none cursor-grab select-none items-center gap-2 rounded-full pl-4 pr-5 text-white shadow-lg active:cursor-grabbing ${anyOn ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
         {active && phase === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-red-500/30" />}
@@ -1027,55 +1030,47 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
       </button>
       {menu && (
         <div role="menu" aria-label="AI modes" data-voice-ignore onMouseDown={(e) => e.stopPropagation()}
-          className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl`}>
+          className={`absolute bottom-14 ${rightSide ? 'right-0' : 'left-0'} w-64 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl`}>
           {/* Teaching: two kinds */}
-          {allowed.teaching && <div className={`mb-1 rounded-xl border px-3 py-2 ${modes.teaching ? 'border-red-300 bg-red-50' : 'border-transparent'}`}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={18} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-bold text-slate-800">Teaching{modes.teaching && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On</span>}</span>
-                <span className="block text-[11px] leading-snug text-slate-500">Points at every option and explains it, one by one</span>
+          {allowed.teaching && <div className={`mb-1 rounded-xl border px-2 py-1.5 ${modes.teaching ? 'border-red-300 bg-red-50' : 'border-transparent'}`}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600"><GraduationCap size={15} /></span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800" title="Points at every option and explains it, one by one · Ctrl + Shift">
+                Teaching{modes.teaching && <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On</span>}
               </span>
               <VoiceSwitch mode="teaching" label="Teaching" />
             </div>
             {modes.teaching ? (
               <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode('teaching'); }}
-                className="mt-2 w-full rounded-lg bg-red-600 py-1.5 text-xs font-bold text-white hover:bg-red-700">Stop teaching</button>
+                className="mt-1.5 w-full rounded-lg bg-red-600 py-1 text-xs font-bold text-white hover:bg-red-700">Stop teaching</button>
             ) : (
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <div className="mt-1.5 grid grid-cols-2 gap-1">
                 <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode('teaching', 'page'); }}
-                  className="rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-left hover:bg-orange-100">
-                  <span className="block text-xs font-bold text-orange-800">This page</span>
-                  <span className="block text-[10px] leading-tight text-orange-700/80">Only the screen you are on</span>
-                </button>
+                  title="Only the screen you are on"
+                  className={`rounded-lg border px-2 py-1 text-xs font-bold hover:bg-orange-100 ${lastTeachKind === 'page' ? 'border-orange-300 bg-orange-50 text-orange-800' : 'border-orange-200 bg-white text-orange-700'}`}>This page</button>
                 <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode('teaching', 'erp'); }}
-                  className="rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-left hover:bg-orange-100">
-                  <span className="block text-xs font-bold text-orange-800">Whole Argus BI</span>
-                  <span className="block text-[10px] leading-tight text-orange-700/80">Every screen, every option</span>
-                </button>
+                  title="Every screen, every option"
+                  className={`rounded-lg border px-2 py-1 text-xs font-bold hover:bg-orange-100 ${lastTeachKind === 'erp' ? 'border-orange-300 bg-orange-50 text-orange-800' : 'border-orange-200 bg-white text-orange-700'}`}>Whole app</button>
               </div>
             )}
-            <kbd className="mt-1.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">Ctrl + Shift</kbd>
-            <span className="ml-1 text-[10px] text-slate-400">repeats the last kind ({lastTeachKind === 'erp' ? 'Whole Argus BI' : 'This page'})</span>
           </div>}
           {([
             { id: 'coworker', icon: Bot, color: 'bg-violet-100 text-violet-600', title: 'Co-worker', sub: 'Type or speak commands — I\'ll do them: "add enquiry for ABC"', keys: 'Ctrl + CapsLock', on: modes.coworker },
             { id: 'adviser', icon: Lightbulb, color: 'bg-emerald-100 text-emerald-600', title: 'Adviser', sub: 'Chat or talk: Argus BI help and any CNC machining question', keys: 'Ctrl + Alt', on: active },
           ] as const).filter((m) => allowed[m.id]).map((m) => (
-            <div key={m.id} className={`mb-1 flex items-start gap-1 rounded-xl border pr-2 last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
+            <div key={m.id} className={`mb-1 flex items-center gap-1 rounded-xl border pr-1.5 last:mb-0 ${m.on ? 'border-red-300 bg-red-50' : 'border-transparent hover:bg-slate-50'}`}>
               <button type="button" role="menuitem" onClick={() => { setMenu(false); toggleMode(m.id); }}
-                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left">
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={18} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-x-2 text-sm font-bold text-slate-800">{m.title}{m.on && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On · click to stop</span>}</span>
-                  <span className="block text-[11px] leading-snug text-slate-500">{m.sub}</span>
-                  <kbd className="mt-0.5 inline-block rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-semibold text-slate-500">{m.keys}</kbd>
+                title={`${m.sub} · ${m.keys}`}
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${m.color}`}><m.icon size={15} /></span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">
+                  {m.title}{m.on && <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">On</span>}
                 </span>
               </button>
-              <span className="pt-2.5"><VoiceSwitch mode={m.id} label={m.title} /></span>
+              <VoiceSwitch mode={m.id} label={m.title} />
             </div>
           ))}
-          <p className="px-2 pt-1 text-[10px] text-slate-400">Voice is off until you switch it on. Press the same keys again to switch a mode off. Alt + Shift + T / C / A also work.</p>
+          <p className="px-2 pt-0.5 text-[10px] leading-tight text-slate-400">Point at a mode to see what it does and its shortcut.</p>
         </div>
       )}
 
