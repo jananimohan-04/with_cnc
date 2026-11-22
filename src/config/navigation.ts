@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Camera,
   Network,
+  Layers,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -60,6 +61,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: 'Dashboard', icon: TrendingUp, page: 'sales/in-house', iconClass: 'text-emerald-400', module: 'sales-pipeline' },
       { label: 'BI Chat', icon: MessageSquare, page: 'bi-chat', iconClass: 'text-amber-400', module: 'bi-chat' },
+      { label: 'Clarity', icon: Layers, page: 'clarity', iconClass: 'text-fuchsia-400', module: 'clarity' },
       { label: 'Mind Map', icon: Network, page: 'mind-map', iconClass: 'text-cyan-400', module: 'mind-map' },
     ],
   },

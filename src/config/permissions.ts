@@ -41,6 +41,7 @@ const VCEDX: PermAction[] = ['view', 'create', 'edit', 'delete', 'export'];
 export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'dashboard', label: 'Dashboard', category: 'Overview', actions: [...V], pages: ['dashboard'] },
   { key: 'bi-chat', label: 'BI Chat', category: 'Overview', actions: [...VCED], pages: ['bi-chat'], defaultOn: true },
+  { key: 'clarity', label: 'Clarity (Vision, Mission, Goals, To Do)', category: 'Overview', actions: [...VCED], pages: ['clarity'], defaultOn: true },
   { key: 'mind-map', label: 'Mind Map', category: 'Overview', actions: [...VCEDX], pages: ['mind-map', 'mind-map/workspace', 'mind-map/create', 'mind-map/editor'], defaultOn: true },
   { key: 'reports', label: 'Reports', category: 'Overview', actions: ['view', 'export'], pages: ['reports/production', 'reports/order-tracking', 'reports/sales', 'reports/inventory', 'reports/quality', 'reports/machine-utilization', 'reports/cost-analysis', 'reports/pipeline-report'] },
 

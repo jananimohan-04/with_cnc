@@ -109,6 +109,7 @@ import {
 import { JdBuildPage } from '@/pages/admin/JdBuildPage';
 import { SupportCenterPage } from './pages/support/SupportCenterPage';
 import { MindMapPage } from './pages/MindMapPage';
+import { ClarityPage } from './pages/clarity/ClarityPage';
 import { MindMapWorkspacePage } from './pages/mindmap/MindMapWorkspacePage';
 import { MindMapEditorPage } from './pages/mindmap/MindMapEditorPage';
 import { AssistantDock } from '@/components/AssistantDock';
@@ -241,6 +242,7 @@ function MainLayout() {
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/dashboard" element={<Dashboard onNavigate={handleNavigate} />} />
             <Route path="/bi-chat" element={<BiChatPage />} />
+            <Route path="/clarity" element={<ClarityPage />} />
             <Route path="/mind-map" element={<MindMapPage />} />
             <Route path="/mind-map/workspace" element={<MindMapWorkspacePage />} />
             <Route path="/mind-map/create" element={<Navigate to="/mind-map/workspace" replace />} />
