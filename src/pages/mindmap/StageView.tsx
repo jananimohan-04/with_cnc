@@ -4,7 +4,7 @@
 // click = select, double-click = rename, + = add a point under it, the small circle = fold / unfold, bin = delete.
 
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Minus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { FolderOpen, Minus, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { MindMapNode } from '@/lib/mindmap/types';
 
 const COLORS = ['#ef4444', '#eab308', '#22c55e', '#f97316', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'];
@@ -19,9 +19,13 @@ interface Props {
   onAddChild: (parentId: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapse: (id: string, collapsed: boolean) => void;
+  /** The point shown as the centre (opened like a folder); null = the real centre. */
+  focusId?: string | null;
+  /** Open a stage / point as its own page. */
+  onOpen?: (id: string) => void;
 }
 
-export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRename, onAddChild, onDelete, onToggleCollapse }: Props) {
+export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRename, onAddChild, onDelete, onToggleCollapse, focusId = null, onOpen }: Props) {
   const kids = useMemo(() => {
     const m = new Map<string | null, MindMapNode[]>();
     for (const n of nodes) {
@@ -31,7 +35,7 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
     for (const list of m.values()) list.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.created_at).localeCompare(String(b.created_at)));
     return m;
   }, [nodes]);
-  const root = (kids.get(null) ?? [])[0];
+  const root = (focusId ? nodes.find((x) => x.id === focusId) : undefined) ?? (kids.get(null) ?? [])[0];
   const stages = root ? kids.get(root.id) ?? [] : [];
 
   // glowing curves from the centre to each stage header (measured after layout)
@@ -100,6 +104,7 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
                   <span className="h-3 w-3 shrink-0 rounded-full border-2" style={{ borderColor: `${color}aa` }} />
                   <EditableText value={s.title} editable={canEdit} onSave={(t) => onRename(s.id, t)} className="text-[14px] font-extrabold uppercase leading-tight tracking-wide text-white" wrap />
                   {canEdit && <RowActions onAdd={() => onAddChild(s.id)} onDelete={() => onDelete(s.id)} />}
+                  {onOpen && <OpenBtn onClick={() => onOpen(s.id)} count={sub.length} color={color} />}
                   {sub.length > 0 && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); onToggleCollapse(s.id, !s.is_collapsed); }} title={s.is_collapsed ? 'Show the points' : 'Fold the points'}
                       className="absolute -bottom-2 left-3 flex h-4 w-4 items-center justify-center rounded-full border bg-[#0d1326] text-slate-300" style={{ borderColor: color }}>
@@ -109,7 +114,7 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
                 </div>
                 {!s.is_collapsed && sub.length > 0 && (
                   <Points list={sub} kids={kids} color={color} depth={1} canEdit={canEdit} selectedId={selectedId}
-                    onSelect={onSelect} onRename={onRename} onAddChild={onAddChild} onDelete={onDelete} onToggleCollapse={onToggleCollapse} />
+                    onSelect={onSelect} onRename={onRename} onAddChild={onAddChild} onDelete={onDelete} onToggleCollapse={onToggleCollapse} onOpen={onOpen} />
                 )}
               </div>
             );
@@ -126,9 +131,9 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
   );
 }
 
-function Points({ list, kids, color, depth, canEdit, selectedId, onSelect, onRename, onAddChild, onDelete, onToggleCollapse }: {
+function Points({ list, kids, color, depth, canEdit, selectedId, onSelect, onRename, onAddChild, onDelete, onToggleCollapse, onOpen }: {
   list: MindMapNode[]; kids: Map<string | null, MindMapNode[]>; color: string; depth: number; canEdit: boolean; selectedId: string | null;
-  onSelect: Props['onSelect']; onRename: Props['onRename']; onAddChild: Props['onAddChild']; onDelete: Props['onDelete']; onToggleCollapse: Props['onToggleCollapse'];
+  onSelect: Props['onSelect']; onRename: Props['onRename']; onAddChild: Props['onAddChild']; onDelete: Props['onDelete']; onToggleCollapse: Props['onToggleCollapse']; onOpen?: Props['onOpen'];
 }) {
   return (
     <div className="relative ml-2 mt-4 space-y-2 border-l-2 pl-4" style={{ borderColor: `${color}cc`, boxShadow: `-6px 0 10px -8px ${color}` }}>
@@ -146,6 +151,7 @@ function Points({ list, kids, color, depth, canEdit, selectedId, onSelect, onRen
               <EditableText value={n.title} editable={canEdit} onSave={(t) => onRename(n.id, t)}
                 className={`${small ? 'text-[9.5px] text-slate-300' : 'text-[11px] text-slate-100'} font-bold uppercase tracking-wide`} />
               {canEdit && <RowActions onAdd={() => onAddChild(n.id)} onDelete={() => onDelete(n.id)} />}
+              {onOpen && <OpenBtn onClick={() => onOpen(n.id)} count={sub.length} color={color} />}
               {sub.length > 0 && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); onToggleCollapse(n.id, !n.is_collapsed); }} title={n.is_collapsed ? 'Show' : 'Fold'}
                   className="absolute -bottom-2 left-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border bg-[#111a30] text-slate-300" style={{ borderColor: color }}>
@@ -155,7 +161,7 @@ function Points({ list, kids, color, depth, canEdit, selectedId, onSelect, onRen
             </div>
             {!n.is_collapsed && sub.length > 0 && (
               <Points list={sub} kids={kids} color={color} depth={depth + 1} canEdit={canEdit} selectedId={selectedId}
-                onSelect={onSelect} onRename={onRename} onAddChild={onAddChild} onDelete={onDelete} onToggleCollapse={onToggleCollapse} />
+                onSelect={onSelect} onRename={onRename} onAddChild={onAddChild} onDelete={onDelete} onToggleCollapse={onToggleCollapse} onOpen={onOpen} />
             )}
           </div>
         );
@@ -206,6 +212,17 @@ function HoverAdd({ onClick, title }: { onClick: () => void; title: string }) {
     <button type="button" title={title} onClick={(e) => { e.stopPropagation(); onClick(); }}
       className="absolute -bottom-3 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-indigo-400/60 bg-[#0d1326] text-indigo-300 hover:bg-indigo-500 hover:text-white">
       <Plus size={13} />
+    </button>
+  );
+}
+
+/** Opens the item as its own page (like opening a folder); shows how many points are inside. */
+function OpenBtn({ onClick, count, color }: { onClick: () => void; count: number; color: string }) {
+  return (
+    <button type="button" title={count ? `Open (${count} inside)` : 'Open as its own page'} onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className="ml-auto flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-slate-400 opacity-60 hover:bg-white/10 hover:text-white hover:opacity-100">
+      <FolderOpen size={12} style={{ color: count ? color : undefined }} />
+      {count > 0 && <span className="text-[9px] font-bold">{count}</span>}
     </button>
   );
 }

@@ -115,6 +115,8 @@ export function MindMapEditorPage() {
   const [viewMode, setViewModeState] = useState<'stage' | 'canvas'>(() => {
     try { return localStorage.getItem('mm.viewMode') === 'canvas' ? 'canvas' : 'stage'; } catch { return 'stage'; }
   });
+  // a stage / point opened like a folder (Stage view): null = the whole map
+  const [focusId, setFocusId] = useState<string | null>(null);
   const setViewMode = (v: 'stage' | 'canvas') => { setViewModeState(v); try { localStorage.setItem('mm.viewMode', v); } catch { /* not saved */ } };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -1160,6 +1162,27 @@ export function MindMapEditorPage() {
                 {descDraft || (canEdit ? 'Click to add description…' : `${nodes.length} nodes`)}
               </button>
             )}
+            {viewMode === 'stage' && focusId && nodes.some((x) => x.id === focusId) && (() => {
+              // the path from the map down to the opened point; each part goes back to that level
+              const path: MindMapNode[] = [];
+              let cur = nodes.find((x) => x.id === focusId);
+              while (cur) { path.unshift(cur); cur = cur.parent_node_id ? nodes.find((x) => x.id === cur!.parent_node_id) : undefined; }
+              const crumbs = path.slice(1);   // the real centre is the map itself
+              return (
+                <nav aria-label="Where you are" className="mt-0.5 flex min-w-0 flex-wrap items-center gap-0.5 px-1.5 text-[11px] font-semibold">
+                  <button type="button" onClick={() => setFocusId(null)} className="rounded px-1 text-indigo-600 hover:bg-indigo-50">{titleDraft || map.title || 'Mind map'}</button>
+                  {crumbs.map((c, i) => (
+                    <span key={c.id} className="flex items-center gap-0.5">
+                      <span className="text-slate-300">›</span>
+                      {i === crumbs.length - 1
+                        ? <span className="rounded px-1 text-slate-800">{c.title || 'Untitled'}</span>
+                        : <button type="button" onClick={() => setFocusId(c.id)} className="rounded px-1 text-indigo-600 hover:bg-indigo-50">{c.title || 'Untitled'}</button>}
+                    </span>
+                  ))}
+                  <button type="button" onClick={() => setFocusId(crumbs.length > 1 ? crumbs[crumbs.length - 2].id : null)} className="ml-1 rounded border border-slate-200 px-1.5 text-[10px] text-slate-500 hover:bg-slate-50">↑ Back</button>
+                </nav>
+              );
+            })()}
           </div>
         </div>
 
@@ -1351,6 +1374,8 @@ export function MindMapEditorPage() {
             onAddChild={(pid) => void handleAddChild(pid)}
             onDelete={(nid) => void handleDeleteNode(nid)}
             onToggleCollapse={(nid, c) => handleUpdateNodeLocal(nid, { is_collapsed: c }, true)}
+            focusId={focusId && nodes.some((x) => x.id === focusId) ? focusId : null}
+            onOpen={(nid) => { setFocusId(nid); setSelectedId(null); }}
           />
         ) : (
         <div
