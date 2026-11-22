@@ -718,7 +718,7 @@ const retailOffFor = (companyId) => { const c = companyId ? (db.companies || [])
 const biOffFor = (companyId) => { const c = companyId ? (db.companies || []).find(x => x.id === companyId || x.code === companyId) : null; return !!c && c.biEnabled === false; };
 app.use((req, res, next) => {
   if (req.ctx && req.ctx.role !== 'super_admin' && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)
-      && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/') && !req.path.startsWith('/api/bi-chat/') && !req.path.startsWith('/api/adviser/') && !req.path.startsWith('/api/mail-integration/')
+      && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/') && !req.path.startsWith('/api/bi-chat/') && !req.path.startsWith('/api/adviser/') && !req.path.startsWith('/api/mail-integration/') && !req.path.startsWith('/api/attendance/v1/')
       && retailOffFor(req.ctx.companyId)) {
     return res.status(403).json({ error: 'The Retail Store is turned off for your company.', code: 'RETAIL_OFF' });
   }
@@ -727,7 +727,7 @@ app.use((req, res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/') || req.path.startsWith('/api/bi-chat/') || req.path.startsWith('/api/mail-integration/')) return next();   // the mail route checks the sign-in token itself
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/') || req.path.startsWith('/api/bi-chat/') || req.path.startsWith('/api/mail-integration/') || req.path.startsWith('/api/attendance/v1/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -1075,6 +1075,8 @@ const adviserMailHits = new Map();   // person -> send times (a small limit agai
 // Mount enterprise multi-mailbox integration handler
 require('./mailIntegrationHandler.cjs')({ app, SB, db, save, mailEnc, mailDec, mailTransport, mailProblem, uid });
 require('./attendanceHandler.cjs')({ app, SB, db, save, uid });
+// AI Attendance pages (src/attendance/v2) on /api/attendance/v1: they check the sign-in token themselves (see the two path lists above)
+require('./attendanceV1.cjs')({ app, SB, db, save });
 
 app.post('/api/quote/send-email', async (req, res) => {
   try {

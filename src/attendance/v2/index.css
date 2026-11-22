@@ -1,0 +1,120 @@
+/* AI Attendance — page look of the attendance suite (blueprint theme).
+   Everything is scoped to .attendance-v2 so no other BI screen changes. */
+
+.attendance-v2 {
+  background-color: #f8fafc;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  z-index: 1;
+}
+
+/* Blueprint Grid Background */
+.attendance-v2 .bg-blueprint {
+  background-color: #f8fbff;
+  background-image:
+    linear-gradient(to right, rgba(59, 130, 246, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(59, 130, 246, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.attendance-v2 .bg-blueprint-dense {
+  background-color: #f4f8fe;
+  background-image:
+    linear-gradient(to right, rgba(14, 165, 233, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(14, 165, 233, 0.09) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Cybernetic Glowing & HUD Elements */
+.attendance-v2 .hud-corner-tl { border-top: 2px solid #0ea5e9; border-left: 2px solid #0ea5e9; }
+.attendance-v2 .hud-corner-tr { border-top: 2px solid #0ea5e9; border-right: 2px solid #0ea5e9; }
+.attendance-v2 .hud-corner-bl { border-bottom: 2px solid #0ea5e9; border-left: 2px solid #0ea5e9; }
+.attendance-v2 .hud-corner-br { border-bottom: 2px solid #0ea5e9; border-right: 2px solid #0ea5e9; }
+
+.attendance-v2 .glow-primary { box-shadow: 0 0 25px -5px rgba(37, 99, 235, 0.3); }
+.attendance-v2 .glow-cyan { box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.4); }
+.attendance-v2 .glow-success { box-shadow: 0 0 25px -5px rgba(22, 163, 74, 0.4); }
+
+@keyframes attendance-v2-scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+.attendance-v2 .animate-scanline { animation: attendance-v2-scanline 4s linear infinite; }
+
+/* ---------- utilities the pages use that this Tailwind version does not ship (single class, so hover:/sm: variants still win) ---------- */
+.shadow-2xs {
+  --tw-shadow: 0 1px rgb(0 0 0 / 0.05);
+  --tw-shadow-colored: 0 1px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.shadow-xs {
+  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.backdrop-blur-xs { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.duration-250 { transition-duration: 250ms; }
+.rounded-xs { border-radius: 0.125rem; }
+
+/* ---------- keep the BI glass theme off these pages ---------- */
+/* sticky top bar: plain white, as designed */
+.attendance-v2 header.sticky {
+  background: #ffffff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: none !important;
+}
+/* popup backdrops keep their own tint and blur */
+.attendance-v2 .fixed.inset-0.bg-slate-900\/60 { background: rgb(15 23 42 / 0.6) !important; }
+.attendance-v2 .fixed.inset-0.bg-slate-900\/50 { background: rgb(15 23 42 / 0.5) !important; }
+.attendance-v2 .fixed.inset-0.bg-slate-950\/60 { background: rgb(2 6 23 / 0.6) !important; }
+.attendance-v2 .fixed.inset-0.bg-slate-950\/80 { background: rgb(2 6 23 / 0.8) !important; }
+.attendance-v2 .fixed.inset-0.bg-black\/60 { background: rgb(0 0 0 / 0.6) !important; }
+.attendance-v2 .fixed.inset-0.backdrop-blur-xs { -webkit-backdrop-filter: blur(4px) !important; backdrop-filter: blur(4px) !important; }
+.attendance-v2 .fixed.inset-0.backdrop-blur-sm { -webkit-backdrop-filter: blur(8px) !important; backdrop-filter: blur(8px) !important; }
+.attendance-v2 .fixed.inset-0.backdrop-blur-md { -webkit-backdrop-filter: blur(12px) !important; backdrop-filter: blur(12px) !important; }
+/* white panels inside dialogs stay solid white */
+.attendance-v2 [role="dialog"] .bg-white,
+.attendance-v2 [role="dialog"].bg-white {
+  background: #ffffff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ---------- printing (payslips / reports) ---------- */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+  body:has(.attendance-v2) {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body:has(.attendance-v2)::before,
+  body:has(.attendance-v2)::after { display: none !important; }
+  .attendance-v2 .print\:hidden,
+  .attendance-v2 aside,
+  .attendance-v2 nav,
+  .attendance-v2 header {
+    display: none !important;
+  }
+  .attendance-v2 .print\:block { display: block !important; }
+  .attendance-v2 .a4-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    break-inside: avoid !important;
+  }
+  .attendance-v2 .a4-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}
