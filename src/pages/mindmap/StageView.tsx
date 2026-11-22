@@ -4,8 +4,11 @@
 // click = select, double-click = rename, + = add a point under it, the small circle = fold / unfold, bin = delete.
 
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FolderOpen, Minus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Maximize2, Minus, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { MindMapNode } from '@/lib/mindmap/types';
+
+// one shared empty list: a new [] on every draw made the curve effect redraw forever (blank page on items with no points)
+const NONE: MindMapNode[] = [];
 
 const COLORS = ['#ef4444', '#eab308', '#22c55e', '#f97316', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'];
 
@@ -36,7 +39,7 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
     return m;
   }, [nodes]);
   const root = (focusId ? nodes.find((x) => x.id === focusId) : undefined) ?? (kids.get(null) ?? [])[0];
-  const stages = root ? kids.get(root.id) ?? [] : [];
+  const stages = (root && kids.get(root.id)) || NONE;
 
   // glowing curves from the centre to each stage header (measured after layout)
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -50,14 +53,16 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
       const w = wrap.getBoundingClientRect();
       const rb = r.getBoundingClientRect();
       const x1 = rb.left + rb.width / 2 - w.left + wrap.scrollLeft, y1 = rb.bottom - w.top + wrap.scrollTop;
-      setCurves(stages.map((s, i) => {
+      const next = stages.map((s, i) => {
         const el = stageRefs.current.get(s.id);
         if (!el) return null;
         const b = el.getBoundingClientRect();
         const x2 = b.left + b.width / 2 - w.left + wrap.scrollLeft, y2 = b.top - w.top + wrap.scrollTop;
         const my = y1 + (y2 - y1) * 0.55;
         return { d: `M${x1},${y1} C${x1},${my} ${x2},${y1 + 6} ${x2},${y2}`, color: COLORS[i % COLORS.length] };
-      }).filter(Boolean) as { d: string; color: string }[]);
+      }).filter(Boolean) as { d: string; color: string }[];
+      // only redraw when a curve really moved
+      setCurves((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -85,7 +90,7 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
             className={`relative rounded-2xl border bg-[#0d1326] px-8 py-3 text-center shadow-[0_0_30px_rgba(99,102,241,0.25)] ${selectedId === root.id ? 'border-indigo-400' : 'border-slate-600/60'}`}>
             <EditableText value={root.title || title} editable={canEdit} onSave={(t) => onRename(root.id, t)}
               className="bg-gradient-to-r from-orange-400 via-pink-400 via-50% to-sky-400 bg-clip-text text-3xl font-black tracking-wide text-transparent" />
-            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{stages.length} stage{stages.length === 1 ? '' : 's'}</p>
+            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{stages.length} {focusId ? 'point' : 'stage'}{stages.length === 1 ? '' : 's'}</p>
             {canEdit && <HoverAdd onClick={() => onAddChild(root.id)} title="Add a stage" />}
           </div>
         </div>
@@ -122,8 +127,11 @@ export function StageView({ nodes, title, canEdit, selectedId, onSelect, onRenam
           {canEdit && (
             <button type="button" onClick={(e) => { e.stopPropagation(); onAddChild(root.id); }}
               className="mt-1 flex h-11 shrink-0 items-center gap-1.5 rounded-xl border-2 border-dashed border-slate-600 px-4 text-xs font-bold text-slate-400 hover:border-indigo-400 hover:text-indigo-300">
-              <Plus size={14} /> Add stage
+              <Plus size={14} /> {focusId ? 'Add point' : 'Add stage'}
             </button>
+          )}
+          {stages.length === 0 && (
+            <p className="mt-3.5 text-xs text-slate-500">Nothing inside yet.{canEdit ? ` Press "${focusId ? 'Add point' : 'Add stage'}" to start.` : ''}</p>
           )}
         </div>
       </div>
@@ -219,9 +227,9 @@ function HoverAdd({ onClick, title }: { onClick: () => void; title: string }) {
 /** Opens the item as its own page (like opening a folder); shows how many points are inside. */
 function OpenBtn({ onClick, count, color }: { onClick: () => void; count: number; color: string }) {
   return (
-    <button type="button" title={count ? `Open (${count} inside)` : 'Open as its own page'} onClick={(e) => { e.stopPropagation(); onClick(); }}
+    <button type="button" title={count ? `Open this on its own page (${count} inside)` : 'Open this on its own page'} onClick={(e) => { e.stopPropagation(); onClick(); }}
       className="ml-auto flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-slate-400 opacity-60 hover:bg-white/10 hover:text-white hover:opacity-100">
-      <FolderOpen size={12} style={{ color: count ? color : undefined }} />
+      <Maximize2 size={11} style={{ color: count ? color : undefined }} />
       {count > 0 && <span className="text-[9px] font-bold">{count}</span>}
     </button>
   );
