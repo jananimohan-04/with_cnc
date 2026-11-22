@@ -49,6 +49,7 @@ import {
   type TemplateNodeSeed,
 } from '@/lib/mindmap/types';
 import { NodeFloatingToolbar } from './NodeFloatingToolbar';
+import { StageView } from './StageView';
 import { NodeInspectorDrawer } from './NodeInspectorDrawer';
 import { ShareMindMapModal } from './ShareMindMapModal';
 
@@ -110,6 +111,11 @@ export function MindMapEditorPage() {
 
   // Interaction state
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // "stage": the coloured stage layout (default); "canvas": the free drag-anywhere canvas
+  const [viewMode, setViewModeState] = useState<'stage' | 'canvas'>(() => {
+    try { return localStorage.getItem('mm.viewMode') === 'canvas' ? 'canvas' : 'stage'; } catch { return 'stage'; }
+  });
+  const setViewMode = (v: 'stage' | 'canvas') => { setViewModeState(v); try { localStorage.setItem('mm.viewMode', v); } catch { /* not saved */ } };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
@@ -1199,7 +1205,16 @@ export function MindMapEditorPage() {
             </button>
           )}
 
-          {canEdit && (
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5" title="How the mind map is shown">
+            {(['stage', 'canvas'] as const).map((v) => (
+              <button key={v} type="button" onClick={() => setViewMode(v)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold ${viewMode === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {v === 'stage' ? 'Stage view' : 'Canvas'}
+              </button>
+            ))}
+          </div>
+
+          {canEdit && viewMode === 'canvas' && (
             <button
               type="button"
               onClick={() => void handleAutoLayout()}
@@ -1325,6 +1340,19 @@ export function MindMapEditorPage() {
 
       {/* Main Editor Body: Interactive Canvas + Optional Inspector Drawer */}
       <div className="flex flex-1 min-h-0 relative overflow-hidden">
+        {viewMode === 'stage' ? (
+          <StageView
+            nodes={nodes}
+            title={map.title}
+            canEdit={canEdit}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onRename={(nid, t) => handleUpdateNodeLocal(nid, { title: t }, true)}
+            onAddChild={(pid) => void handleAddChild(pid)}
+            onDelete={(nid) => void handleDeleteNode(nid)}
+            onToggleCollapse={(nid, c) => handleUpdateNodeLocal(nid, { is_collapsed: c }, true)}
+          />
+        ) : (
         <div
           ref={viewportRef}
           onPointerDown={handleCanvasPointerDown}
@@ -1749,6 +1777,7 @@ export function MindMapEditorPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Collapsible Node Inspector & Notes Drawer */}
         {inspectorOpen && selectedNode && (
