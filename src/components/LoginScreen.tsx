@@ -179,8 +179,8 @@ export function LoginScreen() {
             </div>
             <div className="mt-3 text-center">
               <div className="flex items-center justify-center gap-1.5 select-none">
-                <span className="text-[11px] font-medium tracking-wide text-slate-400">Powered by</span>
-                <img src="/argus-logo.png" alt="ARGUS CNC" className="h-4.5 w-auto object-contain opacity-90" />
+                <span className="whitespace-nowrap text-[11px] font-medium tracking-wide text-slate-400">Powered by</span>
+                <img src="/argus-logo.png" alt="ARGUS CNC" className="h-[18px] w-auto max-w-[120px] object-contain opacity-90" />
               </div>
             </div>
           </div>

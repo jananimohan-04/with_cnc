@@ -44,5 +44,24 @@ fs.copyFileSync(apk, out);
 // a copy with the app's own name, for sharing (WhatsApp, e-mail, a shared folder): "Argus Business Intelligence.apk"
 const share = path.join(path.dirname(apk), 'Argus Business Intelligence.apk');
 fs.copyFileSync(apk, share);
+// Windows shows every .apk with the same blank icon (it cannot read a phone app's logo), but a FOLDER can carry
+// its own icon. So the APK is also put in a folder "Argus Business Intelligence" that shows the ARGUS logo.
+const shareDir = path.join(root, 'android/app/build/outputs/share/Argus Business Intelligence');
+fs.mkdirSync(shareDir, { recursive: true });
+if (process.platform === 'win32') {
+  // desktop.ini / the icon are made hidden+system and the folder read-only: that is how Windows turns the icon on
+  try { execSync(`attrib -s -h -r "${path.join(shareDir, 'desktop.ini')}"`, { stdio: 'ignore' }); } catch { /* not there yet */ }
+  try { execSync(`attrib -s -h -r "${path.join(shareDir, 'argus.ico')}"`, { stdio: 'ignore' }); } catch { /* not there yet */ }
+}
+fs.copyFileSync(apk, path.join(shareDir, 'Argus Business Intelligence.apk'));
+fs.copyFileSync(path.join(root, 'src-tauri/icons/icon.ico'), path.join(shareDir, 'argus.ico'));
+fs.writeFileSync(path.join(shareDir, 'desktop.ini'), '[.ShellClassInfo]\r\nIconResource=argus.ico,0\r\nInfoTip=Argus Business Intelligence - Android app\r\n');
+if (process.platform === 'win32') {
+  execSync(`attrib +h +s "${path.join(shareDir, 'desktop.ini')}"`);
+  execSync(`attrib +h +s "${path.join(shareDir, 'argus.ico')}"`);
+  execSync(`attrib +r "${shareDir}"`);
+}
+
 console.log(`\nAPK ready: ${path.relative(root, out)} (${mb(fs.statSync(out).size)})`);
 console.log(`To share:  ${path.relative(root, share)}`);
+console.log(`Folder with the ARGUS logo: ${path.relative(root, shareDir)}`);
