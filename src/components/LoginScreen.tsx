@@ -49,13 +49,20 @@ export function LoginScreen() {
           <line x1="0" y1="80%" x2="100%" y2="80%" stroke="url(#lineGrad)" strokeWidth="1" />
         </svg>
 
-        {/* Content overlay — clean brand logo */}
-        <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white">
+        {/* Content overlay — clean brand logo and attached ARGUS CNC logo */}
+        <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white gap-5">
           <img
             src="/argus-bi-logo.svg"
             alt="Argus Business Intelligence"
-            className="h-32 sm:h-36 w-auto max-w-full object-contain drop-shadow-2xl"
+            className="h-28 sm:h-32 w-auto max-w-full object-contain drop-shadow-2xl"
           />
+          <div className="bg-white/95 backdrop-blur-md px-7 py-3.5 rounded-2xl shadow-xl border border-white/60 flex items-center justify-center transition-transform hover:scale-105 duration-300">
+            <img
+              src="/argus-logo.png"
+              alt="ARGUS CNC - Creating Future Factories"
+              className="h-7 sm:h-8 w-auto object-contain"
+            />
+          </div>
         </div>
       </div>
 
@@ -63,8 +70,11 @@ export function LoginScreen() {
       <div className="flex-1 flex items-center justify-center bg-slate-50 px-6 py-12">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center justify-center mb-8">
-            <img src="/argus-bi-logo.svg" alt="Argus Business Intelligence" className="h-20 w-auto max-w-full object-contain drop-shadow-md" />
+          <div className="lg:hidden flex flex-col items-center justify-center mb-8 gap-3">
+            <img src="/argus-bi-logo.svg" alt="Argus Business Intelligence" className="h-16 w-auto max-w-full object-contain drop-shadow-md" />
+            <div className="bg-white/95 px-5 py-2 rounded-xl shadow-sm border border-slate-200">
+              <img src="/argus-logo.png" alt="ARGUS CNC" className="h-5 w-auto object-contain" />
+            </div>
           </div>
 
           <div className="mb-8">
