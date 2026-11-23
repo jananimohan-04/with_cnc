@@ -159,13 +159,13 @@ export function LoginScreen() {
           )}
 
           <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-            <div className="inline-flex items-center justify-center gap-1.5 select-none text-[11px] text-slate-400">
+            <div className="inline-flex items-center justify-center gap-2 select-none text-xs text-slate-400">
               <span className="font-normal text-slate-400">Powered by</span>
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
                 className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
-                style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
+                style={{ height: '24px', maxHeight: '24px', width: 'auto' }}
               />
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
