@@ -13,7 +13,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "android:apk": "node scripts/build-android.mjs"
+    "android:apk": "node scripts/build-android.mjs",
+    "android:release": "node scripts/build-android-release.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
