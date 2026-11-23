@@ -904,9 +904,9 @@ export const Topbar = forwardRef(function Topbar(
 
   return (
     <>
-      <header ref={ref} className="sticky top-0 z-50 bg-[#0E0704] backdrop-blur-md border-b border-[#26140B] shadow-md shadow-black/40 w-full text-stone-100">
-        <div className="w-full px-3 sm:px-5 h-15 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-shrink-0">
+      <header ref={ref} style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className="sticky top-0 z-50 bg-[#0E0704] backdrop-blur-md border-b border-[#26140B] shadow-md shadow-black/40 w-full text-stone-100">
+        <div className="w-full px-2 sm:px-5 h-14 sm:h-[60px] flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
             <button
               type="button"
               onClick={onMobileToggle}
@@ -916,18 +916,18 @@ export const Topbar = forwardRef(function Topbar(
               <Menu className="w-5 h-5" />
             </button>
 
-            <Link to="/store/home" className="flex items-center gap-2 group flex-shrink-0 bg-white keep-white px-3 py-1.5 rounded-xl shadow-xs border border-white/20 transition-transform hover:scale-105 duration-200">
-              <img src="/assets/argus-logo.png" alt="ARGUSCNC" className="h-7 sm:h-8 w-auto object-contain" />
+            <Link to="/store/home" className="flex items-center gap-2 group flex-shrink-0 bg-white keep-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl shadow-xs border border-white/20 transition-transform hover:scale-105 duration-200">
+              <img src="/assets/argus-logo.png" alt="ARGUSCNC" className="h-5 sm:h-8 w-auto max-w-[110px] sm:max-w-none object-contain" />
             </Link>
 
             {!me?.biOff && (
             <Link
                 to="/sales/pipeline"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300 hover:text-white bg-[#1A0C06] hover:bg-[#2A1408] border border-[#4A2510] transition-colors shadow-xs"
+                className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300 hover:text-white bg-[#1A0C06] hover:bg-[#2A1408] border border-[#4A2510] transition-colors shadow-xs"
                 title="Return to Argus BI Pipeline & Manufacturing modules"
               >
                 <span className="text-amber-400 font-extrabold text-sm leading-none">←</span>
-                <span>Back to Argus BI</span>
+                <span className="sm:hidden">BI</span><span className="hidden sm:inline">Back to Argus BI</span>
               </Link>
             )}
 

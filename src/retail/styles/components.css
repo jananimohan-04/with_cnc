@@ -311,3 +311,17 @@
   .section-head h2{font-size:16px}
   td{padding:8px 10px}
 }
+
+/* count boxes on the dark banner: the number needs its own dark colour (it took the banner's white = invisible) */
+.ind-stat b{color:#0F172A;display:block}
+/* phones: a smaller banner so the products show without long scrolling */
+@media(max-width:680px){
+  .hero-inner{padding:20px 16px;gap:14px}
+  .hero h1{font-size:23px}
+  .hero p{font-size:13.5px;margin-bottom:14px}
+  .hero-tag{font-size:10px;letter-spacing:.08em;padding:4px 8px}
+  .hero img.frame{aspect-ratio:16/9}
+  .ind-strip{gap:8px;margin:10px 0}
+  .ind-stat{padding:9px 11px}
+  .ind-stat b{font-size:18px}
+}

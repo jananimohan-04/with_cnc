@@ -254,7 +254,7 @@ export const AppLayout = ({ children }) => {
       {/* Main Content Area - Scrollable */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
         {/* Top Header Bar - Sticky */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 md:px-8 shrink-0 sticky top-0 z-20">
+        <header style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className="box-content h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 md:px-8 shrink-0 sticky top-0 z-20">
           {/* Mobile Menu Button & Brand */}
           <div className="flex items-center gap-2.5 md:hidden">
             <button
@@ -435,7 +435,7 @@ export const AppLayout = ({ children }) => {
             />
 
             {/* Drawer Panel */}
-            <div className="fixed inset-y-0 left-0 max-w-xs w-full bg-white shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-left duration-250">
+            <div style={{ paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))' }} className="fixed inset-y-0 left-0 max-w-xs w-full bg-white shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-left duration-250">
               <div className="h-16 border-b border-slate-100 flex items-center justify-between px-4 gap-3 shrink-0">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1 shadow-2xs shrink-0 overflow-hidden">
