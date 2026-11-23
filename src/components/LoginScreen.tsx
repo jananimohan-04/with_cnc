@@ -61,7 +61,7 @@ export function LoginScreen() {
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC - Creating Future Factories"
-              className="h-10 sm:h-11 w-auto max-w-full object-contain"
+              className="h-12 sm:h-14 w-auto max-w-full object-contain"
             />
           </div>
         </div>
@@ -82,7 +82,7 @@ export function LoginScreen() {
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-7 w-auto object-contain"
+                className="h-9 w-auto object-contain"
               />
             </div>
           </div>
@@ -165,7 +165,7 @@ export function LoginScreen() {
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
                 className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
-                style={{ height: '13px', maxHeight: '13px', width: 'auto' }}
+                style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
               />
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
