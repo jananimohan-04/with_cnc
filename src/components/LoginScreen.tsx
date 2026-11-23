@@ -61,7 +61,7 @@ export function LoginScreen() {
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC - Creating Future Factories"
-              className="h-7 sm:h-8 w-auto max-w-full object-contain"
+              className="h-10 sm:h-11 w-auto max-w-full object-contain"
             />
           </div>
         </div>
@@ -82,7 +82,7 @@ export function LoginScreen() {
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-5 w-auto object-contain"
+                className="h-7 w-auto object-contain"
               />
             </div>
           </div>
