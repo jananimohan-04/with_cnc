@@ -3,6 +3,7 @@
  * Connects with /api/attendance/* endpoints on Express backend & Supabase
  */
 import { supabase } from '@/lib/supabase';
+import { resolveUrl, universalFetch } from '@/retail/api';
 
 function getStoredToken(): string | null {
   try {
@@ -33,7 +34,8 @@ async function fetchJSON<T>(url: string, options: RequestInit = {}): Promise<T> 
     ...(options.headers || {}),
   };
 
-  const res = await fetch(url, { ...options, headers });
+  // the desktop and phone apps do not run on the website, so "/api/..." is sent to the website there
+  const res = await universalFetch(resolveUrl(url), { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error || data.detail || `Request failed with status ${res.status}`);
