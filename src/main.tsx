@@ -5,6 +5,7 @@ import { DateRangeProvider } from './contexts/DateRangeContext';
 import { isTauri } from './lib/desktop/isTauri';
 import { installDesktopShims } from './lib/desktop/shims';
 import { startUpdateScheduler } from './lib/desktop/updater';
+import { initNativeApp } from './lib/android/native';
 import './index.css';
 import './animations.css';
 import './glass-theme.css';
@@ -17,6 +18,9 @@ if (isTauri()) {
   installDesktopShims();
   startUpdateScheduler();
 }
+
+// Android app only: back button, phone styles (does nothing on the website)
+void initNativeApp();
 
 
 // After a new deployment the old hashed files are gone, so a tab left open from before cannot load a

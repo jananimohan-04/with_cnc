@@ -544,3 +544,40 @@ tbody button:not(:disabled):has(> svg:is(.lucide-trash2, .lucide-trash-2, .lucid
 .head-bar :is(span, div)[aria-hidden="true"]:is([class*="w-px"]) { background-color: rgba(255, 255, 255, .2) !important; }
 /* the selected underline tab */
 .head-bar .head-tab-on { color: #7dd3fc !important; border-color: #7dd3fc !important; }
+
+/* ------------------------------------------------------------------ phones
+   The bigger desktop text sizes above crowd a phone screen: one step smaller below 640 px wide (website on a phone
+   and the Android app). */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  .text-xs { font-size: 12px; }
+  .text-sm { font-size: 13.5px; }
+  .text-base { font-size: 15px; }
+  .text-lg { font-size: 17px; }
+  /* wide tables scroll sideways inside their box instead of pushing the whole page wider */
+  table { max-width: 100%; }
+}
+
+/* Android app only (<html class="native-app">, set in src/lib/android/native.ts) */
+html.native-app {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+html.native-app body { overscroll-behavior: none; }
+/* the "Powered by" strip stays clear of the phone's gesture bar at the bottom */
+html.native-app .brand-footer { padding-bottom: calc(6px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+/* buttons and links react to a tap like a native app (no text selection on long press) */
+html.native-app :is(button, [role="button"], a, nav) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* Sales Pipeline count chips in the top bar on phones: a row you can swipe sideways, each chip readable
+   (label + number, no icon) instead of nine chips squeezed until the number sits on top of the icon. */
+@media (max-width: 640px) {
+  .kpi-strip { overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; -webkit-overflow-scrolling: touch; gap: 4px !important; }
+  .kpi-strip::-webkit-scrollbar { display: none; }
+  .kpi-strip .kpi-tile { flex: 0 0 auto !important; max-width: none !important; min-width: 0; padding: 3px 8px !important; justify-content: center !important; }
+  .kpi-strip .kpi-icon { display: none !important; }
+  .kpi-strip .kpi-label { font-size: 8.5px !important; overflow: visible !important; }
+  .kpi-strip .kpi-label .truncate { overflow: visible; text-overflow: clip; }
+}

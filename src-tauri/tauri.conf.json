@@ -44,8 +44,8 @@
       "icons/128x128.png",
       "icons/icon.ico"
     ],
-    "publisher": "CNCFORGE",
-    "copyright": "Copyright © 2026 CNCFORGE",
+    "publisher": "Argus Business Intelligence™",
+    "copyright": "Copyright © 2026 Argus Business Intelligence™",
     "shortDescription": "Argus Business Intelligence desktop application",
     "longDescription": "Argus Business Intelligence — enterprise resource planning for CNC machining operations. Windows desktop edition with signed automatic updates.",
     "windows": {

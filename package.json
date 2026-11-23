@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "android:apk": "node scripts/build-android.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

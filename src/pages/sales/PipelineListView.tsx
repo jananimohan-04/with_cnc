@@ -120,7 +120,46 @@ export function PipelineListView({ cards, onView, onEdit, onDelete, search: sear
 
   return (
     <div className="flex flex-col">
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      {/* Phones: one card per record (the 10-column table does not fit a phone screen) */}
+      <div className="md:hidden space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <CompanyFilterInput value={companyFilter || 'All Companies'} onChange={setCompanyFilter} options={customers} />
+          </div>
+          <select aria-label="Filter by Stage" value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+            className="h-9 max-w-[140px] rounded-lg border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700">
+            <option value="All">All stages</option>
+            {stageOptions.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        {pageCards.map((card, index) => (
+          <div key={card.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm active:bg-slate-50" onClick={() => onView(card)}>
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 text-xs font-semibold text-slate-400">{start + index + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[15px] font-bold text-brand-600">{card.refNo}</span>
+                  <span className="ml-auto shrink-0 rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">{stageOf(card)}</span>
+                </div>
+                <p className="truncate text-sm font-semibold text-slate-800">{card.customer}</p>
+                {card.part && <p className="line-clamp-2 text-[13px] text-slate-600">{card.part}</p>}
+                <div className="mt-1.5 flex items-center gap-3 text-xs text-slate-500">
+                  <span>{formatDate(String(card.date || (card.raw as any)?.created_at || '').slice(0, 10)) || '—'}</span>
+                  <span>Qty <b className="text-slate-800">{card.qty}</b></span>
+                  {card.history && <span className="rounded-full border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold">{card.status || 'Old'}</span>}
+                  <span className="ml-auto flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                    {onEdit && <button onClick={() => onEdit(card)} className="rounded-md p-2 text-slate-500 active:bg-blue-50" aria-label={`Edit ${card.refNo}`}><Edit2 className="h-4 w-4" /></button>}
+                    {onDelete && <button onClick={() => onDelete(card)} className="rounded-md p-2 text-slate-500 active:bg-red-50" aria-label={`Delete ${card.refNo}`}><Trash2 className="h-4 w-4" /></button>}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {filteredCards.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">No records found matching your filters.</p>}
+      </div>
+
+      <div className="hidden md:block rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="text-white text-[13px] font-bold uppercase tracking-wider">

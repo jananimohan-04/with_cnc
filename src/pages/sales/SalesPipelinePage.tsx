@@ -9332,7 +9332,7 @@ export function SalesPipelinePage() {
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
-        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'kanban'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9343,7 +9343,7 @@ export function SalesPipelinePage() {
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
-        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'list'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9354,7 +9354,7 @@ export function SalesPipelinePage() {
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
-        className={`px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'calendar'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9397,7 +9397,7 @@ export function SalesPipelinePage() {
   ) : null;
 
   return (
-    <div className="p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: '#ffffff' }}>
+    <div className="p-2 sm:p-4 min-h-full flex flex-col font-sans transition-[background] duration-500" style={{ background: '#ffffff' }}>
 
 
 
@@ -9438,18 +9438,18 @@ export function SalesPipelinePage() {
           )}
 
           {/* 2. Right Side: Add Company + All Companies Button + Search and Card Actions */}
-          <div className="flex items-center ml-auto gap-2 sm:gap-3 flex-nowrap min-w-0">
+          <div className="flex w-full sm:w-auto flex-wrap sm:flex-nowrap items-center ml-auto gap-2 sm:gap-3 min-w-0">
             {addCompanyButton}
             {allCompaniesButton}
             {!onQuotationView && (
               <>
-                <div className="relative shrink-0">
-                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="no-glass pl-8 pr-3 py-2 border border-violet-400 rounded-lg text-sm w-32 md:w-48 focus:outline-none focus:border-violet-600 !bg-violet-100 text-violet-950 placeholder:text-violet-600/70 shadow-sm" />
+                <div className="relative min-w-0 flex-1 sm:flex-none">
+                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="no-glass pl-8 pr-3 py-2 border border-violet-400 rounded-lg text-sm w-full sm:w-32 md:w-48 focus:outline-none focus:border-violet-600 !bg-violet-100 text-violet-950 placeholder:text-violet-600/70 shadow-sm" />
                   <svg className="w-4 h-4 text-violet-600 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
                 {pipelineViewMode === 'list' && (
                   <select aria-label="Filter by stage" title="Filter by stage" value={listStage} onChange={e => setListStage(e.target.value)}
-                    className={`shrink-0 h-9 w-[118px] px-2 border rounded-lg text-xs font-semibold bg-white shadow-sm focus:outline-none focus:border-brand-500 ${listStage !== 'All' ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-200'}`}>
+                    className={`hidden sm:block shrink-0 h-9 w-[118px] px-2 border rounded-lg text-xs font-semibold bg-white shadow-sm focus:outline-none focus:border-brand-500 ${listStage !== 'All' ? 'border-orange-500 ring-1 ring-orange-400' : 'border-slate-200'}`}>
                     <option value="All">All Stages</option>
                     {['Total Enquiries', 'Quotations', 'Sales Orders', 'Inward', 'Finished Goods', 'Delivery Challans', 'Invoices'].map(x => <option key={x} value={x}>{x}</option>)}
                   </select>
