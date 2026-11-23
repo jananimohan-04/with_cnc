@@ -178,9 +178,10 @@ export function LoginScreen() {
               <span>Access is limited to accounts registered by your administrator</span>
             </div>
             <div className="mt-3 text-center">
-              <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-                Powered by ARGUS CNC™
-              </span>
+              <div className="flex items-center justify-center gap-1.5 select-none">
+                <span className="text-[11px] font-medium tracking-wide text-slate-400">Powered by</span>
+                <img src="/argus-logo.png" alt="ARGUS CNC" className="h-4.5 w-auto object-contain opacity-90" />
+              </div>
             </div>
           </div>
         </div>

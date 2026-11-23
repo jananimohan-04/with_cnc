@@ -170,9 +170,10 @@ export function Sidebar({
 
       {/* Brand signature footer */}
       <div className="py-1.5 px-3 border-t border-navy-900 bg-navy-950 text-center flex-shrink-0 relative z-10">
-        <span className="text-[10px] font-semibold tracking-wider text-navy-400 uppercase">
-          Powered by ARGUS CNC™
-        </span>
+        <div className="flex items-center justify-center gap-1.5 select-none">
+          <span className="text-[10px] font-medium tracking-wide text-navy-400">Powered by</span>
+          <img src="/argus-logo.png" alt="ARGUS CNC" className="h-4 w-auto object-contain brightness-125" />
+        </div>
       </div>
     </aside>
       </div>

@@ -379,7 +379,10 @@ function MainLayout() {
         </main>
         {/* Brand signature on every page */}
         <div className="flex-shrink-0 py-1 px-3 text-center bg-white/90 border-t border-slate-200 print:hidden">
-          <span className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Powered by ARGUS CNC™</span>
+          <div className="flex items-center justify-center gap-1.5 select-none">
+            <span className="text-[11px] font-medium tracking-wide text-slate-500">Powered by</span>
+            <img src="/argus-logo.png" alt="ARGUS CNC" className="h-5 w-auto object-contain inline-block align-middle" />
+          </div>
         </div>
         {/* Bottom menu position: compact bar docked to the bottom edge (reserves its own space). */}
         {position === 'bottom' && (
