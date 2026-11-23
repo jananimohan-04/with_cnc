@@ -27,7 +27,7 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 font-sans selection:bg-brand-500 selection:text-white">
       {/* Left — Cinematic CNC Machining Background with Unified Brand Emblem */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center p-12 xl:p-16">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-start items-start p-10 lg:p-12 xl:p-14">
         {/* Real CNC Machining Background Photo */}
         <img
           src="/cnc-machining-bg.jpg"
@@ -43,8 +43,8 @@ export function LoginScreen() {
         <div className="absolute w-[450px] h-[450px] bg-brand-500/15 rounded-full blur-[140px] pointer-events-none" />
 
         {/* Unified Brand Card — Only the two logos, cleanly integrated */}
-        <div className="relative z-10 w-full max-w-md">
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/60 p-8 sm:p-10 flex flex-col items-center transition-all duration-300 hover:scale-[1.02] hover:shadow-brand-500/20">
+        <div className="relative z-10 w-auto max-w-md">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/60 p-6 sm:p-8 flex flex-col items-center transition-all duration-300 hover:scale-[1.02] hover:shadow-brand-500/20">
             {/* Primary: Argus Business Intelligence Logo */}
             <img
               src="/argus-bi-logo.svg"
@@ -165,7 +165,7 @@ export function LoginScreen() {
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
                 className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
-                style={{ height: '24px', maxHeight: '24px', width: 'auto' }}
+                style={{ height: '30px', maxHeight: '30px', width: 'auto' }}
               />
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
