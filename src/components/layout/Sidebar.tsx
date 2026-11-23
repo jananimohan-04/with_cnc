@@ -169,14 +169,14 @@ export function Sidebar({
       )}
 
       {/* Brand signature footer */}
-      <div className="py-1 px-2.5 border-t border-navy-900 bg-navy-950 text-center flex-shrink-0 relative z-10">
-        <div className="flex items-center justify-center gap-1.5 select-none">
-          <span className="font-normal text-navy-400">Powered by</span>
+      <div className="py-2 px-3 border-t border-navy-900 bg-navy-950 text-center flex-shrink-0 relative z-10">
+        <div className="flex items-center justify-center gap-2 select-none">
+          <span className="font-normal text-xs text-navy-300">Powered by</span>
           <img
-            src="/argus-logo.png"
+            src="/argus-logo-white.png"
             alt="ARGUS CNC"
             className="inline-block object-contain opacity-80 brightness-110"
-            style={{ height: '12px', maxHeight: '12px', width: 'auto' }}
+            style={{ height: '22px', maxHeight: '22px', width: 'auto' }}
           />
         </div>
       </div>
