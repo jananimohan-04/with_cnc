@@ -4,6 +4,7 @@
 
 import QRCode from 'qrcode';
 import { ARGUS_LOGO_BASE64 } from './logoBase64';
+import { api } from '../api';
 
 export async function generateUpiQrCode(upiId, payeeName, amount, docNo) {
   if (!upiId) return null;
@@ -30,13 +31,9 @@ export async function generateUpiQrCode(upiId, payeeName, amount, docNo) {
 export async function fetchCompanyInvoiceProfile(companyId) {
   try {
     const url = companyId ? `/api/settings/invoice-profile?companyId=${encodeURIComponent(companyId)}` : '/api/settings/invoice-profile';
-    const res = await fetch(url, { credentials: 'include' });
-    if (res.ok) {
-      const json = await res.json();
-      const data = json?.data || json;
-      if (data && (data.companyName || data.name)) {
-        return data;
-      }
+    const data = await api.get(url);
+    if (data && (data.companyName || data.name)) {
+      return data;
     }
   } catch (e) {
     // network or auth error, fallback to default

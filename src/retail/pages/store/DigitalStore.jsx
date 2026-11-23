@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Search, X, MapPin, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Footprints } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { signedImageUrls } from '@/lib/inventory';
-import { fmt, API_BASE } from '../../api';
+import { fmt, API_BASE, resolveUrl, universalFetch } from '../../api';
 import { Skeleton } from '../../components/ui';
 import { computeLayout, placeOf } from '../../components/storeLayout';
 import SpinViewer from '../../components/SpinViewer';
@@ -59,7 +59,7 @@ export default function DigitalStore() {
     // e-mail the customer: product, amount and the payment link
     try {
       const sess = await supabase.auth.getSession();
-      const r = await fetch(`${API_BASE || ''}/api/digital-order-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data?.session?.access_token || '') }, body: JSON.stringify({ order_id: res.data?.id }) });
+      const r = await universalFetch(resolveUrl('/api/digital-order-mail'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data?.session?.access_token || '') }, body: JSON.stringify({ order_id: res.data?.id }) });
       const j = await r.json().catch(() => ({}));
       const payUrl = j.payUrl || (store && store.payment_link) || '';
       setPlaced((p) => (p ? { ...p, mail: j.ok ? 'sent' : 'failed', mailTo: form.email.trim(), mailError: j.error, payUrl } : p));

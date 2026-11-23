@@ -1,9 +1,10 @@
 /* Auth — mirrors legacy js/auth.js + loginAs behavior exactly. */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { getSession, setSession, setGoogleToken, googleToken, api, API_BASE } from './api';
+import { supabase as biSupabase } from '@/lib/supabase';
+import { getSession, setSession, setGoogleToken, googleToken, api, API_BASE, resolveUrl, universalFetch } from './api';
 
-const apiUrl = (p) => (API_BASE ? `${API_BASE}${p}` : p);
+const apiUrl = (p) => resolveUrl(p);
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -30,9 +31,16 @@ export function AuthProvider({ children }) {
     try {
       const cur = getSession();
       if (!cur) return;
-      const t = googleToken();
+      let t = googleToken();
+      if (!t) {
+        try {
+          const { data: biData } = await biSupabase.auth.getSession();
+          t = biData?.session?.access_token || null;
+          if (t) setGoogleToken(t);
+        } catch { /* noop */ }
+      }
       const cid = cur.role === 'super_admin' ? (cur.companyId || '') : (cur.companyId || 'C-ARGUS');
-      const r = await fetch(apiUrl('/api/me'), {
+      const r = await universalFetch(apiUrl('/api/me'), {
         headers: {
           'Content-Type': 'application/json',
           'x-role': cur.role || 'sales_user',
@@ -66,9 +74,9 @@ export function AuthProvider({ children }) {
   const resolveMe = useCallback(async (token) => {
     // the Retail server can be busy or waking up on the first request after the page opens: try a few times before giving up
     let u = {};
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const r = await fetch(apiUrl('/api/me'), { headers: { Authorization: 'Bearer ' + (token || '') } });
+        const r = await universalFetch(apiUrl('/api/me'), { headers: { Authorization: 'Bearer ' + (token || '') } });
         const j = await r.json().catch(() => ({}));
         u = (j && j.data) || {};
         if (u.role) break;
@@ -98,19 +106,37 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(apiUrl('/api/config'));
-        const j = await r.json();
-        const cfg = (j && j.data) || {};
+        // 1. Check if the parent BI application already has an active Supabase session
+        let biToken = null;
+        try {
+          const { data: biData } = await biSupabase.auth.getSession();
+          if (biData?.session?.access_token) {
+            biToken = biData.session.access_token;
+            setGoogleToken(biToken);
+          }
+        } catch { /* noop */ }
+
+        // 2. Query Retail server configuration
+        let cfg = {};
+        try {
+          const r = await universalFetch(apiUrl('/api/config'));
+          const j = await r.json();
+          cfg = (j && j.data) || {};
+        } catch (e) {
+          console.warn('Could not load /api/config', e);
+        }
+
         if (cfg.googleEnabled && cfg.supabaseUrl && cfg.publishableKey) {
           const client = createClient(cfg.supabaseUrl, cfg.publishableKey);
           setOauth(client);
           const { data } = await client.auth.getSession();
-          if (data && data.session) {
-            setGoogleToken(data.session.access_token);
+          const token = data?.session?.access_token || biToken;
+          if (token) {
+            setGoogleToken(token);
             if (!resolved.current) {
               resolved.current = true;
               // the signed-in BI user decides who this is; a stale/demo session must never survive a failed lookup
-              await resolveMe(data.session.access_token).catch(() => { if (!getSession()?.google) { setSession(null); setMe(null); } });
+              await resolveMe(token).catch(() => { if (!getSession()?.google) { setSession(null); setMe(null); } });
             }
           } else {
             const cur = getSession();
@@ -128,13 +154,31 @@ export function AuthProvider({ children }) {
               setGoogleToken(null); setSession(null); setMe(null); resolved.current = false;
             }
           });
+        } else if (biToken) {
+          // If server config didn't supply custom keys or /api/config timed out, resolve via active BI session token
+          if (!resolved.current) {
+            resolved.current = true;
+            await resolveMe(biToken).catch(() => { if (!getSession()?.google) { setSession(null); setMe(null); } });
+          }
         } else {
           // Live site without Google/Supabase on the Retail server: a saved demo session must not pass for a real user
           if (import.meta.env.PROD) { setSession(null); setMe(null); setReady(true); return; }
           // If in demo/local mode and we have a session, refresh permissions from server
           await refreshPermissions();
         }
-      } catch { /* offline demo continues */ }
+      } catch (err) {
+        console.warn('Retail auth initialization error:', err);
+        // Fallback attempt with BI token
+        try {
+          const { data: biData } = await biSupabase.auth.getSession();
+          const fallbackToken = biData?.session?.access_token;
+          if (fallbackToken && !resolved.current) {
+            resolved.current = true;
+            setGoogleToken(fallbackToken);
+            await resolveMe(fallbackToken);
+          }
+        } catch { /* offline demo continues */ }
+      }
       setReady(true);
     })();
   }, [resolveMe, refreshPermissions]);
@@ -144,7 +188,7 @@ export function AuthProvider({ children }) {
     setSession(s);
     setMe(s);
     try {
-      const res = await fetch(apiUrl('/api/me'), {
+      const res = await universalFetch(apiUrl('/api/me'), {
         headers: {
           'x-role': s.role,
           'x-company-id': s.role === 'super_admin' ? '' : (s.companyId || 'C-ARGUS'),
@@ -181,7 +225,7 @@ export function AuthProvider({ children }) {
   const loginAsEmail = useCallback(async (email) => {
     email = (email || '').trim().toLowerCase();
     try {
-      const res = await fetch(apiUrl('/api/me'), {
+      const res = await universalFetch(apiUrl('/api/me'), {
         headers: {
           'x-user-email': email
         }
