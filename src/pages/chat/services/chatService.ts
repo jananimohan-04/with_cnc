@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { UserColleague, Conversation, ChatMessage, ChatAttachment, Meeting, CallSession, CallAuditItem } from '../types';
+import { API_BASE } from '@/retail/api';
 
 const STORAGE_KEY_PREFIX = 'argus_bi_chat_';
 
@@ -49,7 +50,7 @@ export const chatService = {
     try {
       // 1. Try server-side endpoint first (bypasses RLS with SUPABASE_SECRET_KEY, accurately returning all company colleagues)
       try {
-        const res = await fetch(`/api/bi-chat/colleagues?companyId=${encodeURIComponent(companyId || '')}`);
+        const res = await fetch(`${API_BASE}/api/bi-chat/colleagues?companyId=${encodeURIComponent(companyId || '')}`);
         if (res.ok) {
           const json = await res.json();
           if (json && Array.isArray(json.data) && json.data.length > 0) {
@@ -233,7 +234,7 @@ export const chatService = {
       if (userIds.length > 0) {
         // Try server-side lookup first (bypasses RLS to ensure colleague names display properly)
         try {
-          const res = await fetch(`/api/bi-chat/users-by-ids?ids=${encodeURIComponent(userIds.join(','))}`);
+          const res = await fetch(`${API_BASE}/api/bi-chat/users-by-ids?ids=${encodeURIComponent(userIds.join(','))}`);
           if (res.ok) {
             const json = await res.json();
             if (json && Array.isArray(json.data) && json.data.length > 0) {

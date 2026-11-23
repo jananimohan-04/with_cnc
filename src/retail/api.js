@@ -1,5 +1,9 @@
 /* API client — same Express endpoints, same payloads/shapes as the legacy frontend. */
 import { isTauri } from '@/lib/desktop/isTauri';
+import { Capacitor } from '@capacitor/core';
+
+/** The Android app shows its pages from the phone itself (https://localhost), so "/api/..." must go to the website. */
+const isPhoneApp = () => { try { return Capacitor.isNativePlatform(); } catch { return false; } };
 
 const SES_KEY = 'cncforge_session';
 const CART_KEY = 'cncforge_cart';
@@ -10,7 +14,7 @@ export const WEB_ORIGIN = 'https://with-cnc.vercel.app';
 export function getApiBase() {
   const envUrl = (typeof import.meta !== 'undefined' && (import.meta?.env?.VITE_API_URL || import.meta?.env?.VITE_API_BASE_URL));
   if (envUrl) return String(envUrl).replace(/\/$/, '');
-  if (isTauri()) return WEB_ORIGIN;
+  if (isTauri() || isPhoneApp()) return WEB_ORIGIN;
   return '';
 }
 

@@ -23,6 +23,7 @@ import type { QuoteSeller } from '@/lib/companyProfile';
 import { desktopToast } from '@/lib/desktop/toast';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+import { API_BASE } from '@/retail/api';
 
 interface EmailQuoteModalProps {
   open: boolean;
@@ -355,7 +356,7 @@ export function EmailQuoteModal({
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token || '';
 
-      const res = await fetch('/api/quote/send-email', {
+      const res = await fetch(`${API_BASE}/api/quote/send-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

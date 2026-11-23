@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Trash2 } from 'lucide-r
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Card';
+import { API_BASE } from '@/retail/api';
 
 // Each company links its OWN Razorpay account. Payment links for Digital Store orders, quotations and invoices are made with it.
 // The Key Secret goes to the server only, is stored encrypted and is never shown again.
@@ -11,7 +12,7 @@ interface PayInfo { provider: string; key_id: string; verified_at: string | null
 
 async function payApi(path: string, body: Record<string, unknown>) {
   const sess = await supabase.auth.getSession();
-  const r = await fetch(`/api/digital-pay/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data.session?.access_token ?? '') }, body: JSON.stringify(body) });
+  const r = await fetch(`${API_BASE}/api/digital-pay/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data.session?.access_token ?? '') }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.ok === false) throw new Error(j.error || `The request failed (${r.status}).`);
   return j;

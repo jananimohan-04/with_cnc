@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, Loader2, Mail, Send, Trash2 } from 'lucide-
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Card';
+import { API_BASE } from '@/retail/api';
 
 // Step by step: each company links its OWN e-mail account. Order confirmations to customers are sent from it.
 // The password goes to the server only, is stored encrypted and is never shown again.
@@ -26,7 +27,7 @@ const PROVIDERS = [
 
 async function mailApi(path: string, body: Record<string, unknown>) {
   const sess = await supabase.auth.getSession();
-  const r = await fetch(`/api/digital-mail/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data.session?.access_token ?? '') }, body: JSON.stringify(body) });
+  const r = await fetch(`${API_BASE}/api/digital-mail/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (sess.data.session?.access_token ?? '') }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.ok === false) throw new Error(j.error || `The request failed (${r.status}).`);
   return j;
