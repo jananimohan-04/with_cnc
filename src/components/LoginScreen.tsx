@@ -42,22 +42,18 @@ export function LoginScreen() {
         {/* Subtle warm industrial ambient glow */}
         <div className="absolute w-[450px] h-[450px] bg-brand-500/15 rounded-full blur-[140px] pointer-events-none" />
 
-        {/* Unified Brand Card — Only the two logos, cleanly integrated */}
-        <div className="relative z-10 w-auto max-w-md">
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/60 p-6 sm:p-8 flex flex-col items-center transition-all duration-300 hover:scale-[1.02] hover:shadow-brand-500/20">
-            {/* Primary: Argus Business Intelligence Logo */}
-            <img
-              src="/argus-bi-logo.svg"
-              alt="Argus Business Intelligence"
-              className="h-20 sm:h-24 w-auto max-w-full object-contain drop-shadow-sm"
-            />
+        {/* Top Left: First Logo (Argus Business Intelligence) only */}
+        <div className="relative z-10">
+          <img
+            src="/argus-bi-logo.svg"
+            alt="Argus Business Intelligence"
+            className="h-24 sm:h-28 w-auto max-w-full object-contain drop-shadow-2xl"
+          />
+        </div>
 
-            {/* Elegant Hairline Divider */}
-            <div className="w-full my-5 flex items-center justify-center">
-              <div className="h-px bg-slate-200/90 w-full" />
-            </div>
-
-            {/* Attached: ARGUS CNC — Creating Future Factories Logo */}
+        {/* Center: Second Logo (ARGUS CNC) in the middle */}
+        <div className="relative z-10 my-auto self-center">
+          <div className="bg-white/95 backdrop-blur-xl px-9 py-5 sm:px-12 sm:py-6 rounded-2xl shadow-2xl border border-white/60 flex items-center justify-center transition-all duration-300 hover:scale-105 hover:shadow-brand-500/25">
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC - Creating Future Factories"
@@ -65,24 +61,26 @@ export function LoginScreen() {
             />
           </div>
         </div>
+
+        {/* Bottom spacer for balanced centering */}
+        <div className="relative z-10 h-10 invisible" />
       </div>
 
       {/* Right — Clean Enterprise Sign-in Form */}
       <div className="flex-1 flex items-center justify-center bg-slate-50 px-6 py-12 lg:px-12">
         <div className="w-full max-w-sm">
-          {/* Mobile Only: Unified Brand Card */}
-          <div className="lg:hidden mb-8">
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200/80 p-5 flex flex-col items-center">
-              <img
-                src="/argus-bi-logo.svg"
-                alt="Argus Business Intelligence"
-                className="h-14 w-auto max-w-full object-contain"
-              />
-              <div className="w-full my-3 h-px bg-slate-200/80" />
+          {/* Mobile Only: Top Logo and Second Logo */}
+          <div className="lg:hidden mb-8 flex flex-col items-center gap-4">
+            <img
+              src="/argus-bi-logo.svg"
+              alt="Argus Business Intelligence"
+              className="h-16 w-auto max-w-full object-contain drop-shadow-md"
+            />
+            <div className="bg-white/95 px-6 py-3 rounded-xl shadow-md border border-slate-200/80">
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-9 w-auto object-contain"
+                className="h-8 w-auto object-contain"
               />
             </div>
           </div>
@@ -165,7 +163,7 @@ export function LoginScreen() {
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
                 className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
-                style={{ height: '30px', maxHeight: '30px', width: 'auto' }}
+                style={{ height: '42px', maxHeight: '42px', width: 'auto' }}
               />
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
