@@ -378,10 +378,15 @@ function MainLayout() {
           </div>
         </main>
         {/* Brand signature on every page */}
-        <div className="brand-footer flex-shrink-0 py-1.5 px-3 text-center bg-white/95 border-t border-slate-200 print:hidden">
+        <div className="brand-footer flex-shrink-0 py-1 px-3 text-center bg-white/95 border-t border-slate-100 print:hidden">
           <div className="flex items-center justify-center gap-1.5 select-none">
-            <span className="text-[11px] font-medium tracking-wide text-slate-500">Powered by</span>
-            <img src="/argus-logo.png" alt="ARGUS CNC" className="h-5 sm:h-[22px] w-auto object-contain inline-block align-middle" />
+            <span className="font-normal text-slate-400">Powered by</span>
+            <img
+              src="/argus-logo.png"
+              alt="ARGUS CNC"
+              className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
+              style={{ height: '13px', maxHeight: '13px', width: 'auto' }}
+            />
           </div>
         </div>
         {/* Bottom menu position: compact bar docked to the bottom edge (reserves its own space). */}

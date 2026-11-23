@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, Zap, Award } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 // TEMPORARY (local dev only): password sign-in is shown only when running the dev server
@@ -27,7 +27,7 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen flex">
       {/* Left — Cinematic CNC Image */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-navy-950">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-navy-950 items-center justify-center">
         {/* Gradient background simulating CNC machining environment */}
         <div className="absolute inset-0 bg-gradient-to-br from-navy-950 via-navy-900 to-brand-950" />
         <div className="absolute inset-0 bg-grid-dark opacity-40" />
@@ -49,48 +49,13 @@ export function LoginScreen() {
           <line x1="0" y1="80%" x2="100%" y2="80%" stroke="url(#lineGrad)" strokeWidth="1" />
         </svg>
 
-        {/* Content overlay */}
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white">
-          <img src="/argus-bi-logo.svg" alt="Argus Business Intelligence" className="h-28 w-fit max-w-full object-contain drop-shadow-xl" />
-
-          <div className="max-w-md">
-            <h2 className="text-4xl font-bold leading-tight mb-4">
-              Creating Future Factories<br />
-              <span className="bg-gradient-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
-                Powered by Argus Business Intelligence
-              </span>
-            </h2>
-            <p className="text-navy-300 text-sm leading-relaxed mb-8">
-              The complete Argus Business Intelligence platform for CNC machining operations. 
-              From enquiry to dispatch — manage your entire shop floor with precision.
-            </p>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                <Shield className="text-brand-400 mb-2" size={20} />
-                <p className="text-xs font-semibold">ISO 9001</p>
-                <p className="text-[10px] text-navy-400">Compliant</p>
-              </div>
-              <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                <Zap className="text-accent-400 mb-2" size={20} />
-                <p className="text-xs font-semibold">Real-time</p>
-                <p className="text-[10px] text-navy-400">Shop Floor</p>
-              </div>
-              <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                <Award className="text-amber-400 mb-2" size={20} />
-                <p className="text-xs font-semibold">AS9100D</p>
-                <p className="text-[10px] text-navy-400">Aerospace</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6 text-xs text-navy-400">
-            <span>v3.2.1 Enterprise</span>
-            <span>•</span>
-            <span>99.98% Uptime</span>
-            <span>•</span>
-            <span>SOC 2 Certified</span>
-          </div>
+        {/* Content overlay — clean brand logo */}
+        <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white">
+          <img
+            src="/argus-bi-logo.svg"
+            alt="Argus Business Intelligence"
+            className="h-32 sm:h-36 w-auto max-w-full object-contain drop-shadow-2xl"
+          />
         </div>
       </div>
 
@@ -172,16 +137,19 @@ export function LoginScreen() {
             <p className="mt-4 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{errorMessage}</p>
           )}
 
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-              <Shield size={12} />
-              <span>Access is limited to accounts registered by your administrator</span>
+          <div className="mt-8 pt-5 border-t border-slate-100 text-center">
+            <div className="inline-flex items-center justify-center gap-1.5 select-none text-[11px] text-slate-400">
+              <span className="font-normal text-slate-400">Powered by</span>
+              <img
+                src="/argus-logo.png"
+                alt="ARGUS CNC"
+                className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
+                style={{ height: '13px', maxHeight: '13px', width: 'auto' }}
+              />
             </div>
-            <div className="mt-3 text-center">
-              <div className="flex items-center justify-center gap-1.5 select-none">
-                <span className="whitespace-nowrap text-[11px] font-medium tracking-wide text-slate-400">Powered by</span>
-                <img src="/argus-logo.png" alt="ARGUS CNC" className="h-[18px] w-auto max-w-[120px] object-contain opacity-90" />
-              </div>
+            <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
+              <Shield size={11} className="text-slate-400/80" />
+              <span>Access is limited to accounts registered by your administrator</span>
             </div>
           </div>
         </div>
