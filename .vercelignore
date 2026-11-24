@@ -22,3 +22,17 @@ supabase/.branches/
 
 # Separate Lovable/TanStack app - not part of this build.
 pixel-perfect-app/
+
+# Native and large binary artifacts (never needed in web build)
+src-tauri/
+android/
+dist/
+scratch/
+*.exe
+*.apk
+*.zip
+*.msi
+*.tgz
+*.tar.gz
+
+
