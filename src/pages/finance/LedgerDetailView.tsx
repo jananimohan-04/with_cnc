@@ -311,142 +311,113 @@ export function LedgerDetailView({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Top Navigation & Breadcrumb */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 hover:bg-orange-100 transition shadow-2xs cursor-pointer active:scale-95"
-            title="Return to the pivot summary table"
-          >
-            <ArrowLeft size={14} />
-            Back to Pivot Table
-          </button>
-          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400">Ledger Dashboard</span>
-            <span className="text-slate-300">/</span>
-            <span className="font-bold text-slate-800 uppercase tracking-wide truncate max-w-[240px] sm:max-w-md">{group.label}</span>
-          </div>
+    <div className="space-y-2">
+      {/* Compact Top Header Bar with Inline Metric Pills */}
+      <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center gap-2 overflow-x-auto scrollbar-thin">
+        {/* Back Button */}
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 hover:bg-orange-100 transition shadow-2xs cursor-pointer active:scale-95 shrink-0"
+          title="Return to the pivot summary table"
+        >
+          <ArrowLeft size={13} />
+          Back
+        </button>
+
+        <span className="h-4 w-px bg-slate-200 shrink-0" />
+
+        {/* Company Name & Type Badge */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Building2 size={15} className="text-orange-500 shrink-0" />
+          <span className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-tight max-w-[200px] sm:max-w-xs truncate" title={group.label}>
+            {group.label}
+          </span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+            partyType.toLowerCase() === 'customer'
+              ? 'bg-sky-50 text-sky-700 border border-sky-200'
+              : partyType.toLowerCase() === 'supplier'
+              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+              : 'bg-slate-100 text-slate-600 border border-slate-200'
+          }`}>
+            {partyType}
+          </span>
+          <span className="text-[11px] text-slate-400 font-medium shrink-0">
+            ({summary.count} entries)
+          </span>
+        </div>
+
+        <span className="h-4 w-px bg-slate-200 shrink-0" />
+
+        {/* Compact KPI Pills in the Same Line */}
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          {isParty && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-700 whitespace-nowrap" title="Opening balance brought forward">
+              <span className="text-[10px] text-slate-400 font-normal uppercase">Open:</span>
+              <b className="tabular-nums">₹{money(Math.abs(summary.opening))}</b>
+              <span className="text-[10px] text-slate-500">{drCr(summary.opening) || '—'}</span>
+            </span>
+          )}
+
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-red-200 bg-red-50 text-[11px] font-bold text-red-700 whitespace-nowrap" title="Total Debit (Out)">
+            <span className="text-[10px] text-red-500 font-normal uppercase">Debit:</span>
+            <b className="tabular-nums">₹{money(summary.debit)}</b>
+          </span>
+
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] font-bold text-emerald-700 whitespace-nowrap" title="Total Credit (In)">
+            <span className="text-[10px] text-emerald-500 font-normal uppercase">Credit:</span>
+            <b className="tabular-nums">₹{money(summary.credit)}</b>
+          </span>
+
+          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] font-black whitespace-nowrap ${
+            summary.closing > 0.005
+              ? 'border-sky-300 bg-sky-50 text-sky-800'
+              : summary.closing < -0.005
+              ? 'border-amber-300 bg-amber-50 text-amber-800'
+              : 'border-slate-200 bg-slate-50 text-slate-700'
+          }`} title="Net Closing Balance">
+            <span className="text-[10px] font-bold opacity-75 uppercase">Balance:</span>
+            <b className="tabular-nums">₹{money(Math.abs(summary.closing))}</b>
+            <span className="text-[10px] px-1 py-0.2 rounded bg-white/70 font-extrabold">{drCr(summary.closing) || 'Settled'}</span>
+          </span>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <button type="button" onClick={handlePrint} className={btn} title="Print ledger statement">
-            <Printer size={13} />
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          <button type="button" onClick={handlePrint} className={`${btn} !h-7 !px-2 text-xs`} title="Print statement">
+            <Printer size={12} />
             Print
           </button>
-          <button type="button" onClick={() => void handleDownloadPdf()} className={btn} title="Download PDF statement">
-            <FileDown size={13} />
+          <button type="button" onClick={() => void handleDownloadPdf()} className={`${btn} !h-7 !px-2 text-xs`} title="Download PDF statement">
+            <FileDown size={12} />
             PDF
           </button>
-          <button type="button" onClick={handleExportCsv} className={btn} title="Export CSV statement">
-            <FileSpreadsheet size={13} />
+          <button type="button" onClick={handleExportCsv} className={`${btn} !h-7 !px-2 text-xs`} title="Export CSV statement">
+            <FileSpreadsheet size={12} />
             CSV
           </button>
         </div>
       </div>
 
-      {/* Overview Card with KPIs */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-5 text-white shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b border-slate-700/60 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block p-1.5 bg-orange-500/20 text-orange-400 rounded-lg">
-                <Building2 size={18} />
-              </span>
-              <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-white">{group.label}</h2>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                partyType.toLowerCase() === 'customer'
-                  ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30'
-                  : partyType.toLowerCase() === 'supplier'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
-                  : 'bg-slate-700 text-slate-300 border border-slate-600'
-              }`}>
-                {partyType}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1 pl-8">
-              Detailed chronological statement showing every voucher, inward, invoice, and payment.
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-xs text-slate-400 block font-medium">Activity in Period</span>
-            <span className="text-sm font-bold text-white">{summary.count} entries</span>
-          </div>
-        </div>
-
-        {/* 4 KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-          {isParty && (
-            <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Opening Balance</span>
-              <div className="text-base sm:text-lg font-bold tabular-nums text-slate-200">
-                ₹{money(Math.abs(summary.opening))}
-                <span className="ml-1 text-xs font-semibold text-slate-400">{drCr(summary.opening) || '—'}</span>
-              </div>
-              <span className="text-[10px] text-slate-400">Brought forward</span>
-            </div>
-          )}
-
-          <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-red-300 block mb-0.5">Total Debit (Out)</span>
-            <div className="text-base sm:text-lg font-bold tabular-nums text-red-400">
-              ₹{money(summary.debit)}
-            </div>
-            <span className="text-[10px] text-slate-400">{partyType === 'Customer' ? 'Sales Invoices / Billed' : 'Payments Made Out'}</span>
-          </div>
-
-          <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block mb-0.5">Total Credit (In)</span>
-            <div className="text-base sm:text-lg font-bold tabular-nums text-emerald-400">
-              ₹{money(summary.credit)}
-            </div>
-            <span className="text-[10px] text-slate-400">{partyType === 'Customer' ? 'Receipts In' : 'Goods / Service Inward'}</span>
-          </div>
-
-          <div className={`border rounded-xl p-3 ${
-            summary.closing > 0.005
-              ? 'bg-sky-950/40 border-sky-600/50'
-              : summary.closing < -0.005
-              ? 'bg-amber-950/40 border-amber-600/50'
-              : 'bg-slate-800/80 border-slate-700'
-          }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block mb-0.5">Net Closing Balance</span>
-            <div className={`text-base sm:text-lg font-black tabular-nums ${
-              summary.closing > 0.005 ? 'text-sky-300' : summary.closing < -0.005 ? 'text-amber-300' : 'text-slate-200'
-            }`}>
-              ₹{money(Math.abs(summary.closing))}
-              <span className="ml-1 text-xs font-bold">{drCr(summary.closing) || 'Settled'}</span>
-            </div>
-            <span className="text-[10px] text-slate-300">
-              {summary.closing > 0.005 ? 'Receivable (They owe us)' : summary.closing < -0.005 ? 'Payable (We owe them)' : 'Fully settled'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Date & Search Filters Toolbar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+      {/* Compact Date & Search Sub-bar */}
+      <div className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <label className="flex items-center gap-1.5 font-semibold text-slate-600">
+          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
             From:
             <input
               type="date"
               aria-label="Filter from date"
-              className={inp}
+              className={`${inp} !h-7 !py-0 !px-1.5 text-xs`}
               value={from}
               onChange={e => setFrom(e.target.value)}
             />
           </label>
-          <label className="flex items-center gap-1.5 font-semibold text-slate-600">
+          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
             To:
             <input
               type="date"
               aria-label="Filter to date"
-              className={inp}
+              className={`${inp} !h-7 !py-0 !px-1.5 text-xs`}
               value={to}
               onChange={e => setTo(e.target.value)}
             />
@@ -455,19 +426,19 @@ export function LedgerDetailView({
             <button
               type="button"
               onClick={() => { setFrom(''); setTo(''); }}
-              className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 underline ml-1 cursor-pointer"
+              className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 underline cursor-pointer ml-1"
             >
-              Clear dates
+              Reset
             </button>
           )}
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+        <div className="relative w-48 sm:w-60 ml-auto">
+          <Search size={12} className="absolute left-2.5 top-2 text-slate-400" />
           <input
             aria-label="Search within statement"
             placeholder="Search reference, narration…"
-            className={`${inp} pl-8 w-full`}
+            className={`${inp} !h-7 !py-0 pl-7 text-xs w-full`}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
