@@ -14,6 +14,7 @@ const MIN_H = 400;
 const MAX_H = 850;
 
 const initialWidth = (size: string, vw: number, width?: number, maxW: number = MAX_W): number => {
+  if (vw < 640) return Math.min(vw - 16, maxW);
   const preset =
     size === 'sm' ? 520 :
     size === 'md' ? 640 :
@@ -105,6 +106,7 @@ export function Modal({
     if (open) {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      const isMobile = vw < 640;
       const modalW = initialWidth(size, vw, width, maxWidth);
       setDim({ w: modalW, h: null });
       setTouched(false);
@@ -116,8 +118,8 @@ export function Modal({
       movedRef.current = false;
       // Set initial centered position immediately (estimate height as 400)
       setPos({
-        x: Math.max(16, (vw - modalW) / 2),
-        y: Math.max(16, (vh - 400) / 2),
+        x: isMobile ? 8 : Math.max(16, (vw - modalW) / 2),
+        y: isMobile ? 12 : Math.max(16, (vh - 400) / 2),
       });
       // Refine vertical centering once actual height is measured
       requestAnimationFrame(() => {
@@ -126,8 +128,8 @@ export function Modal({
           const h = el.offsetHeight;
           const actualW = el.offsetWidth;
           setPos({
-            x: Math.max(16, (vw - actualW) / 2),
-            y: Math.max(16, (vh - h) / 2),
+            x: isMobile ? 8 : Math.max(16, (vw - actualW) / 2),
+            y: isMobile ? Math.max(12, (vh - h) / 2) : Math.max(16, (vh - h) / 2),
           });
         }
       });
@@ -199,7 +201,7 @@ export function Modal({
   };
 
   const onHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (!draggable || maximized) return;
+    if (!draggable || maximized || (typeof window !== 'undefined' && window.innerWidth < 640)) return;
     // Never start a drag from a control inside the header (e.g. the X).
     if ((e.target as HTMLElement).closest('button')) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -263,6 +265,14 @@ export function Modal({
         className="absolute"
         style={maximized ? {
           left: 16, top: 16, width: 'calc(100vw - 2rem)', height: 'calc(100vh - 2rem)', maxWidth: 'none', maxHeight: 'none',
+        } : (typeof window !== 'undefined' && window.innerWidth < 640) ? {
+          left: 8,
+          right: 8,
+          top: Math.max(8, pos.y),
+          width: 'calc(100vw - 16px)',
+          maxWidth: 'calc(100vw - 16px)',
+          height: minimized ? undefined : dim.h ?? undefined,
+          maxHeight: 'min(94vh, 850px)',
         } : {
           left: pos.x,
           top: pos.y,
@@ -278,7 +288,7 @@ export function Modal({
           onChange={() => setTouched(true)}
         >
           <div
-            className={`flex items-center justify-between px-6 py-4 border-b shrink-0 select-none ${
+            className={`flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-4 border-b shrink-0 select-none ${
               accent ? accent.head : 'border-slate-100 bg-slate-50/50'
             } ${
               draggable ? 'touch-none' : ''
@@ -330,9 +340,9 @@ export function Modal({
               </button>
             </div>
           </div>
-          <div className={`modal-scroll flex-1 overflow-y-auto pl-6 pr-4 py-5 mr-2 min-h-0 ${accent ? '' : 'bg-slate-50/30'} ${minimized ? 'hidden' : ''}`}>{children}</div>
+          <div className={`modal-scroll flex-1 overflow-y-auto overflow-x-hidden px-3.5 py-3 sm:pl-6 sm:pr-4 sm:py-5 sm:mr-2 min-h-0 ${accent ? '' : 'bg-slate-50/30'} ${minimized ? 'hidden' : ''}`}>{children}</div>
           {footer && !minimized && (
-            <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 ${accent ? 'border-white/60 bg-white/50' : 'border-slate-100 bg-slate-50'}`}>
+            <div className={`flex items-center justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-2.5 sm:py-4 border-t shrink-0 ${accent ? 'border-white/60 bg-white/50' : 'border-slate-100 bg-slate-50'}`}>
               {footer}
             </div>
           )}

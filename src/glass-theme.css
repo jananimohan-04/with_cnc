@@ -289,3 +289,21 @@ aside:not(.attendance-sidebar) nav button:hover { background: rgba(255, 255, 255
   min-width: 56px !important;
 }
 .scrollbar-none::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+
+@media (max-width: 640px) {
+  ::-webkit-scrollbar { width: 4px !important; height: 4px !important; }
+  .modal-scroll::-webkit-scrollbar,
+  .modal-scroll ::-webkit-scrollbar,
+  [role="dialog"]::-webkit-scrollbar,
+  [role="dialog"] ::-webkit-scrollbar,
+  [aria-modal="true"]::-webkit-scrollbar,
+  [aria-modal="true"] ::-webkit-scrollbar,
+  .modal::-webkit-scrollbar,
+  .modal ::-webkit-scrollbar,
+  .fixed.inset-0::-webkit-scrollbar,
+  .fixed.inset-0 ::-webkit-scrollbar {
+    width: 4px !important;
+    height: 4px !important;
+  }
+}
+

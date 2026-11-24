@@ -8188,8 +8188,8 @@ export function SalesPipelinePage() {
     })() : undefined;
 
     return (
-    <section className={`rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
-      <div className="space-y-2.5 p-3">
+    <section className={opts?.popup ? 'w-full' : `rounded-xl border shadow-sm ${tint('Sales Order').panel}`} data-testid="so-entry-form">
+      <div className={opts?.popup ? 'space-y-2.5 p-0.5 sm:p-2' : 'space-y-2.5 p-3'}>
         {soSaveNotice && (
           <div role="status" data-testid="so-saved-note" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
             <span>✓ Sales order {soSaveNotice} saved. The list below has been refreshed.</span>
@@ -8197,94 +8197,159 @@ export function SalesPipelinePage() {
           </div>
         )}
 
-        {/* One compact row for the order fields on a single line. In the board
-            popup the row wraps instead of scrolling, so the company dropdown
-            is never clipped by the scroll container. */}
-        <div className={opts?.popup ? 'flex flex-wrap items-center gap-2' : 'flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin'}>
-          {opts?.onBack && (
-            <div className="flex items-center gap-1.5 shrink-0 mr-1">
-              <button 
-                type="button" 
-                onClick={opts.onBack} 
-                title="Back to Pipeline"
-                className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <h2 className="text-sm font-bold text-slate-800 shrink-0 whitespace-nowrap">Sales Orders</h2>
-              <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
-            </div>
-          )}
-
-          <div className="shrink-0">
-            <CustomerAutocomplete
-              label="Company"
-              required
-              inlineLabel
-              value={soForm.customer || ''}
-              onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
-              companies={allKnownCompanies}
-              inputClass={`${compactInput} w-[11rem]`}
-              placeholder="Company..."
-            />
-          </div>
-          <div className="shrink-0">
-            <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
-          </div>
-          <div className="shrink-0">
-            <FormField label="Delivery Date" inline>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
-                  className={`${compactInput} w-[8.25rem] transition-colors ${
-                    isSoDeliveryDateInvalid
-                      ? '!border-red-500 !text-red-600 !bg-red-50 font-semibold focus:!border-red-600 focus:!ring-red-200'
-                      : ''
-                  }`}
-                  value={soForm.deliveryDate || ''}
-                  min={minDeliveryDate}
-                  title={isSoDeliveryDateInvalid ? 'Delivery date must be after order date' : undefined}
-                  onChange={e => setSoForm({ ...soForm, deliveryDate: e.target.value })}
+        {opts?.popup ? (
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <CustomerAutocomplete
+                  label="Company"
+                  required
+                  value={soForm.customer || ''}
+                  onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+                  companies={allKnownCompanies}
+                  inputClass="w-full h-8 px-2.5 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 focus:outline-none focus:border-brand-500 shadow-2xs"
+                  placeholder="Select or type company..."
                 />
-                {isSoDeliveryDateInvalid && (
-                  <span
-                    className="text-[11px] font-bold text-red-600 whitespace-nowrap"
-                    title="Delivery date must be after order date"
-                  >
-                    Must be after order date
-                  </span>
-                )}
               </div>
-            </FormField>
-          </div>
-          <div className="shrink-0">
-            <FormField label="PO No" inline><input className={`${compactInput} w-[7.5rem]`} placeholder="Customer PO" value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
-          </div>
+              <div>
+                <FormField label="Customer PO No">
+                  <input
+                    className="w-full h-8 px-2.5 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 focus:outline-none focus:border-brand-500 shadow-2xs"
+                    placeholder="Customer PO No..."
+                    value={soForm.customerPoNo || ''}
+                    onChange={e => setSoForm({ ...soForm, customerPoNo: e.target.value })}
+                  />
+                </FormField>
+              </div>
+            </div>
 
-          <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
-
-          <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
-            className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
-            <span className="text-sm">+</span> Add Product
-          </button>
-
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {!opts?.popup && (
-              <>
-            <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
-            <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo || isSoDeliveryDateInvalid} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
-              </>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
+              <div>
+                <FormField label="Order Date" required>
+                  <input
+                    type="date"
+                    className="w-full h-8 px-2 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 focus:outline-none focus:border-brand-500 shadow-2xs"
+                    value={soForm.orderDate || ''}
+                    onChange={e => setSoForm({ ...soForm, orderDate: e.target.value })}
+                  />
+                </FormField>
+              </div>
+              <div>
+                <FormField label="Delivery Date">
+                  <input
+                    type="date"
+                    className={`w-full h-8 px-2 text-xs font-medium rounded border border-[color:var(--entry-border)] bg-white text-slate-800 focus:outline-none focus:border-brand-500 shadow-2xs ${
+                      isSoDeliveryDateInvalid ? '!border-red-500 !text-red-600 !bg-red-50 font-semibold' : ''
+                    }`}
+                    value={soForm.deliveryDate || ''}
+                    min={minDeliveryDate}
+                    title={isSoDeliveryDateInvalid ? 'Delivery date must be after order date' : undefined}
+                    onChange={e => setSoForm({ ...soForm, deliveryDate: e.target.value })}
+                  />
+                </FormField>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <button
+                  type="button"
+                  onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
+                  className="h-8 w-full flex items-center justify-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 text-xs font-bold text-brand-700 hover:bg-brand-100 hover:border-brand-400 transition-colors shadow-2xs"
+                >
+                  <span className="text-sm font-black">+</span> Add Product
+                </button>
+              </div>
+            </div>
+            {isSoDeliveryDateInvalid && (
+              <p className="text-[11px] font-bold text-red-600">⚠️ Delivery date must be after order date</p>
             )}
-            {opts?.searchSlot && (
-              <>
-                <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
-                {opts.searchSlot}
-              </>
-            )}
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin">
+            {opts?.onBack && (
+              <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                <button 
+                  type="button" 
+                  onClick={opts.onBack} 
+                  title="Back to Pipeline"
+                  className="p-1 hover:bg-slate-200/80 rounded-md transition-colors text-slate-600 shrink-0 cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h2 className="text-sm font-bold text-slate-800 shrink-0 whitespace-nowrap">Sales Orders</h2>
+                <span className="h-5 w-px shrink-0 bg-slate-300 ml-1" aria-hidden="true" />
+              </div>
+            )}
+
+            <div className="shrink-0">
+              <CustomerAutocomplete
+                label="Company"
+                required
+                inlineLabel
+                value={soForm.customer || ''}
+                onChange={val => setSoForm((prev: any) => ({ ...prev, customer: val }))}
+                companies={allKnownCompanies}
+                inputClass={`${compactInput} w-[11rem]`}
+                placeholder="Company..."
+              />
+            </div>
+            <div className="shrink-0">
+              <FormField label="Order Date" required inline><input type="date" className={`${compactInput} w-[8.25rem]`} value={soForm.orderDate || ''} onChange={e=>setSoForm({...soForm, orderDate: e.target.value})} /></FormField>
+            </div>
+            <div className="shrink-0">
+              <FormField label="Delivery Date" inline>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    className={`${compactInput} w-[8.25rem] transition-colors ${
+                      isSoDeliveryDateInvalid
+                        ? '!border-red-500 !text-red-600 !bg-red-50 font-semibold focus:!border-red-600 focus:!ring-red-200'
+                        : ''
+                    }`}
+                    value={soForm.deliveryDate || ''}
+                    min={minDeliveryDate}
+                    title={isSoDeliveryDateInvalid ? 'Delivery date must be after order date' : undefined}
+                    onChange={e => setSoForm({ ...soForm, deliveryDate: e.target.value })}
+                  />
+                  {isSoDeliveryDateInvalid && (
+                    <span
+                      className="text-[11px] font-bold text-red-600 whitespace-nowrap"
+                      title="Delivery date must be after order date"
+                    >
+                      Must be after order date
+                    </span>
+                  )}
+                </div>
+              </FormField>
+            </div>
+            <div className="shrink-0">
+              <FormField label="PO No" inline><input className={`${compactInput} w-[7.5rem]`} placeholder="Customer PO" value={soForm.customerPoNo || ''} onChange={e=>setSoForm({...soForm, customerPoNo: e.target.value})} /></FormField>
+            </div>
+
+            <span className="h-6 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
+            <button type="button" onClick={() => setSoForm((prev: any) => ({ ...prev, items: [...(prev.items || []), { id: crypto.randomUUID(), partName: '', quantity: '', rejectedQty: '', itemStatus: 'Confirmed', unitPrice: '', gst: '18', files: [] }] }))}
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-brand-600 hover:text-brand-700">
+              <span className="text-sm">+</span> Add Product
+            </button>
+
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {!opts?.popup && (
+                <>
+              <Button variant="secondary" size="sm" onClick={() => { setSoForm(resetSoForm()); setSoSaveNotice(null); }}>Clear / Reset</Button>
+              <Button size="sm" onClick={saveStandaloneSalesOrder} disabled={savingSo || isSoDeliveryDateInvalid} className={MODULE_THEMES['Sales Order'].btnPrimary}>{savingSo ? 'Saving...' : 'Save Order'}</Button>
+                </>
+              )}
+              {opts?.searchSlot && (
+                <>
+                  <span className="h-6 w-px shrink-0 bg-slate-300 mx-0.5" aria-hidden="true" />
+                  {opts.searchSlot}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {(soForm.items || []).length > 0 && (
-          <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_6rem_2rem] gap-2 items-center px-1 pt-0.5">
+          <div className="hidden sm:grid sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4rem_auto_2rem] gap-2 items-center px-1 pt-0.5">
             <span></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Product Name</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Qty</span>
@@ -8297,8 +8362,96 @@ export function SalesPipelinePage() {
         {(soForm.items || []).map((item: any, idx: number) => {
           const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
           return (
-            <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_auto_2rem] gap-2 items-center">
+            <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white p-2.5 sm:px-2 sm:py-1.5 shadow-2xs">
+              {/* Mobile card layout (< sm) */}
+              <div className="sm:hidden space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+                    {idx + 1}
+                  </span>
+                  <input
+                    className={`${compactCell} flex-1 min-w-0`}
+                    placeholder="Product name *"
+                    list="saved-products"
+                    value={item.partName || ''}
+                    onChange={e => upd({ partName: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    title={`Remove product ${idx + 1}`}
+                    aria-label={`Remove product ${idx + 1}`}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-lg leading-none text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                    onClick={() => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).filter((_: any, i: number) => i !== idx) }))}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Qty</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={`${compactCell} text-center`}
+                      placeholder="Qty"
+                      value={item.quantity ?? ''}
+                      onChange={e => upd({ quantity: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Unit Price (₹)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={`${compactCell} text-right`}
+                      placeholder="Price"
+                      value={item.unitPrice ?? ''}
+                      onChange={e => upd({ unitPrice: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">GST %</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={`${compactCell} text-center`}
+                      placeholder="18"
+                      value={item.gst ?? ''}
+                      onChange={e => upd({ gst: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1">
+                  <label className="inline-flex h-7 flex-1 cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                    <UploadCloud size={13} />
+                    <span className="truncate">{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file(s)` : 'Upload file'}</span>
+                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => {
+                      const picked = Array.from(e.currentTarget.files || []);
+                      e.currentTarget.value = '';
+                      if (picked.length) {
+                        setSoForm((prev: any) => ({
+                          ...prev,
+                          items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...picked] } : r)
+                        }));
+                      }
+                    }} />
+                  </label>
+                  <CameraCaptureButton
+                    onCapture={(capturedFiles) => {
+                      setSoForm((prev: any) => ({
+                        ...prev,
+                        items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...capturedFiles] } : r)
+                      }));
+                    }}
+                    title={`Take photo for product ${idx + 1}`}
+                  />
+                </div>
+              </div>
+
+              {/* Desktop single row view (>= sm) */}
+              <div className="hidden sm:grid sm:grid-cols-[2rem_minmax(0,1fr)_4.5rem_6.5rem_4rem_auto_2rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <input className={compactCell} placeholder="Product name" list="saved-products" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
@@ -8330,8 +8483,9 @@ export function SalesPipelinePage() {
                 </div>
                 <button type="button" title={`Remove product ${idx + 1}`} aria-label={`Remove product ${idx + 1}`} className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-rose-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).filter((_: any, i: number) => i !== idx) }))}>×</button>
               </div>
+
               {((item.files || []).length > 0 || getItemFileEntries(item).length > 0) && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9" data-testid="so-files">
+                <div className="mt-1.5 flex flex-wrap gap-1.5 sm:pl-9" data-testid="so-files">
                   {getItemFileEntries(item).map((f: any, fpi: number) => (
                     <span key={`so-fp-${f.key || f.path}-${fpi}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 shadow-xs">
                       <button type="button" className="max-w-[180px] truncate font-medium text-blue-700 hover:underline" onClick={() => void openProductFile(f.path)}>{f.name}</button>
