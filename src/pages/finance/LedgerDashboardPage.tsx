@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, MoreVertical, Printer, Eye, Upload } from 'lucide-react';
+import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, MoreVertical, Printer, Eye, Upload, LayoutGrid, ListFilter } from 'lucide-react';
+import { LedgerPivotView, type PivotGroupBy } from './LedgerPivotView';
+import { LedgerDetailView } from './LedgerDetailView';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,7 +46,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const cid = company?.id ?? null;
   const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource(), Opening: emptySource() });
   // ?party=Name (from Opening Balances > View Ledger) opens the ledger already filtered to that company.
-  const [urlParams] = useSearchParams();
+  const [urlParams, setUrlParams] = useSearchParams();
   const initParty = urlParams.get('party') ?? '';
   // Read-only now: the toolbar's own Start/End/Particulars/Company filters were removed, so `applied` only
   // carries the company picked up from the ?party= link (the Topbar date range still applies via effFrom/effTo).
@@ -56,6 +58,10 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const [modal, setModal] = useState<null | 'statement' | 'book'>(null);
   const [stmtParty, setStmtParty] = useState('');
   const [note, setNote] = useState('');
+  const [viewMode, setViewMode] = useState<'pivot' | 'list'>('pivot');
+  const [selectedGroup, setSelectedGroup] = useState<{ type: PivotGroupBy; value: string; label: string } | null>(
+    initParty ? { type: 'party', value: initParty, label: initParty } : null
+  );
 
   const load = useCallback(async (which: LedgerSource): Promise<number> => {
     setSrc(s => ({ ...s, [which]: { ...s[which], state: 'loading', error: '' } }));
@@ -256,8 +262,52 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
         )}
         {note && <div role="status" data-testid="ledger-note" className="rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-sm px-3.5 py-2">{note}</div>}
 
+        {selectedGroup ? (
+          <LedgerDetailView
+            group={selectedGroup}
+            allLines={visibleAll}
+            settled={settled}
+            statusText={statusText}
+            onBack={() => {
+              setSelectedGroup(null);
+              setUrlParams(prev => {
+                const next = new URLSearchParams(prev);
+                next.delete('party');
+                return next;
+              });
+            }}
+            initFrom={effFrom}
+            initTo={effTo}
+            companyName={company?.company_name}
+          />
+        ) : (
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="head-bar px-3 py-2 border-b flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-thin [&>*]:shrink-0">
+            {/* View Switcher: Pivot Table vs Flat List */}
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('pivot')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'pivot' ? 'bg-white text-orange-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid size={13} />
+                Pivot Table (Summary)
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'list' ? 'bg-white text-orange-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ListFilter size={13} />
+                All Transactions ({sorted.length})
+              </button>
+            </div>
+
+            <span className="h-4 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
             <p className="text-xs text-slate-500 whitespace-nowrap shrink-0"><span className="font-semibold text-slate-700" data-testid="row-count">{sorted.length} rows</span></p>
             <button type="button" onClick={() => { setSearch(cur => (cur === 'Customer' ? '' : 'Customer')); setPage(1); }}
               title={`${recPay.customers} customer${recPay.customers === 1 ? '' : 's'} with a balance — click to filter`}
@@ -272,6 +322,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
 
             <span className="h-4 w-px bg-slate-200 shrink-0 mx-0.5" aria-hidden="true" />
 
+            {viewMode === 'list' && (<>
             <label className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 whitespace-nowrap">
               Show
               <select aria-label="Entries per page" className={`${sel} !h-7 !py-0 !px-1.5 text-xs`} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
@@ -284,6 +335,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               Search:
               <input aria-label="Search ledger" placeholder="Search ledger…" className={`${inp} !h-7 !py-0 !px-2 text-xs w-36 sm:w-48`} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </label>
+            </>)}
 
             <span className="ml-auto flex gap-1.5 shrink-0">
               <button className={`${btn} !h-7 !px-2.5 text-xs`} data-testid="ledger-preview" title="Preview, then download or print" onClick={() => void openPreview()}><Eye size={13} />Preview</button>
@@ -311,6 +363,29 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
             </div>
           </div>
 
+          {viewMode === 'pivot' ? (
+            <div className="p-3 sm:p-4 border-t border-slate-200">
+              <LedgerPivotView
+                lines={baseFiltered}
+                settled={settled}
+                statusText={statusText}
+                onSelectGroup={g => {
+                  setSelectedGroup(g);
+                  if (g.type === 'party') {
+                    setUrlParams(prev => {
+                      const next = new URLSearchParams(prev);
+                      next.set('party', g.value);
+                      return next;
+                    });
+                  }
+                }}
+                effFrom={effFrom}
+                effTo={effTo}
+                companyName={company?.company_name}
+              />
+            </div>
+          ) : (
+            <>
           <div className="border-t border-slate-200 overflow-x-auto">
             <table className="w-full text-[12px] leading-tight">
               <thead className="bg-slate-100/90 shadow-[0_1px_0_#e2e8f0]"><tr className="text-left">
@@ -350,7 +425,13 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                   <tr key={l.id} data-testid="ledger-row" className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50 hover:bg-orange-50/40 transition">
                     <td className="px-1.5 py-1 whitespace-nowrap">{dmy(l.date)}</td>
                     <td className="px-1.5 py-1 font-mono text-slate-600">{l.ref}</td>
-                    <td className="px-1.5 py-1 uppercase font-medium text-slate-800">{l.party}</td>
+                    <td
+                      className="px-1.5 py-1 uppercase font-semibold text-slate-800 hover:text-orange-600 cursor-pointer underline-offset-2 hover:underline"
+                      onClick={() => l.party && setSelectedGroup({ type: 'party', value: l.party, label: l.party })}
+                      title={`Click to view detailed statement for ${l.party}`}
+                    >
+                      {l.party}
+                    </td>
                     <td className="px-1.5 py-1 uppercase">{l.particulars}</td>
                     <td className="px-1.5 py-1">{l.narration}</td>
                     <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-red-600">{money(l.debit)}</td>
@@ -389,7 +470,10 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
               <button className={`${btn} !h-8 !px-2`} aria-label="Next page" disabled={cur >= pages} onClick={() => setPage(cur + 1)}><ChevronRight size={14} /></button>
             </span>
           </div>
+            </>
+          )}
         </section>
+        )}
       </div>
 
       <Modal open={!!preview} onClose={closePreview} title={reportTitle} subtitle="Preview" size="xl" draggable={false}
