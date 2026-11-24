@@ -181,7 +181,7 @@ const PERSONAL = /\b(personal|self|owner|drawings?|home|family|domestic|househol
 const findLedger = (list: LedgerRef[], re: RegExp) => list.find(l => re.test(l.name));
 const findType = (types: EntryType[], name: string) => types.find(t => t.name.trim().toLowerCase() === name.toLowerCase());
 
-const INTERNAL_WORDS = /\b(drawdown\s+from\s+casa|internal\s+transfer|own\s+account|self\s+transfer|inter\s*account|sweep)\b/i;
+const INTERNAL_WORDS = /\b(drawdown\s+from\s+casa|internal\s*(transfer|trans+action|trans|trf|fund\s*transfer)|inter\s*account|intra\s*bank|intra\s*transfer|self\s*(transfer|trans+action|trf)|own\s*account|sweep|contra)\b|oth[- ]*internal/i;
 const withoutOwn = (desc: string, ownName?: string) => {
   const w = (ownName ?? '').trim().split(/\s+/).filter(Boolean);
   if (w.join('').length < 5) return desc;
@@ -240,8 +240,8 @@ export function suggestRow(r: ImportRow, ctx: SuggestCtx, mem?: Map<string, Mem>
 
   // 5: the narration says what it is
   if (INTERNAL_WORDS.test(desc)) {
-    const t = findType(ctx.types, 'INTERNAL');
-    if (t) return { typeId: t.id, ledgerId: t.ledgerId || undefined, reason: 'The bank calls this an internal transfer' };
+    const t = findType(ctx.types, 'INTERNAL') || ctx.types.find(x => /internal/i.test(x.name));
+    if (t) return { typeId: t.id, ledgerId: t.ledgerId || undefined, party: 'INTERNAL TRANSFER', reason: 'The bank calls this an internal transfer' };
   }
   const pool = dir === 'IN' ? [...ctx.income, ...ctx.expense] : [...ctx.expense, ...ctx.income];
   for (const rule of RULES) {

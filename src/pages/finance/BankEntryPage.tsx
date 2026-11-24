@@ -47,7 +47,8 @@ function escapeRegExp(s: string) {
 export function extractRowTypeAndDesc(
   rawDescription: string | null | undefined,
   fallbackKind: string | null | undefined,
-  typeList: EntryType[] = []
+  typeList: EntryType[] = [],
+  partyName?: string | null | undefined
 ): { type: string; description: string } {
   let desc = (rawDescription ?? '').trim();
   let extractedType = '';
@@ -98,6 +99,19 @@ export function extractRowTypeAndDesc(
         extractedType = matchInTypes.name;
         desc = generic[2].trim();
       }
+    }
+  }
+
+  // Auto-detect Internal Transfer from description or partyName
+  if (!extractedType) {
+    const isInternal =
+      /\b(internal\s*(transfer|trans+action|trans|trf|fund\s*transfer)|inter\s*account|intra\s*bank|intra\s*transfer|self\s*(transfer|trans+action|trf)|own\s*account|drawdown\s*from\s*casa|sweep|contra)\b/i.test(desc) ||
+      /oth[- ]*internal/i.test(desc) ||
+      (typeof partyName === 'string' && /internal(\s*transfer)?/i.test(partyName));
+
+    if (isInternal) {
+      const internalMatch = typeList.find(t => /internal/i.test(t.name));
+      extractedType = internalMatch ? internalMatch.name : 'INTERNAL';
     }
   }
 
@@ -194,7 +208,7 @@ export function BankEntryPage() {
         const r = await financeApi.bankTransactions({ page, pageSize: 200 });
         // the Type is read from the entry (imported ones carry it in front of the description; a Type you edited later is in "kind"),
         // so a correction you make in the Bank Data table is learned too
-        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
+        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types, x.party_name); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
         if (all.length >= r.total || !r.rows.length) break;
       }
       setHistory(all);
@@ -215,12 +229,12 @@ export function BankEntryPage() {
   const colGet: Record<string, (r: BankRow) => string> = {
     date: r => r.txn_date ?? '',
     cheque: r => r.reference_no ?? '',
-    description: r => extractRowTypeAndDesc(r.description, r.kind, types).description,
+    description: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).description,
     debit: r => (r.direction === 'OUT' ? money(r.amount) : ''),
     credit: r => (r.direction === 'IN' ? money(r.amount) : ''),
     bank: r => r.account_name ?? '',
-    type: r => extractRowTypeAndDesc(r.description, r.kind, types).type,
-    company: r => r.party_name ?? '',
+    type: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).type,
+    company: r => r.party_name || (extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''),
   };
   const sort = useSort<BankRow>({
     ...Object.fromEntries(Object.entries(colGet).map(([k, g]) => [k, g])),
@@ -237,7 +251,7 @@ export function BankEntryPage() {
 
   const handleUpdateType = async (r: BankRow, newTypeName: string) => {
     const trimmed = newTypeName.trim();
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
     const t = types.find(x => x.name.toLowerCase() === trimmed.toLowerCase());
     const contraId = t?.ledgerId || undefined;
 
@@ -266,7 +280,7 @@ export function BankEntryPage() {
   const handleUpdateCompany = async (r: BankRow, newParty: string) => {
     const trimmed = newParty.trim() || null;
     if ((r.party_name ?? '') === (trimmed ?? '')) return;
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
 
     setData(prev => prev.map(item => item.id === r.id ? {
       ...item,
@@ -290,7 +304,7 @@ export function BankEntryPage() {
 
   // Save the edit popup: only the fields that really changed are written.
   const saveRowEdit = async (r: BankRow, newType: string, newCompany: string) => {
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
     const currentType = parsed.type || r.kind || '';
     if (newType.trim().toLowerCase() !== currentType.trim().toLowerCase()) await handleUpdateType(r, newType.trim());
     if (newCompany.trim() !== (r.party_name ?? '').trim()) await handleUpdateCompany(r, newCompany.trim());
@@ -365,7 +379,7 @@ export function BankEntryPage() {
     {payable && <optgroup label="Payable (suppliers)"><option value={payable.id}>{payable.code} {payable.name}</option></optgroup>}
     <optgroup label={rowDirection(r) === 'IN' ? 'Income' : rowDirection(r) === 'OUT' ? 'Expense' : 'Income / Expense'}>{ledgerChoices(r).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</optgroup>
   </>);
-  const parties = useMemo(() => Array.from(new Set([...others.map(o => o.name), ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name)])).filter(Boolean), [others, options]);
+  const parties = useMemo(() => Array.from(new Set([...others.map(o => o.name), ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name), 'INTERNAL TRANSFER'])).filter(Boolean), [others, options]);
 
   const readExisting = async (list: ImportRow[]) => {
     const dates = list.map(r => r.date).filter((d): d is string => !!d).sort();
@@ -515,7 +529,7 @@ export function BankEntryPage() {
     exportCsv(`bank-data-${todayISO()}`, [
       ['Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance'],
       ...shownData.map(r => {
-        const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+        const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
         return [
           dmy(r.txn_date),
           r.account_name,
@@ -541,7 +555,7 @@ export function BankEntryPage() {
         startY: 23, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
         head: [['Date', 'Bank', 'Type', 'Company', 'Ref', 'Description', 'Debit', 'Credit', 'Balance']],
         body: shownData.map(r => {
-          const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+          const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
           return [
             dmy(r.txn_date),
             r.account_name,
@@ -827,7 +841,7 @@ export function BankEntryPage() {
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
-                    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+                    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
                     return (
                       <tr
                         key={r.id}
@@ -848,7 +862,7 @@ export function BankEntryPage() {
                           </span>
                         </td>
                         <td className="px-1.5 py-1 text-[11px] text-slate-700 whitespace-nowrap">
-                          {r.party_name || <span className="text-slate-400">—</span>}
+                          {r.party_name || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : <span className="text-slate-400">—</span>)}
                         </td>
                         <td className="px-1.5 py-0.5 text-center whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5 justify-center">
@@ -1329,7 +1343,7 @@ function ManualEntryModal({
     setEditingId(r.id);
     setDate(r.txn_date || today());
     if (r.account_id) setSelectedBankId(r.account_id);
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
     const matched = types.find(t => t.name.toLowerCase() === parsed.type.toLowerCase() || t.name.toLowerCase() === (r.kind ?? '').toLowerCase());
     if (matched) {
       setTypeId(matched.id);
@@ -1638,7 +1652,7 @@ function ManualEntryModal({
               </thead>
               <tbody>
                 {filteredList.map(r => {
-                  const parsed = extractRowTypeAndDesc(r.description, r.kind, types);
+                  const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
                   return (
                     <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100 hover:bg-slate-50/60 transition">
                       <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
@@ -1714,14 +1728,15 @@ function EditRowModal({ row, types, onClose, onSave }: {
 
   useEffect(() => {
     if (!row) return;
-    setType(extractRowTypeAndDesc(row.description, row.kind, types).type || row.kind || '');
-    setCompany(row.party_name ?? '');
+    const initialParsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name);
+    setType(initialParsed.type || row.kind || '');
+    setCompany(row.party_name || (initialParsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''));
     setErr('');
   }, [row, types]);
 
   if (!row) return null;
 
-  const parsed = extractRowTypeAndDesc(row.description, row.kind, types);
+  const parsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name);
   const currentType = parsed.type || row.kind || '';
 
   const save = async () => {
@@ -1760,7 +1775,13 @@ function EditRowModal({ row, types, onClose, onSave }: {
             aria-label="Type"
             className={`${sel} w-full mt-1 normal-case font-normal`}
             value={type}
-            onChange={e => setType(e.target.value)}
+            onChange={e => {
+              const val = e.target.value;
+              setType(val);
+              if (/internal/i.test(val) && !company.trim()) {
+                setCompany('INTERNAL TRANSFER');
+              }
+            }}
           >
             <option value="">-- Type --</option>
             {types.filter(t => t.direction === 'ANY' || t.direction === row.direction).map(t => (
@@ -1877,14 +1898,14 @@ function DeleteBankEntryModal({
 
           {row.description && (
             <p className="text-slate-600 break-words leading-relaxed pt-1 border-t border-red-100 text-[11px]">
-              {extractRowTypeAndDesc(row.description, row.kind, types).description || row.description}
+              {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name).description || row.description}
             </p>
           )}
 
           {(row.kind || row.party_name) && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 font-semibold text-slate-700">
-                {extractRowTypeAndDesc(row.description, row.kind, types).type || row.kind}
+                {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name).type || row.kind}
               </span>
               {row.party_name && <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{row.party_name}</span>}
             </div>
