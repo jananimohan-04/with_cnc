@@ -74,7 +74,8 @@ export function BottomNav({
   return (
     <div
       ref={rootRef}
-      className="relative flex-shrink-0 z-40 bg-navy-950 text-white border-t border-navy-800 shadow-[0_-4px_24px_rgba(0,0,0,0.15)] pb-[var(--safe-area-inset-bottom,env(safe-area-inset-bottom))] animate-nav-in-bottom"
+      className="relative flex-shrink-0 z-40 bg-navy-950 text-white border-t border-navy-800 shadow-[0_-4px_24px_rgba(0,0,0,0.15)] animate-nav-in-bottom"
+      style={{ paddingBottom: "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))" }}
     >
       {/* Expandable panel — opens upward from the bar */}
       {panelOpen && (

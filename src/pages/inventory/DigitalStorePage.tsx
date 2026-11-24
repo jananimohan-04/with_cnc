@@ -6,6 +6,7 @@ import { signedImageUrls, uploadItemImage } from '@/lib/inventory';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import './digitalStore3d.css';
 import { DigitalStoreMailSetup } from './DigitalStoreMailSetup';
 import { DigitalStorePayment } from './DigitalStorePayment';
@@ -297,8 +298,17 @@ export function DigitalStorePage() {
             <FormField label="Stock available" hint="How many can be ordered from the 3D store. 0 = sold out."><input className={inputClass} inputMode="decimal" value={draft.stock} onChange={e => setDraft({ ...draft, stock: e.target.value })} /></FormField>
             <FormField label="Unit"><input className={inputClass} value={draft.unit} onChange={e => setDraft({ ...draft, unit: e.target.value })} placeholder="Nos" /></FormField>
             <FormField label="Picture" hint="PNG or JPG. Use a straight-on photo on a plain background.">
-              <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> {file ? file.name : draft.image_path ? 'Replace picture' : 'Upload picture'}
-                <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-brand-600 font-semibold"><ImagePlus size={16} /> {file ? file.name : draft.image_path ? 'Replace picture' : 'Upload picture'}
+                  <input type="file" accept="image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
+                <CameraCaptureButton
+                  size="sm"
+                  onCapture={(captured) => {
+                    if (captured[0]) setFile(captured[0]);
+                  }}
+                  title="Take product picture with camera"
+                />
+              </div>
             </FormField>
             <div className="sm:col-span-2">
               <FormField label="How should it turn in 3D?" hint={SHAPES.find(x => x.id === draft.shape)?.hint}>

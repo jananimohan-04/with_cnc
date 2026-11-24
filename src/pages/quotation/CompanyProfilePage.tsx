@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Plus, Check, Trash2, Pencil, X, UploadCloud, QrCode } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import {
   cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, setProfileOwner, syncProfileStore, validateProfile, validateSub,
   type OrgProfile, type ProfileKind, type ProfileStore, type SubCompany,
@@ -136,9 +137,16 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
             {imageBox(p.logo, 'NO LOGO', UploadCloud, 'w-32')}
             <div>
               <input ref={logoRef} type="file" accept="image/png,image/jpeg" aria-label="Logo file" className="hidden" onChange={e => { pickImage(e.target.files?.[0], 'logo'); e.target.value = ''; }} />
-              <div className="flex gap-2">
-                <button onClick={() => logoRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl"><Upload size={15} /> {p.logo ? 'Change Logo' : 'Choose Logo'}</button>
-                {p.logo && <button onClick={() => set('logo', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl">Remove</button>}
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => logoRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl"><Upload size={15} /> {p.logo ? 'Change Logo' : 'Choose Logo'}</button>
+                <CameraCaptureButton
+                  size="md"
+                  iconSize={15}
+                  label="Camera"
+                  onCapture={(files) => { if (files[0]) pickImage(files[0], 'logo'); }}
+                  title="Capture logo from camera"
+                />
+                {p.logo && <button type="button" onClick={() => set('logo', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl">Remove</button>}
               </div>
               <p className="text-[11px] text-slate-400 mt-2">Recommended: Square or horizontal PNG/JPG with transparent background (Max 2MB).</p>
             </div>
@@ -152,9 +160,16 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
             {imageBox(p.signature, 'NO SIGNATURE', PenLine, 'w-40')}
             <div>
               <input ref={sigRef} type="file" accept="image/png,image/jpeg" aria-label="Signature file" className="hidden" onChange={e => { pickImage(e.target.files?.[0], 'signature'); e.target.value = ''; }} />
-              <div className="flex gap-2">
-                <button onClick={() => sigRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl"><Upload size={15} /> {p.signature ? 'Change Signature' : 'Choose Signature'}</button>
-                {p.signature && <button onClick={() => set('signature', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl">Remove</button>}
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => sigRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl"><Upload size={15} /> {p.signature ? 'Change Signature' : 'Choose Signature'}</button>
+                <CameraCaptureButton
+                  size="md"
+                  iconSize={15}
+                  label="Camera"
+                  onCapture={(files) => { if (files[0]) pickImage(files[0], 'signature'); }}
+                  title="Capture signature / stamp with camera"
+                />
+                {p.signature && <button type="button" onClick={() => set('signature', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl">Remove</button>}
               </div>
               <p className="text-[11px] text-slate-400 mt-2">Recommended: Clean transparent PNG with black or blue signature (Max 2MB).</p>
             </div>
@@ -217,8 +232,15 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
             {imageBox(p.qrCode || '', 'NO QR CODE', QrCode, 'w-32')}
             <div>
               <input ref={qrRef} type="file" accept="image/png,image/jpeg" aria-label="QR Code file" className="hidden" onChange={e => { pickImage(e.target.files?.[0], 'qrCode'); e.target.value = ''; }} />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => qrRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition-colors"><Upload size={15} /> {p.qrCode ? 'Change QR Code' : 'Choose QR Code'}</button>
+                <CameraCaptureButton
+                  size="md"
+                  iconSize={15}
+                  label="Camera"
+                  onCapture={(files) => { if (files[0]) pickImage(files[0], 'qrCode'); }}
+                  title="Capture QR code standee with camera"
+                />
                 {p.qrCode && <button type="button" onClick={() => set('qrCode', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">Remove</button>}
               </div>
               <p className="text-[11px] text-slate-400 mt-2">Recommended: Clean square PNG/JPG of your UPI or payment QR code (Max 2MB).</p>

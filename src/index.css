@@ -560,6 +560,8 @@ tbody button:not(:disabled):has(> svg:is(.lucide-trash2, .lucide-trash-2, .lucid
 
 /* Android app only (<html class="native-app">, set in src/lib/android/native.ts) */
 html.native-app {
+  --safe-area-inset-top: max(env(safe-area-inset-top, 0px), 28px);
+  --safe-area-inset-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;

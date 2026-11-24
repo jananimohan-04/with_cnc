@@ -196,7 +196,7 @@ export function Topbar({
         >
           {/* Global date-range filter trigger: same look as before, only clickable. */}
           <div
-            className="hidden sm:flex items-center gap-1.5 shrink-0 cursor-pointer rounded"
+            className="hidden lg:flex items-center gap-1.5 shrink-0 cursor-pointer rounded"
             role="button"
             tabIndex={0}
             title={globalAllTime ? 'Filter by date (showing all time)' : `Filtered: ${displayDay(globalFrom)} to ${displayDay(globalTo)} — click to change`}

@@ -21,6 +21,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { CompanyFilterInput } from '@/components/ui/CompanyFilterInput';
 import { Plus, Trash2, Eye, UploadCloud, Edit2, Download, FileText, RefreshCcw, Copy, Calculator, Package as PackageIcon, ScrollText, FolderOpen, Building2, ArrowLeft, ChevronDown, Printer } from 'lucide-react';
 import { uploadOrderFile } from '@/lib/orderFiles';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import { MetalCalculatorPage, ClientLibraryPage, ProductLibraryPage, TermsLibraryPage, QuotationLibraryPage, CompanyProfilePage } from '../quotation/QuotationToolPages';
 import { setMockImage, getMockImage } from '@/lib/mockStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -834,16 +835,26 @@ function EnquiryEditForm({ raw, companies, productNames, companyId, editMode, sa
                 </div>
                 {(editMode || ((item.files || []).length + fileEntries(item.filePaths).length) > 0) && <div>
                   {editMode && (
-                    <label className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                      <UploadCloud size={15} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s) selected` : 'Upload image / file / PDF'}
-                      <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
-                        const selectedFiles = Array.from(e.currentTarget.files || []);
-                        e.currentTarget.value = '';
-                        if (selectedFiles.length) {
-                          setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...selectedFiles] } : it));
-                        }
-                      }} />
-                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <label className="inline-flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                        <UploadCloud size={15} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s) selected` : 'Upload image / file / PDF'}
+                        <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
+                          const selectedFiles = Array.from(e.currentTarget.files || []);
+                          e.currentTarget.value = '';
+                          if (selectedFiles.length) {
+                            setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...selectedFiles] } : it));
+                          }
+                        }} />
+                      </label>
+                      <CameraCaptureButton
+                        size="md"
+                        iconSize={15}
+                        onCapture={(capturedFiles) => {
+                          setItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...capturedFiles] } : it));
+                        }}
+                        title="Take photo with camera"
+                      />
+                    </div>
                   )}
                   {(item.files || []).length > 0 && (
                     <div className="mt-1 space-y-1">
@@ -1110,14 +1121,22 @@ function QuotationEditForm({ raw, productNames, companyId, openFile, onSaved, re
                   </td>
                   <td className="px-2.5 py-2 text-right font-semibold text-slate-700 tabular-nums whitespace-nowrap">₹{lineTotal(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
                   <td className="px-2 py-2 text-center">
-                    <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                      <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
-                      <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
-                        const selected = Array.from(e.currentTarget.files || []);
-                        upd(idx, { files: [...(item.files || []), ...selected] });
-                        e.currentTarget.value = '';
-                      }} />
-                    </label>
+                    <div className="flex items-center justify-center gap-1">
+                      <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                        <UploadCloud size={13} />{((item.files || []).length + fileEntries(item.filePaths).length) ? `${(item.files || []).length + fileEntries(item.filePaths).length} file(s)` : 'Upload'}
+                        <input type="file" multiple accept="*/*" className="hidden" onChange={(e) => {
+                          const selected = Array.from(e.currentTarget.files || []);
+                          upd(idx, { files: [...(item.files || []), ...selected] });
+                          e.currentTarget.value = '';
+                        }} />
+                      </label>
+                      <CameraCaptureButton
+                        onCapture={(capturedFiles) => {
+                          upd(idx, { files: [...(item.files || []), ...capturedFiles] });
+                        }}
+                        title={`Take photo for product ${idx + 1}`}
+                      />
+                    </div>
                     {((item.files || []).length > 0 || fileEntries(item.filePaths).length > 0) && (
                       <div className="mt-1 space-y-1 text-left">
                         {(item.files || []).map((f: File, fi: number) => (
@@ -1893,30 +1912,48 @@ function InwardGroupSection({
             <div className="flex items-center justify-between mb-1">
               <span className="block text-[10px] font-bold text-slate-500 uppercase">Attached Files / Documents</span>
               {viewEditMode && (
-                <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-xs" title="Attach bills, DCs or any file (all formats)">
-                  <UploadCloud size={13} /> {groupFiles.length ? `${groupFiles.length} file${groupFiles.length === 1 ? '' : 's'}` : 'Choose Files'}
-                  <input
-                    type="file"
-                    multiple
-                    accept="*/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const picked = Array.from(e.target.files || []);
-                      e.currentTarget.value = '';
-                      if (picked.length && company?.id) {
+                <div className="flex items-center gap-1.5">
+                  <label className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-xs" title="Attach bills, DCs or any file (all formats)">
+                    <UploadCloud size={13} /> {groupFiles.length ? `${groupFiles.length} file${groupFiles.length === 1 ? '' : 's'}` : 'Choose Files'}
+                    <input
+                      type="file"
+                      multiple
+                      accept="*/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const picked = Array.from(e.target.files || []);
+                        e.currentTarget.value = '';
+                        if (picked.length && company?.id) {
+                          void (async () => {
+                            try {
+                              const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, g[0]?.id, f)));
+                              const existing = Array.isArray(g[0]?.attachments) ? g[0].attachments : [];
+                              await updateInwardGroup(g, { attachments: [...existing, ...uploaded] });
+                            } catch (err: any) {
+                              alert(err?.message || 'File upload failed.');
+                            }
+                          })();
+                        }
+                      }}
+                    />
+                  </label>
+                  <CameraCaptureButton
+                    onCapture={(capturedFiles) => {
+                      if (capturedFiles.length && company?.id) {
                         void (async () => {
                           try {
-                            const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, g[0]?.id, f)));
+                            const uploaded = await Promise.all(capturedFiles.map(f => uploadInwardAttachment(company.id!, g[0]?.id, f)));
                             const existing = Array.isArray(g[0]?.attachments) ? g[0].attachments : [];
                             await updateInwardGroup(g, { attachments: [...existing, ...uploaded] });
                           } catch (err: any) {
-                            alert(err?.message || 'File upload failed.');
+                            alert(err?.message || 'Camera upload failed.');
                           }
                         })();
                       }
                     }}
+                    title="Take photo of bill, DC or receipt"
                   />
-                </label>
+                </div>
               )}
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -2147,30 +2184,51 @@ function InwardGroupSection({
                     );
                   })}
                   {viewEditMode && (
-                    <label className="inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed border-slate-300 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-2xs" title="Attach file to this line">
-                      <UploadCloud size={11} /> File
-                      <input
-                        type="file"
-                        multiple
-                        accept="*/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const picked = Array.from(e.target.files || []);
-                          e.currentTarget.value = '';
-                          if (picked.length && company?.id) {
+                    <div className="flex items-center gap-1">
+                      <label className="inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-dashed border-slate-300 bg-white px-1.5 text-[10px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700 shadow-2xs" title="Attach file to this line">
+                        <UploadCloud size={11} /> File
+                        <input
+                          type="file"
+                          multiple
+                          accept="*/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const picked = Array.from(e.target.files || []);
+                            e.currentTarget.value = '';
+                            if (picked.length && company?.id) {
+                              void (async () => {
+                                try {
+                                  const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, row.id, f)));
+                                  const existing = Array.isArray(row.attachments) ? row.attachments : [];
+                                  await handleInlineEdit('Inward', row.id, { attachments: [...existing, ...uploaded] });
+                                } catch (err: any) {
+                                  alert(err?.message || 'File upload failed.');
+                                }
+                              })();
+                            }
+                          }}
+                        />
+                      </label>
+                      <CameraCaptureButton
+                        size="xs"
+                        iconSize={11}
+                        label=""
+                        onCapture={(capturedFiles) => {
+                          if (capturedFiles.length && company?.id) {
                             void (async () => {
                               try {
-                                const uploaded = await Promise.all(picked.map(f => uploadInwardAttachment(company.id!, row.id, f)));
+                                const uploaded = await Promise.all(capturedFiles.map(f => uploadInwardAttachment(company.id!, row.id, f)));
                                 const existing = Array.isArray(row.attachments) ? row.attachments : [];
                                 await handleInlineEdit('Inward', row.id, { attachments: [...existing, ...uploaded] });
                               } catch (err: any) {
-                                alert(err?.message || 'File upload failed.');
+                                alert(err?.message || 'Camera upload failed.');
                               }
                             })();
                           }
                         }}
+                        title="Take photo for this item"
                       />
-                    </label>
+                    </div>
                   )}
                 </div>
 
@@ -2428,8 +2486,13 @@ export function SalesPipelinePage() {
     const el = boardRef.current;
     if (!el) return;
     const top = el.getBoundingClientRect().top;                  // on-screen pixels (already scaled)
-    const room = window.innerHeight - top - 28;                  // leave room for the scrollbar and a small margin
-    const h = Math.max(380, Math.round(room / boardScale));      // back to the board's own (unscaled) pixels
+    const footerEl = document.querySelector(".brand-footer") as HTMLElement | null;
+    const bottomNavEl = document.querySelector(".animate-nav-in-bottom") as HTMLElement | null;
+    const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
+    const navH = bottomNavEl ? bottomNavEl.getBoundingClientRect().height : 0;
+    const bottomReserved = footerH + navH;
+    const room = window.innerHeight - top - (bottomReserved > 0 ? bottomReserved : 28) - 16;
+    const h = Math.max(340, Math.round(room / boardScale));      // back to the board's own (unscaled) pixels
     setBoardHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, [boardScale]);
   useLayoutEffect(() => { fitBoard(); });
@@ -3593,10 +3656,18 @@ export function SalesPipelinePage() {
                               </button>
                             )}
                             {viewEditMode && (title === 'Enquiry' || title === 'Quotation' || title === 'Sales Order') && (
-                              <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Upload image / file / PDF for this product">
-                                <UploadCloud size={13} /> Upload
-                                <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, i, e.currentTarget.files); e.currentTarget.value = ''; }} />
-                              </label>
+                              <div className="flex items-center gap-1">
+                                <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Upload image / file / PDF for this product">
+                                  <UploadCloud size={13} /> Upload
+                                  <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, i, e.currentTarget.files); e.currentTarget.value = ''; }} />
+                                </label>
+                                <CameraCaptureButton
+                                  onCapture={(capturedFiles) => {
+                                    if (capturedFiles.length) void handleItemFileUpload(title, raw, i, capturedFiles);
+                                  }}
+                                  title="Take photo for this product"
+                                />
+                              </div>
                             )}
                             {viewEditMode && (title === 'Enquiry' || title === 'Quotation' || title === 'Sales Order') && (
                               <button type="button" onClick={() => void handleRemoveItem(title, raw, i)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200" title="Remove product">
@@ -3645,10 +3716,18 @@ export function SalesPipelinePage() {
                 );
               })}
               {viewEditMode && (
-                <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
-                  <UploadCloud size={13} /> Upload image / file / PDF
-                  <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, 0, e.currentTarget.files); e.currentTarget.value = ''; }} />
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700">
+                    <UploadCloud size={13} /> Upload image / file / PDF
+                    <input type="file" multiple accept="*/*" className="hidden" onChange={e => { if (e.currentTarget.files?.length) void handleItemFileUpload(title, raw, 0, e.currentTarget.files); e.currentTarget.value = ''; }} />
+                  </label>
+                  <CameraCaptureButton
+                    onCapture={(capturedFiles) => {
+                      if (capturedFiles.length) void handleItemFileUpload(title, raw, 0, capturedFiles);
+                    }}
+                    title="Take photo of bill, DC or receipt"
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -7931,6 +8010,15 @@ export function SalesPipelinePage() {
             }
           }} />
         </label>
+        <CameraCaptureButton
+          onCapture={(capturedFiles) => {
+            setEnquiryForm((prev: any) => ({
+              ...prev,
+              items: (prev.items || []).map((it: any, i: number) => i === idx ? { ...it, files: [...(it.files || []), ...capturedFiles] } : it)
+            }));
+          }}
+          title="Take drawing or product photo with camera"
+        />
         {((item.files || []).length > 0 || getItemFileEntries(item).length > 0) && (
           <div className="flex flex-wrap gap-1 items-center">
             {((item.files || []) as File[]).map((file: File, fileIdx: number) => (
@@ -8210,25 +8298,36 @@ export function SalesPipelinePage() {
           const upd = (patch: any) => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).map((r: any, i: number) => (i === idx ? { ...r, ...patch } : r)) }));
           return (
             <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_6rem_2rem] gap-2 items-center">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_6rem_3.75rem_auto_2rem] gap-2 items-center">
                 <span className="text-[11px] font-bold text-slate-400 text-center">{idx + 1}</span>
                 <input className={compactCell} placeholder="Product name" list="saved-products" value={item.partName || ''} onChange={e=>upd({ partName: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Qty" value={item.quantity ?? ''} onChange={e=>upd({ quantity: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="Unit Price (₹)" value={item.unitPrice ?? ''} onChange={e=>upd({ unitPrice: e.target.value })} />
                 <input type="number" min={0} className={compactCell} placeholder="GST %" value={item.gst ?? ''} onChange={e=>upd({ gst: e.target.value })} />
-                <label className="inline-flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                  <UploadCloud size={13} />{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file${((item.files || []).length + getItemFileEntries(item).length) === 1 ? '' : 's'}` : 'Upload'}
-                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => {
-                    const picked = Array.from(e.currentTarget.files || []);
-                    e.currentTarget.value = '';
-                    if (picked.length) {
+                <div className="flex items-center gap-1">
+                  <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                    <UploadCloud size={13} />{((item.files || []).length + getItemFileEntries(item).length) ? `${(item.files || []).length + getItemFileEntries(item).length} file${((item.files || []).length + getItemFileEntries(item).length) === 1 ? '' : 's'}` : 'Upload'}
+                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={e => {
+                      const picked = Array.from(e.currentTarget.files || []);
+                      e.currentTarget.value = '';
+                      if (picked.length) {
+                        setSoForm((prev: any) => ({
+                          ...prev,
+                          items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...picked] } : r)
+                        }));
+                      }
+                    }} />
+                  </label>
+                  <CameraCaptureButton
+                    onCapture={(capturedFiles) => {
                       setSoForm((prev: any) => ({
                         ...prev,
-                        items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...picked] } : r)
+                        items: (prev.items || []).map((r: any, i: number) => i === idx ? { ...r, files: [...(r.files || []), ...capturedFiles] } : r)
                       }));
-                    }
-                  }} />
-                </label>
+                    }}
+                    title={`Take photo for product ${idx + 1}`}
+                  />
+                </div>
                 <button type="button" title={`Remove product ${idx + 1}`} aria-label={`Remove product ${idx + 1}`} className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-rose-500 hover:bg-rose-50 hover:text-rose-700" onClick={() => setSoForm((prev: any) => ({ ...prev, items: (prev.items || []).filter((_: any, i: number) => i !== idx) }))}>×</button>
               </div>
               {((item.files || []).length > 0 || getItemFileEntries(item).length > 0) && (
@@ -8906,6 +9005,12 @@ export function SalesPipelinePage() {
                         }
                       }} />
                     </label>
+                    <CameraCaptureButton
+                      onCapture={(capturedFiles) => {
+                        setGroup({ files: [...(group.files || []), ...capturedFiles] });
+                      }}
+                      title="Take photo of bill, DC or delivery receipt"
+                    />
                     {(group.files || []).length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {((group.files || []) as File[]).map((f: File, fi: number) => (
@@ -9043,6 +9148,14 @@ export function SalesPipelinePage() {
                           }
                         }} />
                       </label>
+                      <CameraCaptureButton
+                        size="xs"
+                        iconSize={12}
+                        onCapture={(capturedFiles) => {
+                          setItem(ii, { files: [...(item.files || []), ...capturedFiles] });
+                        }}
+                        title="Take photo of drawing or part"
+                      />
                       {(item.files || []).length > 0 && (
                         <div className="flex items-center gap-1">
                           {((item.files || []) as File[]).map((f: File, fi: number) => (
@@ -9328,11 +9441,11 @@ export function SalesPipelinePage() {
   // reuse them INSIDE the table toolbar row (everything on one line) instead
   // of stacking a separate bar above the table.
   const viewTabs = (
-    <div className="no-glass flex p-1 shrink-0 !bg-indigo-100 rounded-lg shadow-sm border border-indigo-300">
+    <div className="no-glass flex p-0.5 sm:p-1 shrink-0 !bg-indigo-100 rounded-lg shadow-sm border border-indigo-300">
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('kanban'); }}
-        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'kanban'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9343,7 +9456,7 @@ export function SalesPipelinePage() {
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('list'); }}
-        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'list'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9354,7 +9467,7 @@ export function SalesPipelinePage() {
       <button
         type="button"
         onClick={() => { setActiveView('pipeline'); setPipelineViewMode('calendar'); }}
-        className={`px-3 sm:px-4 py-1.5 text-sm font-bold rounded-md shadow-sm transition-all ${
+        className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-bold rounded-md shadow-sm transition-all ${
           pipelineViewMode === 'calendar'
             ? 'bg-brand-600 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-500/40'
             : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-200'
@@ -9370,9 +9483,9 @@ export function SalesPipelinePage() {
       type="button"
       onClick={openNewLeadModal}
       title="Add Company"
-      className="no-glass flex items-center gap-2 px-3.5 py-1.5 text-sm font-bold rounded-lg border border-emerald-600 !bg-emerald-500 text-white hover:!bg-emerald-600 shadow-md shadow-emerald-500/30 transition-all cursor-pointer shrink-0 whitespace-nowrap"
+      className="no-glass flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-lg border border-emerald-600 !bg-emerald-500 text-white hover:!bg-emerald-600 shadow-md shadow-emerald-500/30 transition-all cursor-pointer shrink-0 whitespace-nowrap"
     >
-      <Plus size={15} className="text-white stroke-[2.5]" />
+      <Plus size={14} className="text-white stroke-[2.5]" />
       <span>Add Company</span>
     </button>
   ) : null;
@@ -9385,13 +9498,13 @@ export function SalesPipelinePage() {
         setPipelineViewMode(pipelineViewMode === 'companies' ? 'kanban' : 'companies');
       }}
       title="Open All Company Library"
-      className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg border shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+      className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg border shadow-sm transition-all cursor-pointer shrink-0 whitespace-nowrap ${
         pipelineViewMode === 'companies'
           ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/25 ring-2 ring-brand-500/30'
           : 'no-glass !bg-sky-500 text-white border-sky-600 hover:!bg-sky-600 shadow-md shadow-sky-500/30'
       }`}
     >
-      <Building2 size={15} className="text-white" />
+      <Building2 size={14} className="text-white" />
       <span>All Company Library</span>
     </button>
   ) : null;
@@ -9438,14 +9551,22 @@ export function SalesPipelinePage() {
           )}
 
           {/* 2. Right Side: Add Company + All Companies Button + Search and Card Actions */}
-          <div className="flex w-full sm:w-auto flex-wrap sm:flex-nowrap items-center ml-auto gap-2 sm:gap-3 min-w-0">
-            {addCompanyButton}
-            {allCompaniesButton}
+          <div className="flex w-full sm:w-auto flex-wrap sm:flex-nowrap items-center ml-auto gap-2 sm:gap-2.5 min-w-0">
+            <div className="flex items-center gap-2 flex-1 sm:flex-initial w-full sm:w-auto">
+              {addCompanyButton}
+              {allCompaniesButton}
+            </div>
             {!onQuotationView && (
-              <>
-                <div className="relative min-w-0 flex-1 sm:flex-none">
-                  <input type="text" placeholder="Search cards..." value={listSearch} onChange={e => setListSearch(e.target.value)} className="no-glass pl-8 pr-3 py-2 border border-violet-400 rounded-lg text-sm w-full sm:w-32 md:w-48 focus:outline-none focus:border-violet-600 !bg-violet-100 text-violet-950 placeholder:text-violet-600/70 shadow-sm" />
-                  <svg className="w-4 h-4 text-violet-600 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+              <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-initial">
+                <div className="relative min-w-0 flex-1 sm:w-36 md:w-48">
+                  <input
+                    type="text"
+                    placeholder="Search cards..."
+                    value={listSearch}
+                    onChange={e => setListSearch(e.target.value)}
+                    className="no-glass pl-8 pr-3 py-1.5 sm:py-2 border border-violet-400 rounded-lg text-xs sm:text-sm w-full focus:outline-none focus:border-violet-600 !bg-violet-100 text-violet-950 placeholder:text-violet-600/70 shadow-sm"
+                  />
+                  <svg className="w-4 h-4 text-violet-600 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
                 {pipelineViewMode === 'list' && (
                   <select aria-label="Filter by stage" title="Filter by stage" value={listStage} onChange={e => setListStage(e.target.value)}
@@ -9458,14 +9579,14 @@ export function SalesPipelinePage() {
                   <button type="button" onClick={() => listExportRef.current?.()} title="Export CSV" aria-label="Export CSV"
                     className="no-glass shrink-0 h-9 px-2.5 inline-flex items-center gap-1.5 border border-teal-600 rounded-lg !bg-teal-500 text-white hover:!bg-teal-600 text-xs font-bold shadow-md shadow-teal-500/30 transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12l-4 4m4-4l4 4" /></svg>
-                    Export CSV
+                    <span className="hidden sm:inline">Export CSV</span>
                   </button>
                 )}
                 <button className="no-glass p-2 border border-fuchsia-600 rounded-lg !bg-fuchsia-500 text-white hover:!bg-fuchsia-600 shadow-md shadow-fuchsia-500/30 transition-colors shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                 </button>
-                <DisplaySizeControl />
-              </>
+                <div className="shrink-0"><DisplaySizeControl /></div>
+              </div>
             )}
           </div>
         </div>
@@ -9610,7 +9731,7 @@ export function SalesPipelinePage() {
             )}
           </div>
         )}
-      <div className="overflow-x-auto scrollbar-thin pb-4 mt-2">
+      <div className="overflow-x-auto scrollbar-thin pb-4 mt-2 snap-x snap-mandatory sm:snap-none">
         <div
           ref={boardRef}
           className="flex gap-4 items-stretch min-w-max px-1"
@@ -9640,7 +9761,7 @@ export function SalesPipelinePage() {
               });
             return (
               <div key={stage.id} 
-                className={`w-[280px] flex-shrink-0 ${stage.bg} rounded-xl p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
+                className={`w-[85vw] max-w-[320px] sm:w-[280px] shrink-0 snap-center sm:snap-align-none ${stage.bg} rounded-xl p-2.5 sm:p-3 flex flex-col border ${stage.border} shadow-sm h-full`}
                 onDragOver={(e) => e.preventDefault()} 
                 onDrop={(e) => handleDrop(e, stage.id as Stage)}
               >

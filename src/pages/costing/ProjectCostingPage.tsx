@@ -135,13 +135,41 @@ const isExpenseCategory = (cat: string | null | undefined) => {
   return s === 'EXPENSES' || s.includes('EXPENSE') || s.includes('PETTY') || s.includes('OVERHEAD');
 };
 
+const isCustomerMaterialCategory = (cat: string | null | undefined) => {
+  if (!cat) return false;
+  const s = String(cat).trim().toUpperCase().replace(/[\s_-]+/g, ' ');
+  return (
+    s === 'CUSTOMER DC' ||
+    s === 'DC' ||
+    s === 'NO DC' ||
+    s === 'NODC' ||
+    s === 'NEW PART' ||
+    s === 'NEWPART' ||
+    s === 'NEW PROJECT' ||
+    s === 'NEWPROJECT' ||
+    s === 'JOB WORK INWARD' ||
+    s === 'JOB WORK' ||
+    s.startsWith('CUSTOMER') ||
+    s.includes('NO DC')
+  );
+};
+
 const isGoodsPurchaseCategory = (cat: string | null | undefined) => {
-  if (!cat) return true; // Default to material / goods purchase if unclassified
-  const s = String(cat).trim().toUpperCase();
+  if (!cat) return false;
+  if (isCustomerMaterialCategory(cat)) return false;
   if (isServicePurchaseCategory(cat)) return false;
   if (isExpenseCategory(cat)) return false;
-  if (s === 'CUSTOMER DC' || s === 'CUSTOMER_DC' || s === 'JOB WORK INWARD') return false;
-  return true;
+  const s = String(cat).trim().toUpperCase();
+  return (
+    s.includes('GOODS') ||
+    s.includes('PURCHASE') ||
+    s.includes('RAW MATERIAL') ||
+    s.includes('MATERIAL') ||
+    s.includes('BOUGHT') ||
+    s.includes('CONSUMABLE') ||
+    s.includes('TOOL') ||
+    s.includes('STORE')
+  );
 };
 
 const isPurchaseCategory = (cat: string | null | undefined) =>
@@ -292,7 +320,7 @@ function computeProjectDetail(
   const matchesInward = (inv: any) => {
     if (!inv || inv.status === 'Deleted') return false;
     const cat = String(inv.category || '').trim().toUpperCase();
-    if (cat === 'CUSTOMER DC' || cat === 'CUSTOMER_DC') return false;
+    if (isCustomerMaterialCategory(cat)) return false;
 
     const soRef = lc(inv.sales_order_ref);
     const projRef = lc(inv.project_name);

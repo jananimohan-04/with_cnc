@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Camera,
   Network,
+  Plus,
   Layers,
   type LucideIcon,
 } from 'lucide-react';
@@ -63,6 +64,7 @@ export const navSections: NavSection[] = [
       { label: 'BI Chat', icon: MessageSquare, page: 'bi-chat', iconClass: 'text-amber-400', module: 'bi-chat' },
       { label: 'Clarity', icon: Layers, page: 'clarity', iconClass: 'text-fuchsia-400', module: 'clarity' },
       { label: 'Mind Map', icon: Network, page: 'mind-map', iconClass: 'text-cyan-400', module: 'mind-map' },
+      { label: 'Create Mind Map', icon: Plus, page: 'mind-map/workspace', iconClass: 'text-sky-400', module: 'mind-map' },
     ],
   },
   {

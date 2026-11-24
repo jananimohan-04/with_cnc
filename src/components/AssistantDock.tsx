@@ -111,7 +111,7 @@ export function AssistantDock() {
       aria-label={open ? 'Close AI options' : 'Open AI options (Teaching, Co-worker, Adviser)'}
       aria-expanded={open}
       title="AI options: Teaching, Co-worker, Adviser · click to open · drag to move · double-click to reset"
-      className={`fixed z-[61] flex touch-none select-none items-center justify-center border text-white shadow-lg backdrop-blur-xs cursor-grab active:cursor-grabbing transition-colors ${
+      className={`hidden md:flex fixed z-[61] flex touch-none select-none items-center justify-center border text-white shadow-lg backdrop-blur-xs cursor-grab active:cursor-grabbing transition-colors ${
         anyActive ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-500' : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700'
       }`}
       style={{

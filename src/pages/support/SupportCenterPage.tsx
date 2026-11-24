@@ -5,6 +5,7 @@ import {
   Filter, Eye, ChevronRight, X, FileText, Check, ShieldCheck, PlayCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import {
   supportApi, type SupportTicket, type SupportType, type TicketStatus,
   TICKET_PRIORITIES, TICKET_ISSUE_TYPES, uploadPending, supportFileUrl
@@ -944,13 +945,26 @@ export function SupportCenterPage({ defaultType }: { defaultType?: SupportType }
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg flex items-center gap-1 transition-colors"
-                >
-                  <UploadCloud size={14} /> Upload Evidence
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg flex items-center gap-1 transition-colors"
+                  >
+                    <UploadCloud size={14} /> Upload Evidence
+                  </button>
+                  <CameraCaptureButton
+                    size="sm"
+                    iconSize={14}
+                    onCapture={(captured) => {
+                      if (captured[0]) {
+                        setCompletionPhotoFile(captured[0]);
+                        setCompletionPhotoPreview(URL.createObjectURL(captured[0]));
+                      }
+                    }}
+                    title="Take evidence photo with camera"
+                  />
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Card';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { AnnotationEditor } from '@/components/support/AnnotationEditor';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import {
   supportApi, supportModules, uploadPending, removePending, fileLimitError,
   TICKET_PRIORITIES, TICKET_ISSUE_TYPES,
@@ -166,6 +167,12 @@ export function RaiseTicket({ onSubmitted }: { onSubmitted: (ticketNo: string) =
             <UploadCloud size={15} /> Choose files
             <input ref={fileRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={(e) => { addFiles(e.target.files || []); e.currentTarget.value = ''; }} />
           </label>
+          <CameraCaptureButton
+            size="md"
+            iconSize={15}
+            onCapture={(captured) => addFiles(captured)}
+            title="Take photo of machine, error or ticket evidence"
+          />
           {files.some((f) => f.kind !== 'annotated') && <span className="text-xs text-slate-500">{files.filter((f) => f.kind !== 'annotated').length} attached</span>}
         </div>
         {files.some((f) => f.kind !== 'annotated') && (

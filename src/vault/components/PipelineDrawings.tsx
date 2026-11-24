@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth as useAppAuth } from '@/contexts/AuthContext';
 import { groupVersions, type DrawingFile, type ProductDrawings } from '@/lib/pipelineDrawings';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import { usePipelineFiles } from '@/vault/hooks/usePipelineFiles';
 import { openStoredFile, uploadStoredFile } from '@/lib/orderFiles';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/vault/components/ui/dialog';
@@ -182,10 +183,19 @@ export function UploadVersionDialog({ start, companies, products, companyId, use
           <datalist id="pd-products">{known.map(p => <option key={p.key} value={p.product} />)}</datalist>
           <div>
             <Label>Files</Label>
-            <label className="mt-1 flex h-20 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-600 hover:border-indigo-400">
-              <UploadCloud className="h-5 w-5" />{picked.length ? `${picked.length} file${picked.length === 1 ? '' : 's'} chosen` : 'Choose files'}
-              <input type="file" multiple accept="*/*" className="hidden" aria-label="Drawing files" onChange={e => { const f = Array.from(e.currentTarget.files ?? []); e.currentTarget.value = ''; if (f.length) setPicked(p => [...p, ...f]); }} />
-            </label>
+            <div className="mt-1 flex items-center gap-2">
+              <label className="flex-1 flex h-16 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-600 hover:border-indigo-400">
+                <UploadCloud className="h-5 w-5 text-indigo-500" />{picked.length ? `${picked.length} file${picked.length === 1 ? '' : 's'} chosen` : 'Choose files'}
+                <input type="file" multiple accept="*/*" className="hidden" aria-label="Drawing files" onChange={e => { const f = Array.from(e.currentTarget.files ?? []); e.currentTarget.value = ''; if (f.length) setPicked(p => [...p, ...f]); }} />
+              </label>
+              <CameraCaptureButton
+                size="md"
+                label="Camera"
+                className="h-16 px-4"
+                onCapture={(captured) => setPicked(p => [...p, ...captured])}
+                title="Capture drawing or component photo"
+              />
+            </div>
             {picked.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600">{picked.map((f, i) => <li key={`${f.name}-${i}`} className="flex justify-between"><span className="truncate">{f.name}</span><button type="button" className="text-rose-500" aria-label={`Remove ${f.name}`} onClick={() => setPicked(p => p.filter((_, j) => j !== i))}>×</button></li>)}</ul>}
           </div>
           <div><Label>Notes (optional)</Label><Input aria-label="Notes" placeholder="What changed in this version" value={notes} onChange={e => setNotes(e.target.value)} /></div>

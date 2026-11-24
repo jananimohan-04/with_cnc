@@ -14,6 +14,7 @@ import { Badge } from "@/vault/components/ui/badge";
 import { Check, ChevronRight, UploadCloud, File as FileIcon, AlertCircle } from "lucide-react";
 import { DOC_STATUSES, DOCUMENT_TYPES, ALLOWED_EXTENSIONS, MAX_FILE_SIZE, formatBytes, DocStatus } from "@/vault/lib/rbac";
 import { toast } from "sonner";
+import { CameraCaptureButton } from "@/components/ui/CameraModal";
 
 export const Route = createFileRoute("/_app/upload")({
   component: UploadWizardPage,
@@ -511,6 +512,20 @@ function UploadWizardPage() {
                   <span className="text-lg font-medium text-slate-900">Click to select file</span>
                   <span className="text-sm text-slate-500 mt-1">Supported: PDF, DWG, DXF, STEP, ZIP, NC, etc.</span>
                 </Label>
+                <div className="mt-4 flex justify-center">
+                  <CameraCaptureButton
+                    size="md"
+                    iconSize={15}
+                    label="Or Take Photo with Camera"
+                    className="px-4 py-2 border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50"
+                    onCapture={(files) => {
+                      if (files[0]) {
+                        handleFileChange({ target: { files: [files[0]] } } as any);
+                      }
+                    }}
+                    title="Capture drawing or component photo"
+                  />
+                </div>
               </div>
               {file && (
                 <div className="flex items-center gap-3 bg-indigo-50 text-indigo-900 p-3 rounded-md border border-indigo-100">

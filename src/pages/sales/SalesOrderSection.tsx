@@ -5,6 +5,7 @@ import { UploadCloud } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { itemFilePaths, openStoredFile, uploadOrderFile } from '@/lib/orderFiles';
 import { attachDateTimeToProduct } from './SalesPipelinePage';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 /** Sales-order line items: parsed `items` array, falling back to the header part name. */
 export function soProductItems(order: any): any[] {
   try {
@@ -195,10 +196,19 @@ export function SalesOrderSection({ order, qtyTracking, editMode: editing, saveR
                 ))}
               </select>
               {editing ? (
-                <label className="inline-flex h-[30px] w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
-                  <UploadCloud size={13} />{((it.files || []).length + (it.filePaths || []).length) ? `${(it.files || []).length + (it.filePaths || []).length} file${((it.files || []).length + (it.filePaths || []).length) === 1 ? '' : 's'}` : 'Upload'}
-                  <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={(e) => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) updItem(idx, { files: [...(it.files || []), ...picked] }); }} />
-                </label>
+                <div className="flex items-center gap-1">
+                  <label className="inline-flex h-[30px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded border border-dashed border-slate-300 bg-white px-2 text-xs font-semibold text-slate-600 hover:border-brand-400 hover:text-brand-700" title="Attach drawings or any file (all formats)">
+                    <UploadCloud size={13} />{((it.files || []).length + (it.filePaths || []).length) ? `${(it.files || []).length + (it.filePaths || []).length} file${((it.files || []).length + (it.filePaths || []).length) === 1 ? '' : 's'}` : 'Upload'}
+                    <input type="file" multiple accept="*/*" className="hidden" aria-label={`Drawings for product ${idx + 1}`} onChange={(e) => { const picked = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (picked.length) updItem(idx, { files: [...(it.files || []), ...picked] }); }} />
+                  </label>
+                  <CameraCaptureButton
+                    size="sm"
+                    onCapture={(captured) => {
+                      if (captured.length) updItem(idx, { files: [...(it.files || []), ...captured] });
+                    }}
+                    title={`Take photo for product ${idx + 1}`}
+                  />
+                </div>
               ) : <span className="text-xs text-slate-400">{(it.filePaths || []).length ? `${it.filePaths.length} file${it.filePaths.length === 1 ? '' : 's'}` : '—'}</span>}
             </div>
             {((it.filePaths || []).length > 0 || (it.files || []).length > 0) && (

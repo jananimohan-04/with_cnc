@@ -13,6 +13,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { supabase } from '@/lib/supabase';
 import { Modal, FormField, inputClass } from '@/components/ui/Modal';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { CameraCaptureButton } from '@/components/ui/CameraModal';
 import {
   inventoryApi, ensureOwnSupplier, IMPORT_HEADERS, signedImageUrls, uploadItemImage, formatQty, formatCompactINR, isPositiveQty, isNonNegativeDecimal,
   parseCsv, isCorruptedItemText, IMPORT_COLUMNS, REFERENCE_ROUTES, REFERENCE_LABELS,
@@ -359,9 +360,8 @@ export function InventoryPage() {
       .then(res => {
         if (cancelled) return;
         setFilters(res);
-        const first = [...res.categories].sort((a, b) => a.sort_order - b.sort_order)[0];
         const initialQ = new URLSearchParams(window.location.search).get('q');
-        const start: FilterState = initialQ ? { ...EMPTY_FILTERS, search: initialQ } : { ...EMPTY_FILTERS, categoryId: first?.id ?? '' };
+        const start: FilterState = initialQ ? { ...EMPTY_FILTERS, search: initialQ } : { ...EMPTY_FILTERS };
         setDraft(start);
         setApplied(start);
         setPage(1);
@@ -699,7 +699,7 @@ Cancel = Manufactured in-house (like Finished Goods)`);
   const applyFilters = (next: FilterState) => { setApplied(next); setPage(1); };
   const handleSearch = () => applyFilters(draft);
   const handleClear = () => {
-    const next = { ...EMPTY_FILTERS, categoryId: applied.categoryId };
+    const next = { ...EMPTY_FILTERS };
     setDraft(next);
     applyFilters(next);
     setUnitFilter('All');
@@ -1283,26 +1283,14 @@ Cancel = Manufactured in-house (like Finished Goods)`);
       <div className="flex flex-col gap-5 items-stretch">
         {/* Main column: the table now uses the full page width */}
         <div className="w-full min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm">
-          {/* Tabs + filters share one line */}
-          <div className="head-bar flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-1.5 border-b rounded-t-xl">
-            {!filters && !filtersError && [0, 1, 2, 3].map(i => <div key={i} className="h-5 w-16 rounded bg-slate-100 animate-pulse" />)}
-            {[...categories.map(c => ({ id: c.id, name: c.name })), { id: '', name: 'All Products' }].map(t => {
-              if (!filters && t.id === '' && !filtersError) return null;
-              const active = applied.categoryId === t.id;
-              return (
-                <button key={t.id || 'all'} onClick={() => handleTab(t.id)}
-                  className={`py-1.5 text-xs whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'head-tab-on border-sky-300 font-semibold' : 'border-transparent'}`}>
-                  {t.name}
-                </button>
-              );
-            })}
-            <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
+          {/* Filters toolbar */}
+          <div className="head-bar flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2 border-b rounded-t-xl">
             <input
               value={draft.search}
               onChange={e => setDraft({ ...draft, search: e.target.value })}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
               placeholder="Search by product name, code..."
-              className={`${selectCls} !h-8 !px-2.5 !text-xs w-40`}
+              className={`${selectCls} !h-8 !px-2.5 !text-xs w-48 sm:w-64`}
             />
             <select aria-label="Category" value={draft.categoryId} onChange={e => { if (e.target.value === '__new__') void addCategory(); else { const next = { ...draft, categoryId: e.target.value }; setDraft(next); applyFilters(next); } }} className={`${selectCls} !h-8 !px-2 !text-xs w-[124px]`}>
               <option value="">All Categories</option>
@@ -2504,8 +2492,18 @@ function ItemFormModal({ item, filters, categories, defaultCategoryId, companyId
             {preview
               ? <img src={preview} alt="" className="w-14 h-14 rounded-md object-cover border border-slate-200" />
               : <div className="w-14 h-14 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center"><Package size={20} /></div>}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-xs text-slate-600 min-w-0" />
+              <CameraCaptureButton
+                size="xs"
+                onCapture={(captured) => {
+                  if (captured[0]) {
+                    setFile(captured[0]);
+                    setPreview(URL.createObjectURL(captured[0]));
+                  }
+                }}
+                title="Take product photo with camera"
+              />
               {(file || preview) && (
                 <button
                   type="button"
