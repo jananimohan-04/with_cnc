@@ -27,5 +27,6 @@ dist-ssr
 .env*
 !.env.example
 scratch/
+*.zip
 public/downloads/business-intelligence-setup.exe*
 # the phone app (22 MB since the 2026-11-23 size fix) is published with the website: /download -> "Download for Android phone"

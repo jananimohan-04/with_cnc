@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { useStickyTableHeads } from './lib/useStickyTableHeads';
 import { TableAutoFilter } from './components/ui/TableAutoFilter';
 import { useAiAccess } from './lib/aiAccess';
@@ -124,7 +124,7 @@ import { UpdatesSettingsPage } from './components/desktop/UpdatesSettingsPage';
 import { DesktopToasts } from './lib/desktop/toast';
 // @ts-ignore
 import { RetailApp } from './retail/app';
-import { AttendanceApp } from './attendance/AttendanceApp';
+import { AttendanceApp } from './modules/ai-attendance';
 import { CallHost } from './pages/chat/components/CallHost';
 
 // Placeholder Component for unbuilt pages
@@ -512,6 +512,15 @@ function AttendanceGate() {
 }
 
 function AttendanceSubsystem() {
+  useLayoutEffect(() => {
+    document.documentElement.classList.add('ai-attendance-active');
+    document.body.classList.add('ai-attendance-active');
+    return () => {
+      document.documentElement.classList.remove('ai-attendance-active');
+      document.body.classList.remove('ai-attendance-active');
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <AttendanceGate />

@@ -101,25 +101,23 @@ export async function suiteFacts(can: (m: string) => boolean): Promise<string[]>
 }
 
 async function attendance(): Promise<string[] | null> {
-  const { attendanceApi } = await import('@/attendance/api');
-  const [roster, emps, leaves] = await Promise.all([
-    attendanceApi.getRoster().catch(() => null),
-    attendanceApi.getEmployees().catch(() => null),
-    attendanceApi.getLeaves().catch(() => null),
+  const [recs, emps, leaves] = await Promise.all([
+    rows('bi_attendance_records', 'log_date', 100),
+    rows('bi_attendance_employees', 'first_name', 100),
+    rows('bi_attendance_leaves', 'created_at', 50),
   ]);
   const out: string[] = [];
-  if (roster?.ok) {
-    const m = roster.metrics;
-    out.push(`AI ATTENDANCE TODAY (${roster.date}): staff ${m.total_staff}, present ${m.present}, late ${m.late}, half day ${m.half_day}, absent ${m.absent}, in the building now ${m.currently_clocked_in}.`
-      + ` Each person: ${roster.roster.slice(0, 120).map((r) => `${r.name} (${r.department || '-'}) ${r.status}${r.check_in_time ? ` in ${str(r.check_in_time).slice(11, 16) || str(r.check_in_time)}` : ''}${r.check_out_time ? ` out ${str(r.check_out_time).slice(11, 16) || str(r.check_out_time)}` : ''}${r.total_hours ? ` ${Math.round(r.total_hours * 10) / 10}h` : ''}`).join('; ')}.`);
+  if (recs && recs.length) {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayRecs = recs.filter((r) => str(r.log_date) === today);
+    const present = todayRecs.filter((r) => str(r.status) === 'PRESENT' || str(r.status) === 'LATE').length;
+    out.push(`AI ATTENDANCE TODAY (${today}): ${present} present of ${todayRecs.length} recorded.`);
   }
-  const list = (emps as any)?.employees as any[] | undefined;
-  if (list && list.length) {
-    out.push(`ATTENDANCE EMPLOYEES (${list.length}): By department: ${countBy(list, (e) => str(e.department))}. Face enrolled: ${list.filter((e) => e.is_enrolled).length}. Staff: ${list.slice(0, 120).map((e) => `${str(e.first_name)} ${str(e.last_name)}`.trim() + ` — ${str(e.employee_code)} — ${str(e.designation) || '-'} — ${str(e.department) || '-'} — shift ${str(e.shift_start).slice(0, 5)}-${str(e.shift_end).slice(0, 5)}`).join('; ')}.`);
+  if (emps && emps.length) {
+    out.push(`ATTENDANCE EMPLOYEES (${emps.length}): By department: ${countBy(emps, (e) => str(e.department))}.`);
   }
-  const lv = (leaves as any)?.data as any[] | undefined;
-  if (lv && lv.length) {
-    out.push(`LEAVE REQUESTS (${lv.length}): By status: ${countBy(lv, (l) => str(l.status))}. Latest: ${lv.slice(0, 12).map((l) => `${str(l.employee_name) || str(l.name) || str(l.employee_id).slice(0, 8)} ${day(l.start_date || l.from_date)}→${day(l.end_date || l.to_date)} ${str(l.leave_type)} [${str(l.status)}]`).join('; ')}.`);
+  if (leaves && leaves.length) {
+    out.push(`LEAVE REQUESTS (${leaves.length}): By status: ${countBy(leaves, (l) => str(l.status))}.`);
   }
   return out.length ? out : null;
 }
