@@ -82,18 +82,10 @@ export function LoginScreen() {
           className="absolute inset-0 w-full h-full object-cover object-[53%_42%] md:object-[54%_44%]"
         />
 
-        {/* Top-left contrast vignette for crisp Business Intelligence legibility without darkening the gear */}
+        {/* Subtle edge shading for balance over the CNC photograph */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[44%] md:h-[34%] bg-gradient-to-b from-[#0B0E14]/90 via-[#0B0E14]/40 to-transparent pointer-events-none"
-        />
-        <div
-          aria-hidden="true"
-          className="hidden md:block absolute top-0 left-0 w-[62%] h-[36%] pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse at top left, rgba(11, 14, 20, 0.78) 0%, rgba(11, 14, 20, 0.36) 48%, rgba(11, 14, 20, 0) 78%)',
-          }}
+          className="absolute inset-x-0 top-0 h-[36%] md:h-[28%] bg-gradient-to-b from-[#0B0E14]/35 via-[#0B0E14]/15 to-transparent pointer-events-none"
         />
         <div
           aria-hidden="true"
@@ -108,24 +100,26 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/25 to-transparent pointer-events-none"
         />
 
-        {/* Center: Compact ARGUS CNC signature pill anchored over the toolholder */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center pt-10 md:pt-4 px-5 pointer-events-none">
-          <div className="inline-flex items-center justify-center rounded-lg bg-[#22252A]/90 backdrop-blur-[8px] border border-white/10 px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.52)]">
+        {/* Center: Compact original ARGUS CNC signature pill anchored over the toolholder */}
+        <div className="absolute inset-0 z-10 flex items-center justify-center pt-12 md:pt-4 px-5 pointer-events-none">
+          <div className="inline-flex items-center justify-center rounded-lg bg-white border border-white px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)]">
             <img
-              src="/argus-logo-white.png"
+              src="/argus-logo.png"
               alt="ARGUS CNC"
               className="w-[116px] sm:w-[132px] md:w-[138px] lg:w-[152px] xl:w-[164px] max-w-full h-auto object-contain"
             />
           </div>
         </div>
 
-        {/* Top-Left: Bold ARGUS Business Intelligence Logo */}
+        {/* Top-Left: Original ARGUS Business Intelligence Logo */}
         <div className="relative z-10 px-5 sm:px-7 md:px-6 lg:px-8 xl:px-10 pt-[max(1.125rem,var(--safe-area-inset-top,0px))] md:pt-7 lg:pt-8 xl:pt-9">
-          <img
-            src="/argus-bi-logo-white.svg"
-            alt="Argus Business Intelligence"
-            className="h-[52px] sm:h-[60px] md:h-[72px] lg:h-[90px] xl:h-[104px] w-auto max-w-full object-contain drop-shadow-[0_3px_14px_rgba(0,0,0,0.72)]"
-          />
+          <div className="inline-flex items-center rounded-xl bg-white border border-white px-3 py-1.5 sm:px-3.5 sm:py-2 lg:px-4 lg:py-2 shadow-[0_10px_28px_rgba(0,0,0,0.42)]">
+            <img
+              src="/argus-bi-logo.png"
+              alt="Argus Business Intelligence"
+              className="h-[52px] sm:h-[60px] md:h-[72px] lg:h-[90px] xl:h-[104px] w-auto max-w-full object-contain"
+            />
+          </div>
         </div>
       </div>
 
