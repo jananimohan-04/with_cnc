@@ -115,7 +115,7 @@ export function LoginScreen() {
           <img
             src="/argus-bi-logo-white.svg"
             alt="Argus Business Intelligence"
-            className="h-11 sm:h-12 md:h-14 lg:h-16 xl:h-[78px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
+            className="h-12 sm:h-[52px] md:h-[62px] lg:h-[72px] xl:h-[86px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
           />
         </div>
       </div>
