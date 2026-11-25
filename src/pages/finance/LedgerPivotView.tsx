@@ -553,8 +553,8 @@ export function LedgerPivotView({
                     {isExpanded && (
                       <tr className="bg-slate-50/70 border-b-2 border-slate-200">
                         <td colSpan={8} className="p-2 sm:px-6 sm:py-3">
-                          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs p-3 max-h-[360px] overflow-auto [&_thead_th]:!z-10">
-                            <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+                          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-white">
                               <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                                 <Layers size={13} className="text-orange-500" />
                                 {g.label} — {g.lines.length} Transaction{g.lines.length === 1 ? '' : 's'}
@@ -568,7 +568,8 @@ export function LedgerPivotView({
                               </button>
                             </div>
 
-                            <table className="w-full text-[11px] leading-tight">
+                            <div className="max-h-[320px] overflow-auto [&_thead_th]:!z-10">
+                              <table className="w-full text-[11px] leading-tight">
                               <thead className="bg-slate-100/70 text-slate-600 font-bold uppercase text-[9px]">
                                 <tr>
                                   <th className="px-2 py-1.5 text-left">Date</th>
@@ -605,7 +606,8 @@ export function LedgerPivotView({
                                   </tr>
                                 ))}
                               </tbody>
-                            </table>
+                              </table>
+                            </div>
                           </div>
                         </td>
                       </tr>
