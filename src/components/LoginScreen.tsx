@@ -42,22 +42,22 @@ export function LoginScreen() {
         {/* Subtle warm industrial ambient glow */}
         <div className="absolute w-[450px] h-[450px] bg-brand-500/15 rounded-full blur-[140px] pointer-events-none" />
 
-        {/* Top Left: Sleek Application Brand (Argus Business Intelligence) */}
+        {/* Top Left: Application Brand (Argus Business Intelligence) */}
         <div className="relative z-10">
           <img
             src="/argus-bi-logo.svg"
             alt="Argus Business Intelligence"
-            className="h-10 sm:h-11 w-auto max-w-full object-contain drop-shadow-lg transition-transform duration-200 hover:scale-[1.02]"
+            className="h-16 sm:h-20 w-auto max-w-full object-contain drop-shadow-xl transition-transform duration-200 hover:scale-[1.02]"
           />
         </div>
 
         {/* Center: Prominent Flagship Hallmark (ARGUS CNC) */}
         <div className="relative z-10 my-auto self-center">
-          <div className="bg-white/95 backdrop-blur-xl px-8 py-4 sm:px-10 sm:py-5 rounded-2xl shadow-2xl shadow-black/40 border border-white/70 flex items-center justify-center transition-all duration-300 hover:scale-[1.03] hover:shadow-brand-500/20">
+          <div className="bg-white/95 backdrop-blur-xl px-10 py-5 sm:px-14 sm:py-7 rounded-2xl shadow-2xl shadow-black/50 border border-white/70 flex items-center justify-center transition-all duration-300 hover:scale-[1.02] hover:shadow-brand-500/25">
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC - Creating Future Factories"
-              className="h-11 sm:h-12 w-auto max-w-full object-contain"
+              className="h-16 sm:h-20 lg:h-24 w-auto max-w-full object-contain"
             />
           </div>
         </div>
@@ -74,13 +74,13 @@ export function LoginScreen() {
             <img
               src="/argus-bi-logo.svg"
               alt="Argus Business Intelligence"
-              className="h-11 w-auto max-w-full object-contain drop-shadow-md"
+              className="h-14 w-auto max-w-full object-contain drop-shadow-md"
             />
-            <div className="bg-white/95 px-6 py-2.5 rounded-xl shadow-md border border-slate-200/80">
+            <div className="bg-white/95 px-7 py-3 rounded-xl shadow-md border border-slate-200/80">
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-7 w-auto object-contain"
+                className="h-9 w-auto object-contain"
               />
             </div>
           </div>
@@ -157,13 +157,13 @@ export function LoginScreen() {
           )}
 
           <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-            <div className="inline-flex items-center justify-center gap-2 select-none text-xs text-slate-400">
+            <div className="inline-flex items-center justify-center gap-1.5 select-none text-[11px] text-slate-400">
               <span className="font-normal text-slate-400">Powered by</span>
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
-                style={{ height: '42px', maxHeight: '42px', width: 'auto' }}
+                className="inline-block object-contain opacity-70 hover:opacity-100 transition-opacity"
+                style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
               />
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
