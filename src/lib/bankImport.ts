@@ -202,6 +202,50 @@ export function normalizeTypes(raw: unknown): EntryType[] | null {
 export function hasLocalTypes(cid: string | null | undefined): boolean {
   try { return localStorage.getItem(KEY('types', cid)) !== null; } catch { return false; }
 }
+export function isTypesSynced(cid: string | null | undefined): boolean {
+  try { return localStorage.getItem(KEY('types-db-synced', cid)) === '1'; } catch { return false; }
+}
+export function markTypesSynced(cid: string | null | undefined): void {
+  try { localStorage.setItem(KEY('types-db-synced', cid), '1'); } catch { /* ignore */ }
+}
+export function isOthersSynced(cid: string | null | undefined): boolean {
+  try { return localStorage.getItem(KEY('others-db-synced', cid)) === '1'; } catch { return false; }
+}
+export function markOthersSynced(cid: string | null | undefined): void {
+  try { localStorage.setItem(KEY('others-db-synced', cid), '1'); } catch { /* ignore */ }
+}
+export function mergeTypes(base: EntryType[], extra: EntryType[]): { list: EntryType[]; changed: boolean } {
+  const out = base.map(t => ({ ...t }));
+  const byName = new Map(out.map((t, i) => [t.name.trim().toLowerCase(), i]));
+  let changed = false;
+  for (const t of extra) {
+    const k = t.name.trim().toLowerCase();
+    if (!k) continue;
+    const idx = byName.get(k);
+    if (idx === undefined) {
+      byName.set(k, out.length);
+      out.push({ ...t });
+      changed = true;
+    } else if (!out[idx].ledgerId && t.ledgerId) {
+      out[idx] = { ...out[idx], ledgerId: t.ledgerId };
+      changed = true;
+    }
+  }
+  return { list: out, changed };
+}
+export function mergeOthers(base: Other[], extra: Other[]): { list: Other[]; changed: boolean } {
+  const out = base.map(o => ({ ...o }));
+  const seen = new Set(out.map(o => o.name.trim().toLowerCase()));
+  let changed = false;
+  for (const o of extra) {
+    const k = o.name.trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push({ ...o });
+    changed = true;
+  }
+  return { list: out, changed };
+}
 export function loadTypes(cid: string | null | undefined): EntryType[] {
   try {
     const raw = localStorage.getItem(KEY('types', cid));

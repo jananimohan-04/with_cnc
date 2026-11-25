@@ -14,7 +14,7 @@ import { xlsxToTsv } from '@/lib/xlsxRead';
 import { supabase } from '@/lib/supabase';
 import { suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
-  applyTypeDefaults, hasLocalTypes, loadOthers, loadTypes, normalizeOthers, normalizeTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
+  applyTypeDefaults, hasLocalTypes, isOthersSynced, isTypesSynced, loadOthers, loadTypes, markOthersSynced, markTypesSynced, mergeOthers, mergeTypes, normalizeOthers, normalizeTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
 } from '@/lib/bankImport';
 import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
@@ -44,12 +44,33 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function matchOtherForRow(desc: string, partyName: string | null | undefined, otherList: Other[]): Other | undefined {
+  if (!otherList.length) return undefined;
+  const pNorm = (partyName ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (pNorm) {
+    return otherList.find(o => o.name.trim().replace(/\s+/g, ' ').toLowerCase() === pNorm);
+  }
+  const dNorm = desc.trim().replace(/\s+/g, ' ');
+  if (!dNorm) return undefined;
+  const sorted = [...otherList].sort((a, b) => b.name.trim().length - a.name.trim().length);
+  for (const o of sorted) {
+    const clean = o.name.trim().replace(/\s+/g, ' ');
+    if (clean.length < 3) continue;
+    const pat = escapeRegExp(clean).replace(/\\ /g, '\\s+');
+    if (new RegExp(`(^|[^A-Za-z0-9])${pat}($|[^A-Za-z0-9])`, 'i').test(dNorm)) {
+      return o;
+    }
+  }
+  return undefined;
+}
+
 export function extractRowTypeAndDesc(
   rawDescription: string | null | undefined,
   fallbackKind: string | null | undefined,
   typeList: EntryType[] = [],
-  partyName?: string | null | undefined
-): { type: string; description: string } {
+  partyName?: string | null | undefined,
+  otherList: Other[] = []
+): { type: string; description: string; party?: string } {
   let desc = (rawDescription ?? '').trim();
   let extractedType = '';
 
@@ -115,6 +136,17 @@ export function extractRowTypeAndDesc(
     }
   }
 
+  let inferredParty: string | undefined;
+  const kLow = (fallbackKind ?? '').trim().toLowerCase();
+  const isGenericKind = !kLow || ['payment', 'receipt', 'cash payment', 'cash receipt', 'unknown'].includes(kLow);
+  if (!extractedType && isGenericKind) {
+    const matchedOther = matchOtherForRow(desc, partyName, otherList);
+    if (matchedOther?.kind?.trim()) {
+      extractedType = matchedOther.kind.trim();
+      if (!partyName?.trim()) inferredParty = matchedOther.name.trim();
+    }
+  }
+
   let finalType = extractedType;
   if (!finalType) {
     if (fallbackKind && !['payment', 'receipt'].includes(fallbackKind.toLowerCase())) {
@@ -123,15 +155,17 @@ export function extractRowTypeAndDesc(
       finalType = fallbackKind || 'Payment';
     }
   } else {
-    const matchedObj = typeList.find(t => t.name.toLowerCase() === extractedType.toLowerCase());
+    const matchedObj = typeList.find(t => t.name.trim().toLowerCase() === extractedType.trim().toLowerCase());
     if (matchedObj) {
       finalType = matchedObj.name;
+    } else if (extractedType === extractedType.toUpperCase()) {
+      finalType = extractedType;
     } else {
       finalType = extractedType.charAt(0).toUpperCase() + extractedType.slice(1).toLowerCase();
     }
   }
 
-  return { type: finalType, description: desc };
+  return { type: finalType, description: desc, ...(inferredParty ? { party: inferredParty } : {}) };
 }
 
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
@@ -168,32 +202,49 @@ export function BankEntryPage() {
       let nextOthers = fallbackOthers;
       const patch: { types?: EntryType[]; others?: Other[] } = {};
 
-      if (db.types !== null) {
-        const parsed = normalizeTypes(db.types);
-        if (parsed) {
-          nextTypes = parsed;
-          saveTypes(companyId, nextTypes);
+      const dbTypes = db.types !== null ? normalizeTypes(db.types) : null;
+      if (dbTypes && dbTypes.length > 0) {
+        if (!isTypesSynced(companyId) && hasLocalTypes(companyId)) {
+          const merged = mergeTypes(dbTypes, fallbackTypes);
+          nextTypes = merged.list;
+          if (merged.changed) patch.types = nextTypes;
+        } else {
+          nextTypes = dbTypes;
         }
-      } else if (hasLocalTypes(companyId)) {
+        saveTypes(companyId, nextTypes);
+      } else if (hasLocalTypes(companyId) && fallbackTypes.length > 0) {
         patch.types = fallbackTypes;
       }
 
       if (db.others !== null) {
-        nextOthers = normalizeOthers(db.others);
+        const dbOthers = normalizeOthers(db.others);
+        if (!isOthersSynced(companyId) && fallbackOthers.length > 0) {
+          const merged = mergeOthers(dbOthers, fallbackOthers);
+          nextOthers = merged.list;
+          if (merged.changed) patch.others = nextOthers;
+        } else {
+          nextOthers = dbOthers;
+        }
         saveOthers(companyId, nextOthers);
       } else if (fallbackOthers.length > 0) {
         patch.others = fallbackOthers;
       }
 
       if (patch.types !== undefined || patch.others !== undefined) {
-        await financeApi.saveBankSettings(patch).catch(() => {});
+        await financeApi.saveBankSettings(patch);
       }
+      markTypesSynced(companyId);
+      markOthersSynced(companyId);
+
       if (syncSeqRef.current === reqId) {
         setTypes(nextTypes);
         setOthers(nextOthers);
       }
-    } catch {
-      // Keep browser cache fallback if company settings table/RPC is unavailable
+    } catch (e) {
+      // Keep browser cache fallback if offline/saving fails; only surface permission errors
+      if (syncSeqRef.current === reqId && e instanceof Error && /permission|not authorized/i.test(e.message)) {
+        setMsg({ kind: 'err', text: e.message });
+      }
     }
   }, []);
 
@@ -262,12 +313,12 @@ export function BankEntryPage() {
         const r = await financeApi.bankTransactions({ page, pageSize: 200 });
         // the Type is read from the entry (imported ones carry it in front of the description; a Type you edited later is in "kind"),
         // so a correction you make in the Bank Data table is learned too
-        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types, x.party_name); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
+        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types, x.party_name, others); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
         if (all.length >= r.total || !r.rows.length) break;
       }
       setHistory(all);
     } catch { /* suggestions still work from names, keywords and the bank's wording */ }
-  }, [types]);
+  }, [types, others]);
   useEffect(() => { void loadHistory(); }, [loadHistory, cid]);
   const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name, history });
 
@@ -283,12 +334,15 @@ export function BankEntryPage() {
   const colGet: Record<string, (r: BankRow) => string> = {
     date: r => r.txn_date ?? '',
     cheque: r => r.reference_no ?? '',
-    description: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).description,
+    description: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others).description,
     debit: r => (r.direction === 'OUT' ? money(r.amount) : ''),
     credit: r => (r.direction === 'IN' ? money(r.amount) : ''),
     bank: r => r.account_name ?? '',
-    type: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).type,
-    company: r => r.party_name || (extractRowTypeAndDesc(r.description, r.kind, types, r.party_name).type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''),
+    type: r => extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others).type,
+    company: r => {
+      const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
+      return r.party_name || parsed.party || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : '');
+    },
   };
   const sort = useSort<BankRow>({
     ...Object.fromEntries(Object.entries(colGet).map(([k, g]) => [k, g])),
@@ -305,7 +359,7 @@ export function BankEntryPage() {
 
   const handleUpdateType = async (r: BankRow, newTypeName: string) => {
     const trimmed = newTypeName.trim();
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
     const t = types.find(x => x.name.toLowerCase() === trimmed.toLowerCase());
     const contraId = t?.ledgerId || undefined;
 
@@ -334,7 +388,7 @@ export function BankEntryPage() {
   const handleUpdateCompany = async (r: BankRow, newParty: string) => {
     const trimmed = newParty.trim() || null;
     if ((r.party_name ?? '') === (trimmed ?? '')) return;
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
 
     setData(prev => prev.map(item => item.id === r.id ? {
       ...item,
@@ -358,7 +412,7 @@ export function BankEntryPage() {
 
   // Save the edit popup: only the fields that really changed are written.
   const saveRowEdit = async (r: BankRow, newType: string, newCompany: string) => {
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
     const currentType = parsed.type || r.kind || '';
     if (newType.trim().toLowerCase() !== currentType.trim().toLowerCase()) await handleUpdateType(r, newType.trim());
     if (newCompany.trim() !== (r.party_name ?? '').trim()) await handleUpdateCompany(r, newCompany.trim());
@@ -564,7 +618,7 @@ export function BankEntryPage() {
     const uniq = (f: (r: BankRow) => string) => Array.from(new Set(data.map(f).filter(Boolean))).sort((a, b) => a.localeCompare(b));
     return { bank: uniq(colGet.bank), type: uniq(colGet.type), company: uniq(colGet.company) } as Record<string, string[]>;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, types]);
+  }, [data, types, others]);
   const shownRows = rows;
 
   // A ready-to-fill sample in the usual bank-statement layout; the importer reads it as is.
@@ -583,12 +637,12 @@ export function BankEntryPage() {
     exportCsv(`bank-data-${todayISO()}`, [
       ['Date', 'Bank', 'Type', 'Company', 'Reference', 'Description', 'Debit (out)', 'Credit (in)', 'Balance'],
       ...shownData.map(r => {
-        const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+        const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
         return [
           dmy(r.txn_date),
           r.account_name,
           parsed.type || r.kind,
-          r.party_name ?? '',
+          r.party_name || parsed.party || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''),
           r.reference_no ?? '',
           parsed.description,
           r.direction === 'OUT' ? r.amount : '',
@@ -609,12 +663,12 @@ export function BankEntryPage() {
         startY: 23, styles: { fontSize: 7.5, cellPadding: 1.4 }, headStyles: { fillColor: [51, 65, 85] },
         head: [['Date', 'Bank', 'Type', 'Company', 'Ref', 'Description', 'Debit', 'Credit', 'Balance']],
         body: shownData.map(r => {
-          const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+          const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
           return [
             dmy(r.txn_date),
             r.account_name,
             parsed.type || r.kind,
-            r.party_name ?? '',
+            r.party_name || parsed.party || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''),
             r.reference_no ?? '',
             parsed.description.slice(0, 40),
             r.direction === 'OUT' ? Number(r.amount).toFixed(2) : '',
@@ -895,7 +949,7 @@ export function BankEntryPage() {
                 </tr></thead>
                 <tbody>
                   {shownData.map(r => {
-                    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+                    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
                     return (
                       <tr
                         key={r.id}
@@ -916,7 +970,7 @@ export function BankEntryPage() {
                           </span>
                         </td>
                         <td className="px-1.5 py-1 text-[11px] text-slate-700 whitespace-nowrap">
-                          {r.party_name || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : <span className="text-slate-400">—</span>)}
+                          {r.party_name || parsed.party || (parsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : <span className="text-slate-400">—</span>)}
                         </td>
                         <td className="px-1.5 py-0.5 text-center whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5 justify-center">
@@ -968,7 +1022,8 @@ export function BankEntryPage() {
         bankId={bankId}
         accounts={options?.accounts ?? []}
         types={types}
-        onTypes={() => setModal('types')}
+        others={others}
+        onTypes={openTypes}
         onSaved={() => {
           setMsg({ kind: 'ok', text: 'Manual entry saved.' });
           void loadData(full);
@@ -986,26 +1041,46 @@ export function BankEntryPage() {
             saveOthers(cid, o2);
           }
           if (cid) {
-            try {
-              await financeApi.saveBankSettings({ types: t, ...(renamed ? { others: o2 } : {}) });
-            } catch (e) {
-              setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save types to your company.' });
-            }
+            await financeApi.saveBankSettings({ types: t, ...(renamed ? { others: o2 } : {}) });
+            markTypesSynced(cid);
+            if (renamed) markOthersSynced(cid);
           }
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
         onSave={async o => {
+          const prevByName = new Map(others.map(x => [x.name.trim().toLowerCase(), x.kind.trim().toLowerCase()]));
+          const nextByName = new Map(o.map(x => [x.name.trim().toLowerCase(), x.kind.trim()]));
           if (cid) {
             await financeApi.saveBankSettings({ others: o });
+            markOthersSynced(cid);
           }
           saveOthers(cid, o);
           setOthers(o);
+          // Sync existing rows whose previous Manage Types mapping changed to a different Type
+          const updates: { id: string; kind: string }[] = [];
+          setData(prev => prev.map(row => {
+            const pKey = (row.party_name ?? '').trim().toLowerCase();
+            if (!pKey) return row;
+            const prevKind = prevByName.get(pKey);
+            const nextKind = nextByName.get(pKey);
+            if (!nextKind) return row;
+            const rowKind = (row.kind ?? '').trim().toLowerCase();
+            if (prevKind && prevKind !== nextKind.toLowerCase() && rowKind === prevKind) {
+              updates.push({ id: row.id, kind: nextKind });
+              return { ...row, kind: nextKind };
+            }
+            return row;
+          }));
+          if (updates.length) {
+            void Promise.all(updates.map(u => financeApi.updateBankEntry(u.id, { kind: u.kind }).catch(() => {})));
+          }
           setMsg({ kind: 'ok', text: 'Types saved for your company.' });
         }} />
 
       <EditRowModal
         row={editingRow}
         types={types}
+        others={others}
         onClose={() => setEditingRow(null)}
         onSave={saveRowEdit}
       />
@@ -1014,6 +1089,7 @@ export function BankEntryPage() {
         open={!!deletingRow}
         row={deletingRow}
         types={types}
+        others={others}
         onClose={() => setDeletingRow(null)}
         onDeleted={(deletedId, transferGroup) => {
           setData(prev => prev.filter(item => {
@@ -1182,7 +1258,7 @@ function ManageBanks({ open, onClose, accounts, canManage, onChanged }: {
 
 function ManageTypes({ open, onClose, types, ledgers, onChange }: {
   open: boolean; onClose: () => void; types: EntryType[]; ledgers: { id: string; code: string; name: string }[];
-  onChange: (t: EntryType[], renamed?: { from: string; to: string }) => void;
+  onChange: (t: EntryType[], renamed?: { from: string; to: string }) => Promise<void> | void;
 }) {
   const [name, setName] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
@@ -1193,10 +1269,21 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
   useEffect(() => { if (open) { setEditing(null); setErr(''); setName(''); } }, [open]);
   const taken = (n: string, exceptId?: string) => types.some(t => t.name.trim().toLowerCase() === n.trim().toLowerCase() && t.id !== exceptId);
 
+  const commit = async (next: EntryType[], renamed?: { from: string; to: string }) => {
+    setErr('');
+    try {
+      await onChange(next, renamed);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save types.');
+    }
+  };
+
   const add = () => {
     if (!name.trim()) return setErr('Enter a type name.');
     if (taken(name)) return setErr('A type with that name already exists.');
-    onChange([...types, { id: `t-${Date.now()}`, name: name.trim().toUpperCase(), direction: 'ANY', ledgerId: '' }]); setName(''); setErr('');
+    const next = [...types, { id: `t-${Date.now()}`, name: name.trim().toUpperCase(), direction: 'ANY' as const, ledgerId: '' }];
+    setName('');
+    void commit(next);
   };
   const startEdit = (t: EntryType) => { setEditing(t.id); setDName(t.name); setDDir(t.direction); setDLedger(t.ledgerId); setErr(''); };
   const update = () => {
@@ -1205,8 +1292,9 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
     if (!dName.trim()) return setErr('Enter a type name.');
     if (taken(dName, old.id)) return setErr('A type with that name already exists.');
     const to = dName.trim().toUpperCase();
-    onChange(types.map(t => (t.id === old.id ? { ...t, name: to, direction: dDir, ledgerId: dLedger } : t)), old.name !== to ? { from: old.name, to } : undefined);
-    setEditing(null); setErr('');
+    const next = types.map(t => (t.id === old.id ? { ...t, name: to, direction: dDir, ledgerId: dLedger } : t));
+    setEditing(null);
+    void commit(next, old.name !== to ? { from: old.name, to } : undefined);
   };
   const dirLabel = (d: EntryType['direction']) => (d === 'IN' ? 'money in' : d === 'OUT' ? 'money out' : '');
 
@@ -1242,7 +1330,7 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
                   {(dirLabel(t.direction) || t.ledgerId) && <span className="ml-2 normal-case tracking-normal text-[11px] font-normal text-slate-400">{[dirLabel(t.direction), t.ledgerId ? `ledger: ${(ledgers.find(a => a.id === t.ledgerId)?.name) ?? 'set'}` : ''].filter(Boolean).join(' · ')}</span>}
                 </span>
                 <button className={`${btn} !h-8`} aria-label={`Edit ${t.name}`} onClick={() => startEdit(t)}>Edit</button>
-                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${t.name}`} onClick={() => onChange(types.filter(x => x.id !== t.id))}>Delete</button>
+                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${t.name}`} onClick={() => void commit(types.filter(x => x.id !== t.id))}>Delete</button>
               </div>
             )}
           </div>
@@ -1350,6 +1438,7 @@ function ManualEntryModal({
   bankId,
   accounts,
   types,
+  others = [],
   onTypes,
   onSaved,
 }: {
@@ -1358,6 +1447,7 @@ function ManualEntryModal({
   bankId: string;
   accounts: BankAccount[];
   types: EntryType[];
+  others?: Other[];
   onTypes?: () => void;
   onSaved: () => void;
 }) {
@@ -1442,7 +1532,7 @@ function ManualEntryModal({
     setEditingId(r.id);
     setDate(r.txn_date || today());
     if (r.account_id) setSelectedBankId(r.account_id);
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
     const matched = types.find(t => t.name.toLowerCase() === parsed.type.toLowerCase() || t.name.toLowerCase() === (r.kind ?? '').toLowerCase());
     if (matched) {
       setTypeId(matched.id);
@@ -1751,7 +1841,7 @@ function ManualEntryModal({
               </thead>
               <tbody>
                 {filteredList.map(r => {
-                  const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name);
+                  const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
                   return (
                     <tr key={r.id} data-testid="manual-row" className="border-t border-slate-100 hover:bg-slate-50/60 transition">
                       <td className="px-3 py-2.5 whitespace-nowrap">{dmy(r.txn_date)}</td>
@@ -1803,6 +1893,7 @@ function ManualEntryModal({
         onClose={() => setDeletingRow(null)}
         row={deletingRow}
         types={types}
+        others={others}
         onDeleted={(deletedId) => {
           setList(prev => prev.filter(x => x.id !== deletedId));
           setDeletingRow(null);
@@ -1814,9 +1905,10 @@ function ManualEntryModal({
 }
 
 /** Editing one statement row: the row itself is read-only, this popup holds the Type and Company fields. */
-function EditRowModal({ row, types, onClose, onSave }: {
+function EditRowModal({ row, types, others = [], onClose, onSave }: {
   row: BankRow | null;
   types: EntryType[];
+  others?: Other[];
   onClose: () => void;
   onSave: (row: BankRow, type: string, company: string) => Promise<void>;
 }) {
@@ -1827,15 +1919,15 @@ function EditRowModal({ row, types, onClose, onSave }: {
 
   useEffect(() => {
     if (!row) return;
-    const initialParsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name);
+    const initialParsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name, others);
     setType(initialParsed.type || row.kind || '');
-    setCompany(row.party_name || (initialParsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''));
+    setCompany(row.party_name || initialParsed.party || (initialParsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''));
     setErr('');
-  }, [row, types]);
+  }, [row, types, others]);
 
   if (!row) return null;
 
-  const parsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name);
+  const parsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name, others);
   const currentType = parsed.type || row.kind || '';
 
   const save = async () => {
@@ -1916,12 +2008,14 @@ function DeleteBankEntryModal({
   onClose,
   row,
   types = [],
+  others = [],
   onDeleted,
 }: {
   open: boolean;
   onClose: () => void;
   row: BankRow | null;
   types?: EntryType[];
+  others?: Other[];
   onDeleted: (deletedId: string, transferGroup?: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1997,14 +2091,14 @@ function DeleteBankEntryModal({
 
           {row.description && (
             <p className="text-slate-600 break-words leading-relaxed pt-1 border-t border-red-100 text-[11px]">
-              {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name).description || row.description}
+              {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name, others).description || row.description}
             </p>
           )}
 
           {(row.kind || row.party_name) && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 font-semibold text-slate-700">
-                {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name).type || row.kind}
+                {extractRowTypeAndDesc(row.description, row.kind, types, row.party_name, others).type || row.kind}
               </span>
               {row.party_name && <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{row.party_name}</span>}
             </div>
