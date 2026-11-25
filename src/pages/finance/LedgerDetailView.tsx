@@ -531,9 +531,9 @@ export function LedgerDetailView({
             </tbody>
 
             {/* Closing Balance / Grand Total footer */}
-            <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-[12px] sticky bottom-0">
+            <tfoot className="sticky bottom-0 z-20 bg-[#f1f5f9] border-t-2 border-slate-300 font-bold text-[12px] [&_td]:sticky [&_td]:bottom-0 [&_td]:z-20 [&_td]:bg-[#f1f5f9] [&_td]:shadow-[inset_0_2px_0_#cbd5e1]">
               <tr>
-                <td colSpan={isParty ? 4 : 4} className="px-2.5 py-2.5 text-right uppercase tracking-wider text-slate-700">
+                <td colSpan={isParty ? 4 : 5} className="px-2.5 py-2.5 text-right uppercase tracking-wider text-slate-700">
                   {isParty ? 'Closing Balance (Net Due)' : `Total (${summary.count} entries)`}
                 </td>
                 <td className="px-2.5 py-2.5 text-right tabular-nums text-red-600">

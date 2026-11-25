@@ -506,7 +506,7 @@ export function LedgerPivotView({
                     {isExpanded && (
                       <tr className="bg-slate-50/70 border-b-2 border-slate-200">
                         <td colSpan={8} className="p-2 sm:px-6 sm:py-3">
-                          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs p-3 overflow-x-auto">
+                          <div className="bg-white border border-slate-200 rounded-lg shadow-2xs p-3 max-h-[360px] overflow-auto [&_thead_th]:!z-10">
                             <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
                               <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                                 <Layers size={13} className="text-orange-500" />
@@ -577,7 +577,7 @@ export function LedgerPivotView({
             </tbody>
 
             {/* Grand Totals */}
-            <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-[12px] sticky bottom-0">
+            <tfoot className="sticky bottom-0 z-20 bg-[#f1f5f9] border-t-2 border-slate-300 font-bold text-[12px] [&_td]:sticky [&_td]:bottom-0 [&_td]:z-20 [&_td]:bg-[#f1f5f9] [&_td]:shadow-[inset_0_2px_0_#cbd5e1]">
               <tr>
                 <td colSpan={3} className="px-2.5 py-2.5 text-right uppercase tracking-wider text-slate-700">
                   Grand Total ({totals.groups} Groups)

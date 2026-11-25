@@ -142,6 +142,22 @@
   z-index: 20;
 }
 
+/* Sticky table footers: force opaque background and stacking above scrolling body rows (overrides glass translucency) */
+:where(main, [role="dialog"]) tfoot.sticky,
+:where(main, [role="dialog"]) tfoot.sticky tr,
+:where(main, [role="dialog"]) tfoot.sticky td,
+:where(main, [role="dialog"]) tfoot.sticky th {
+  background-color: #f1f5f9 !important;
+  background-image: none !important;
+}
+:where(main, [role="dialog"]) tfoot.sticky td,
+:where(main, [role="dialog"]) tfoot.sticky th {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  box-shadow: inset 0 2px 0 #cbd5e1;
+}
+
 /* Every table heading in the app is the same dark blue bar with white titles (pages and popups alike).
    Filter boxes / selects inside a heading keep their own light look, and so do drop-down lists that open from it. */
 :is(main, [role="dialog"]) thead,
