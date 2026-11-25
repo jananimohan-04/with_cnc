@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, BookText, RefreshCw, Landmark, FileText, PackageOpen, Search, ArrowUp, ArrowDown, ArrowUpDown, Inbox, AlertTriangle, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight, MoreVertical, Printer, Eye, Upload, LayoutGrid, ListFilter } from 'lucide-react';
-import { LedgerPivotView, type PivotGroupBy } from './LedgerPivotView';
+import { LedgerPivotView, createDefaultPivotViewState, type PivotGroupBy, type PivotViewState } from './LedgerPivotView';
 import { LedgerDetailView } from './LedgerDetailView';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Card';
@@ -44,10 +44,17 @@ const COLS: { key: SortKey; label: string; align?: 'right' }[] = [
 export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { company } = useAuth();
   const cid = company?.id ?? null;
+  const navigate = useNavigate();
   const [src, setSrc] = useState<Record<LedgerSource, SourceState>>({ Bank: emptySource(), Invoice: emptySource(), Inward: emptySource(), Opening: emptySource() });
   // ?party=Name (from Opening Balances > View Ledger) opens the ledger already filtered to that company.
   const [urlParams, setUrlParams] = useSearchParams();
   const initParty = urlParams.get('party') ?? '';
+  const urlGroup = urlParams.get('group');
+  const groupBy: PivotGroupBy = urlGroup === 'particulars' || urlGroup === 'month' ? urlGroup : 'party';
+  const viewMode: 'pivot' | 'list' = urlParams.get('view') === 'list' ? 'list' : 'pivot';
+  const detailType = urlParams.get('detailType');
+  const detailValue = urlParams.get('detailValue');
+  const detailLabel = urlParams.get('detailLabel');
   // Read-only now: the toolbar's own Start/End/Particulars/Company filters were removed, so `applied` only
   // carries the company picked up from the ?party= link (the Topbar date range still applies via effFrom/effTo).
   const applied = useMemo(() => ({ from: '', to: '', part: '', party: initParty }), [initParty]);
@@ -58,10 +65,67 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   const [modal, setModal] = useState<null | 'statement' | 'book'>(null);
   const [stmtParty, setStmtParty] = useState('');
   const [note, setNote] = useState('');
-  const [viewMode, setViewMode] = useState<'pivot' | 'list'>('pivot');
-  const [selectedGroup, setSelectedGroup] = useState<{ type: PivotGroupBy; value: string; label: string } | null>(
-    initParty ? { type: 'party', value: initParty, label: initParty } : null
-  );
+  const [pivotState, setPivotState] = useState<PivotViewState>(createDefaultPivotViewState);
+
+  const setViewMode = useCallback((mode: 'pivot' | 'list') => {
+    setUrlParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (mode === 'list') next.set('view', 'list');
+      else next.delete('view');
+      return next;
+    }, { replace: true });
+  }, [setUrlParams]);
+
+  const setGroupBy = useCallback((g: PivotGroupBy) => {
+    setUrlParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (g === 'party') next.delete('group');
+      else next.set('group', g);
+      return next;
+    }, { replace: true });
+  }, [setUrlParams]);
+
+  const selectedGroup = useMemo<{ type: PivotGroupBy; value: string; label: string } | null>(() => {
+    if (initParty) return { type: 'party', value: initParty, label: initParty };
+    if (detailValue !== null && (detailType === 'party' || detailType === 'particulars' || detailType === 'month')) {
+      return { type: detailType, value: detailValue, label: detailLabel || detailValue };
+    }
+    return null;
+  }, [initParty, detailType, detailValue, detailLabel]);
+
+  const openDetail = useCallback((g: { type: PivotGroupBy; value: string; label: string }) => {
+    setUrlParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (g.type === 'party') {
+        next.set('party', g.value);
+        next.delete('detailType');
+        next.delete('detailValue');
+        next.delete('detailLabel');
+      } else {
+        next.delete('party');
+        next.set('detailType', g.type);
+        next.set('detailValue', g.value);
+        next.set('detailLabel', g.label);
+      }
+      return next;
+    });
+  }, [setUrlParams]);
+
+  const goBackFromDetail = useCallback(() => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) {
+      navigate(-1);
+    } else {
+      setUrlParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('party');
+        next.delete('detailType');
+        next.delete('detailValue');
+        next.delete('detailLabel');
+        return next;
+      }, { replace: true });
+    }
+  }, [navigate, setUrlParams]);
 
   const load = useCallback(async (which: LedgerSource): Promise<number> => {
     setSrc(s => ({ ...s, [which]: { ...s[which], state: 'loading', error: '' } }));
@@ -268,14 +332,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
             allLines={visibleAll}
             settled={settled}
             statusText={statusText}
-            onBack={() => {
-              setSelectedGroup(null);
-              setUrlParams(prev => {
-                const next = new URLSearchParams(prev);
-                next.delete('party');
-                return next;
-              });
-            }}
+            onBack={goBackFromDetail}
             initFrom={effFrom}
             initTo={effTo}
             companyName={company?.company_name}
@@ -369,16 +426,11 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                 lines={baseFiltered}
                 settled={settled}
                 statusText={statusText}
-                onSelectGroup={g => {
-                  setSelectedGroup(g);
-                  if (g.type === 'party') {
-                    setUrlParams(prev => {
-                      const next = new URLSearchParams(prev);
-                      next.set('party', g.value);
-                      return next;
-                    });
-                  }
-                }}
+                groupBy={groupBy}
+                onGroupByChange={setGroupBy}
+                viewState={pivotState}
+                onViewStateChange={setPivotState}
+                onSelectGroup={openDetail}
                 effFrom={effFrom}
                 effTo={effTo}
                 companyName={company?.company_name}
@@ -427,7 +479,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                     <td className="px-1.5 py-1 font-mono text-slate-600">{l.ref}</td>
                     <td
                       className="px-1.5 py-1 uppercase font-semibold text-slate-800 hover:text-orange-600 cursor-pointer underline-offset-2 hover:underline"
-                      onClick={() => l.party && setSelectedGroup({ type: 'party', value: l.party, label: l.party })}
+                      onClick={() => l.party && openDetail({ type: 'party', value: l.party, label: l.party })}
                       title={`Click to view detailed statement for ${l.party}`}
                     >
                       {l.party}

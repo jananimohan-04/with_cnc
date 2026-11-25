@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type Dispatch, type SetStateAction, useMemo, useState } from 'react';
 import {
   ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2,
   Layers, Calendar, Search, FileSpreadsheet, Eye, ArrowRight, ChevronsUpDown,
@@ -26,6 +26,23 @@ export interface PivotItem {
 }
 
 export type PivotFilterType = 'all' | 'customer' | 'supplier' | 'nonzero';
+export type PivotSortKey = 'label' | 'entries' | 'debit' | 'credit' | 'balance';
+
+export interface PivotViewState {
+  filterType: PivotFilterType;
+  search: string;
+  expandedKeys: Set<string>;
+  sortKey: PivotSortKey;
+  sortDir: 'asc' | 'desc';
+}
+
+export const createDefaultPivotViewState = (): PivotViewState => ({
+  filterType: 'all',
+  search: '',
+  expandedKeys: new Set(),
+  sortKey: 'balance',
+  sortDir: 'desc',
+});
 
 export interface LedgerPivotViewProps {
   lines: LedgerLine[];
@@ -35,6 +52,10 @@ export interface LedgerPivotViewProps {
   effFrom?: string;
   effTo?: string;
   companyName?: string;
+  groupBy?: PivotGroupBy;
+  onGroupByChange?: (groupBy: PivotGroupBy) => void;
+  viewState?: PivotViewState;
+  onViewStateChange?: Dispatch<SetStateAction<PivotViewState>>;
 }
 
 export function LedgerPivotView({
@@ -45,13 +66,35 @@ export function LedgerPivotView({
   effFrom = '',
   effTo = '',
   companyName = 'Argus Technologies',
+  groupBy: controlledGroupBy,
+  onGroupByChange,
+  viewState: externalViewState,
+  onViewStateChange,
 }: LedgerPivotViewProps) {
-  const [groupBy, setGroupBy] = useState<PivotGroupBy>('party');
-  const [filterType, setFilterType] = useState<PivotFilterType>('all');
-  const [search, setSearch] = useState('');
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = useState<'label' | 'entries' | 'debit' | 'credit' | 'balance'>('balance');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [localGroupBy, setLocalGroupBy] = useState<PivotGroupBy>('party');
+  const [localViewState, setLocalViewState] = useState<PivotViewState>(createDefaultPivotViewState);
+  const groupBy = controlledGroupBy ?? localGroupBy;
+  const viewState = externalViewState ?? localViewState;
+  const setViewState = onViewStateChange ?? setLocalViewState;
+  const { filterType, search, expandedKeys, sortKey, sortDir } = viewState;
+
+  const setFilterType = (filterType: PivotFilterType) => setViewState(prev => ({ ...prev, filterType }));
+  const setSearch = (search: string) => setViewState(prev => ({ ...prev, search }));
+  const setExpandedKeys = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) =>
+    setViewState(prev => ({
+      ...prev,
+      expandedKeys: typeof updater === 'function' ? updater(prev.expandedKeys) : updater,
+    }));
+  const setGroupBy = (next: PivotGroupBy) => {
+    if (onGroupByChange) onGroupByChange(next);
+    else setLocalGroupBy(next);
+  };
+  const setSortKey = (sortKey: PivotSortKey) => setViewState(prev => ({ ...prev, sortKey }));
+  const setSortDir = (updater: 'asc' | 'desc' | ((prev: 'asc' | 'desc') => 'asc' | 'desc')) =>
+    setViewState(prev => ({
+      ...prev,
+      sortDir: typeof updater === 'function' ? updater(prev.sortDir) : updater,
+    }));
 
   // Build aggregated Pivot Groups
   const rawGroups = useMemo(() => {

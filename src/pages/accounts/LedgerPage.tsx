@@ -104,6 +104,7 @@ const indent = (depth: number) => '   '.repeat(depth);
 
 export function LedgerPage() {
   const { company, profile } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   // The party Ledger Dashboard is the first tab and opens by default.
@@ -142,15 +143,38 @@ export function LedgerPage() {
     return () => { cancelled = true; };
   }, [companyId]);
 
+  const setTab = useCallback((t: Tab) => setSearchParams(prev => {
+    const next = new URLSearchParams(prev);
+    next.set('tab', t);
+    if (t !== 'ledger') {
+      next.delete('account');
+      next.delete('from');
+      next.delete('to');
+    }
+    if (t === 'dashboard') {
+      next.delete('party');
+      next.delete('detailType');
+      next.delete('detailValue');
+      next.delete('detailLabel');
+    }
+    return next;
+  }), [setSearchParams]);
+
+  const goBack = useCallback(() => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) navigate(-1);
+    else setTab('dashboard');
+  }, [navigate, setTab]);
+
   const { setHeader, setTabs } = useHeaderKpis();
   useEffect(() => {
     setHeader({ title: 'Ledger & Vouchers' });
     const headerTabs: { label: string; active: boolean; onClick: () => void }[] = [];
     if (tab === 'ledger' || tab === 'vouchers') {
       headerTabs.push({
-        label: '← Back to Dashboard',
+        label: '← Back',
         active: false,
-        onClick: () => setTab('dashboard'),
+        onClick: goBack,
       });
     }
     TABS.forEach(t => {
@@ -165,13 +189,7 @@ export function LedgerPage() {
       setHeader(null);
       setTabs([]);
     };
-  }, [setHeader, setTabs, tab]);
-
-  const setTab = (t: Tab) => setSearchParams(prev => {
-    const next = new URLSearchParams(prev);
-    next.set('tab', t);
-    return next;
-  });
+  }, [setHeader, setTabs, tab, goBack, setTab]);
 
   return (
     <div className="p-2 sm:p-4 lg:px-6 lg:pt-2 lg:pb-6 bg-grid min-h-full">
@@ -187,8 +205,8 @@ export function LedgerPage() {
           <div className="flex lg:hidden items-center gap-6 border-b border-slate-200 mb-6 overflow-x-auto">
             {/* The Account Ledger and Vouchers views are no longer tabs; they still open from a report's drill-down link. */}
             {(tab === 'ledger' || tab === 'vouchers') && (
-              <button onClick={() => setTab('dashboard')} className="inline-flex items-center gap-1.5 pb-3 text-sm font-medium text-brand-600 hover:text-brand-700 whitespace-nowrap">
-                ← Back to Ledger Dashboard
+              <button onClick={goBack} className="inline-flex items-center gap-1.5 pb-3 text-sm font-medium text-brand-600 hover:text-brand-700 whitespace-nowrap">
+                ← Back
               </button>
             )}
             {TABS.map(t => (
@@ -271,7 +289,7 @@ function LedgerTab({ fyr, accounts, companyName, onOpenVoucher }: {
     if (!form.account) { setFormError('Choose an account'); return; }
     if (!form.from || !form.to || form.from > form.to) { setFormError('Choose a valid period (From must be on or before To)'); return; }
     setFormError(null);
-    setSearchParams({ tab: 'ledger', account: form.account, from: form.from, to: form.to });
+    setSearchParams({ tab: 'ledger', account: form.account, from: form.from, to: form.to }, { replace: true });
     setReloadKey(k => k + 1);
   };
 
