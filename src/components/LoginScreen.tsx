@@ -100,29 +100,28 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/22 to-transparent pointer-events-none"
         />
 
-        {/* Upper-Left: ARGUS Business Intelligence Logo */}
+        {/* Header: ARGUS CNC signature (2in wide, centered) + ARGUS Business Intelligence Logo */}
         <div className="relative z-10 px-5 sm:px-7 md:px-6 lg:px-7 xl:px-10 pt-[max(1.25rem,var(--safe-area-inset-top,0px))] md:pt-8 lg:pt-9 xl:pt-10">
+          <div className="flex justify-center">
+            <img
+              src="/argus-logo-white.png"
+              alt="ARGUS CNC"
+              style={{ width: '2in' }}
+              className="max-w-full h-auto object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]"
+            />
+          </div>
           <img
             src="/argus-bi-logo-white.svg"
             alt="Argus Business Intelligence"
-            className="h-10 sm:h-11 md:h-12 lg:h-14 xl:h-[68px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
-          />
-        </div>
-
-        {/* Lower-Middle: ARGUS CNC Brand Signature */}
-        <div className="relative z-10 self-center pb-3.5 sm:pb-4 md:pb-8 lg:pb-9 xl:pb-10 px-5">
-          <img
-            src="/argus-logo-white.png"
-            alt="ARGUS CNC"
-            className="h-[18px] sm:h-5 md:h-[22px] lg:h-6 xl:h-[27px] w-auto max-w-full object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]"
+            className="mt-4 sm:mt-5 md:mt-5 lg:mt-6 xl:mt-7 h-11 sm:h-12 md:h-14 lg:h-16 xl:h-[78px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
           />
         </div>
       </div>
 
-      {/* Right Authentication Panel — 45% desktop / 52% tablet / compact warm off-white surface */}
-      <div className="flex-1 md:w-[52%] lg:w-[45%] flex flex-col justify-start md:justify-center bg-[#F7F5F2] border-t md:border-t-0 md:border-l border-[#E2DDD4] px-6 sm:px-10 md:pl-9 md:pr-8 lg:pl-12 lg:pr-10 xl:pl-16 xl:pr-12 pt-8 pb-[max(2rem,var(--safe-area-inset-bottom,0px))] md:py-10">
-        <div className="w-full max-w-[356px] mx-auto md:mx-0">
-          <div>
+      {/* Right Authentication Panel — 45% desktop / 52% tablet / compact centered warm off-white surface */}
+      <div className="flex-1 md:w-[52%] lg:w-[45%] flex flex-col justify-start md:justify-center items-center bg-[#F7F5F2] border-t md:border-t-0 md:border-l border-[#E2DDD4] px-6 sm:px-10 md:px-9 lg:px-12 pt-9 pb-[max(2rem,var(--safe-area-inset-bottom,0px))] md:py-10">
+        <div className="w-full max-w-[384px] mx-auto">
+          <div className="text-center">
             <h2 className="login-editorial-heading text-[#18181B]">
               Welcome Back
             </h2>
@@ -193,15 +192,15 @@ export function LoginScreen() {
             )}
 
             {errorMessage && (
-              <p className="mt-3.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-[9px] px-3 py-2">
+              <p className="mt-3.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-[9px] px-3 py-2 text-center">
                 {errorMessage}
               </p>
             )}
           </div>
 
           {/* Footer Attribution & Access Notice */}
-          <div className="mt-6 pt-4 border-t border-[#E2DDD4] flex flex-col items-start gap-2 select-none">
-            <div className="login-editorial-meta inline-flex items-center gap-2 text-[#6B6760]">
+          <div className="mt-6 pt-4 border-t border-[#E2DDD4] flex flex-col items-center text-center gap-2 select-none">
+            <div className="login-editorial-meta inline-flex items-center justify-center gap-2 text-[#6B6760]">
               <span className="font-normal">Powered by</span>
               <img
                 src="/argus-logo.png"
@@ -210,10 +209,10 @@ export function LoginScreen() {
                 style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
               />
             </div>
-            <div className="login-editorial-note flex items-start gap-1.5 text-[#78746C]">
-              <Shield size={12} className="text-[#8A857C] flex-shrink-0 mt-[2.5px]" />
+            <p className="login-editorial-note text-[#78746C] text-center">
+              <Shield size={12} className="inline-block align-middle mr-1.5 -mt-[2px] text-[#8A857C]" />
               <span>Access is limited to accounts registered by your administrator</span>
-            </div>
+            </p>
           </div>
         </div>
       </div>
