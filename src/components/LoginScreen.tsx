@@ -74,7 +74,7 @@ export function LoginScreen() {
       <style>{LOGIN_FONT_STYLES}</style>
 
       {/* Left Industrial Panel — 55% desktop / 48% tablet / compact header on mobile */}
-      <div className="relative w-full h-[220px] sm:h-[260px] md:h-auto md:w-[48%] lg:w-[55%] md:min-h-screen overflow-hidden flex flex-col justify-between bg-[#141619] select-none shrink-0">
+      <div className="relative w-full h-[240px] sm:h-[270px] md:h-auto md:w-[48%] lg:w-[55%] md:min-h-screen overflow-hidden flex flex-col justify-between bg-[#141619] select-none shrink-0">
         {/* Original CNC Machining Photograph — Primary visual feature */}
         <img
           src="/cnc-machining-bg.jpg"
@@ -100,14 +100,16 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/22 to-transparent pointer-events-none"
         />
 
-        {/* Center: ARGUS CNC signature (2in wide, centered in the panel) */}
+        {/* Center: ARGUS CNC signature (2in wide, centered in the panel with crisp dark translucent surface) */}
         <div className="absolute inset-0 z-10 flex items-center justify-center px-5 pointer-events-none">
-          <img
-            src="/argus-logo-white.png"
-            alt="ARGUS CNC"
-            style={{ width: '2in' }}
-            className="max-w-full h-auto object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]"
-          />
+          <div className="inline-flex items-center justify-center rounded-lg bg-[#101215]/75 backdrop-blur-[8px] border border-white/[0.12] px-5 py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)]">
+            <img
+              src="/argus-logo-white.png"
+              alt="ARGUS CNC"
+              style={{ width: '2in' }}
+              className="max-w-full h-auto object-contain"
+            />
+          </div>
         </div>
 
         {/* Top-Left: ARGUS Business Intelligence Logo */}
