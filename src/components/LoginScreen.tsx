@@ -106,7 +106,7 @@ export function LoginScreen() {
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC"
-              className="w-[116px] sm:w-[132px] md:w-[138px] lg:w-[152px] xl:w-[164px] max-w-full h-auto object-contain"
+              className="w-[128px] sm:w-[145px] md:w-[152px] lg:w-[167px] xl:w-[180px] max-w-full h-auto object-contain"
             />
           </div>
         </div>
