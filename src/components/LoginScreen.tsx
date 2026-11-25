@@ -42,22 +42,22 @@ export function LoginScreen() {
         {/* Subtle warm industrial ambient glow */}
         <div className="absolute w-[450px] h-[450px] bg-brand-500/15 rounded-full blur-[140px] pointer-events-none" />
 
-        {/* Top Left: First Logo (Argus Business Intelligence) only */}
+        {/* Top Left: Sleek Application Brand (Argus Business Intelligence) */}
         <div className="relative z-10">
           <img
             src="/argus-bi-logo.svg"
             alt="Argus Business Intelligence"
-            className="h-24 sm:h-28 w-auto max-w-full object-contain drop-shadow-2xl"
+            className="h-10 sm:h-11 w-auto max-w-full object-contain drop-shadow-lg transition-transform duration-200 hover:scale-[1.02]"
           />
         </div>
 
-        {/* Center: Second Logo (ARGUS CNC) in the middle */}
+        {/* Center: Prominent Flagship Hallmark (ARGUS CNC) */}
         <div className="relative z-10 my-auto self-center">
-          <div className="bg-white/95 backdrop-blur-xl px-9 py-5 sm:px-12 sm:py-6 rounded-2xl shadow-2xl border border-white/60 flex items-center justify-center transition-all duration-300 hover:scale-105 hover:shadow-brand-500/25">
+          <div className="bg-white/95 backdrop-blur-xl px-8 py-4 sm:px-10 sm:py-5 rounded-2xl shadow-2xl shadow-black/40 border border-white/70 flex items-center justify-center transition-all duration-300 hover:scale-[1.03] hover:shadow-brand-500/20">
             <img
               src="/argus-logo.png"
               alt="ARGUS CNC - Creating Future Factories"
-              className="h-12 sm:h-14 w-auto max-w-full object-contain"
+              className="h-11 sm:h-12 w-auto max-w-full object-contain"
             />
           </div>
         </div>
@@ -70,17 +70,17 @@ export function LoginScreen() {
       <div className="flex-1 flex items-center justify-center bg-slate-50 px-6 py-12 lg:px-12">
         <div className="w-full max-w-sm">
           {/* Mobile Only: Top Logo and Second Logo */}
-          <div className="lg:hidden mb-8 flex flex-col items-center gap-4">
+          <div className="lg:hidden mb-8 flex flex-col items-center gap-3">
             <img
               src="/argus-bi-logo.svg"
               alt="Argus Business Intelligence"
-              className="h-16 w-auto max-w-full object-contain drop-shadow-md"
+              className="h-11 w-auto max-w-full object-contain drop-shadow-md"
             />
-            <div className="bg-white/95 px-6 py-3 rounded-xl shadow-md border border-slate-200/80">
+            <div className="bg-white/95 px-6 py-2.5 rounded-xl shadow-md border border-slate-200/80">
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-8 w-auto object-contain"
+                className="h-7 w-auto object-contain"
               />
             </div>
           </div>
