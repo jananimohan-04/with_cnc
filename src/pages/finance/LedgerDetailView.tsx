@@ -3,11 +3,18 @@ import {
   ArrowLeft, ArrowDownRight, ArrowUpRight, Calendar, Download, Eye, FileDown,
   FileSpreadsheet, Printer, Search, Building2, Layers, CheckCircle2, Clock, AlertCircle
 } from 'lucide-react';
-import { type LedgerLine, type Settlement, dmy, drCr, statementFor, stripStamp } from '@/lib/ledgerDashboard';
+import { type LedgerLine, type Settlement, dmy, drCr, nameKey, statementFor, stripStamp } from '@/lib/ledgerDashboard';
 import { type PivotGroupBy } from './LedgerPivotView';
 import { formatINR } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { addRoundedLogo } from '@/lib/brandedDocument';
+
+const monthLabel = (ym: string) => {
+  if (!ym || ym === 'Unknown') return 'Unknown Date';
+  const [yy, mm] = ym.split('-');
+  const d = new Date(Number(yy), Number(mm) - 1, 1);
+  return Number.isNaN(d.getTime()) ? ym : d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+};
 
 const money = (n: number) => (n ? formatINR(n, { decimals: 'always', symbol: false }) : '0.00');
 const btn = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg shadow-2xs hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] transition disabled:opacity-40';
@@ -40,23 +47,25 @@ export function LedgerDetailView({
   const [search, setSearch] = useState('');
 
   const isParty = group.type === 'party';
+  const partyLookup = group.value === '(no party)' ? '' : group.value;
 
   // For a party group, compute true opening, chronological running balances, and closing
   const partyStatement = useMemo(() => {
     if (!isParty) return null;
-    return statementFor(allLines, group.value, from || undefined, to || undefined);
-  }, [isParty, allLines, group.value, from, to]);
+    return statementFor(allLines, partyLookup, from || undefined, to || undefined);
+  }, [isParty, allLines, partyLookup, from, to]);
 
   // For non-party groups (e.g. Particulars or Month), filter matching lines
   const genericLines = useMemo(() => {
     if (isParty) return [];
+    const target = group.value.trim().toLowerCase();
     return allLines.filter(l => {
       if (group.type === 'particulars') {
         const p = (l.particulars || 'Other').trim().toLowerCase();
-        if (p !== group.value.toLowerCase()) return false;
+        if (p !== target) return false;
       } else if (group.type === 'month') {
         const ym = l.date ? l.date.slice(0, 7) : 'Unknown';
-        if (ym !== group.value) return false;
+        if (ym !== group.value && monthLabel(ym).toLowerCase() !== target) return false;
       }
       if (from && l.date && l.date < from) return false;
       if (to && l.date && l.date > to) return false;
@@ -115,9 +124,9 @@ export function LedgerDetailView({
   // Detect ledger type if party
   const partyType = useMemo(() => {
     if (!isParty) return group.type === 'particulars' ? 'Category' : 'Period';
-    const sample = allLines.find(l => l.party.toLowerCase() === group.value.toLowerCase() && l.ledgerType);
+    const sample = allLines.find(l => nameKey(l.party) === nameKey(partyLookup) && l.ledgerType);
     return sample?.ledgerType || (summary.closing > 0 ? 'Customer' : summary.closing < 0 ? 'Supplier' : 'Party');
-  }, [isParty, allLines, group.value, group.type, summary.closing]);
+  }, [isParty, allLines, partyLookup, group.type, summary.closing]);
 
   // Export CSV
   const handleExportCsv = () => {

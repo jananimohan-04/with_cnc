@@ -199,6 +199,10 @@ export function LedgerPivotView({
     }
   };
 
+  const selectGroup = (g: { key: string; label: string }) => {
+    onSelectGroup({ type: groupBy, value: groupBy === 'party' ? g.label : g.key, label: g.label });
+  };
+
   // Change sort column
   const handleSort = (key: 'label' | 'entries' | 'debit' | 'credit' | 'balance') => {
     if (sortKey === key) {
@@ -492,7 +496,7 @@ export function LedgerPivotView({
                       <td className="px-2.5 py-2 text-center" onClick={e => e.stopPropagation()}>
                         <button
                           type="button"
-                          onClick={() => onSelectGroup({ type: groupBy, value: g.label, label: g.label })}
+                          onClick={() => selectGroup(g)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold text-orange-600 hover:text-white hover:bg-orange-600 bg-orange-50 border border-orange-200 hover:border-orange-600 transition shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
                           title={`Open detailed statement for ${g.label}`}
                         >
@@ -514,7 +518,7 @@ export function LedgerPivotView({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => onSelectGroup({ type: groupBy, value: g.label, label: g.label })}
+                                onClick={() => selectGroup(g)}
                                 className="text-xs font-bold text-orange-600 hover:text-orange-700 underline inline-flex items-center gap-1 cursor-pointer"
                               >
                                 Open Full Detail Page →
