@@ -23,7 +23,7 @@ const LOGIN_FONT_STYLES = `
 
 .login-editorial-heading {
   font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-size: 1.875rem;
+  font-size: 1.625rem;
   line-height: 1.15;
   letter-spacing: -0.025em;
   font-weight: 700;
@@ -31,17 +31,17 @@ const LOGIN_FONT_STYLES = `
 
 @media (min-width: 1024px) {
   .login-editorial-heading {
-    font-size: 2.0625rem;
+    font-size: 1.875rem;
   }
 }
 
 .login-editorial-desc {
-  font-size: 0.9375rem;
-  line-height: 1.55;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .login-editorial-btn {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   line-height: 1.25;
 }
 
@@ -74,7 +74,7 @@ export function LoginScreen() {
       <style>{LOGIN_FONT_STYLES}</style>
 
       {/* Left Industrial Panel — 55% desktop / 48% tablet / compact header on mobile */}
-      <div className="relative w-full h-[250px] sm:h-[290px] md:h-auto md:w-[48%] lg:w-[55%] md:min-h-screen overflow-hidden flex flex-col justify-between bg-[#141619] select-none shrink-0">
+      <div className="relative w-full h-[220px] sm:h-[260px] md:h-auto md:w-[48%] lg:w-[55%] md:min-h-screen overflow-hidden flex flex-col justify-between bg-[#141619] select-none shrink-0">
         {/* Original CNC Machining Photograph — Primary visual feature */}
         <img
           src="/cnc-machining-bg.jpg"
@@ -119,33 +119,30 @@ export function LoginScreen() {
         </div>
       </div>
 
-      {/* Right Authentication Panel — 45% desktop / 52% tablet / warm off-white surface */}
-      <div className="flex-1 md:w-[52%] lg:w-[45%] flex flex-col justify-start md:justify-center bg-[#F7F5F2] border-t md:border-t-0 md:border-l border-[#E2DDD4] px-6 sm:px-10 md:pl-10 md:pr-8 lg:pl-14 lg:pr-10 xl:pl-20 xl:pr-12 pt-10 pb-[max(2.5rem,var(--safe-area-inset-bottom,0px))] md:py-12">
-        <div className="w-full max-w-[380px] mx-auto md:mx-0">
-          {/* Restrained CNC orange architectural mark */}
-          <div aria-hidden="true" className="w-8 h-[2.5px] bg-[#FF6600] mb-5" />
-
+      {/* Right Authentication Panel — 45% desktop / 52% tablet / compact warm off-white surface */}
+      <div className="flex-1 md:w-[52%] lg:w-[45%] flex flex-col justify-start md:justify-center bg-[#F7F5F2] border-t md:border-t-0 md:border-l border-[#E2DDD4] px-6 sm:px-10 md:pl-9 md:pr-8 lg:pl-12 lg:pr-10 xl:pl-16 xl:pr-12 pt-8 pb-[max(2rem,var(--safe-area-inset-bottom,0px))] md:py-10">
+        <div className="w-full max-w-[356px] mx-auto md:mx-0">
           <div>
             <h2 className="login-editorial-heading text-[#18181B]">
               Welcome Back
             </h2>
-            <p className="login-editorial-desc mt-2.5 text-[#5C5954] font-normal">
+            <p className="login-editorial-desc mt-1.5 text-[#5C5954] font-normal">
               Sign in to your Argus Business Intelligence account
             </p>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-6">
             {!isLocalDev && (
               <button
                 type="button"
                 onClick={handleGoogle}
                 disabled={loading}
-                className="login-editorial-btn w-full h-12 flex items-center justify-center gap-3 bg-white hover:bg-[#FCFBF9] border border-[#DBD7CE] hover:border-[#B9B3A8] rounded-[10px] px-5 font-semibold text-[#1F2328] shadow-[0_1px_2px_rgba(24,24,27,0.04)] hover:shadow-[0_4px_12px_rgba(24,24,27,0.06)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6600]/35 focus-visible:border-[#FF6600] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+                className="login-editorial-btn w-full h-11 flex items-center justify-center gap-2.5 bg-white hover:bg-[#FCFBF9] border border-[#DBD7CE] hover:border-[#B9B3A8] rounded-[9px] px-4 font-semibold text-[#1F2328] shadow-[0_1px_2px_rgba(24,24,27,0.04)] hover:shadow-[0_4px_12px_rgba(24,24,27,0.06)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6600]/35 focus-visible:border-[#FF6600] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
               >
                 {loading ? (
-                  <span className="w-5 h-5 border-2 border-[#D6D2CA] border-t-[#FF6600] rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-[#D6D2CA] border-t-[#FF6600] rounded-full animate-spin" />
                 ) : (
-                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                  <svg className="w-[18px] h-[18px] flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -158,7 +155,7 @@ export function LoginScreen() {
 
             {isLocalDev && (
               <form
-                className="rounded-[10px] border border-dashed border-amber-300 bg-amber-50/60 p-4"
+                className="rounded-[9px] border border-dashed border-amber-300 bg-amber-50/60 p-3.5"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void signInWithPassword(devEmail.trim(), devPassword);
@@ -175,7 +172,7 @@ export function LoginScreen() {
                   value={devEmail}
                   onChange={(e) => setDevEmail(e.target.value)}
                   autoComplete="username"
-                  className="mt-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                  className="mt-2.5 w-full rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
                 />
                 <input
                   type="password"
@@ -183,12 +180,12 @@ export function LoginScreen() {
                   onChange={(e) => setDevPassword(e.target.value)}
                   autoComplete="current-password"
                   placeholder="Password"
-                  className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                  className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
                 />
                 <button
                   type="submit"
                   disabled={loading || !devPassword}
-                  className="mt-3 w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                  className="mt-2.5 w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                 >
                   Sign in with password
                 </button>
@@ -196,25 +193,25 @@ export function LoginScreen() {
             )}
 
             {errorMessage && (
-              <p className="mt-4 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-[10px] px-3.5 py-2.5">
+              <p className="mt-3.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-[9px] px-3 py-2">
                 {errorMessage}
               </p>
             )}
           </div>
 
           {/* Footer Attribution & Access Notice */}
-          <div className="mt-9 pt-6 border-t border-[#E2DDD4] flex flex-col items-start gap-2.5 select-none">
+          <div className="mt-6 pt-4 border-t border-[#E2DDD4] flex flex-col items-start gap-2 select-none">
             <div className="login-editorial-meta inline-flex items-center gap-2 text-[#6B6760]">
               <span className="font-normal">Powered by</span>
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
                 className="inline-block object-contain opacity-90 hover:opacity-100 transition-opacity"
-                style={{ height: '20px', maxHeight: '20px', width: 'auto' }}
+                style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
               />
             </div>
-            <div className="login-editorial-note flex items-start gap-2 text-[#78746C]">
-              <Shield size={13} className="text-[#8A857C] flex-shrink-0 mt-[2.5px]" />
+            <div className="login-editorial-note flex items-start gap-1.5 text-[#78746C]">
+              <Shield size={12} className="text-[#8A857C] flex-shrink-0 mt-[2.5px]" />
               <span>Access is limited to accounts registered by your administrator</span>
             </div>
           </div>
