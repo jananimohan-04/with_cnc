@@ -25,69 +25,76 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 font-sans selection:bg-brand-500 selection:text-white">
-      {/* Left — Cinematic CNC Machining Background with Unified Brand Emblem */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-start items-start p-10 lg:p-12 xl:p-14">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[#F8FAFC] font-sans selection:bg-brand-500 selection:text-white">
+      {/* Left — Cinematic CNC Machining Showcase with Refined Industrial Brand Identity */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-10 lg:p-12 xl:p-14 select-none">
         {/* Real CNC Machining Background Photo */}
         <img
           src="/cnc-machining-bg.jpg"
           alt="CNC Machining"
-          className="absolute inset-0 w-full h-full object-cover object-center scale-105"
+          className="absolute inset-0 w-full h-full object-cover object-center scale-[1.02] transition-transform duration-1000 ease-out"
         />
 
-        {/* Cinematic dark gradient overlays for professional depth */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/90 via-slate-950/65 to-slate-900/75" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60" />
+        {/* Sophisticated dark overlays for depth, contrast, and industrial mood */}
+        <div className="absolute inset-0 bg-slate-950/85" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-950/70 to-slate-900/60" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/75" />
 
-        {/* Subtle warm industrial ambient glow */}
-        <div className="absolute w-[450px] h-[450px] bg-brand-500/15 rounded-full blur-[140px] pointer-events-none" />
+        {/* Warm industrial amber ambient backglow behind the hallmark */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[340px] bg-gradient-to-r from-orange-600/15 via-amber-500/15 to-orange-500/10 rounded-full blur-[130px] pointer-events-none" />
 
-        {/* Top Left: Application Brand (Argus Business Intelligence) */}
+        {/* Upper-Left: Integrated ARGUS Business Intelligence Brand */}
         <div className="relative z-10">
           <img
             src="/argus-bi-logo.svg"
             alt="Argus Business Intelligence"
-            className="h-16 sm:h-20 w-auto max-w-full object-contain drop-shadow-xl transition-transform duration-200 hover:scale-[1.02]"
+            className="h-12 sm:h-14 w-auto max-w-full object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-300 hover:scale-[1.01]"
           />
         </div>
 
-        {/* Center: Prominent Flagship Hallmark (ARGUS CNC) */}
+        {/* Center: Primary Brand Focus — ARGUS CNC on Refined Glass Surface */}
         <div className="relative z-10 my-auto self-center">
-          <div className="bg-white/95 backdrop-blur-xl px-10 py-5 sm:px-14 sm:py-7 rounded-2xl shadow-2xl shadow-black/50 border border-white/70 flex items-center justify-center transition-all duration-300 hover:scale-[1.02] hover:shadow-brand-500/25">
-            <img
-              src="/argus-logo.png"
-              alt="ARGUS CNC - Creating Future Factories"
-              className="h-16 sm:h-20 lg:h-24 w-auto max-w-full object-contain"
-            />
+          <div className="relative group">
+            {/* Ambient luminous glow behind the glass surface */}
+            <div className="absolute -inset-1.5 bg-gradient-to-r from-orange-500/20 via-amber-400/25 to-brand-500/20 rounded-3xl blur-2xl opacity-60 group-hover:opacity-90 transition duration-500" />
+
+            {/* Subtle, premium glass-style surface with soft lighting */}
+            <div className="relative bg-gradient-to-b from-white/95 via-white/90 to-white/85 backdrop-blur-2xl px-12 py-6 sm:px-16 sm:py-7 rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7),0_0_35px_rgba(254,97,2,0.08)] border border-white/60 flex items-center justify-center transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_30px_70px_-12px_rgba(0,0,0,0.75),0_0_45px_rgba(254,97,2,0.15)]">
+              <img
+                src="/argus-logo.png"
+                alt="ARGUS CNC"
+                className="h-14 sm:h-16 lg:h-18 w-auto max-w-full object-contain"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Bottom spacer for balanced centering */}
-        <div className="relative z-10 h-10 invisible" />
+        {/* Bottom anchor matching upper-left height for optical vertical centering */}
+        <div className="relative z-10 h-14 invisible" />
       </div>
 
       {/* Right — Clean Enterprise Sign-in Form */}
-      <div className="flex-1 flex items-center justify-center bg-slate-50 px-6 py-12 lg:px-12">
-        <div className="w-full max-w-sm">
+      <div className="flex-1 flex items-center justify-center bg-[#F8FAFC] border-l border-slate-200/60 px-6 py-12 lg:px-14 xl:px-16">
+        <div className="w-full max-w-sm sm:max-w-md bg-white rounded-2xl border border-slate-200/80 p-8 sm:p-10 shadow-[0_10px_35px_-10px_rgba(15,23,42,0.06),0_1px_3px_rgba(15,23,42,0.04)]">
           {/* Mobile Only: Top Logo and Second Logo */}
           <div className="lg:hidden mb-8 flex flex-col items-center gap-3">
             <img
               src="/argus-bi-logo.svg"
               alt="Argus Business Intelligence"
-              className="h-14 w-auto max-w-full object-contain drop-shadow-md"
+              className="h-12 w-auto max-w-full object-contain drop-shadow-sm"
             />
-            <div className="bg-white/95 px-7 py-3 rounded-xl shadow-md border border-slate-200/80">
+            <div className="bg-slate-50 px-6 py-2.5 rounded-xl border border-slate-200/80 shadow-xs">
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="h-9 w-auto object-contain"
+                className="h-7 w-auto object-contain"
               />
             </div>
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome Back</h2>
-            <p className="text-sm text-slate-500 mt-1.5">Sign in to your Argus Business Intelligence account</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Welcome Back</h2>
+            <p className="text-sm text-slate-500 mt-2 font-normal leading-relaxed">Sign in to your Argus Business Intelligence account</p>
           </div>
 
           {!isLocalDev && (
@@ -95,7 +102,7 @@ export function LoginScreen() {
               type="button"
               onClick={handleGoogle}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:border-brand-400 hover:shadow-lg hover:shadow-brand-100 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-700 transition-all active:scale-[0.98] disabled:opacity-70 group"
+              className="w-full h-12 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-5 text-sm font-semibold text-slate-700 shadow-xs hover:shadow-md transition-all duration-200 active:scale-[0.99] disabled:opacity-70 cursor-pointer group"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-slate-300 border-t-brand-600 rounded-full animate-spin" />
@@ -113,7 +120,7 @@ export function LoginScreen() {
 
           {isLocalDev && (
             <form
-              className="mt-6 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/60 p-4"
+              className="mt-6 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/60 p-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 void signInWithPassword(devEmail.trim(), devPassword);
@@ -130,7 +137,7 @@ export function LoginScreen() {
                 value={devEmail}
                 onChange={(e) => setDevEmail(e.target.value)}
                 autoComplete="username"
-                className="mt-3 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                className="mt-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
               />
               <input
                 type="password"
@@ -138,12 +145,12 @@ export function LoginScreen() {
                 onChange={(e) => setDevPassword(e.target.value)}
                 autoComplete="current-password"
                 placeholder="Password"
-                className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+                className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={loading || !devPassword}
-                className="mt-3 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-60"
+                className="mt-3 w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
               >
                 Sign in with password
               </button>
@@ -156,17 +163,17 @@ export function LoginScreen() {
             </p>
           )}
 
-          <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-            <div className="inline-flex items-center justify-center gap-1.5 select-none text-[11px] text-slate-400">
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-2 select-none text-center">
+            <div className="inline-flex items-center justify-center gap-1.5 text-xs text-slate-400">
               <span className="font-normal text-slate-400">Powered by</span>
               <img
                 src="/argus-logo.png"
                 alt="ARGUS CNC"
-                className="inline-block object-contain opacity-70 hover:opacity-100 transition-opacity"
-                style={{ height: '18px', maxHeight: '18px', width: 'auto' }}
+                className="inline-block object-contain opacity-75 hover:opacity-100 transition-opacity"
+                style={{ height: '20px', maxHeight: '20px', width: 'auto' }}
               />
             </div>
-            <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-400/80">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400/80">
               <Shield size={11} className="text-slate-400/80 flex-shrink-0" />
               <span>Access is limited to accounts registered by your administrator</span>
             </div>
