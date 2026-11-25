@@ -100,20 +100,22 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/22 to-transparent pointer-events-none"
         />
 
-        {/* Header: ARGUS CNC signature (2in wide, centered) + ARGUS Business Intelligence Logo */}
+        {/* Center: ARGUS CNC signature (2in wide, centered in the panel) */}
+        <div className="absolute inset-0 z-10 flex items-center justify-center px-5 pointer-events-none">
+          <img
+            src="/argus-logo-white.png"
+            alt="ARGUS CNC"
+            style={{ width: '2in' }}
+            className="max-w-full h-auto object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]"
+          />
+        </div>
+
+        {/* Top-Left: ARGUS Business Intelligence Logo */}
         <div className="relative z-10 px-5 sm:px-7 md:px-6 lg:px-7 xl:px-10 pt-[max(1.25rem,var(--safe-area-inset-top,0px))] md:pt-8 lg:pt-9 xl:pt-10">
-          <div className="flex justify-center">
-            <img
-              src="/argus-logo-white.png"
-              alt="ARGUS CNC"
-              style={{ width: '2in' }}
-              className="max-w-full h-auto object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)]"
-            />
-          </div>
           <img
             src="/argus-bi-logo-white.svg"
             alt="Argus Business Intelligence"
-            className="mt-4 sm:mt-5 md:mt-5 lg:mt-6 xl:mt-7 h-11 sm:h-12 md:h-14 lg:h-16 xl:h-[78px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
+            className="h-11 sm:h-12 md:h-14 lg:h-16 xl:h-[78px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
           />
         </div>
       </div>
