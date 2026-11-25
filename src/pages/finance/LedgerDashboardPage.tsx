@@ -293,7 +293,7 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                 }`}
               >
                 <LayoutGrid size={13} />
-                Pivot Table (Summary)
+                Summary
               </button>
               <button
                 type="button"
