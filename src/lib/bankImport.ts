@@ -188,13 +188,26 @@ export const STANDARD_TYPES: EntryType[] = [
   { id: 't-unknown', name: 'UNKNOWN', direction: 'ANY', ledgerId: '' },
 ];
 const DEFAULT_TYPES = STANDARD_TYPES;
+export function normalizeTypes(raw: unknown): EntryType[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .filter((t): t is EntryType => Boolean(t && typeof (t as EntryType).id === 'string' && typeof (t as EntryType).name === 'string'))
+    .map(t => ({
+      id: t.id,
+      name: t.name.trim(),
+      direction: t.direction === 'IN' || t.direction === 'OUT' ? t.direction : 'ANY',
+      ledgerId: typeof t.ledgerId === 'string' ? t.ledgerId : '',
+    }));
+}
+export function hasLocalTypes(cid: string | null | undefined): boolean {
+  try { return localStorage.getItem(KEY('types', cid)) !== null; } catch { return false; }
+}
 export function loadTypes(cid: string | null | undefined): EntryType[] {
   try {
     const raw = localStorage.getItem(KEY('types', cid));
     if (raw === null) return DEFAULT_TYPES;
-    const a = JSON.parse(raw);
-    if (!Array.isArray(a)) return DEFAULT_TYPES;
-    const list: EntryType[] = a.filter((t: EntryType) => t && typeof t.id === 'string' && typeof t.name === 'string');
+    const list = normalizeTypes(JSON.parse(raw));
+    if (!list) return DEFAULT_TYPES;
     // older lists get the standard Types once, so the Type column can be filled in automatically
     if (localStorage.getItem(KEY('types-std', cid)) !== '1') {
       const have = new Set(list.map(t => t.name.trim().toLowerCase()));
@@ -216,16 +229,19 @@ export function saveTypes(cid: string | null | undefined, t: EntryType[]): boole
 /** A named party that is not a customer or supplier. INTERNAL = your own accounts (e.g. a loan or OD account). */
 export interface Other { name: string; /** the name of one of the Types */ kind: string }
 
+export function normalizeOthers(raw: unknown): Other[] {
+  if (!Array.isArray(raw)) return [];
+  // older versions stored plain names; they become OTHERS
+  return raw.flatMap((x: unknown): Other[] => {
+    if (typeof x === 'string') return x.trim() ? [{ name: x.trim(), kind: 'OTHERS' }] : [];
+    const o = x as { name?: unknown; kind?: unknown };
+    return o && typeof o.name === 'string' && o.name.trim() ? [{ name: o.name.trim(), kind: typeof o.kind === 'string' && o.kind.trim() ? o.kind.trim() : 'OTHERS' }] : [];
+  });
+}
+
 export function loadOthers(cid: string | null | undefined): Other[] {
   try {
-    const a = JSON.parse(localStorage.getItem(KEY('others', cid)) || '[]');
-    if (!Array.isArray(a)) return [];
-    // older versions stored plain names; they become OTHERS
-    return a.flatMap((x: unknown): Other[] => {
-      if (typeof x === 'string') return x.trim() ? [{ name: x.trim(), kind: 'OTHERS' }] : [];
-      const o = x as { name?: unknown; kind?: unknown };
-      return o && typeof o.name === 'string' && o.name.trim() ? [{ name: o.name.trim(), kind: typeof o.kind === 'string' && o.kind.trim() ? o.kind.trim() : 'OTHERS' }] : [];
-    });
+    return normalizeOthers(JSON.parse(localStorage.getItem(KEY('others', cid)) || '[]'));
   } catch { return []; }
 }
 export function saveOthers(cid: string | null | undefined, o: Other[]): boolean {

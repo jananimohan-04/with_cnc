@@ -14,7 +14,7 @@ import { xlsxToTsv } from '@/lib/xlsxRead';
 import { supabase } from '@/lib/supabase';
 import { suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
-  applyTypeDefaults, loadOthers, loadTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
+  applyTypeDefaults, hasLocalTypes, loadOthers, loadTypes, normalizeOthers, normalizeTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
 } from '@/lib/bankImport';
 import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
@@ -152,6 +152,60 @@ export function BankEntryPage() {
   const [existing, setExisting] = useState<BankRow[]>([]);
   const [modal, setModal] = useState<null | 'banks' | 'types' | 'others' | 'manual'>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const syncSeqRef = useRef(0);
+
+  const syncBankSettings = useCallback(async (companyId: string | null) => {
+    const reqId = ++syncSeqRef.current;
+    const fallbackTypes = loadTypes(companyId);
+    const fallbackOthers = loadOthers(companyId);
+    setTypes(fallbackTypes);
+    setOthers(fallbackOthers);
+    if (!companyId) return;
+    try {
+      const db = await financeApi.getBankSettings();
+      if (syncSeqRef.current !== reqId) return;
+      let nextTypes = fallbackTypes;
+      let nextOthers = fallbackOthers;
+      const patch: { types?: EntryType[]; others?: Other[] } = {};
+
+      if (db.types !== null) {
+        const parsed = normalizeTypes(db.types);
+        if (parsed) {
+          nextTypes = parsed;
+          saveTypes(companyId, nextTypes);
+        }
+      } else if (hasLocalTypes(companyId)) {
+        patch.types = fallbackTypes;
+      }
+
+      if (db.others !== null) {
+        nextOthers = normalizeOthers(db.others);
+        saveOthers(companyId, nextOthers);
+      } else if (fallbackOthers.length > 0) {
+        patch.others = fallbackOthers;
+      }
+
+      if (patch.types !== undefined || patch.others !== undefined) {
+        await financeApi.saveBankSettings(patch).catch(() => {});
+      }
+      if (syncSeqRef.current === reqId) {
+        setTypes(nextTypes);
+        setOthers(nextOthers);
+      }
+    } catch {
+      // Keep browser cache fallback if company settings table/RPC is unavailable
+    }
+  }, []);
+
+  const openTypes = useCallback(() => {
+    void syncBankSettings(cid);
+    setModal('types');
+  }, [cid, syncBankSettings]);
+
+  const openOthers = useCallback(() => {
+    void syncBankSettings(cid);
+    setModal('others');
+  }, [cid, syncBankSettings]);
 
   const { setHeader, setTabActions } = useHeaderKpis();
 
@@ -162,8 +216,8 @@ export function BankEntryPage() {
     setTabActions(
       <div className="flex items-center gap-1.5">
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('banks')}><Landmark size={13} className="text-slate-500" /> Transaction Types</button>
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('types')}><Tags size={13} className="text-slate-500" /> Add Types</button>
-        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => { setOthers(loadOthers(cid)); setModal('others'); }}><Layers size={13} className="text-slate-500" /> Manage Types</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={openTypes}><Tags size={13} className="text-slate-500" /> Add Types</button>
+        <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={openOthers}><Layers size={13} className="text-slate-500" /> Manage Types</button>
         <button className="h-7 px-2.5 text-xs font-semibold rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer" onClick={() => setModal('manual')}><PenLine size={13} className="text-slate-500" /> Manual Entry</button>
       </div>
     );
@@ -171,7 +225,7 @@ export function BankEntryPage() {
       setHeader(null);
       setTabActions(null);
     };
-  }, [setHeader, setTabActions, cid]);
+  }, [setHeader, setTabActions, openTypes, openOthers]);
 
   // Registered companies (with GSTIN) and the two control ledgers, used to suggest each row's ledger and party.
   const [partyRefs, setPartyRefs] = useState<PartyRef[]>([]);
@@ -338,7 +392,7 @@ export function BankEntryPage() {
       setBankId(b => (b && o.accounts.some(a => a.id === b) ? b : ''));
     } catch (e) { setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not load bank accounts.' }); }
   }, []);
-  useEffect(() => { void loadOptions(); setTypes(loadTypes(cid)); setOthers(loadOthers(cid)); }, [cid, loadOptions]);
+  useEffect(() => { void loadOptions(); void syncBankSettings(cid); }, [cid, loadOptions, syncBankSettings]);
 
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   // how many saved rows to show: the page loads that many (newest first); "All" loads everything
@@ -625,8 +679,8 @@ export function BankEntryPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {topBtn(<Landmark size={14} />, 'Transaction Types', () => setModal('banks'))}
-            {topBtn(<Tags size={14} />, 'Add Types', () => setModal('types'))}
-            {topBtn(<Layers size={14} />, 'Manage Types', () => { setOthers(loadOthers(cid)); setModal('others'); })}
+            {topBtn(<Tags size={14} />, 'Add Types', openTypes)}
+            {topBtn(<Layers size={14} />, 'Manage Types', openOthers)}
             {topBtn(<PenLine size={14} />, 'Manual Entry', () => setModal('manual'))}
           </div>
         </div>
@@ -923,13 +977,31 @@ export function BankEntryPage() {
       />
       <ManageBanks open={modal === 'banks'} onClose={() => setModal(null)} accounts={options?.accounts ?? []} canManage={!!options?.can_manage} onChanged={() => loadOptions()} />
       <ManageTypes open={modal === 'types'} onClose={() => setModal(null)} types={types} ledgers={[...incomeOpts, ...expenseOpts]}
-        onChange={(t, renamed) => {
-          if (!saveTypes(cid, t)) { setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); return; }
+        onChange={async (t, renamed) => {
+          const o2 = renamed ? others.map(o => (o.kind === renamed.from ? { ...o, kind: renamed.to } : o)) : others;
           setTypes(t);
-          if (renamed) { const o2 = others.map(o => (o.kind === renamed.from ? { ...o, kind: renamed.to } : o)); if (saveOthers(cid, o2)) setOthers(o2); }
+          saveTypes(cid, t);
+          if (renamed) {
+            setOthers(o2);
+            saveOthers(cid, o2);
+          }
+          if (cid) {
+            try {
+              await financeApi.saveBankSettings({ types: t, ...(renamed ? { others: o2 } : {}) });
+            } catch (e) {
+              setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not save types to your company.' });
+            }
+          }
         }} />
       <ManageOthers open={modal === 'others'} onClose={() => setModal(null)} others={others} typeNames={types.map(t => t.name)}
-        onSave={o => { if (saveOthers(cid, o)) { setOthers(o); setMsg({ kind: 'ok', text: 'Types saved.' }); } else setMsg({ kind: 'err', text: 'Could not save: browser storage is unavailable.' }); }} />
+        onSave={async o => {
+          if (cid) {
+            await financeApi.saveBankSettings({ others: o });
+          }
+          saveOthers(cid, o);
+          setOthers(o);
+          setMsg({ kind: 'ok', text: 'Types saved for your company.' });
+        }} />
 
       <EditRowModal
         row={editingRow}
@@ -1180,34 +1252,61 @@ function ManageTypes({ open, onClose, types, ledgers, onChange }: {
   );
 }
 
-function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: boolean; onClose: () => void; others: Other[]; typeNames: string[]; onSave: (o: Other[]) => void }) {
+function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: boolean; onClose: () => void; others: Other[]; typeNames: string[]; onSave: (o: Other[]) => Promise<void> | void }) {
   const [list, setList] = useState<Other[]>(others);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftKind, setDraftKind] = useState('OTHERS');
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { if (open) { setList(others); setEditing(null); setErr(''); } }, [open, others]);
-  const exists = (n: string, except?: string) => list.some(o => o.name.toLowerCase() === n.trim().toLowerCase() && o.name !== except);
+  useEffect(() => {
+    if (!open) { setDirty(false); setSaving(false); return; }
+    if (!dirty) { setList(others); setEditing(null); setErr(''); }
+  }, [open, others, dirty]);
+  const exists = (n: string, except?: string, items = list) => items.some(o => o.name.toLowerCase() === n.trim().toLowerCase() && o.name !== except);
 
   const add = () => {
     setErr('');
     if (!name.trim()) return setErr('Enter a party name.');
     if (!kind) return setErr('Select a type.');
     if (exists(name)) return setErr('A party with that name already exists.');
-    setList(l => [...l, { name: name.trim(), kind }]); setName(''); setKind('');
+    setList(l => [...l, { name: name.trim(), kind }]); setName(''); setKind(''); setDirty(true);
   };
   const startEdit = (o: Other) => { setEditing(o.name); setDraftName(o.name); setDraftKind(o.kind); setErr(''); };
   const commitEdit = () => {
     if (!draftName.trim()) return setErr('Enter a party name.');
     if (exists(draftName, editing ?? undefined)) return setErr('A party with that name already exists.');
-    setList(l => l.map(o => (o.name === editing ? { name: draftName.trim(), kind: draftKind } : o))); setEditing(null); setErr('');
+    setList(l => l.map(o => (o.name === editing ? { name: draftName.trim(), kind: draftKind } : o))); setEditing(null); setErr(''); setDirty(true);
+  };
+  const saveAll = async () => {
+    setErr('');
+    let nextList = list;
+    if (name.trim()) {
+      if (!kind) return setErr('Select a type for the company you typed (or clear Company name before saving).');
+      if (exists(name, undefined, nextList)) return setErr('A party with that name already exists.');
+      nextList = [...nextList, { name: name.trim(), kind }];
+      setList(nextList);
+      setName('');
+      setKind('');
+      setDirty(true);
+    }
+    setSaving(true);
+    try {
+      await onSave(nextList);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save types.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Manage Types" subtitle="Add payments, receipts and adjustments manually" size="lg"
-      footer={<><button className={btn} onClick={onClose}>Cancel</button><button className={btnPrimary} data-testid="others-save" onClick={() => { onSave(list); onClose(); }}>Save</button></>}>
+      footer={<><button className={btn} disabled={saving} onClick={onClose}>Cancel</button><button className={btnPrimary} disabled={saving} data-testid="others-save" onClick={() => void saveAll()}>{saving ? 'Saving…' : 'Save'}</button></>}>
       <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
         <input aria-label="New company name" className={`${inp} flex-1 min-w-[12rem]`} placeholder="Company name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
         <select aria-label="New company type" className={`${sel} w-44`} value={kind} onChange={e => setKind(e.target.value)}>
@@ -1230,7 +1329,7 @@ function ManageOthers({ open, onClose, others, typeNames, onSave }: { open: bool
               <>
                 <span className="flex-1 font-medium text-slate-800 uppercase tracking-wide">{o.name} <span className="text-slate-400 font-normal">—</span> <span className={`text-xs font-bold ${/^internal$/i.test(o.kind) ? 'text-sky-600' : 'text-slate-500'}`}>{o.kind}</span></span>
                 <button className={`${btn} !h-8`} aria-label={`Edit ${o.name}`} onClick={() => startEdit(o)}>Edit</button>
-                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${o.name}`} onClick={() => setList(l => l.filter(x => x.name !== o.name))}>Delete</button>
+                <button className={`${btn} !h-8 hover:!text-red-600`} aria-label={`Delete ${o.name}`} onClick={() => { setList(l => l.filter(x => x.name !== o.name)); setDirty(true); }}>Delete</button>
               </>
             )}
           </div>

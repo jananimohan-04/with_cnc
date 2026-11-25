@@ -70,7 +70,7 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="login-editorial min-h-screen w-full flex flex-col md:flex-row bg-[#F7F5F2] text-[#18181B] selection:bg-[#FF6600] selection:text-white">
+    <div className="login-editorial min-h-screen w-full flex flex-col md:flex-row bg-[#F7F5F2] text-[#18181B] selection:bg-[#FE6102] selection:text-white">
       <style>{LOGIN_FONT_STYLES}</style>
 
       {/* Left Industrial Panel — 55% desktop / 48% tablet / compact header on mobile */}
@@ -79,45 +79,52 @@ export function LoginScreen() {
         <img
           src="/cnc-machining-bg.jpg"
           alt="CNC Machining"
-          className="absolute inset-0 w-full h-full object-cover object-[53%_45%] md:object-[53%_center]"
+          className="absolute inset-0 w-full h-full object-cover object-[53%_42%] md:object-[54%_44%]"
         />
 
-        {/* Subtle charcoal-to-transparent edge gradients strictly for logo contrast */}
+        {/* Top-left contrast vignette for crisp Business Intelligence legibility without darkening the gear */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[34%] md:h-[26%] bg-gradient-to-b from-[#111316]/84 via-[#111316]/34 to-transparent pointer-events-none"
+          className="absolute inset-x-0 top-0 h-[44%] md:h-[34%] bg-gradient-to-b from-[#0B0E14]/90 via-[#0B0E14]/40 to-transparent pointer-events-none"
         />
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[40%] md:h-[28%] pointer-events-none"
+          className="hidden md:block absolute top-0 left-0 w-[62%] h-[36%] pointer-events-none"
           style={{
             background:
-              'linear-gradient(to top, rgba(16, 18, 21, 0.94) 0%, rgba(16, 18, 21, 0.7) 42%, rgba(16, 18, 21, 0.22) 75%, rgba(16, 18, 21, 0) 100%)',
+              'radial-gradient(ellipse at top left, rgba(11, 14, 20, 0.78) 0%, rgba(11, 14, 20, 0.36) 48%, rgba(11, 14, 20, 0) 78%)',
           }}
         />
         <div
           aria-hidden="true"
-          className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/22 to-transparent pointer-events-none"
+          className="absolute inset-x-0 bottom-0 h-[20%] md:h-[16%] pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(to top, rgba(13, 16, 20, 0.55) 0%, rgba(13, 16, 20, 0.18) 55%, rgba(13, 16, 20, 0) 100%)',
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/25 to-transparent pointer-events-none"
         />
 
-        {/* Center: ARGUS CNC signature (2in wide, centered in the panel with crisp dark translucent surface) */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center px-5 pointer-events-none">
-          <div className="inline-flex items-center justify-center rounded-lg bg-[#101215]/75 backdrop-blur-[8px] border border-white/[0.12] px-5 py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)]">
+        {/* Center: Compact ARGUS CNC signature pill anchored over the toolholder */}
+        <div className="absolute inset-0 z-10 flex items-center justify-center pt-10 md:pt-4 px-5 pointer-events-none">
+          <div className="inline-flex items-center justify-center rounded-lg bg-[#22252A]/90 backdrop-blur-[8px] border border-white/10 px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.52)]">
             <img
               src="/argus-logo-white.png"
               alt="ARGUS CNC"
-              style={{ width: '2in' }}
-              className="max-w-full h-auto object-contain"
+              className="w-[116px] sm:w-[132px] md:w-[138px] lg:w-[152px] xl:w-[164px] max-w-full h-auto object-contain"
             />
           </div>
         </div>
 
-        {/* Top-Left: ARGUS Business Intelligence Logo */}
-        <div className="relative z-10 px-5 sm:px-7 md:px-6 lg:px-7 xl:px-10 pt-[max(1.25rem,var(--safe-area-inset-top,0px))] md:pt-8 lg:pt-9 xl:pt-10">
+        {/* Top-Left: Bold ARGUS Business Intelligence Logo */}
+        <div className="relative z-10 px-5 sm:px-7 md:px-6 lg:px-8 xl:px-10 pt-[max(1.125rem,var(--safe-area-inset-top,0px))] md:pt-7 lg:pt-8 xl:pt-9">
           <img
             src="/argus-bi-logo-white.svg"
             alt="Argus Business Intelligence"
-            className="h-12 sm:h-[52px] md:h-[62px] lg:h-[72px] xl:h-[86px] w-auto max-w-full object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
+            className="h-[52px] sm:h-[60px] md:h-[72px] lg:h-[90px] xl:h-[104px] w-auto max-w-full object-contain drop-shadow-[0_3px_14px_rgba(0,0,0,0.72)]"
           />
         </div>
       </div>

@@ -8,6 +8,7 @@ export interface BankFilters { accounts:BankAccount[]; expense_accounts:{id:stri
 export interface BankRow { id:string; txn_no:string; txn_date:string; kind:string; direction:'IN'|'OUT'; account_id:string; account_name:string; contra_account_id?:string; party_type?:string; party_name?:string; customer_id?:string; supplier_id?:string; invoice_id?:string; receipt?:string|null; payment?:string|null; amount:string; mode?:string; reference_no?:string; description?:string; status:string; transfer_group?:string|null; balance?:string|null }
 export interface BankPageResult { total:number; page:number; page_size:number; rows:BankRow[] }
 export interface BankSummary { accounts:BankAccount[]; total_bank:string; total_cash:string; total_receipts:string; total_payments:string; pending_clearing:string; pending_count:number; receipts_vs_payments:{week:string;receipts:string;payments:string}[]; expense_by_category:{name:string;value:string}[] }
+export interface BankSettings { types: unknown[] | null; others: unknown[] | null }
 async function call<T>(name:string,args?:Record<string,unknown>):Promise<T>{const {data,error}=await supabase.rpc(name,args as never);if(error)throw new Error(error.message);return data as T}
 export const financeApi={
  invoices:(a:{type?:string|null;status?:string|null;customer?:string|null;search?:string;from?:string;to?:string;page?:number;pageSize?:number})=>call<InvoicePageResult>('erp_invoices',{p_type:a.type??null,p_status:a.status??null,p_customer:a.customer??null,p_search:a.search??null,p_from:a.from??null,p_to:a.to??null,p_page:a.page??1,p_page_size:a.pageSize??10}),
@@ -56,5 +57,7 @@ export const financeApi={
    }
    return data;
   }
- }
+ },
+ getBankSettings:()=>call<BankSettings>('erp_get_bank_settings'),
+ saveBankSettings:(s:{types?:unknown[];others?:unknown[]})=>call<BankSettings>('erp_save_bank_settings',{p_types:s.types??null,p_others:s.others??null}),
 };
