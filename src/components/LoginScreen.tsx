@@ -100,15 +100,11 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/25 to-transparent pointer-events-none"
         />
 
-        {/* Center: Compact original ARGUS CNC signature pill anchored over the toolholder */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center pt-12 md:pt-4 px-5 pointer-events-none">
-          <div className="inline-flex items-center justify-center rounded-lg bg-white border border-white px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)]">
-            <img
-              src="/argus-logo.png"
-              alt="ARGUS CNC"
-              className="w-[128px] sm:w-[145px] md:w-[152px] lg:w-[167px] xl:w-[180px] max-w-full h-auto object-contain"
-            />
-          </div>
+        {/* Bottom-left: the company mark, small and quiet (the product logo above is the main brand; on phones the
+            "Powered by" under the sign-in button shows it instead) */}
+        <div className="hidden md:flex absolute bottom-6 left-6 lg:left-8 xl:left-10 z-10 items-center gap-2 rounded-lg bg-white/90 backdrop-blur-sm px-2.5 py-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.35)] pointer-events-none">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B6760]">A product of</span>
+          <img src="/argus-logo.png" alt="ARGUS CNC" className="h-[18px] lg:h-5 w-auto object-contain" />
         </div>
 
         {/* Top-Left: Original ARGUS Business Intelligence Logo */}

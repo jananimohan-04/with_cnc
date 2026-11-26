@@ -155,6 +155,10 @@ function MainLayout() {
   const [displaySize] = useDisplaySize();   // Display size (50% – 145%): scales every page (the Kanban board has its own)
   useDisplaySizeShortcuts();                  // Ctrl + / Ctrl - / Ctrl 0
   const displayScale = scaleOf(displaySize);   // the real factor (the Kanban board's 100% is its compact look)
+  // The real window height (the desktop app's web view reports CSS screen-height units wrongly), used for the height
+  // limit of scrolling tables (index.css --table-max-h); divided by the page zoom because it applies inside the zoomed page.
+  const [winH, setWinH] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 900));
+  useEffect(() => { const f = () => setWinH(window.innerHeight); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useStickyTableHeads(mainRef, location.pathname);
   const pageRef = useRef<HTMLDivElement>(null);
   // User-chosen menu position (Left / Right / Top / Bottom) — persisted per user.
@@ -236,7 +240,7 @@ function MainLayout() {
         <main ref={mainRef} key={company?.id ?? 'all-companies'} className="flex-1 overflow-y-auto scrollbar-dark transition-[background] duration-500" style={{ background: getPageTheme(location.pathname).gradient }}>
           {/* Display size: the page content is scaled. useFitPage keeps this box exactly as tall as the screen, and the grid
               stretches the page inside it, so every page reaches the bottom at every size. */}
-          <div ref={pageRef} style={{ ...(displayScale !== 1 ? { zoom: displayScale } : {}), display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+          <div ref={pageRef} style={{ ...(displayScale !== 1 ? { zoom: displayScale } : {}), display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', ['--table-max-h' as string]: `${Math.max(320, Math.round((winH - 210) / (displayScale || 1)))}px` }}>
           <RequireModule module={moduleForPage(currentPage)}>
           <Routes>
             <Route path="/" element={<HomeRedirect />} />

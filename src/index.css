@@ -186,7 +186,8 @@
    could never stick to the page and scrolled away with the rows. The wrapper is given a height limit instead: the rows scroll
    inside it (and sideways too) while the column headings stay visible. Short tables keep their natural height. */
 :where(main) :is(.overflow-x-auto, .overflow-auto):has(> table) {
-  max-height: calc(100dvh - 210px);
+  /* --table-max-h: the measured window height (App.tsx); the desktop app's web view gets 100dvh wrong */
+  max-height: var(--table-max-h, calc(100dvh - 210px));
   overflow-y: auto;
 }
 

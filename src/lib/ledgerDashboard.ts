@@ -49,6 +49,7 @@ export const PAYMENT_WORDS: RegExp[] = [
   /internal\s*(fund\s*)?transfer|\bIFT\b/i, /\bch(e)?que\b|\bchq\b|\bby\s*clg\b|\bclearing\b/i, /demand\s*draft|\bDD\b/i,
   /net\s*banking|internet\s*banking/i, /mobile\s*banking|^\s*MB\//i, /\bwallet\b|paytm|phonepe|gpay|google\s*pay|amazon\s*pay/i,
   /payment\s*gateway|razorpay|payu|ccavenue|billdesk|cashfree/i, /auto\s*debit|\bmandate\b/i, /bulk\s*(transfer|payment|upload)/i, /\bother/i,
+  /petty\s*cash/i, /\bcash\b/i,   // petty cash and cash payments are payments too
 ];
 export const hasPaymentWord = (text: string | null | undefined): boolean => PAYMENT_WORDS.some(re => re.test(String(text ?? '')));
 
@@ -84,18 +85,55 @@ export const isPurchaseInward = (category: unknown) => PURCHASE_CATEGORIES.has(S
 
 /** A purchase inward is what we owe the supplier: a credit on the supplier's ledger. */
 export function fromInwards(rows: Record<string, unknown>[]): LedgerLine[] {
-  return rows.filter(r => String(r.status ?? '') !== 'Deleted').map(r => {
+  return rows.filter(r => String(r.status ?? '') !== 'Deleted').flatMap(r => {
     const direct = r.total_amount ?? r.total ?? r.amount;
     const q = num(r.quantity), p = num(r.price), d = num(r.discount_percent ?? r.discount), g = num(r.gst_percent ?? r.gst);
     const amount = direct !== undefined && direct !== null && direct !== '' ? num(direct) : q * p * (1 - d / 100) * (1 + g / 100);
     const bill = isPurchaseInward(r.category);
-    return {
+    const ref = String(r.reference_no || r.inward_no || '');
+    // Paid on the spot from petty cash (Inward > "Paid by petty cash"): that part of the bill is already paid.
+    // The petty amount is capped at the bill, like the Petty Cash page and the database do.
+    const pettyRaw = r.petty_amount;
+    const pettyPaid = bill && r.petty_cash === true
+      ? r2(Math.min(Math.max(pettyRaw !== undefined && pettyRaw !== null && String(pettyRaw).trim() !== '' ? num(pettyRaw) : amount, 0), amount))
+      : 0;
+    const lines: LedgerLine[] = [{
       id: `inw:${String(r.id ?? r.inward_no)}`, source: 'Inward' as const, date: day(r.inward_date ?? r.created_at),
-      ref: String(r.reference_no || r.inward_no || ''), particulars: `Inward ${String(r.category ?? '')}`.trim(),
+      ref, particulars: `Inward ${String(r.category ?? '')}`.trim(),
       narration: String(r.part_name || r.product_name || ''), debit: 0, credit: bill ? r2(amount) : 0,
-      party: String(r.party_name ?? ''), ledgerType: bill ? 'Supplier' : 'Customer', due: bill ? r2(amount) : undefined,
+      party: String(r.party_name ?? ''), ledgerType: bill ? 'Supplier' : 'Customer', due: bill ? r2(amount - pettyPaid) : undefined,
       links: [r.sales_order_ref, r.project_name].filter(x => !!x).map(String),
-    };
+    }];
+    if (pettyPaid > 0) {
+      lines.push({
+        id: `inw-petty:${String(r.id ?? r.inward_no)}`, source: 'Inward' as const, date: day(r.petty_date ?? r.inward_date ?? r.created_at),
+        ref, particulars: 'Paid by petty cash',
+        narration: r.paid_by ? `Paid by ${String(r.paid_by)} (petty cash)` : 'Petty cash payment',
+        debit: pettyPaid, credit: 0, party: String(r.party_name ?? ''), ledgerType: 'Supplier',
+        linked: true,   // already taken off this bill's due above, so it is not used again for other bills
+      });
+    }
+    return lines;
+  });
+}
+
+/** Petty cash and bank entries are often saved with the party type "Other". When the name is a customer or supplier
+ *  that has bills in the ledger, the entry is counted for that party, so a payment made from petty cash to a supplier
+ *  (or a receipt from a customer) settles their balance. Money paid out goes to the supplier, money received to the
+ *  customer, when a name is both. */
+export function adoptPartyTypes(lines: LedgerLine[]): LedgerLine[] {
+  const known = new Map<string, Set<string>>();
+  for (const l of lines) {
+    if (l.source === 'Bank' || (l.ledgerType !== 'Customer' && l.ledgerType !== 'Supplier')) continue;
+    const k = nameKey(l.party); if (!k) continue;
+    (known.get(k) ?? known.set(k, new Set()).get(k)!).add(l.ledgerType);
+  }
+  return lines.map(l => {
+    if (l.source !== 'Bank' || l.ledgerType === 'Customer' || l.ledgerType === 'Supplier') return l;
+    const types = known.get(nameKey(l.party));
+    if (!types) return l;
+    const t = types.size === 1 ? [...types][0] : l.debit > 0 ? 'Supplier' : 'Customer';
+    return { ...l, ledgerType: t };
   });
 }
 

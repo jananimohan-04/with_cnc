@@ -14,7 +14,7 @@ import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
 import { addRoundedLogo } from '@/lib/brandedDocument';
 import {
-  dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, hasPaymentWord, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
+  adoptPartyTypes, dmy, drCr, filterLines, fromBank, fromInvoices, fromInwards, fromOpening, hasPaymentWord, sortLines, statementFor, summarizeByParty, receivablePayable, settleDocuments, nameKey, stripStamp,
   type LedgerLine, type LedgerSource, type SortKey,
 } from '@/lib/ledgerDashboard';
 import { HeaderSelect, HeaderInput } from '../../components/ui/HeaderFilter';
@@ -170,7 +170,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
   };
 
   // Reference No: the invoice number for an invoiced entry; for an inward, the reference number entered there (bank rows keep their cheque / UTR).
-  const all = useMemo(() => [...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows, ...src.Opening.rows], [src]);
+  // petty cash / bank entries saved as "Other" count for the customer or supplier of the same name
+  const all = useMemo(() => adoptPartyTypes([...src.Bank.rows, ...src.Invoice.rows, ...src.Inward.rows, ...src.Opening.rows]), [src]);
   // The page shows a bank entry only when its description holds a payment word (UPI, NEFT, IMPS, Cheque ...); the others are hidden here.
   // (Invoice status and the Receivable / Payable chips still use every entry, so nothing paid ever looks unpaid.)
   const visibleAll = useMemo(() => all.filter(l => l.source !== 'Bank' || hasPaymentWord(l.detail ?? l.narration)), [all]);
