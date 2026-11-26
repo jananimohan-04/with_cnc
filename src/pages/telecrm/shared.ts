@@ -22,6 +22,8 @@ export interface Followup { id: string; contact_id: string; call_id: string | nu
 export interface Settings {
   id?: string; routing_mode: 'assigned_then_all' | 'ring_all' | 'round_robin'; ring_seconds: number; record_calls: boolean; announce_recording: boolean;
   announcement_text: string; retention_days: number; allow_download: boolean; missed_call_followup: boolean;
+  /** migration 20261128000000; undefined until it is run */
+  bridge_caller_id?: 'agent_mobile' | 'business';
 }
 export interface Rule { id: string; name: string; number_id: string | null; contact_type: string; agent_user_ids: string[]; priority: number; active: boolean }
 export interface Person { id: string; name: string; email: string; role: string }

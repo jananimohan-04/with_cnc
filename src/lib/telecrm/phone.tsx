@@ -143,7 +143,7 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
   // mobile when bridge calling is available and the agent chose it, or when calling from the computer is not set up at all
   const callVia: 'mobile' | 'browser' = status?.bridgeCalling && agent?.mobile_status !== undefined && ((agent?.call_via ?? 'mobile') === 'mobile' || !status.browserCalling) ? 'mobile' : 'browser';
   const canCall = callVia === 'mobile'
-    ? !!(status?.configured && status.numbers.length && agent?.can_call_out)
+    ? !!(status?.configured && agent?.can_call_out)   // a business number is optional: the verified SIM can be the caller number
     : state === 'ready' && canCallOut;
 
   const refreshStatus = useCallback(async () => { try { setStatus(await teleApi.status()); } catch { /* keep the last one */ } }, []);

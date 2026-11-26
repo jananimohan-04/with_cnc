@@ -103,7 +103,7 @@ export function SettingsTab({ data, reload, status, reloadStatus }: { data: Tele
 
   const save = async () => {
     setSaving(true); setMsg(null);
-    const row = { routing_mode: s.routing_mode, ring_seconds: s.ring_seconds, record_calls: s.record_calls, announce_recording: s.announce_recording, announcement_text: s.announcement_text, retention_days: s.retention_days, allow_download: s.allow_download, missed_call_followup: s.missed_call_followup, updated_at: new Date().toISOString() };
+    const row = { routing_mode: s.routing_mode, ring_seconds: s.ring_seconds, record_calls: s.record_calls, announce_recording: s.announce_recording, announcement_text: s.announcement_text, retention_days: s.retention_days, allow_download: s.allow_download, missed_call_followup: s.missed_call_followup, ...(data.settings.bridge_caller_id !== undefined && s.bridge_caller_id ? { bridge_caller_id: s.bridge_caller_id } : {}), updated_at: new Date().toISOString() };
     const { error } = data.settings.id ? await supabase.from('tele_settings').update(row).eq('id', data.settings.id) : await supabase.from('tele_settings').insert(row);
     if (!error) await supabase.from('tele_audit').insert({ action: 'settings.changed', detail: row });
     setSaving(false);
@@ -132,6 +132,15 @@ export function SettingsTab({ data, reload, status, reloadStatus }: { data: Tele
             <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">Ring each step for (seconds)
               <input type="number" min={10} max={90} value={s.ring_seconds} onChange={(e) => set('ring_seconds', Math.min(90, Math.max(10, Number(e.target.value) || 25)))} className={`${input} w-24 text-right`} />
             </label>
+            {data.settings.bridge_caller_id !== undefined && (
+              <label className="block text-xs font-semibold text-slate-600">Number customers see when a telecaller calls through their mobile
+                <select value={s.bridge_caller_id ?? 'agent_mobile'} onChange={(e) => set('bridge_caller_id', e.target.value as Settings['bridge_caller_id'])} className={`${input} w-full mt-1`}>
+                  <option value="agent_mobile">The telecaller's own mobile (SIM) number</option>
+                  <option value="business">The business number (when one is connected)</option>
+                </select>
+                <span className="block mt-1 font-normal text-[11px] text-slate-500">Calls to Indian numbers through an international provider may show a different number or "unknown" on the customer's phone, depending on the operator.</span>
+              </label>
+            )}
             <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">Create a follow-up for every missed call from a known contact
               <Toggle label="Missed call follow-up" on={s.missed_call_followup} onChange={(v) => set('missed_call_followup', v)} />
             </label>
@@ -253,7 +262,8 @@ function NumbersCard({ status, reloadStatus }: { status: TeleStatus | null; relo
           <button onClick={() => void connect()} disabled={busy || !num.trim() || !status?.configured} className="h-9 px-3 rounded-lg bg-orange-600 text-white text-xs font-semibold disabled:opacity-40 inline-flex items-center gap-1">{busy && <Loader2 size={13} className="animate-spin" />}Connect number</button>
         </div>
         {!status?.configured && <p className="text-[11px] text-slate-500">Connect the cloud phone provider first.</p>}
-        <p className="text-[11px] text-slate-500">The number must already exist in the cloud phone account. It is checked there before it is connected.</p>
+        <p className="text-[11px] text-slate-500">A number you got from the cloud phone provider (not a mobile SIM). It is checked in that account before it is connected.</p>
+        <p className="text-[11px] text-slate-500">Optional for calling out through mobiles (customers can see the telecaller's own SIM). Needed to <b>receive</b> customer calls in Tele CRM: calls to it ring the telecallers' verified mobiles. A telecaller connects their own SIM in the Phone tab.</p>
         {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
       </div>
     </div>

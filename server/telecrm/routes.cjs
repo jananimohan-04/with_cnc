@@ -15,7 +15,7 @@
  *   GET    /api/telecrm/recordings/:id/audio?t=    the audio, streamed through this server (never a public provider link)
  *   DELETE /api/telecrm/recordings/:id             delete at the provider and here (managers)
  * Provider webhooks (signature checked, duplicates ignored):
- *   POST   /api/telecrm/hooks/voice | dial | leg | status | recording | announce | bridge | bridge-go | verify
+ *   POST   /api/telecrm/hooks/voice | dial | leg | status | recording | announce | bridge | bridge-go | verify | screen | screen-ok
  * Scheduled:
  *   GET    /api/telecrm/cron/retention             deletes recordings past the company's retention (Vercel cron, CRON_SECRET)
  *
@@ -173,13 +173,16 @@ module.exports = function mountTeleCrm(app, SB) {
       if (!me.isManager && call.agent_user_id !== me.id && call.transferred_to !== me.id) return res.status(403).json({ ok: false, error: 'This is not your call.' });
       if (call.status !== 'in-progress') return res.status(409).json({ ok: false, error: 'Only a live call can be transferred.' });
       const toUserId = String((req.body && req.body.toUserId) || '');
-      const { data: target } = await db().from('tele_agents').select('user_id, active, can_receive').eq('company_id', me.companyId).eq('user_id', toUserId).maybeSingle();
-      if (!target || !target.active || !target.can_receive) return res.status(400).json({ ok: false, error: 'Pick a telecaller of this company who can receive calls.' });
+      const { data: target } = await db().from('tele_agents').select('*').eq('company_id', me.companyId).eq('user_id', toUserId).maybeSingle();
+      const reach = target ? reachOf(target) : null;
+      if (!target || !target.active || !target.can_receive || !reach) return res.status(400).json({ ok: false, error: 'Pick a telecaller of this company who can receive calls.' });
       const customerLeg = call.direction === 'inbound' ? call.provider_call_id : call.provider_leg_id;
       if (!customerLeg) return res.status(409).json({ ok: false, error: 'The customer side of this call is not known yet; try again in a moment.' });
       const s = await settingsOf(me.companyId);
       await db().from('tele_calls').update({ transferred_to: toUserId, updated_at: new Date().toISOString() }).eq('id', call.id);
-      await p.redirectLeg(customerLeg, p.xmlTransfer({ identity: p.identityFor(toUserId), callRef: call.id, customer: call.customer_number, record: s.record_calls, recordingUrl: url('recording', { call: call.id }), legStatusUrl: url('leg', { call: call.id }) }));
+      await p.redirectLeg(customerLeg, reach.mobile
+        ? p.xmlTransfer({ number: reach.mobile, callerId: call.customer_number, record: s.record_calls, recordingUrl: url('recording', { call: call.id }), legStatusUrl: url('leg', { call: call.id, agent: toUserId }), screenUrl: url('screen', { call: call.id, agent: toUserId, transfer: 1 }) })
+        : p.xmlTransfer({ identity: p.identityFor(toUserId), callRef: call.id, customer: call.customer_number, record: s.record_calls, recordingUrl: url('recording', { call: call.id }), legStatusUrl: url('leg', { call: call.id }) }));
       await audit(me.companyId, me.id, 'call.transferred', call.id, { to: toUserId });
       res.json({ ok: true });
     } catch (e) { fail(res, e); }
@@ -254,8 +257,10 @@ module.exports = function mountTeleCrm(app, SB) {
       if (!to) return res.status(400).json({ ok: false, error: 'That phone number is not valid.' });
       if (to === agent.mobile_e164) return res.status(400).json({ ok: false, error: 'You cannot call your own mobile.' });
       const { data: nums } = await db().from('tele_numbers').select('id, e164, is_default').eq('company_id', me.companyId).eq('active', true);
-      const num = (nums || []).find((n) => n.is_default) || (nums || [])[0];
-      if (!num) return res.status(409).json({ ok: false, error: 'No business number is connected to this company yet.' });
+      const num = (nums || []).find((n) => n.is_default) || (nums || [])[0] || null;   // optional for bridge calls
+      const s = await settingsOf(me.companyId);
+      // the number the customer sees: the agent's own verified SIM, or the business number when the company chose that
+      const shown = s.bridge_caller_id === 'business' && num ? num.e164 : agent.mobile_e164;
       const contact = await findContact(me.companyId, to, req.body && req.body.contactId);
       if (contact && contact.status === 'Do not call') return res.status(409).json({ ok: false, error: 'This contact is marked do not call.' });
       const { data: busy } = await db().from('tele_calls').select('id').eq('company_id', me.companyId).eq('agent_user_id', me.id).in('status', ['initiated', 'ringing', 'in-progress']).gte('started_at', new Date(Date.now() - 2 * 3600000).toISOString()).limit(1);
@@ -263,11 +268,12 @@ module.exports = function mountTeleCrm(app, SB) {
       // the record first (so every webhook can find it), then the provider call
       const { data: row, error } = await db().from('tele_calls').insert({
         company_id: me.companyId, provider: p.id, provider_call_id: 'pending:' + crypto.randomUUID(), direction: 'outbound', status: 'initiated', call_mode: 'bridge',
-        from_number: num.e164, to_number: to, customer_number: to, number_id: num.id, contact_id: contact ? contact.id : null, agent_user_id: me.id,
+        from_number: shown, to_number: to, customer_number: to, number_id: num ? num.id : null, contact_id: contact ? contact.id : null, agent_user_id: me.id,
       }).select('id').single();
       if (error) throw error;
       callId = row.id;
-      const started = await p.createCall({ to: agent.mobile_e164, from: num.e164, url: url('bridge', { call: callId }), statusUrl: url('status', { call: callId }) });
+      // the agent's phone sees the business number, or (without one) their own verified number
+      const started = await p.createCall({ to: agent.mobile_e164, from: num ? num.e164 : agent.mobile_e164, url: url('bridge', { call: callId }), statusUrl: url('status', { call: callId }) });
       await db().from('tele_calls').update({ provider_call_id: started.callId, updated_at: new Date().toISOString() }).eq('id', callId).like('provider_call_id', 'pending:%');
       res.json({ ok: true, callId });
     } catch (e) {
@@ -403,8 +409,8 @@ module.exports = function mountTeleCrm(app, SB) {
   }
 
   async function routePlan(companyId, numberId, contact, s) {
-    const { data: agents } = await db().from('tele_agents').select('user_id, presence, last_assigned_at').eq('company_id', companyId).eq('active', true).eq('can_receive', true);
-    let pool = (agents || []).filter((a) => a.presence === 'available');
+    const { data: agents } = await db().from('tele_agents').select('*').eq('company_id', companyId).eq('active', true).eq('can_receive', true);
+    let pool = (agents || []).filter((a) => a.presence === 'available' && reachOf(a));
     const { data: rules } = await db().from('tele_routing_rules').select('*').eq('company_id', companyId).eq('active', true).order('priority');
     const rule = (rules || []).find((r) => (!r.number_id || r.number_id === numberId) && (!r.contact_type || (contact && r.contact_type === contact.contact_type)));
     if (rule && rule.agent_user_ids && rule.agent_user_ids.length) {
@@ -422,6 +428,26 @@ module.exports = function mountTeleCrm(app, SB) {
       return rest.length ? [[contact.assigned_user_id], rest] : [[contact.assigned_user_id]];
     }
     return [ids];
+  }
+
+  /** How an incoming call reaches an agent: their verified mobile, or the browser phone (when it is set up). */
+  function reachOf(a) {
+    const p = getProvider();
+    const mobileOk = a.mobile_status === 'verified' && !!a.mobile_e164;
+    const browserOk = !!(p && p.browserCalling);
+    if (mobileOk && (a.call_via !== 'browser' || !browserOk)) return { mobile: a.mobile_e164 };
+    return browserOk ? { browser: true } : null;
+  }
+  /** Ring instructions for one routing step (user ids) of a call. */
+  async function ringTargets(p, call, userIds) {
+    const { data: rows } = await db().from('tele_agents').select('*').eq('company_id', call.company_id).in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']);
+    const identities = []; const mobiles = [];
+    for (const a of rows || []) {
+      const r = reachOf(a);
+      if (r && r.mobile) mobiles.push({ number: r.mobile, statusUrl: url('leg', { call: call.id, agent: a.user_id }), screenUrl: url('screen', { call: call.id, agent: a.user_id }) });
+      else if (r && r.browser) identities.push(p.identityFor(a.user_id));
+    }
+    return { identities, mobiles };
   }
 
   async function missedFollowup(call, s) {
@@ -494,7 +520,7 @@ module.exports = function mountTeleCrm(app, SB) {
         return xml(res, p, p.xmlSay(BUSY_TEXT));
       }
       return xml(res, p, p.xmlInbound({
-        identities: plan[0].map((u) => p.identityFor(u)), callerId: call.customer_number, callRef: call.id,
+        ...(await ringTargets(p, call, plan[0])), callerId: call.customer_number, callRef: call.id,
         announce: s.record_calls && s.announce_recording ? s.announcement_text : '', record: s.record_calls, timeout: s.ring_seconds,
         actionUrl: url('dial', { call: call.id, stage: 0 }), legStatusUrl: url('leg', { call: call.id }), recordingUrl: url('recording', { call: call.id }),
       }));
@@ -523,7 +549,7 @@ module.exports = function mountTeleCrm(app, SB) {
       const plan = Array.isArray(call.route_plan) ? call.route_plan : [];
       if (call.direction === 'inbound' && stage + 1 < plan.length && !TERMINAL.has(call.status)) {
         return xml(res, p, p.xmlInbound({
-          identities: plan[stage + 1].map((u) => p.identityFor(u)), callerId: call.customer_number, callRef: call.id, record: s.record_calls, timeout: s.ring_seconds,
+          ...(await ringTargets(p, call, plan[stage + 1])), callerId: call.customer_number, callRef: call.id, record: s.record_calls, timeout: s.ring_seconds,
           actionUrl: url('dial', { call: call.id, stage: stage + 1 }), legStatusUrl: url('leg', { call: call.id }), recordingUrl: url('recording', { call: call.id }),
         }));
       }
@@ -542,6 +568,8 @@ module.exports = function mountTeleCrm(app, SB) {
     const h = hook(req, res); if (!h) return;
     const { p, params } = h;
     const st = p.readStatus(params);
+    const viaMobile = /^[0-9a-f-]{36}$/i.test(String(req.query.agent || ''));
+    if (viaMobile) st.toAgent = String(req.query.agent);
     try {
       const { data: call } = await db().from('tele_calls').select('*').eq('id', String(req.query.call || '')).maybeSingle();
       if (!call) return res.status(200).end();
@@ -554,8 +582,8 @@ module.exports = function mountTeleCrm(app, SB) {
         else if (TERMINAL.has(st.status)) await advance(call, { ...base, status: call.answered_at || st.duration > 0 ? 'completed' : st.status, duration_seconds: Math.max(call.duration_seconds || 0, st.duration), ended_at: now });
         return res.status(200).end();
       }
-      // a telecaller's browser leg
-      if (st.status === 'in-progress' && st.toAgent) {
+      // a telecaller's leg (browser, or own mobile: there the press-1 screen marks it answered)
+      if (st.status === 'in-progress' && st.toAgent && !viaMobile) {
         if (call.transferred_to && call.transferred_to === st.toAgent) {
           await advance(call, { status: 'in-progress' });
         } else if (!call.agent_user_id || call.agent_user_id === st.toAgent || call.direction === 'inbound') {
@@ -660,6 +688,34 @@ module.exports = function mountTeleCrm(app, SB) {
       await audit(agent.company_id, agent.user_id, ok ? 'mobile.verified' : 'mobile.verification_failed', agent.mobile_e164);
       return res.status(200).end();
     } catch (e) { console.warn('telecrm verify:', e.message); return res.status(500).end(); }
+  });
+
+  // incoming call reached an agent's own mobile: ask for 1 (voicemail never takes the customer's call)
+  app.post('/api/telecrm/hooks/screen', async (req, res) => {
+    const h = hook(req, res); if (!h) return;
+    const { p } = h;
+    const q = { call: String(req.query.call || ''), agent: String(req.query.agent || '') };
+    if (req.query.transfer) q.transfer = '1';
+    return xml(res, p, p.xmlScreen({ actionUrl: url('screen-ok', q) }));
+  });
+
+  app.post('/api/telecrm/hooks/screen-ok', async (req, res) => {
+    const h = hook(req, res); if (!h) return;
+    const { p, params } = h;
+    try {
+      const agentId = String(req.query.agent || '');
+      const { data: call } = await db().from('tele_calls').select('*').eq('id', String(req.query.call || '')).maybeSingle();
+      if (!call || p.readDigits(params) !== '1') return xml(res, p, p.xmlSay('', true));
+      const now = new Date().toISOString();
+      if (req.query.transfer) {
+        await advance(call, { status: 'in-progress' });
+      } else {
+        if (call.answered_at && call.agent_user_id && call.agent_user_id !== agentId) return xml(res, p, p.xmlSay('This call was already answered by a colleague.'));
+        await advance(call, { status: 'in-progress', agent_user_id: agentId, answered_at: call.answered_at || now, ring_seconds: Math.max(0, Math.round((Date.now() - Date.parse(call.started_at)) / 1000)) });
+        await db().from('tele_agents').update({ last_assigned_at: now }).eq('company_id', call.company_id).eq('user_id', agentId);
+      }
+      return xml(res, p, p.xmlEmpty());   // empty instructions = connect this phone to the customer
+    } catch (e) { console.warn('telecrm screen:', e.message); return xml(res, p, p.xmlSay('', true)); }
   });
 
   // played to the customer when they answer an outgoing call (recording announcement)

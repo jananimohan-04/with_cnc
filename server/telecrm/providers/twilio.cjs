@@ -163,8 +163,9 @@ module.exports = {
     })}>${esc(to)}</Number></Dial></Response>`;
   },
 
-  /** Customer -> ring these telecallers' browsers (all at once). */
-  xmlInbound({ identities, announce, record, actionUrl, legStatusUrl, recordingUrl, timeout = 25, callerId, callRef }) {
+  /** Customer -> ring these telecallers at once: browsers (identities) and/or their own mobiles (mobiles, screened with "press 1"). */
+  xmlInbound({ identities = [], mobiles = [], announce, record, actionUrl, legStatusUrl, recordingUrl, timeout = 25, callerId, callRef }) {
+    const phones = mobiles.map((m) => `<Number${attrs({ statusCallback: m.statusUrl, statusCallbackMethod: 'POST', statusCallbackEvent: 'ringing answered completed', url: m.screenUrl, method: 'POST' })}>${esc(m.number)}</Number>`).join('');
     const clients = identities.map((id) => `<Client${attrs({ statusCallback: legStatusUrl, statusCallbackMethod: 'POST', statusCallbackEvent: 'ringing answered completed' })}><Identity>${esc(id)}</Identity><Parameter name="callerNumber" value="${esc(callerId || '')}"/><Parameter name="callRef" value="${esc(callRef || '')}"/></Client>`).join('');
     return `<?xml version="1.0" encoding="UTF-8"?><Response>${announce ? `<Say>${esc(announce)}</Say>` : ''}<Dial${attrs({
       answerOnBridge: 'true', timeout,
@@ -173,14 +174,14 @@ module.exports = {
       recordingStatusCallbackMethod: record ? 'POST' : undefined,
       recordingStatusCallbackEvent: record ? 'completed' : undefined,
       action: actionUrl, method: 'POST',
-    })}>${clients}</Dial></Response>`;
+    })}>${clients}${phones}</Dial></Response>`;
   },
 
   /** Ring one telecaller or an outside number for a transfer (the customer stays on the line). */
-  xmlTransfer({ identity, number, callerId, record, recordingUrl, legStatusUrl, callRef, customer }) {
+  xmlTransfer({ identity, number, callerId, record, recordingUrl, legStatusUrl, callRef, customer, screenUrl }) {
     const target = identity
       ? `<Client${attrs({ statusCallback: legStatusUrl, statusCallbackMethod: 'POST', statusCallbackEvent: 'answered completed' })}><Identity>${esc(identity)}</Identity><Parameter name="callRef" value="${esc(callRef || '')}"/><Parameter name="callerNumber" value="${esc(customer || '')}"/><Parameter name="transfer" value="1"/></Client>`
-      : `<Number>${esc(number)}</Number>`;
+      : `<Number${attrs({ statusCallback: legStatusUrl, statusCallbackMethod: 'POST', statusCallbackEvent: 'answered completed', url: screenUrl, method: screenUrl ? 'POST' : undefined })}>${esc(number)}</Number>`;
     return `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${attrs({
       callerId: number ? callerId : undefined, answerOnBridge: 'true', timeout: 30,
       record: record ? 'record-from-answer-dual' : undefined,
@@ -208,6 +209,9 @@ module.exports = {
   /** Agent answered: confirm with a key press, so a voicemail box is never connected to the customer. */
   xmlConfirm: ({ actionUrl }) => `<?xml version="1.0" encoding="UTF-8"?><Response><Gather${attrs({ numDigits: 1, timeout: 8, action: actionUrl, method: 'POST' })}><Say>Tele C R M call. Press 1 to connect to the customer.</Say></Gather><Say>No key was pressed. Goodbye.</Say><Hangup/></Response>`,
   readDigits: (p) => String(p.Digits || ''),
+
+  /** Incoming call reaching an agent's own mobile: accept with 1 (otherwise only this phone hangs up; others keep ringing). */
+  xmlScreen: ({ actionUrl }) => `<?xml version="1.0" encoding="UTF-8"?><Response><Gather${attrs({ numDigits: 1, timeout: 8, action: actionUrl, method: 'POST' })}><Say>Tele C R M customer call. Press 1 to accept.</Say></Gather><Hangup/></Response>`,
 
   /** Caller-ID verification: Twilio phones the number and the person types the returned code on the keypad. */
   async startNumberVerification(e164, label, statusUrl) {

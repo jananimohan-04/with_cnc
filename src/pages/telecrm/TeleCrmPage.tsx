@@ -107,14 +107,17 @@ function ConnectionBanner({ status, statusErr, isManager, onSettings }: { status
   if (!status) return null;
   let tone = 'border-amber-200 bg-amber-50 text-amber-900';
   let text: string;
+  const biz = status.numbers.find((n) => n.is_default)?.e164 ?? status.numbers[0]?.e164 ?? '';
   if (!status.configured) text = 'Calling is not active: no cloud phone provider is configured on the server yet. Contacts, notes and follow-ups work now; calls start once the provider is connected.';
-  else if (!status.numbers.length) text = 'The cloud phone provider is configured, but no business number is connected to this company yet.';
-  else if (!status.me.agent) text = `Business number ${status.numbers.map((n) => n.e164).join(', ')} is connected. You are not set up as a telecaller, so calls will not ring for you.`;
+  else if (!status.me.agent) text = `${biz ? `Business number ${biz} is connected. ` : ''}You are not set up as a telecaller, so you cannot make or receive calls here.`;
   else if (phone?.callVia === 'mobile') {
     const a = status.me.agent;
-    if (a.mobile_status === 'verified') { tone = 'border-emerald-200 bg-emerald-50 text-emerald-800'; text = `Calls ring your mobile ${a.mobile_e164} first, then the customer, from ${status.numbers.find((n) => n.is_default)?.e164 ?? status.numbers[0].e164}.`; }
-    else text = 'Connect and verify your mobile in the Phone tab to start calling.';
+    if (a.mobile_status === 'verified') {
+      tone = 'border-emerald-200 bg-emerald-50 text-emerald-800';
+      text = `Calls ring your mobile ${a.mobile_e164} first, then the customer.${biz ? ` Customers calling ${biz} ring your mobile too.` : ' To receive customer calls here, connect a business number in Settings.'}`;
+    } else text = 'Connect and verify your mobile in the Phone tab to start calling.';
   }
+  else if (!status.numbers.length) text = 'The cloud phone provider is configured, but no business number is connected to this company yet.';
   else if (phone?.state === 'ready') { tone = 'border-emerald-200 bg-emerald-50 text-emerald-800'; text = `Phone ready on ${status.numbers.find((n) => n.is_default)?.e164 ?? status.numbers[0].e164}${status.me.agent.presence === 'away' ? ' · you are set to Away (incoming calls will not ring)' : ''}.`; }
   else if (phone?.state === 'starting') text = 'Starting the phone…';
   else if (phone?.state === 'error') { tone = 'border-red-200 bg-red-50 text-red-700'; text = `The phone could not start: ${phone.error}`; }
