@@ -19,9 +19,7 @@ import {
 export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [cfg, setCfg] = useState<AiProviderConfig>(() => getAiConfig());
   const [provider, setProvider] = useState<ProviderKind>('openai');
-  const [label, setLabel] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState(presetFor('openai').defaultModel);
   const [baseUrl, setBaseUrl] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [makeDefault, setMakeDefault] = useState(true);
@@ -47,7 +45,6 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
   const onProviderChange = (next: ProviderKind) => {
     const p = presetFor(next);
     setProvider(next);
-    setModel(p.defaultModel);
     setBaseUrl(p.id === 'custom' ? '' : p.baseUrl);
     setStatus(null);
   };
@@ -66,19 +63,18 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
     const nextCfg = addLinkedProvider(
       {
         provider,
-        label: label.trim() || preset.name,
+        label: preset.name,
         apiKey: trimmedKey,
-        model: model.trim() || preset.defaultModel,
+        model: preset.defaultModel,
         ...(provider === 'custom' ? { baseUrl: baseUrl.trim() } : {}),
       },
       makeDefault,
     );
     setCfg(nextCfg);
     setApiKey('');
-    setLabel('');
     setStatus({
       kind: 'ok',
-      text: `${label.trim() || preset.shortName} linked${makeDefault ? ' and set as active Default AI.' : '.'}`,
+      text: `${preset.shortName} linked${makeDefault ? ' and set as active Default AI.' : '.'}`,
     });
   };
 
@@ -92,7 +88,7 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
     const res = await testProviderConnection({
       provider,
       apiKey: apiKey.trim(),
-      model: model.trim() || preset.defaultModel,
+      model: preset.defaultModel,
       ...(provider === 'custom' ? { baseUrl: baseUrl.trim() } : {}),
     });
     setTesting(false);
@@ -174,22 +170,6 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
             </label>
 
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Model
-              <input
-                aria-label="AI Model"
-                data-testid="ai-model-input"
-                list={`ai-models-${provider}`}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder={preset.defaultModel}
-                className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-mono normal-case text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-              />
-              <datalist id={`ai-models-${provider}`}>
-                {preset.models.map((m) => <option key={m} value={m} />)}
-              </datalist>
-            </label>
-
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
               API Key
               <div className="relative mt-1">
                 <input
@@ -210,18 +190,6 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
                   {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-            </label>
-
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Label (optional)
-              <input
-                aria-label="API Label"
-                data-testid="ai-label-input"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={preset.name}
-                className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-normal normal-case text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-              />
             </label>
 
             {provider === 'custom' && (
