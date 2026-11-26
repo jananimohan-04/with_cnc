@@ -1,7 +1,7 @@
 import { type Dispatch, type SetStateAction, useMemo, useState } from 'react';
 import {
   ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2,
-  Layers, Calendar, Search, FileSpreadsheet, Eye, ArrowRight, ChevronsUpDown,
+  Layers, Calendar, Search, FileSpreadsheet, Eye, ChevronsUpDown,
   Filter, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { type LedgerLine, type Settlement, dmy, drCr, nameKey } from '@/lib/ledgerDashboard';
@@ -540,11 +540,10 @@ export function LedgerPivotView({
                         <button
                           type="button"
                           onClick={() => selectGroup(g)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold text-orange-600 hover:text-white hover:bg-orange-600 bg-orange-50 border border-orange-200 hover:border-orange-600 transition shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[11px] font-bold text-orange-600 hover:text-white hover:bg-orange-600 bg-orange-50 border border-orange-200 hover:border-orange-600 transition shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
                           title={`Open detailed statement for ${g.label}`}
                         >
-                          View Details
-                          <ArrowRight size={12} />
+                          View
                         </button>
                       </td>
                     </tr>

@@ -232,8 +232,8 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
 
   const exportRows = () => {
     if (!sorted.length) { setNote('Nothing to export.'); return; }
-    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Company Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Source', 'Status'],
-      ...sorted.map(l => [dmy(l.date), l.ref, l.party, l.particulars, l.narration, l.debit || '', l.credit || '', l.source, statusText(l.id)])]);
+    exportCsv(`ledger-${todayISO()}`, [['Date', 'Reference Number', 'Company Name', 'Particulars', 'Narration', 'Debit', 'Credit', 'Source', 'Status', 'Paid', 'Balance'],
+      ...sorted.map(l => [dmy(l.date), l.ref, l.party, l.particulars, l.narration, l.debit || '', l.credit || '', l.source, statusText(l.id), settled.get(l.id)?.paid ?? '', settled.get(l.id)?.left ?? ''])]);
   };
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -493,7 +493,26 @@ export function LedgerDashboardPage({ embedded = false }: { embedded?: boolean }
                       const s = settled.get(l.id);
                       if (!s) return null;
                       const cls = s.state === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : s.state === 'Part' ? 'bg-amber-50 text-amber-700 border-amber-200' : s.days > 30 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200';
-                      return <span title={s.state === 'Completed' ? 'Settled by the bank statement' : `Still unpaid: ${money(s.left)}`} className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>{statusText(l.id)}</span>;
+                      // compact detail under the pill: how much is paid, how much is still to pay, and a thin progress bar
+                      const total = s.paid + s.left;
+                      const pct = total > 0 ? Math.min(100, Math.round((s.paid / total) * 100)) : 100;
+                      const amt = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+                      const bar = s.state === 'Completed' ? 'bg-emerald-500' : s.state === 'Part' ? 'bg-amber-500' : s.days > 30 ? 'bg-red-500' : 'bg-orange-400';
+                      return (
+                        <div className="inline-flex flex-col gap-0.5 min-w-[118px] leading-none"
+                          title={`Total ${amt(total)} · Paid ${amt(s.paid)} · Balance ${amt(s.left)}`}>
+                          <span className={`self-start px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>{statusText(l.id)}</span>
+                          {total > 0 && (
+                            <>
+                              <span className="h-1 w-full rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full ${bar}`} style={{ width: `${pct}%` }} /></span>
+                              <span className="text-[10px] tabular-nums text-slate-500">
+                                <b className="font-semibold text-emerald-700">{amt(s.paid)}</b> paid
+                                {s.left > 0.005 && <> · <b className="font-semibold text-red-600">{amt(s.left)}</b> bal</>}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      );
                     })()}</td>
                   </tr>
                 ))}
