@@ -870,11 +870,11 @@ function computeProjectDetail(
   const inwardAmount = inwardMaterials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
   const serviceAmount = serviceRows.reduce((sum, m) => sum + (Number(m.amount) || 0), 0) +
     (baseReport?.processes || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-  const expensesAmount = projectExpenses.reduce((sum, x) => sum + (Number(x.total_amount) || 0), 0);
 
   // 7. Costs and Margins
   const baseActual = Number(baseReport?.project?.actual_cost) || 0;
-  const totalCalculated = totalMaterialCost + serviceAmount + totalMachineCost + expensesAmount;
+  // Expenses are not shown on Product Costing, so they are not part of the product's cost either
+  const totalCalculated = totalMaterialCost + serviceAmount + totalMachineCost;
   const combinedActual = totalCalculated > 0 ? totalCalculated : (baseActual > 0 ? baseActual : null);
 
   let salesVal = Number(baseReport?.project?.sales_value || p.sales_value) || 0;
@@ -946,7 +946,6 @@ function ProjectCostingBox({
   const services = detail?.services || [];
   const processes = detail?.processes || [];
   const processOps = detail?.processOps || [];
-  const expenses = detail?.expenses || [];
 
   const totalMaterialsAmount = useMemo(
     () => materials.reduce((sum, m) => sum + (Number(m.amount) || 0), 0),
@@ -958,13 +957,9 @@ function ProjectCostingBox({
       processes.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
     [services, processes]
   );
-  const totalExpensesAmount = useMemo(
-    () => expenses.reduce((n, x) => n + (Number(x.total_amount) || 0), 0),
-    [expenses]
-  );
   const processOpsTotal = detail?.processOpsTotal || 0;
 
-  const calculatedTotal = totalMaterialsAmount + totalServiceAmount + processOpsTotal + totalExpensesAmount;
+  const calculatedTotal = totalMaterialsAmount + totalServiceAmount + processOpsTotal;
   const totalActual = calculatedTotal > 0 ? calculatedTotal : (Number(pData.actual_cost) > 0 ? Number(pData.actual_cost) : (Number(pData.planned_cost) > 0 ? Number(pData.planned_cost) : null));
 
   const salesNum = Number(pData.sales_value) || 0;
@@ -1057,13 +1052,6 @@ function ProjectCostingBox({
                   name: sv.name,
                   sub: `${sv.qty} @ ${money(sv.rate)}${sv.sub ? ` · ${sv.sub}` : ''}`,
                   amount: sv.amount,
-                }))} />
-              <CostSection tone="expense" icon="📋" title="Expenses" total={totalExpensesAmount} money={money}
-                rows={expenses.map((e: any) => ({
-                  key: `exp-${e.id}`,
-                  name: e.part_name || e.product_name || 'Expense',
-                  sub: e.party_name || e.inward_no,
-                  amount: e.total_amount,
                 }))} />
             </div>
           )}
@@ -1336,24 +1324,23 @@ export function ProjectCostingPage() {
     if (!filteredProjects.length) return;
     const n = (v: unknown) => Number(v) || 0;
     const sum = (a: any[] | undefined, f: (x: any) => number) => (a ?? []).reduce((t, x) => t + f(x), 0);
-    const rows: unknown[][] = [['Work Order', 'Product', 'Customer', 'Machine', 'Goods Purchase', 'Service Purchase', 'Expenses', 'Total Cost', 'Sales Value', 'Margin (INR)', 'Margin %']];
+    const rows: unknown[][] = [['Work Order', 'Product', 'Customer', 'Machine', 'Goods Purchase', 'Service Purchase', 'Total Cost', 'Sales Value', 'Margin (INR)', 'Margin %']];
     let tCost = 0, tSales = 0;
     for (const p of filteredProjects) {
       const d: any = detailsMap[projectKey(p)];
       const machine = n(d?.processOpsTotal);
       const goods = sum(d?.materials, m => n(m.amount));
       const service = sum(d?.services, m => n(m.amount)) + sum(d?.processes, m => n(m.amount));
-      const exp = sum(d?.expenses, m => n(m.total_amount));
-      const calc = machine + goods + service + exp;
+      const calc = machine + goods + service;
       const pd: any = d?.project || p;
       const cost = calc > 0 ? calc : n(pd.actual_cost) || n(pd.planned_cost);
       const sales = n(pd.sales_value);
       const margin = sales > 0 ? sales - cost : null;
       tCost += cost; tSales += sales;
-      rows.push([p.project_name, p.part_name, p.party_name, machine.toFixed(2), goods.toFixed(2), service.toFixed(2), exp.toFixed(2), cost.toFixed(2), sales.toFixed(2),
+      rows.push([p.project_name, p.part_name, p.party_name, machine.toFixed(2), goods.toFixed(2), service.toFixed(2), cost.toFixed(2), sales.toFixed(2),
         margin === null ? '—' : margin.toFixed(2), margin === null || sales <= 0 ? '—' : `${((margin * 100) / sales).toFixed(1)}%`]);
     }
-    rows.push(['Total', '', '', '', '', '', '', tCost.toFixed(2), tSales.toFixed(2), (tSales - tCost).toFixed(2), tSales > 0 ? `${(((tSales - tCost) * 100) / tSales).toFixed(1)}%` : '—']);
+    rows.push(['Total', '', '', '', '', '', tCost.toFixed(2), tSales.toFixed(2), (tSales - tCost).toFixed(2), tSales > 0 ? `${(((tSales - tCost) * 100) / tSales).toFixed(1)}%` : '—']);
     printGrid('Product Costing', rows);
   };
 
