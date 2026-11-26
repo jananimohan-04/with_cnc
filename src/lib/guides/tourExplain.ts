@@ -2,6 +2,7 @@
 // saved in this browser) and remembered, so the same screen is explained instantly the next time.
 import { supabase } from '@/lib/supabase';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
+import { completeProviderChat, getActiveProvider, parseAiJson } from '@/lib/ai/providers';
 import { itemsKey, type TourItem, type TourLang } from './tour';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
@@ -56,6 +57,18 @@ async function viaBrowserKey(pageTitle: string, lang: TourLang, items: Slim[]): 
   } catch { return null; }
 }
 
+async function viaLinkedProvider(pageTitle: string, lang: TourLang, items: Slim[]): Promise<Record<string, string> | null> {
+  const active = getActiveProvider();
+  if (!active) return null;
+  const langRule = lang === 'ta' ? 'Write in Tamil script; keep button and screen names in English.' : lang === 'tanglish' ? 'Write in Tanglish (Tamil in English letters).' : 'Write in simple English.';
+  const sys = `You are the Teaching voice of Argus BI for a CNC machining company, walking a new user through the screen "${pageTitle}" one option at a time. For EACH option write ONE short spoken sentence (max 25 words) saying what it is for and what happens when it is used. Never invent features. ${langRule} Return JSON {"items": {"<id>": "<sentence>"}} with every id.`;
+  try {
+    const raw = await completeProviderChat(active, sys, [{ role: 'user', text: JSON.stringify(items) }], { maxTokens: 3000, temperature: 0.2, jsonMode: true });
+    const j = parseAiJson<{ items?: Record<string, string> }>(raw);
+    return j && typeof j.items === 'object' && j.items ? j.items : null;
+  } catch { return null; }
+}
+
 /**
  * Explanations for the given options, by item id. Anything the AI could not explain is simply missing from the result
  * (the tour then uses its built-in sentence for that option).
@@ -63,9 +76,10 @@ async function viaBrowserKey(pageTitle: string, lang: TourLang, items: Slim[]): 
 export async function explainOptions(page: string, pageTitle: string, lang: TourLang, items: TourItem[]): Promise<Record<number, string>> {
   if (!items.length) return {};
   const slim: Slim[] = items.map(({ id, kind, label, extra }) => ({ id, kind, label, extra }));
-  const k = `${page}:${lang}:${itemsKey(items)}`;
+  const active = getActiveProvider();
+  const k = `${active ? active.id : 'server'}:${page}:${lang}:${itemsKey(items)}`;
   const cached = readCache(k);
-  const raw = cached ?? (await viaServer(page, pageTitle, lang, slim)) ?? (await viaBrowserKey(pageTitle, lang, slim));
+  const raw = cached ?? (active ? await viaLinkedProvider(pageTitle, lang, slim) : ((await viaServer(page, pageTitle, lang, slim)) ?? (await viaBrowserKey(pageTitle, lang, slim))));
   if (!raw) return {};
   if (!cached && Object.keys(raw).length) writeCache(k, raw);
   const out: Record<number, string> = {};

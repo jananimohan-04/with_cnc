@@ -12,7 +12,7 @@ import { formatINR, todayISO } from '@/lib/format';
 import { exportCsv } from '@/lib/reportExport';
 import { xlsxToTsv } from '@/lib/xlsxRead';
 import { supabase } from '@/lib/supabase';
-import { suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
+import { suggestForCompany, suggestRows, type HistoryItem, type LedgerRef, type PartyRef } from '@/lib/bankSuggest';
 import {
   applyTypeDefaults, hasLocalTypes, isOthersSynced, isTypesSynced, loadOthers, loadTypes, markOthersSynced, markTypesSynced, mergeOthers, mergeTypes, normalizeOthers, normalizeTypes, parseDate, parseStatement, rowDirection, saveOthers, saveTypes, typeFitsRow, validateRows,
   type EntryType, type ImportRow, type Other, type RowIssue,
@@ -169,6 +169,12 @@ export function extractRowTypeAndDesc(
 }
 
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
+type HistoryRawRow = Pick<BankRow, 'id' | 'description' | 'kind' | 'party_name' | 'direction'>;
+type ManualSavedEvent = {
+  mode: 'add' | 'edit' | 'delete';
+  row?: Partial<BankRow> & { id: string };
+  recalcBalances?: boolean;
+};
 
 export function BankEntryPage() {
   const { company } = useAuth();
@@ -305,21 +311,50 @@ export function BankEntryPage() {
     return () => { off = true; };
   }, [cid]);
   // What you saved before is the training data: the same payer / payee gets the same Type, Ledger and Party next time.
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyRaw, setHistoryRaw] = useState<HistoryRawRow[]>([]);
   const loadHistory = useCallback(async () => {
     try {
-      const all: HistoryItem[] = [];
+      const all: HistoryRawRow[] = [];
       for (let page = 1; page <= 10; page++) {
         const r = await financeApi.bankTransactions({ page, pageSize: 200 });
-        // the Type is read from the entry (imported ones carry it in front of the description; a Type you edited later is in "kind"),
-        // so a correction you make in the Bank Data table is learned too
-        all.push(...r.rows.filter(x => x.description).map(x => { const pr = extractRowTypeAndDesc(x.description, x.kind, types, x.party_name, others); return { description: pr.description || x.description || '', typeName: pr.type || undefined, party: x.party_name || undefined, direction: x.direction }; }));
+        for (const x of r.rows) {
+          if (x.description) {
+            all.push({
+              id: x.id,
+              description: x.description,
+              kind: x.kind,
+              party_name: x.party_name,
+              direction: x.direction,
+            });
+          }
+        }
         if (all.length >= r.total || !r.rows.length) break;
       }
-      setHistory(all);
+      setHistoryRaw(all);
     } catch { /* suggestions still work from names, keywords and the bank's wording */ }
-  }, [types, others]);
+  }, []);
   useEffect(() => { void loadHistory(); }, [loadHistory, cid]);
+
+  // Re-derive history items in memory whenever types/others or local edits change (no table/history re-fetch needed).
+  const history = useMemo<HistoryItem[]>(() =>
+    historyRaw.map(x => {
+      const pr = extractRowTypeAndDesc(x.description, x.kind, types, x.party_name, others);
+      const party = (x.party_name || pr.party || '').trim();
+      return {
+        description: pr.description || x.description || '',
+        typeName: pr.type || undefined,
+        party: party || undefined,
+        direction: x.direction,
+      };
+    }),
+    [historyRaw, types, others]
+  );
+
+  // Move just-edited/created entries to the front so the newest choice always wins on the next upload.
+  const patchHistoryRow = useCallback((row: HistoryRawRow) => {
+    setHistoryRaw(prev => [row, ...prev.filter(x => x.id !== row.id)]);
+  }, []);
+
   const suggestCtx = () => ({ parties: partyRefs, receivable, payable, income: options?.income_accounts ?? [], expense: options?.expense_accounts ?? [], types, others, ownName: company?.company_name, history });
 
   // Bank Data
@@ -352,70 +387,62 @@ export function BankEntryPage() {
   });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [full, setFull] = useState(false);
   const [deletingRow, setDeletingRow] = useState<BankRow | null>(null);
   // A row is never edited in place: clicking it (or the pencil that appears on hover) opens this popup.
   const [editingRow, setEditingRow] = useState<BankRow | null>(null);
 
-  const handleUpdateType = async (r: BankRow, newTypeName: string) => {
-    const trimmed = newTypeName.trim();
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
-    const t = types.find(x => x.name.toLowerCase() === trimmed.toLowerCase());
-    const contraId = t?.ledgerId || undefined;
-
-    setData(prev => prev.map(item => item.id === r.id ? {
-      ...item,
-      kind: trimmed,
-      description: parsed.description,
-      ...(contraId ? { contra_account_id: contraId } : {}),
-    } : item));
-
-    try {
-      await financeApi.updateBankEntry(r.id, {
-        kind: trimmed,
-        description: parsed.description,
-        ...(contraId ? { contra_account_id: contraId } : {}),
-      });
-      setMsg({ kind: 'ok', text: 'Type updated successfully. It will be remembered for the next statement.' });
-      void loadHistory();
-    } catch (e) {
-      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update type.' });
-      void loadData(full);
-      throw e;                 // the edit popup stays open and shows the reason
-    }
-  };
-
-  const handleUpdateCompany = async (r: BankRow, newParty: string) => {
-    const trimmed = newParty.trim() || null;
-    if ((r.party_name ?? '') === (trimmed ?? '')) return;
-    const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
-
-    setData(prev => prev.map(item => item.id === r.id ? {
-      ...item,
-      party_name: trimmed ?? undefined,
-      description: parsed.description,
-    } : item));
-
-    try {
-      await financeApi.updateBankEntry(r.id, {
-        party_name: trimmed,
-        description: parsed.description,
-      });
-      setMsg({ kind: 'ok', text: 'Company updated successfully. It will be remembered for the next statement.' });
-      void loadHistory();
-    } catch (e) {
-      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Could not update company.' });
-      void loadData(full);
-      throw e;                 // the edit popup stays open and shows the reason
-    }
-  };
-
-  // Save the edit popup: only the fields that really changed are written.
+  // Save the edit popup in place in one atomic write without reloading the table or losing scroll position.
   const saveRowEdit = async (r: BankRow, newType: string, newCompany: string) => {
     const parsed = extractRowTypeAndDesc(r.description, r.kind, types, r.party_name, others);
-    const currentType = parsed.type || r.kind || '';
-    if (newType.trim().toLowerCase() !== currentType.trim().toLowerCase()) await handleUpdateType(r, newType.trim());
-    if (newCompany.trim() !== (r.party_name ?? '').trim()) await handleUpdateCompany(r, newCompany.trim());
+    const currentType = (parsed.type || r.kind || '').trim();
+    const nextType = newType.trim();
+    const nextParty = newCompany.trim() || null;
+    const typeChanged = nextType.toLowerCase() !== currentType.toLowerCase();
+    const partyChanged = (nextParty ?? '') !== (r.party_name ?? '').trim();
+    if (!typeChanged && !partyChanged) return;
+
+    const matchedType = typeChanged ? types.find(x => x.name.toLowerCase() === nextType.toLowerCase()) : undefined;
+    const contraId = matchedType?.ledgerId || undefined;
+    const updatedRow: BankRow = {
+      ...r,
+      ...(typeChanged ? { kind: nextType } : {}),
+      ...(partyChanged ? { party_name: nextParty ?? undefined } : {}),
+      ...(contraId ? { contra_account_id: contraId } : {}),
+      description: parsed.description,
+    };
+    const apiPatch: Record<string, unknown> = {
+      ...(typeChanged ? { kind: nextType } : {}),
+      ...(partyChanged ? { party_name: nextParty } : {}),
+      ...(contraId ? { contra_account_id: contraId } : {}),
+      description: parsed.description,
+    };
+
+    setData(prev => prev.map(item => (item.id === r.id ? updatedRow : item)));
+    patchHistoryRow({
+      id: r.id,
+      description: updatedRow.description,
+      kind: updatedRow.kind,
+      party_name: updatedRow.party_name,
+      direction: r.direction,
+    });
+
+    try {
+      await financeApi.updateBankEntry(r.id, apiPatch);
+      const label = typeChanged && partyChanged ? 'Transaction updated successfully' : typeChanged ? 'Type updated successfully' : 'Company updated successfully';
+      setMsg({ kind: 'ok', text: `${label}. It will be remembered for the next statement.` });
+    } catch (e) {
+      setData(prev => prev.map(item => (item.id === r.id ? r : item)));
+      patchHistoryRow({
+        id: r.id,
+        description: r.description,
+        kind: r.kind,
+        party_name: r.party_name,
+        direction: r.direction,
+      });
+      const fallback = typeChanged && !partyChanged ? 'Could not update type.' : partyChanged && !typeChanged ? 'Could not update company.' : 'Could not save the changes.';
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : fallback });
+      throw e;                 // the edit popup stays open and shows the reason
+    }
   };
 
   const loadOptions = useCallback(async () => {
@@ -451,8 +478,8 @@ export function BankEntryPage() {
   const { from: globalFrom, to: globalTo } = useGlobalDateFilter();
   // how many saved rows to show: the page loads that many (newest first); "All" loads everything
   const [loadLimit, setLoadLimit] = useState<'50' | '100' | '200' | '500' | 'all'>('100');
-  const loadData = useCallback(async (_everything = false) => {
-    setLoadingData(true); setDataError('');
+  const loadData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) { setLoadingData(true); setDataError(''); }
     try {
       // Global Topbar range intersects the page's own From/To.
       const eff = intersectRange(from, to, globalFrom, globalTo);
@@ -466,11 +493,11 @@ export function BankEntryPage() {
         if (all.length >= Math.min(total, limit) || r.rows.length === 0) break;
       }
       const rowsShown = all.slice(0, limit);
-      setData(rowsShown); setDataTotal(total); setFull(rowsShown.length >= total);
-    } catch (e) { setData([]); setDataTotal(0); setDataError(e instanceof Error ? e.message : 'Could not load bank data.'); }
-    finally { setLoadingData(false); }
+      setData(rowsShown); setDataTotal(total);
+    } catch (e) { if (!silent) { setData([]); setDataTotal(0); setDataError(e instanceof Error ? e.message : 'Could not load bank data.'); } }
+    finally { if (!silent) setLoadingData(false); }
   }, [fBank, fKind, from, to, globalFrom, globalTo, loadLimit]);
-  useEffect(() => { void loadData(false); }, [loadData, cid]);
+  useEffect(() => { void loadData(); }, [loadData, cid]);
 
   const bank = options?.accounts.find(a => a.id === bankId);
   const issues = useMemo(() => validateRows(rows, existing.map(e => ({ txn_date: e.txn_date, amount: e.amount, direction: e.direction, reference_no: e.reference_no }))), [rows, existing]);
@@ -487,7 +514,13 @@ export function BankEntryPage() {
     {payable && <optgroup label="Payable (suppliers)"><option value={payable.id}>{payable.code} {payable.name}</option></optgroup>}
     <optgroup label={rowDirection(r) === 'IN' ? 'Income' : rowDirection(r) === 'OUT' ? 'Expense' : 'Income / Expense'}>{ledgerChoices(r).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</optgroup>
   </>);
-  const parties = useMemo(() => Array.from(new Set([...others.map(o => o.name), ...(options?.customers ?? []).map(c => c.name), ...(options?.suppliers ?? []).map(s => s.name), 'INTERNAL TRANSFER'])).filter(Boolean), [others, options]);
+  const parties = useMemo(() => Array.from(new Set([
+    ...others.map(o => o.name),
+    ...(options?.customers ?? []).map(c => c.name),
+    ...(options?.suppliers ?? []).map(s => s.name),
+    ...historyRaw.map(h => (h.party_name ?? '').trim()),
+    'INTERNAL TRANSFER',
+  ])).filter(Boolean), [others, options, historyRaw]);
 
   const readExisting = async (list: ImportRow[]) => {
     const dates = list.map(r => r.date).filter((d): d is string => !!d).sort();
@@ -529,11 +562,27 @@ export function BankEntryPage() {
   const patchRow = (id: string, patch: Partial<ImportRow>) => setRows(rs => rs.map(r => {
     if (r.id !== id) return r;
     const next = { ...r, ...patch };
-    if (patch.typeId !== undefined || patch.ledgerId !== undefined || patch.party !== undefined) { delete next.auto; delete next.review; }
+    if (patch.typeId !== undefined || patch.ledgerId !== undefined) {
+      delete next.auto;
+      delete next.review;
+    }
     if (patch.typeId !== undefined) {
       const t = types.find(x => x.id === patch.typeId);
       if (t && !typeFitsRow(t, next)) { setMsg({ kind: 'err', text: `Type “${t.name}” is for ${t.direction === 'IN' ? 'money in' : 'money out'}, but row ${r.line} is the opposite.` }); return r; }
       if (t && t.ledgerId) next.ledgerId = t.ledgerId;
+    } else if (patch.party !== undefined) {
+      // When Company is chosen/typed and Type was not explicitly overridden by the user, autofill Type from existing data.
+      if (!r.typeId || r.review || r.auto) {
+        const s = suggestForCompany(patch.party, rowDirection(next), suggestCtx());
+        if (s?.typeId) {
+          next.typeId = s.typeId;
+          if (!next.ledgerId || r.review || r.auto) {
+            next.ledgerId = s.ledgerId || types.find(x => x.id === s.typeId)?.ledgerId || '';
+          }
+          next.review = false;
+          next.auto = s.reason;
+        }
+      }
     }
     return next;
   }));
@@ -588,7 +637,7 @@ export function BankEntryPage() {
     const skipped = list.length - good.length;
     setMsg({ kind: failed.length ? 'err' : 'ok', text: `Saved ${savedIds.size} entr${savedIds.size === 1 ? 'y' : 'ies'}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} with errors left in the table` : ''}${failed.length ? ` · ${failed.length} failed: ${failed.slice(0, 3).join('; ')}` : ''}.` });
     if (!list.some(r => !savedIds.has(r.id))) setText('');
-    void loadData(full);
+    void loadData({ silent: true });
     void loadHistory();
   };
 
@@ -765,7 +814,7 @@ export function BankEntryPage() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Balance</p>
                   <p className="text-base font-bold text-slate-900 tabular-nums" data-testid="bank-balance">{bank ? `₹${money(bank.balance)}` : '—'}</p>
                 </div>
-                <button className={`${btn} !px-2.5`} aria-label="Refresh" onClick={() => void loadOptions().then(() => loadData(full))}><RefreshCw size={14} /> Refresh</button>
+                <button className={`${btn} !px-2.5`} aria-label="Refresh" onClick={() => void loadOptions().then(() => loadData())}><RefreshCw size={14} /> Refresh</button>
               </div>
               <textarea aria-label="Statement rows" value={text} onChange={e => setText(e.target.value)} rows={2}
                 placeholder="Paste rows here - use TAB or comma separated columns"
@@ -1024,9 +1073,37 @@ export function BankEntryPage() {
         types={types}
         others={others}
         onTypes={openTypes}
-        onSaved={() => {
+        onSaved={ev => {
+          if (ev.mode === 'edit' && ev.row) {
+            const patch = ev.row;
+            setData(prev => prev.map(item => (item.id === patch.id ? { ...item, ...patch } : item)));
+            if (patch.description || patch.kind) {
+              patchHistoryRow({
+                id: patch.id,
+                description: patch.description,
+                kind: patch.kind ?? '',
+                party_name: patch.party_name,
+                direction: patch.direction ?? 'OUT',
+              });
+            }
+            setMsg({ kind: 'ok', text: 'Manual entry saved.' });
+            if (ev.recalcBalances) {
+              void loadData({ silent: true });
+              void loadOptions();
+            }
+            return;
+          }
+          if (ev.mode === 'delete' && ev.row) {
+            const deletedId = ev.row.id;
+            setData(prev => prev.filter(item => item.id !== deletedId));
+            setHistoryRaw(prev => prev.filter(item => item.id !== deletedId));
+            setMsg({ kind: 'ok', text: 'Transaction deleted successfully.' });
+            void loadData({ silent: true });
+            void loadOptions();
+            return;
+          }
           setMsg({ kind: 'ok', text: 'Manual entry saved.' });
-          void loadData(full);
+          void loadData({ silent: true });
           void loadOptions();
         }}
       />
@@ -1081,6 +1158,10 @@ export function BankEntryPage() {
         row={editingRow}
         types={types}
         others={others}
+        onLookupCompanyType={(companyName, dir) => {
+          const s = suggestForCompany(companyName, dir, suggestCtx());
+          return s?.typeId ? types.find(t => t.id === s.typeId)?.name : undefined;
+        }}
         onClose={() => setEditingRow(null)}
         onSave={saveRowEdit}
       />
@@ -1092,13 +1173,11 @@ export function BankEntryPage() {
         others={others}
         onClose={() => setDeletingRow(null)}
         onDeleted={(deletedId, transferGroup) => {
-          setData(prev => prev.filter(item => {
-            if (item.id === deletedId) return false;
-            if (transferGroup && item.transfer_group === transferGroup) return false;
-            return true;
-          }));
+          const keep = (item: { id: string; transfer_group?: string | null }) => item.id !== deletedId && !(transferGroup && item.transfer_group === transferGroup);
+          setData(prev => prev.filter(keep));
+          setHistoryRaw(prev => prev.filter(item => item.id !== deletedId));
           setMsg({ kind: 'ok', text: 'Transaction deleted successfully.' });
-          void loadData(full);
+          void loadData({ silent: true });
           void loadOptions();
         }}
       />
@@ -1449,7 +1528,7 @@ function ManualEntryModal({
   types: EntryType[];
   others?: Other[];
   onTypes?: () => void;
-  onSaved: () => void;
+  onSaved: (ev: ManualSavedEvent) => void;
 }) {
   const [date, setDate] = useState(today());
   const [selectedBankId, setSelectedBankId] = useState(bankId || '');
@@ -1586,21 +1665,42 @@ function ManualEntryModal({
         source_type: 'manual_entry',
       };
       if (editingId) {
+        const prevRow = list.find(x => x.id === editingId);
+        const updatedFields: Partial<BankRow> & { id: string } = {
+          id: editingId,
+          txn_date: date,
+          direction: dir,
+          account_id: selectedBankId,
+          account_name: selectedBank?.name ?? prevRow?.account_name ?? '',
+          contra_account_id: type?.ledgerId || '',
+          amount: payload.amount,
+          kind: type?.name || '',
+          mode: 'Manual entry',
+          description: cleanDesc,
+          status: 'Cleared',
+        };
         await financeApi.updateBankEntry(editingId, { ...payload, kind: type?.name || '' });
+        setList(prev => prev.map(x => (x.id === editingId ? { ...x, ...updatedFields } : x)));
         setEditingId(null);
-      } else {
-        const added = await financeApi.addBankEntry(payload);
-        if (type?.name && added?.id) {
-          try {
-            await financeApi.updateBankEntry(added.id, { kind: type.name });
-          } catch { /* ignore */ }
-        }
+        const recalcBalances = !prevRow || prevRow.amount !== payload.amount || prevRow.direction !== dir || prevRow.account_id !== selectedBankId || prevRow.txn_date !== date;
+        setDebit('');
+        setCredit('');
+        setDesc('');
+        setTypeId('');
+        onSaved({ mode: 'edit', row: updatedFields, recalcBalances });
+        return;
+      }
+      const added = await financeApi.addBankEntry(payload);
+      if (type?.name && added?.id) {
+        try {
+          await financeApi.updateBankEntry(added.id, { kind: type.name });
+        } catch { /* ignore */ }
       }
       setDebit('');
       setCredit('');
       setDesc('');
       setTypeId('');
-      onSaved();
+      onSaved({ mode: 'add', row: added?.id ? { id: added.id } : undefined });
       await loadList();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save the entry.');
@@ -1897,7 +1997,7 @@ function ManualEntryModal({
         onDeleted={(deletedId) => {
           setList(prev => prev.filter(x => x.id !== deletedId));
           setDeletingRow(null);
-          onSaved();
+          onSaved({ mode: 'delete', row: { id: deletedId } });
         }}
       />
     </Modal>
@@ -1905,15 +2005,17 @@ function ManualEntryModal({
 }
 
 /** Editing one statement row: the row itself is read-only, this popup holds the Type and Company fields. */
-function EditRowModal({ row, types, others = [], onClose, onSave }: {
+function EditRowModal({ row, types, others = [], onLookupCompanyType, onClose, onSave }: {
   row: BankRow | null;
   types: EntryType[];
   others?: Other[];
+  onLookupCompanyType?: (companyName: string, dir: 'IN' | 'OUT') => string | undefined;
   onClose: () => void;
   onSave: (row: BankRow, type: string, company: string) => Promise<void>;
 }) {
   const [type, setType] = useState('');
   const [company, setCompany] = useState('');
+  const [typeTouched, setTypeTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -1922,6 +2024,7 @@ function EditRowModal({ row, types, others = [], onClose, onSave }: {
     const initialParsed = extractRowTypeAndDesc(row.description, row.kind, types, row.party_name, others);
     setType(initialParsed.type || row.kind || '');
     setCompany(row.party_name || initialParsed.party || (initialParsed.type.toUpperCase() === 'INTERNAL' ? 'INTERNAL TRANSFER' : ''));
+    setTypeTouched(false);
     setErr('');
   }, [row, types, others]);
 
@@ -1968,6 +2071,7 @@ function EditRowModal({ row, types, others = [], onClose, onSave }: {
             value={type}
             onChange={e => {
               const val = e.target.value;
+              setTypeTouched(true);
               setType(val);
               if (/internal/i.test(val) && !company.trim()) {
                 setCompany('INTERNAL TRANSFER');
@@ -1991,7 +2095,14 @@ function EditRowModal({ row, types, others = [], onClose, onSave }: {
             list="inline-party-datalist"
             placeholder="Company / party"
             value={company}
-            onChange={e => setCompany(e.target.value)}
+            onChange={e => {
+              const nextCompany = e.target.value;
+              setCompany(nextCompany);
+              if (!typeTouched) {
+                const matched = onLookupCompanyType?.(nextCompany, row.direction);
+                if (matched) setType(matched);
+              }
+            }}
           />
         </label>
         <div>

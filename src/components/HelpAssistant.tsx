@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiAccess } from '@/lib/aiAccess';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, Columns2, Crosshair, Download, Mail, Check, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Send, Sparkles, Undo2, Volume2, VolumeX, X, History, Plus, Trash2, Minus, Maximize2, Minimize2 } from 'lucide-react';
+import { BarChart3, Bot, Columns2, Crosshair, Download, Mail, Check, CheckCircle2, GraduationCap, Lightbulb, Loader2, MessageCircle, Mic, Plug, Send, Sparkles, Undo2, Volume2, VolumeX, X, History, Plus, Trash2, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AdviserReportPanel } from '@/components/AdviserReport';
 import { serverChat, serverSpeech, ServerAiError } from '@/lib/adviser/serverAi';
@@ -25,6 +25,8 @@ import { useDraggable } from '@/lib/useDraggable';
 import { useDockDrag } from './AssistantDock';
 import { useResizable, ResizeGrip } from '@/lib/useResizable';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
+import { AiApiModal } from '@/components/AiApiModal';
+import { AI_PROVIDERS_EVENT, OPEN_AI_APIS_EVENT, getActiveProvider, getActiveProviderLabel, streamProviderChat } from '@/lib/ai/providers';
 const CONFIRM_DB_RE = /^(yes|yeah|yep|yup|ok|okay|confirm|confirmed|correct|crt|right|save|save it|add|add it|insert|do it|go ahead|proceed|sure|fine|yes confirm|yes save|yes correct|ok save|ok confirm|ஆம்|ஆமாம்|சரி|சரியா இருக்கு|சரி சேமி|சேமி|சேமிக்கவும்|போடு|போடுங்க|சேர்|சேர்த்துவிடு|கன்ஃபார்ம்|ஓகே|ஓகே சரி|ok sari|sari|aam|aama|correct dhaan|save pannu|add pannu|podu|podunga|confirm pannu|எஸ்|யெஸ்|எஸ் ஓகே|யெஸ் ஓகே|சரிங்க|கரெக்ட்|கன்பார்ம்|கன்ஃபார்ம் பண்ணு|சேவ் பண்ணு|ஓகே சேவ்)(?:\s+(?:sir|sar|madam|please|சார்|ஆர்|மேடம்|over|ஓவர்|ஓர்))*\s*[.!?]*$/i;
 const CANCEL_DB_RE = /^(no|nope|cancel|don't|dont|stop|abort|nevermind|never mind|wrong|இல்லை|வேண்டாம்|வேணாம்|ரத்து|கேன்சல்|தவறு|vendam|venam|illa|illai|cancel pannu|நோ)(?:\s+(?:sir|sar|madam|சார்|ஆர்|மேடம்|over|ஓவர்|ஓர்))*\s*[.!?]*$/i;
 import { rankNotes } from '../../supabase/functions/help-assistant/knowledge';
@@ -326,8 +328,9 @@ async function neuralSpeech(piece: string): Promise<string | null> {
     if (res.ok) blob = await res.blob();
   } catch { /* try the browser's key */ }
   if (!blob) {
-    // 2) the OpenAI key saved in this browser (before the function is deployed)
-    const key = getOpenAIApiKey();
+    // 2) an active linked OpenAI provider (or legacy key saved in this browser)
+    const active = getActiveProvider();
+    const key = active?.provider === 'openai' ? active.apiKey : (!active ? getOpenAIApiKey() : '');
     if (key) {
       try {
         const res = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -778,6 +781,18 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
     return () => window.removeEventListener('argus:coworker-status', h);
   }, []);
   const [menu, setMenu] = useState(false);
+  const [apiModalOpen, setApiModalOpen] = useState(false);
+  const [activeAiLabel, setActiveAiLabel] = useState(() => getActiveProviderLabel());
+  useEffect(() => {
+    const onChanged = () => setActiveAiLabel(getActiveProviderLabel());
+    const onOpenApis = () => { setMenu(false); setApiModalOpen(true); };
+    window.addEventListener(AI_PROVIDERS_EVENT, onChanged);
+    window.addEventListener(OPEN_AI_APIS_EVENT, onOpenApis);
+    return () => {
+      window.removeEventListener(AI_PROVIDERS_EVENT, onChanged);
+      window.removeEventListener(OPEN_AI_APIS_EVENT, onOpenApis);
+    };
+  }, []);
   const [modes, setModes] = useState({ teaching: false, coworker: false });
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -1149,13 +1164,26 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
     const push = (piece: string) => { full += piece; show(full); speakReady(false); };
     const unreachable = (msg: string) => /failed to fetch|networkerror|load failed|not deployed|HTTP 404|HTTP 5\d\d|Please sign in/i.test(msg);
     try {
+      // 0) User-linked Default AI API (when a custom provider such as Gemini, Claude, Groq, ChatGPT, etc. is set as Default)
+      let servedFirst = false;
+      const customProvider = getActiveProvider();
+      const notesFirst = rankNotes(withEnglishTerms(q), pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
+      const data = await liveData();
+      const sysPrompt = adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesFirst, data, speakRef.current, visibleControls);
+      const chatHist = [...history.current.slice(-16), { role: 'user' as const, text: q }];
+      const chatOpts = { maxTokens: wantsChart ? 4096 : speakRef.current ? 1100 : 2800 };
+
+      if (customProvider) {
+        for await (const piece of streamProviderChat(customProvider, sysPrompt, chatHist, chatOpts)) {
+          if (!activeRef.current) break;
+          servedFirst = true; push(piece);
+        }
+      }
+
       // 1) ChatGPT through our own server first (OPENAI_API_KEY in Vercel). Only if that route is missing / not set up
       //    do we try the Supabase help function (an old deployment of it refuses machining questions).
-      let servedFirst = false;
-      try {
-        const notesFirst = rankNotes(withEnglishTerms(q), pageRef.current.page).filter((r) => r.total > 0).slice(0, 2).map((r) => `## ${r.n.title}\n${r.n.body}`).join('\n\n');
-        const data = await liveData();
-        for await (const piece of serverChat(adviserPrompt(langRef.current, pageRef.current.page, pageRef.current.title, notesFirst, data, speakRef.current, visibleControls), [...history.current.slice(-16), { role: 'user', text: q }], { maxTokens: wantsChart ? 4096 : speakRef.current ? 1100 : 2800 })) {
+      if (!servedFirst && !customProvider) try {
+        for await (const piece of serverChat(sysPrompt, chatHist, chatOpts)) {
           if (!activeRef.current) break;
           servedFirst = true; push(piece);
         }
@@ -1845,9 +1873,28 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
               <VoiceSwitch mode={m.id} label={m.title} />
             </div>
           ))}
+          <div className="my-1 border-t border-slate-100 pt-1">
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="open-link-ai-apis"
+              onClick={() => { setMenu(false); setApiModalOpen(true); }}
+              title="Link multiple AI APIs (ChatGPT, Gemini, Claude, Groq, DeepSeek…) and choose which one is Default"
+              className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-slate-50"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600"><Plug size={15} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-bold text-slate-800">Link AI APIs</span>
+                <span data-testid="menu-active-ai-label" className="block truncate text-[10px] font-semibold text-emerald-700">
+                  Default: {activeAiLabel}
+                </span>
+              </span>
+            </button>
+          </div>
           <p className="px-2 pt-0.5 text-[10px] leading-tight text-slate-400">Point at a mode to see what it does and its shortcut.</p>
         </div>
       )}
+      <AiApiModal open={apiModalOpen} onClose={() => setApiModalOpen(false)} />
 
       {/* a short message when no chat is open (for example the microphone was blocked) */}
       {!active && note && (

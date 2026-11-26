@@ -22,17 +22,31 @@ export function useFitPage(main: RefObject<HTMLElement | null>, page: RefObject<
 
     const fit = () => {
       frame = 0;
+      // Snapshot scroll offsets before temporarily un-clamping maxHeight to measure page overflow.
+      const prevMainTop = m.scrollTop;
+      const prevBoxScrolls = new Map<HTMLElement, { top: number; left: number }>();
+      m.querySelectorAll<HTMLTableElement>('table').forEach((t) => {
+        const parent = t.parentElement;
+        if (parent) prevBoxScrolls.set(parent, { top: parent.scrollTop, left: parent.scrollLeft });
+      });
+
       // 1. the page area is exactly the visible height (in the page's own, unscaled pixels)
       p.style.minHeight = `${m.clientHeight / scale}px`;
       release();
-      if (!desktop.matches) return;
+      if (!desktop.matches) {
+        m.scrollTop = prevMainTop;
+        return;
+      }
 
       // 2. the biggest list table on the page (not in a popup) takes the room that is left
       //    (the box a table sits in; tables inside another table or inside a popup are left alone)
       const boxes = [...m.querySelectorAll<HTMLTableElement>('table')]
         .map((t) => t.parentElement)
         .filter((el): el is HTMLElement => !!el && el !== p && !el.closest('table, [role="dialog"], .fixed') && el.offsetParent !== null);
-      if (!boxes.length) return;
+      if (!boxes.length) {
+        m.scrollTop = prevMainTop;
+        return;
+      }
       const box = boxes.reduce((a, b) => (b.scrollHeight > a.scrollHeight ? b : a));
       box.dataset.fitTable = '1';
       box.style.overflowY = 'auto';                              // the rows scroll inside the box
@@ -42,6 +56,12 @@ export function useFitPage(main: RefObject<HTMLElement | null>, page: RefObject<
         const visible = box.getBoundingClientRect().height - over;   // on-screen pixels the table may use
         box.style.maxHeight = `${Math.max(160, Math.floor(visible / scale))}px`;
       }
+      const saved = prevBoxScrolls.get(box);
+      if (saved) {
+        box.scrollTop = saved.top;
+        box.scrollLeft = saved.left;
+      }
+      m.scrollTop = prevMainTop;
     };
     const later = () => { if (!frame) frame = requestAnimationFrame(fit); };
 

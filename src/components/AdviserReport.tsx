@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, His
 import { supabase } from '@/lib/supabase';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
 import { serverChat, ServerAiError } from '@/lib/adviser/serverAi';
+import { getActiveProvider, streamProviderChat } from '@/lib/ai/providers';
 import { buildReport, improvementIdeas, reportToFacts, reportToSpeech, type AdviserReport as Report, type Idea, type Insight, type Severity } from '@/lib/adviser/insights';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
@@ -64,12 +65,18 @@ function parsePoints(text: string): { title: string; how: string }[] {
   }).slice(0, 4);
 }
 
-/** Streams the improvement ideas: the help function first, then the OpenAI key saved in this browser. */
+/** Streams the improvement ideas: the user's selected Default AI API first, else the server's help function, then any legacy browser key. */
 async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[] }): AsyncGenerator<string> {
+  const active = getActiveProvider();
+  const sys = daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang);
+  if (active) {
+    yield* streamProviderChat(active, sys, [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 });
+    return;
+  }
   // ChatGPT through our own server first (OPENAI_API_KEY in Vercel); the Supabase help function only if that is not set up.
   try {
     let got = false;
-    for await (const piece of serverChat(daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang), [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
+    for await (const piece of serverChat(sys, [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
     if (got) return;
   } catch (e) {
     if (!(e instanceof ServerAiError && e.unreachable)) throw e;

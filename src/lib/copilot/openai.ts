@@ -1,4 +1,12 @@
 import type { Intent, Params } from './understand';
+import {
+  completeProviderChat,
+  getActiveProvider,
+  getAiConfig,
+  parseAiJson,
+  upsertOpenAiProviderFromKey,
+  type LinkedAiProvider,
+} from '@/lib/ai/providers';
 
 export interface PipelineCardSummary {
   refNo: string;
@@ -9,6 +17,11 @@ export interface PipelineCardSummary {
 }
 
 export function getOpenAIApiKey(): string {
+  const active = getActiveProvider();
+  if (active) return active.provider === 'openai' ? active.apiKey : active.apiKey;
+  const cfg = getAiConfig();
+  const openAiEntry = cfg.providers.find((p) => p.provider === 'openai' && p.apiKey);
+  if (openAiEntry && cfg.defaultId === openAiEntry.id) return openAiEntry.apiKey;
   try {
     const k = localStorage.getItem('argus.coworker.openai_key');
     if (k && k.trim()) return k.trim();
@@ -17,9 +30,22 @@ export function getOpenAIApiKey(): string {
 }
 
 export function setOpenAIApiKey(key: string): void {
+  const clean = key.trim();
   try {
-    localStorage.setItem('argus.coworker.openai_key', key.trim());
+    if (clean) localStorage.setItem('argus.coworker.openai_key', clean);
+    else localStorage.removeItem('argus.coworker.openai_key');
   } catch { /* ignore */ }
+  upsertOpenAiProviderFromKey(clean);
+}
+
+function resolveCopilotProvider(): LinkedAiProvider | null {
+  const active = getActiveProvider();
+  if (active) return active;
+  const envKey = String(import.meta.env.VITE_OPENAI_API_KEY || '').trim();
+  if (envKey) {
+    return { id: 'env-openai', provider: 'openai', label: 'OpenAI', apiKey: envKey, model: 'gpt-4o-mini', createdAt: '' };
+  }
+  return null;
 }
 
 export async function analyzeWithChatGPT(
@@ -28,8 +54,8 @@ export async function analyzeWithChatGPT(
   cards: PipelineCardSummary[],
   history: Array<{ role: 'user' | 'assistant'; text: string }> = []
 ): Promise<{ intent: Intent; params: Params; reply: string } | null> {
-  const apiKey = getOpenAIApiKey();
-  if (!apiKey) return null;
+  const provider = resolveCopilotProvider();
+  if (!provider) return null;
 
   const cardsSnippet = cards.length
     ? cards
@@ -158,40 +184,24 @@ Matching Guidelines:
 - If user wants to see/list the pipeline cards, use "list_pipeline".
 - Always output valid JSON only.`;
 
-  const messages: any[] = [
-    { role: 'system', content: systemPrompt },
+  const chatMessages = [
     ...history.slice(-4).map((h) => ({
-      role: h.role === 'assistant' ? 'assistant' : 'user',
-      content: h.text,
+      role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+      text: h.text,
     })),
-    { role: 'user', content: message },
+    { role: 'user' as const, text: message },
   ];
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-      }),
+    const rawContent = await completeProviderChat(provider, systemPrompt, chatMessages, {
+      temperature: 0.1,
+      maxTokens: 1200,
+      jsonMode: true,
     });
-
-    if (!res.ok) {
-      console.warn('OpenAI API error:', res.status, await res.text());
-      return null;
-    }
-
-    const data = await res.json();
-    const rawContent = data.choices?.[0]?.message?.content;
     if (!rawContent) return null;
 
-    const parsed = JSON.parse(rawContent);
+    const parsed = parseAiJson<Record<string, any>>(rawContent);
+    if (!parsed) return null;
     const intent = String(parsed.intent || 'unknown') as Intent;
     const params = (parsed.params && typeof parsed.params === 'object' ? parsed.params : {}) as Params;
     const reply = String(parsed.reply || '');
@@ -229,8 +239,8 @@ export async function extractStageFieldsWithChatGPT(
   userSpeech: string,
   fieldsInfo: Array<{ key: string; label: string }>
 ): Promise<Record<string, any> | null> {
-  const apiKey = getOpenAIApiKey();
-  if (!apiKey) return null;
+  const provider = resolveCopilotProvider();
+  if (!provider) return null;
 
   const fieldsDesc = fieldsInfo.map((f) => `"${f.key}": (${f.label})`).join(', ');
 
@@ -251,26 +261,15 @@ Guidelines:
 - Output JSON only, no markdown, no explanation.`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userSpeech }],
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-      }),
+    const content = await completeProviderChat(provider, systemPrompt, [{ role: 'user', text: userSpeech }], {
+      temperature: 0.1,
+      maxTokens: 900,
+      jsonMode: true,
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content;
     if (!content) return null;
-    return JSON.parse(content);
+    return parseAiJson(content);
   } catch (err) {
-    console.warn('ChatGPT field extraction error:', err);
+    console.warn('AI field extraction error:', err);
     return null;
   }
 }

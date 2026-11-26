@@ -107,6 +107,115 @@ module.exports = function mountAdviser(app, SB) {
     res.end();
   });
 
+  // Pass-through proxy for user-linked APIs (Gemini, Anthropic Claude, Groq, DeepSeek, Mistral, xAI, OpenRouter, custom)
+  // when browser CORS prevents direct calls. The key stays scoped to this authenticated request and is never logged or saved.
+  app.post('/api/adviser/proxy', async (req, res) => {
+    if (!(await who(req, res))) return;
+    const b = req.body || {};
+    const provider = String(b.provider || 'openai').trim();
+    const apiKey = String(b.apiKey || '').trim();
+    const model = String(b.model || '').trim();
+    const baseUrl = String(b.baseUrl || '').trim().replace(/\/+$/, '');
+    const system = String(b.system || '').slice(0, 90000);
+    const msgs = (Array.isArray(b.messages) ? b.messages : []).slice(-24).map((m) => ({
+      role: m && m.role === 'assistant' ? 'assistant' : 'user',
+      content: String((m && (m.text ?? m.content)) || '').slice(0, 8000),
+    })).filter((m) => m.content.trim());
+    if (!system || !msgs.length) return res.status(400).json({ error: 'Nothing to answer.' });
+    const maxTokens = Math.min(Math.max(Number(b.maxTokens) || 1800, 32), 4096);
+    const temperature = typeof b.temperature === 'number' ? Math.min(Math.max(b.temperature, 0), 1) : 0.3;
+
+    const ctl = new AbortController();
+    res.on('close', () => ctl.abort());
+    let up;
+    try {
+      if (provider === 'gemini') {
+        const ep = `${baseUrl || 'https://generativelanguage.googleapis.com/v1beta'}/models/${encodeURIComponent(model || 'gemini-2.5-flash')}:streamGenerateContent?alt=sse`;
+        up = await fetch(ep, {
+          method: 'POST',
+          headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: msgs.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+            generationConfig: { temperature, maxOutputTokens: maxTokens, ...(b.jsonMode ? { responseMimeType: 'application/json' } : {}) },
+          }),
+          signal: ctl.signal,
+        });
+      } else if (provider === 'anthropic') {
+        up = await fetch(baseUrl || 'https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: model || 'claude-sonnet-4-20250514',
+            max_tokens: maxTokens,
+            temperature,
+            system: b.jsonMode ? `${system}\n\nRespond with valid JSON only.` : system,
+            messages: msgs,
+            stream: true,
+          }),
+          signal: ctl.signal,
+        });
+      } else {
+        const ep = /\/chat\/completions$/i.test(baseUrl) ? baseUrl : `${baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
+        if (!/^https:\/\//i.test(ep)) return res.status(400).json({ error: 'Proxy requires an HTTPS endpoint.' });
+        const headers = { 'content-type': 'application/json' };
+        if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+        up = await fetch(ep, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: model || 'gpt-4o-mini',
+            messages: [{ role: 'system', content: system }, ...msgs],
+            temperature,
+            max_tokens: maxTokens,
+            stream: true,
+            ...(b.jsonMode && provider !== 'custom' ? { response_format: { type: 'json_object' } } : {}),
+          }),
+          signal: ctl.signal,
+        });
+      }
+    } catch {
+      return res.status(502).json({ error: 'The selected AI endpoint could not be reached.' });
+    }
+    if (!up.ok || !up.body) {
+      const t = await up.text().catch(() => '');
+      return res.status(502).json({ error: `AI error (HTTP ${up.status}): ${t.slice(0, 140)}` });
+    }
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    try {
+      const reader = up.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim();
+          buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          const d = line.slice(5).trim();
+          if (!d || d === '[DONE]') continue;
+          try {
+            const j = JSON.parse(d);
+            const t = provider === 'gemini'
+              ? (j?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('')
+              : provider === 'anthropic'
+                ? (j?.type === 'content_block_delta' && j?.delta?.type === 'text_delta' ? j.delta.text : '')
+                : j?.choices?.[0]?.delta?.content;
+            if (t) res.write(`data: ${JSON.stringify({ t })}\n\n`);
+          } catch { /* partial */ }
+        }
+      }
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch { /* closed */ }
+    res.end();
+  });
+
   app.post('/api/adviser/tts', async (req, res) => {
     if (!(await who(req, res))) return;
     if (!key()) return res.status(503).json({ error: 'The AI is not set up yet. Please ask your administrator to switch it on.' });

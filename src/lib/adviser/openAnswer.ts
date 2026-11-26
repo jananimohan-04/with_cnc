@@ -3,6 +3,7 @@
 
 import { serverChat, ServerAiError, type ChatPiece } from './serverAi';
 import { getOpenAIApiKey } from '@/lib/copilot/openai';
+import { completeProviderChat, getActiveProvider } from '@/lib/ai/providers';
 
 export type AnswerLang = 'ta' | 'tanglish' | 'en';
 
@@ -20,6 +21,15 @@ Talk like a helpful colleague: short natural sentences, plain words, no markdown
 export async function askAnything(question: string, lang: AnswerLang, history: ChatPiece[] = [], extra = ''): Promise<string | null> {
   const system = openPrompt(lang, extra);
   const msgs: ChatPiece[] = [...history.slice(-6), { role: 'user', text: question }];
+  const custom = getActiveProvider();
+  if (custom) {
+    try {
+      const answer = await completeProviderChat(custom, system, msgs, { maxTokens: 700, temperature: 0.5 });
+      if (answer) return answer;
+    } catch (e) {
+      return e instanceof Error ? e.message : null;
+    }
+  }
   let text = '';
   try {
     for await (const piece of serverChat(system, msgs, { maxTokens: 700, temperature: 0.5 })) text += piece;

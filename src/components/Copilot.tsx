@@ -26,6 +26,7 @@ import {
   analyzeWithChatGPT, getOpenAIApiKey, setOpenAIApiKey, extractStageFieldsWithChatGPT,
   type PipelineCardSummary
 } from '@/lib/copilot/openai';
+import { AI_PROVIDERS_EVENT, OPEN_AI_APIS_EVENT, getActiveProvider } from '@/lib/ai/providers';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/help-assistant`;
 type Lang = 'ta' | 'tanglish' | 'en';
@@ -575,10 +576,18 @@ export function Copilot({
   const openRef = useRef(open);
   openRef.current = open;
 
-  // OpenAI settings state
+  // OpenAI / linked AI settings state
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => getOpenAIApiKey());
-  const [hasApiKey, setHasApiKey] = useState(() => !!getOpenAIApiKey());
+  const [hasApiKey, setHasApiKey] = useState(() => Boolean(getActiveProvider() || getOpenAIApiKey()));
+  useEffect(() => {
+    const sync = () => {
+      setApiKeyInput(getOpenAIApiKey());
+      setHasApiKey(Boolean(getActiveProvider() || getOpenAIApiKey()));
+    };
+    window.addEventListener(AI_PROVIDERS_EVENT, sync);
+    return () => window.removeEventListener(AI_PROVIDERS_EVENT, sync);
+  }, []);
 
   // Pipeline summary list
   const [pipelineCards, setPipelineCards] = useState<PipelineItem[]>([]);
@@ -2107,9 +2116,9 @@ export function Copilot({
             </button>
           </div>
           <p className="text-[11px] text-slate-600 mb-2">
-            Paste your AI key below (e.g. <code>sk-...</code>). Voice commands will be understood by the online AI before saving.
+            Paste an OpenAI key (<code>sk-...</code>) or manage all providers (ChatGPT, Gemini, Claude, Groq, DeepSeek…) in Link AI APIs.
           </p>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <input
               type="password"
               value={apiKeyInput}
@@ -2123,6 +2132,16 @@ export function Copilot({
               className="h-8 rounded bg-violet-600 px-3 text-xs font-bold text-white hover:bg-violet-700"
             >
               Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowKeyModal(false);
+                window.dispatchEvent(new CustomEvent(OPEN_AI_APIS_EVENT));
+              }}
+              className="h-8 rounded border border-violet-300 bg-white px-2.5 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+            >
+              Link AI APIs…
             </button>
             {hasApiKey && (
               <button
