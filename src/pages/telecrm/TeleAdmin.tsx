@@ -60,16 +60,17 @@ export function TeamTab({ data, reload, nameOf }: { data: TeleData; reload: () =
       <div className="overflow-x-auto">
         <table className="w-full text-xs no-stripe">
           <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wide">
-            <tr>{['Telecaller', 'Role', 'Make calls', 'Receive calls', 'Play recordings', 'Download', 'Now', 'Today', 'Missed', 'Follow-ups', 'Active', ''].map((h) => <th key={h} className="px-2.5 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr>
+            <tr>{['Telecaller', 'Mobile', 'Role', 'Make calls', 'Receive calls', 'Play recordings', 'Download', 'Now', 'Today', 'Missed', 'Follow-ups', 'Active', ''].map((h) => <th key={h} className="px-2.5 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr>
           </thead>
           <tbody>
-            {data.agents.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-400">No telecallers yet. People are added to the company in User Management; add them here to let them call.</td></tr>}
+            {data.agents.length === 0 && <tr><td colSpan={13} className="px-3 py-8 text-center text-slate-400">No telecallers yet. People are added to the company in User Management; add them here to let them call.</td></tr>}
             {data.agents.map((a) => {
               const mine = data.calls.filter((c) => c.agent_user_id === a.user_id);
               const td = mine.filter((c) => c.started_at.slice(0, 10) === today);
               return (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="px-2.5 py-2 font-semibold text-slate-800 whitespace-nowrap">{nameOf(a.user_id)}</td>
+                  <td className="px-2.5 py-2 whitespace-nowrap tabular-nums">{a.mobile_e164 ? <>{a.mobile_e164} <span className={a.mobile_status === 'verified' ? 'text-emerald-600' : 'text-amber-600'}>{a.mobile_status === 'verified' ? '✓' : '(not verified)'}</span></> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-2.5 py-2"><select value={a.role} onChange={(e) => void update(a, { role: e.target.value as TeleAgent['role'] })} className="h-7 rounded border border-slate-300 px-1 text-xs"><option value="telecaller">Telecaller</option><option value="supervisor">Supervisor</option></select></td>
                   <td className="px-2.5 py-2"><Toggle label="Make calls" on={a.can_call_out} onChange={(v) => void update(a, { can_call_out: v })} /></td>
                   <td className="px-2.5 py-2"><Toggle label="Receive calls" on={a.can_receive} onChange={(v) => void update(a, { can_receive: v })} /></td>

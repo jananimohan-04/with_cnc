@@ -13,7 +13,7 @@ const input = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 tex
 
 function useDial() {
   const phone = usePhone();
-  const ready = phone?.state === 'ready' && phone.canCallOut && !(phone.call && phone.call.phase !== 'ended');
+  const ready = !!phone?.canCall && !(phone.call && phone.call.phase !== 'ended');
   const dial = (c: Contact) => phone?.dial(c.phone, { id: c.id, name: c.name, phone: c.phone, contact_type: c.contact_type, status: c.status, assigned_user_id: c.assigned_user_id, notes: c.notes }).catch((e) => alert(errText(e)));
   return { ready, dial };
 }
@@ -247,7 +247,7 @@ function ContactPanel({ contact, data, nameOf, onClose, onEdit, onDial, ready, r
                 {c.status === 'missed' ? <PhoneMissed size={13} className="text-red-500" /> : c.direction === 'inbound' ? <PhoneIncoming size={13} className="text-sky-600" /> : <PhoneOutgoing size={13} className="text-indigo-600" />}
                 {fmtDateTime(c.started_at)} · {nameOf(c.agent_user_id)}
               </span>
-              <span className="inline-flex items-center gap-1.5"><span className="tabular-nums text-slate-500">{fmtDuration(c.duration_seconds)}</span><span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status)}</span></span>
+              <span className="inline-flex items-center gap-1.5"><span className="tabular-nums text-slate-500">{fmtDuration(c.duration_seconds)}</span><span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status, c.direction)}</span></span>
             </div>
           ))}
         </section>

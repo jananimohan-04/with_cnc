@@ -21,6 +21,12 @@
  *   findNumber(e164)                       -> { ref, e164 } | null      (number must exist in the provider account)
  *   pointNumber(ref, voiceUrl, statusUrl)  -> configures the number to send its calls to us
  *   identityFor(userId) / userFromIdentity(identity)
+ *   -- bridge calling (provider rings the agent's own mobile, then the customer) --
+ *   bridgeCalling                          -> true when supported
+ *   createCall({ to, from, url, statusUrl })-> { callId }   starts the agent leg
+ *   xmlConfirm({ actionUrl }) / readDigits(params)          agent presses 1 before the customer is dialled
+ *   startNumberVerification(e164, label, statusUrl) -> { code, already }   provider's own number verification
+ *   isNumberVerified(e164) / readVerification(params)
  */
 'use strict';
 
@@ -48,7 +54,7 @@ function providerStatus() {
   const p = getProvider();
   if (!p) return { configured: false, provider: name, supported: Object.keys(ADAPTERS), missing: [`TELEPHONY_PROVIDER (unknown value "${name}")`] };
   const missing = p.missingConfig();
-  return { configured: missing.length === 0, provider: p.id, label: p.label, browserCalling: !!p.browserCalling, supported: Object.keys(ADAPTERS), missing };
+  return { configured: missing.length === 0, provider: p.id, label: p.label, browserCalling: !!p.browserCalling, bridgeCalling: !!p.bridgeCalling, supported: Object.keys(ADAPTERS), missing };
 }
 
 module.exports = { getProvider, providerStatus, ADAPTERS };

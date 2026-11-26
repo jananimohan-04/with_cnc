@@ -13,7 +13,7 @@ export function CallHistoryTab({ data, reload, isManager, nameOf, settings, myAg
   data: TeleData; reload: () => Promise<void>; isManager: boolean; nameOf: (id: string | null) => string; settings: Settings; myAgent?: TeleAgent;
 }) {
   const phone = usePhone();
-  const ready = phone?.state === 'ready' && phone.canCallOut && !(phone.call && phone.call.phase !== 'ended');
+  const ready = !!phone?.canCall && !(phone.call && phone.call.phase !== 'ended');
   const [q, setQ] = useState('');
   const [agent, setAgent] = useState('');
   const [st, setSt] = useState('');
@@ -40,7 +40,7 @@ export function CallHistoryTab({ data, reload, isManager, nameOf, settings, myAg
   const exportRows = () => exportCsv(`call-history-${new Date().toISOString().slice(0, 10)}`, [
     ['Started', 'Direction', 'Contact', 'Number', 'Telecaller', 'Status', 'Duration (s)', 'Recording', 'Notes', 'Follow-up'],
     ...rows.map((c) => [fmtDateTime(c.started_at), c.direction === 'inbound' ? 'Incoming' : 'Outgoing', (c.contact_id && contactOf.get(c.contact_id)?.name) || '', c.customer_number,
-      nameOf(c.agent_user_id), statusLabel(c.status), c.duration_seconds, (recsOf.get(c.id) ?? []).some((r) => r.status === 'available') ? 'Yes' : 'No',
+      nameOf(c.agent_user_id), statusLabel(c.status, c.direction), c.duration_seconds, (recsOf.get(c.id) ?? []).some((r) => r.status === 'available') ? 'Yes' : 'No',
       (notesOf.get(c.id) ?? []).map((n) => [n.outcome, n.body].filter(Boolean).join(': ')).join(' | '), fuOf.get(c.id) ?? '']),
   ]);
 
@@ -80,7 +80,7 @@ export function CallHistoryTab({ data, reload, isManager, nameOf, settings, myAg
                     </td>
                     <td className="px-2.5 py-2 whitespace-nowrap"><div className="font-semibold text-slate-800">{ct?.name || 'Unknown'}</div><div className="text-[10px] text-slate-500 tabular-nums">{c.customer_number}</div></td>
                     <td className="px-2.5 py-2 whitespace-nowrap">{nameOf(c.agent_user_id)}{c.transferred_to ? <span className="text-slate-400"> → {nameOf(c.transferred_to)}</span> : null}</td>
-                    <td className="px-2.5 py-2"><span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status)}</span></td>
+                    <td className="px-2.5 py-2"><span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status, c.direction)}</span></td>
                     <td className="px-2.5 py-2 tabular-nums">{fmtDuration(c.duration_seconds)}</td>
                     <td className="px-2.5 py-2">{recs.length ? (canListen ? <RecordingPlayer rec={recs[0]} canDownload={canDownload} canDelete={isManager} onDeleted={reload} /> : <span className="inline-flex items-center gap-1 text-slate-500"><FileAudio size={12} /> Yes</span>) : <span className="text-slate-300">—</span>}</td>
                     <td className="px-2.5 py-2 max-w-[220px] truncate text-slate-600" title={notes.map((n) => n.body).join('\n')}>{notes.length ? [notes[0].outcome, notes[0].body].filter(Boolean).join(': ') : <span className="text-slate-300">—</span>}</td>

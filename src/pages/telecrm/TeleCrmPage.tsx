@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { useGlobalDateFilter } from '@/contexts/DateRangeContext';
 import { intersectRange } from '@/lib/globalDate';
 import { BarChart, DonutChart } from '@/components/ui/Charts';
-import { usePhone } from '@/lib/telecrm/phone';
+import { usePhone, MobileConnect } from '@/lib/telecrm/phone';
 import { fmtDuration, teleApi, type TeleStatus } from '@/lib/telecrm/api';
 import { useTeleData, isAnswered, dayISO, STATUS_STYLE, statusLabel, fmtDateTime, CALL_STATUSES, type Contact } from './shared';
 import { ContactsTab, FollowupsTab } from './TeleContacts';
@@ -110,13 +110,18 @@ function ConnectionBanner({ status, statusErr, isManager, onSettings }: { status
   if (!status.configured) text = 'Calling is not active: no cloud phone provider is configured on the server yet. Contacts, notes and follow-ups work now; calls start once the provider is connected.';
   else if (!status.numbers.length) text = 'The cloud phone provider is configured, but no business number is connected to this company yet.';
   else if (!status.me.agent) text = `Business number ${status.numbers.map((n) => n.e164).join(', ')} is connected. You are not set up as a telecaller, so calls will not ring for you.`;
+  else if (phone?.callVia === 'mobile') {
+    const a = status.me.agent;
+    if (a.mobile_status === 'verified') { tone = 'border-emerald-200 bg-emerald-50 text-emerald-800'; text = `Calls ring your mobile ${a.mobile_e164} first, then the customer, from ${status.numbers.find((n) => n.is_default)?.e164 ?? status.numbers[0].e164}.`; }
+    else text = 'Connect and verify your mobile in the Phone tab to start calling.';
+  }
   else if (phone?.state === 'ready') { tone = 'border-emerald-200 bg-emerald-50 text-emerald-800'; text = `Phone ready on ${status.numbers.find((n) => n.is_default)?.e164 ?? status.numbers[0].e164}${status.me.agent.presence === 'away' ? ' · you are set to Away (incoming calls will not ring)' : ''}.`; }
   else if (phone?.state === 'starting') text = 'Starting the phone…';
   else if (phone?.state === 'error') { tone = 'border-red-200 bg-red-50 text-red-700'; text = `The phone could not start: ${phone.error}`; }
   else text = 'The phone is off.';
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${tone}`} data-testid="tele-connection">
-      <span className="inline-flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${phone?.state === 'ready' ? 'bg-emerald-500 animate-pulse' : 'bg-current opacity-60'}`} />{text}</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${phone?.state === 'ready' || (phone?.callVia === 'mobile' && status.me.agent?.mobile_status === 'verified') ? 'bg-emerald-500 animate-pulse' : 'bg-current opacity-60'}`} />{text}</span>
       <span className="flex gap-1.5">
         {phone?.state === 'error' && <button onClick={phone.restart} className="font-semibold underline">Retry</button>}
         {isManager && (!status.configured || !status.numbers.length) && <button onClick={onSettings} className="font-semibold underline">Open settings</button>}
@@ -249,7 +254,7 @@ function PhoneTab({ contacts, calls, me, nameOf }: { contacts: Contact[]; calls:
   const [num, setNum] = useState('');
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
-  const ready = phone?.state === 'ready' && phone.canCallOut;
+  const ready = !!phone?.canCall;
   const onCall = !!phone?.call && phone.call.phase !== 'ended';
   const go = async (n: string, c?: Contact) => {
     setErr('');
@@ -263,7 +268,9 @@ function PhoneTab({ contacts, calls, me, nameOf }: { contacts: Contact[]; calls:
   }, [contacts, q]);
   const recent = calls.filter((c) => c.agent_user_id === me).slice(0, 12);
   const contactOf = useMemo(() => new Map(contacts.map((c) => [c.id, c])), [contacts]);
-  const why = !phone || phone.state === 'off' ? 'Calling is not active for you yet (see the message above).' : phone.state === 'starting' ? 'Starting the phone…' : phone.state === 'error' ? phone.error : !phone.canCallOut ? 'You are not allowed to make outgoing calls.' : '';
+  const why = !phone ? 'Calling is not active for you yet.'
+    : phone.callVia === 'mobile' ? (!phone.canCall ? 'Calling is not active for you yet (see the message above).' : phone.status?.me.agent?.mobile_status !== 'verified' ? 'Verify your mobile below before calling.' : '')
+    : phone.state === 'off' ? 'Calling is not active for you yet (see the message above).' : phone.state === 'starting' ? 'Starting the phone…' : phone.state === 'error' ? phone.error : !phone.canCallOut ? 'You are not allowed to make outgoing calls.' : '';
 
   return (
     <div className="grid lg:grid-cols-[320px,1fr] gap-3">
@@ -283,6 +290,20 @@ function PhoneTab({ contacts, calls, me, nameOf }: { contacts: Contact[]; calls:
           <Phone size={17} /> Call
         </button>
         {(why || err) && <p className="mt-2 text-xs text-slate-500">{err || why}</p>}
+        {phone?.status?.bridgeCalling && phone.status.me.agent && phone.status.me.agent.mobile_status !== undefined && (
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Call through</span>
+              <span className="inline-flex rounded-lg border border-slate-200 p-0.5">
+                {(['mobile', 'browser'] as const).map((v) => (
+                  <button key={v} onClick={() => void phone.setCallVia(v).catch((e) => setErr(e instanceof Error ? e.message : String(e)))}
+                    className={`h-6 px-2 rounded-md text-[11px] font-semibold ${phone.callVia === v ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v === 'mobile' ? 'My mobile' : 'This computer'}</button>
+                ))}
+              </span>
+            </div>
+            {phone.callVia === 'mobile' && <MobileConnect />}
+          </div>
+        )}
         {phone?.status?.me.agent && (
           <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
             <span>Incoming calls</span>
@@ -328,7 +349,7 @@ function PhoneTab({ contacts, calls, me, nameOf }: { contacts: Contact[]; calls:
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status)}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${STATUS_STYLE[c.status] ?? STATUS_STYLE.initiated}`}>{statusLabel(c.status, c.direction)}</span>
                   <button disabled={!ready || onCall} onClick={() => void go(c.customer_number, ct)} className="h-7 w-7 rounded-full border border-emerald-300 text-emerald-700 inline-flex items-center justify-center hover:bg-emerald-50 disabled:opacity-30" title="Call back"><Phone size={12} /></button>
                 </div>
               </div>

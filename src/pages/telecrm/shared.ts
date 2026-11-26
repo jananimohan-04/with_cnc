@@ -45,7 +45,7 @@ export const STATUS_STYLE: Record<string, string> = {
   cancelled: 'bg-slate-50 text-slate-500 border-slate-200',
   rejected: 'bg-slate-50 text-slate-500 border-slate-200',
 };
-export const statusLabel = (s: string) => (s === 'in-progress' ? 'On call' : s.charAt(0).toUpperCase() + s.slice(1));
+export const statusLabel = (s: string, direction?: string) => (s === 'in-progress' ? 'Connected' : s === 'missed' && direction === 'outbound' ? 'No answer' : s === 'initiated' ? 'Initiating' : s.charAt(0).toUpperCase() + s.slice(1));
 export const isAnswered = (c: CallRow) => !!c.answered_at || (c.status === 'completed' && c.duration_seconds > 0);
 
 export const dayISO = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

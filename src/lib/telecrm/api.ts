@@ -8,10 +8,12 @@ export interface TeleAgent {
   id: string; user_id: string; role: 'telecaller' | 'supervisor';
   can_call_out: boolean; can_receive: boolean; can_listen: boolean; can_download: boolean;
   presence: 'available' | 'away'; active: boolean; last_assigned_at: string | null;
+  /** bridge calling (migration 20261127000000): the agent's own mobile, verified by the provider */
+  mobile_e164?: string; mobile_status?: 'none' | 'pending' | 'verified'; mobile_verified_at?: string | null; call_via?: 'mobile' | 'browser';
 }
 export interface TeleNumber { id: string; e164: string; label: string; is_default: boolean; active: boolean }
 export interface TeleStatus {
-  ok: boolean; configured: boolean; browserCalling: boolean; provider: string;
+  ok: boolean; configured: boolean; browserCalling: boolean; bridgeCalling?: boolean; provider: string;
   missing: string[]; supported: string[]; webhookBase: string;
   numbers: TeleNumber[];
   me: { id: string; isManager: boolean; agent: TeleAgent | null };
@@ -20,7 +22,8 @@ export interface TeleStatus {
 
 export class TeleError extends Error {
   setupNeeded: boolean;
-  constructor(msg: string, setupNeeded = false) { super(msg); this.setupNeeded = setupNeeded; }
+  needMobile: boolean;
+  constructor(msg: string, setupNeeded = false, needMobile = false) { super(msg); this.setupNeeded = setupNeeded; this.needMobile = needMobile; }
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -35,7 +38,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   } catch { throw new TeleError('The server could not be reached. Check the internet connection.'); }
   if (/text\/html/i.test(res.headers.get('content-type') || '')) throw new TeleError('Tele CRM is not available on this server yet.');
   const j = await res.json().catch(() => ({} as Record<string, unknown>));
-  if (!res.ok || j.ok === false) throw new TeleError(String(j.error || `The request failed (${res.status}).`), !!j.setupNeeded);
+  if (!res.ok || j.ok === false) throw new TeleError(String(j.error || `The request failed (${res.status}).`), !!j.setupNeeded, !!j.needMobile);
   return j as T;
 }
 
@@ -45,6 +48,12 @@ export const teleApi = {
   connectNumber: (e164: string, label: string, isDefault: boolean) => call<{ e164: string }>('POST', '/api/telecrm/numbers', { e164, label, isDefault }),
   disconnectNumber: (id: string) => call('DELETE', `/api/telecrm/numbers/${id}`),
   transfer: (callId: string, toUserId: string) => call('POST', `/api/telecrm/calls/${callId}/transfer`, { toUserId }),
+  /** Bridge call: the provider rings my verified mobile first, then the customer. */
+  bridge: (to: string, contactId?: string) => call<{ callId: string }>('POST', '/api/telecrm/calls/bridge', { to, ...(contactId ? { contactId } : {}) }),
+  hangup: (callId: string) => call('POST', `/api/telecrm/calls/${callId}/hangup`, {}),
+  connectMobile: (mobile: string) => call<{ e164: string; verified: boolean; code: string }>('POST', '/api/telecrm/agent/mobile', { mobile }),
+  checkMobile: () => call<{ e164: string; verified: boolean }>('POST', '/api/telecrm/agent/mobile/check', {}),
+  disconnectMobile: () => call('DELETE', '/api/telecrm/agent/mobile'),
   /** A private link that works for 5 minutes (playing / downloading is permission-checked and logged on the server). */
   recordingLink: async (id: string, download = false) => {
     const r = await call<{ url: string }>('POST', `/api/telecrm/recordings/${id}/link`, { download });

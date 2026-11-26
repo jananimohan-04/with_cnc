@@ -6,11 +6,16 @@
  *   POST   /api/telecrm/numbers                    connect a cloud number of the provider account to this company (managers)
  *   DELETE /api/telecrm/numbers/:id                disconnect it (managers)
  *   POST   /api/telecrm/calls/:id/transfer         { toUserId }  move a live call to another telecaller
+ *   POST   /api/telecrm/calls/bridge               { to, contactId? }  bridge call: ring the agent's verified mobile, then the customer
+ *   POST   /api/telecrm/calls/:id/hangup           end a live call
+ *   POST   /api/telecrm/agent/mobile               { mobile }  start the provider's verification of my mobile
+ *   POST   /api/telecrm/agent/mobile/check         re-check the verification with the provider
+ *   DELETE /api/telecrm/agent/mobile               disconnect my mobile
  *   POST   /api/telecrm/recordings/:id/link        { download? } -> a 5-minute private link (permission checked)
  *   GET    /api/telecrm/recordings/:id/audio?t=    the audio, streamed through this server (never a public provider link)
  *   DELETE /api/telecrm/recordings/:id             delete at the provider and here (managers)
  * Provider webhooks (signature checked, duplicates ignored):
- *   POST   /api/telecrm/hooks/voice | dial | leg | status | recording | announce
+ *   POST   /api/telecrm/hooks/voice | dial | leg | status | recording | announce | bridge | bridge-go | verify
  * Scheduled:
  *   GET    /api/telecrm/cron/retention             deletes recordings past the company's retention (Vercel cron, CRON_SECRET)
  *
@@ -91,6 +96,7 @@ module.exports = function mountTeleCrm(app, SB) {
         ok: true,
         configured: st.configured,
         browserCalling: !!st.browserCalling,
+        bridgeCalling: !!st.bridgeCalling,
         provider: st.configured ? st.label : '',
         // what an administrator must add on the server (names only, never values)
         missing: me.isManager ? st.missing : [],
@@ -172,6 +178,114 @@ module.exports = function mountTeleCrm(app, SB) {
       await db().from('tele_calls').update({ transferred_to: toUserId, updated_at: new Date().toISOString() }).eq('id', call.id);
       await p.redirectLeg(customerLeg, p.xmlTransfer({ identity: p.identityFor(toUserId), callRef: call.id, customer: call.customer_number, record: s.record_calls, recordingUrl: url('recording', { call: call.id }), legStatusUrl: url('leg', { call: call.id }) }));
       await audit(me.companyId, me.id, 'call.transferred', call.id, { to: toUserId });
+      res.json({ ok: true });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ------------------------------------------------------------------ agent's own mobile (bridge calling)
+  const myAgentRow = async (me) => {
+    const { data } = await db().from('tele_agents').select('*').eq('company_id', me.companyId).eq('user_id', me.id).maybeSingle();
+    return data && data.active ? data : null;
+  };
+
+  app.post('/api/telecrm/agent/mobile', async (req, res) => {
+    const me = await who(req, res); if (!me) return;
+    const p = getProvider();
+    if (!p || p.missingConfig().length || !p.bridgeCalling) return res.status(409).json({ ok: false, error: 'Calling through your mobile is not switched on yet: the cloud phone provider is not configured on the server.' });
+    try {
+      const agent = await myAgentRow(me);
+      if (!agent) return res.status(403).json({ ok: false, error: 'You are not set up as a telecaller in this company.' });
+      const e164 = toE164(req.body && req.body.mobile);
+      if (!e164) return res.status(400).json({ ok: false, error: 'Enter your mobile number, e.g. 98765 43210.' });
+      const { data: other } = await db().from('tele_agents').select('id').eq('company_id', me.companyId).eq('mobile_e164', e164).neq('id', agent.id).limit(1);
+      if ((other || []).length) return res.status(409).json({ ok: false, error: 'This mobile is already connected to another telecaller of this company.' });
+      const v = await p.startNumberVerification(e164, me.name + ' (Tele CRM)', url('verify', { agent: agent.id }));
+      const verified = v.already;
+      const { error } = await db().from('tele_agents').update({ mobile_e164: e164, mobile_status: verified ? 'verified' : 'pending', mobile_verified_at: verified ? new Date().toISOString() : null }).eq('id', agent.id);
+      if (error) throw error;
+      await audit(me.companyId, me.id, 'mobile.verification_started', e164);
+      res.json({ ok: true, e164, verified, code: v.code });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.post('/api/telecrm/agent/mobile/check', async (req, res) => {
+    const me = await who(req, res); if (!me) return;
+    const p = getProvider();
+    if (!p || !p.bridgeCalling) return res.status(409).json({ ok: false, error: 'The cloud phone provider is not configured.' });
+    try {
+      const agent = await myAgentRow(me);
+      if (!agent || !agent.mobile_e164) return res.status(404).json({ ok: false, error: 'No mobile is connected.' });
+      if (agent.mobile_status === 'verified') return res.json({ ok: true, verified: true, e164: agent.mobile_e164 });
+      const verified = await p.isNumberVerified(agent.mobile_e164);
+      if (verified) {
+        await db().from('tele_agents').update({ mobile_status: 'verified', mobile_verified_at: new Date().toISOString() }).eq('id', agent.id);
+        await audit(me.companyId, me.id, 'mobile.verified', agent.mobile_e164);
+      }
+      res.json({ ok: true, verified, e164: agent.mobile_e164 });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.delete('/api/telecrm/agent/mobile', async (req, res) => {
+    const me = await who(req, res); if (!me) return;
+    try {
+      const agent = await myAgentRow(me);
+      if (!agent) return res.status(403).json({ ok: false, error: 'You are not set up as a telecaller in this company.' });
+      const { error } = await db().from('tele_agents').update({ mobile_e164: '', mobile_status: 'none', mobile_verified_at: null }).eq('id', agent.id);
+      if (error) throw error;
+      await audit(me.companyId, me.id, 'mobile.disconnected', agent.mobile_e164 || '');
+      res.json({ ok: true });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ------------------------------------------------------------------ bridge call
+  app.post('/api/telecrm/calls/bridge', async (req, res) => {
+    const me = await who(req, res); if (!me) return;
+    const p = getProvider();
+    if (!p || p.missingConfig().length || !p.bridgeCalling) return res.status(409).json({ ok: false, error: 'Calling is not switched on yet: the cloud phone provider is not configured on the server.' });
+    let callId = '';
+    try {
+      const agent = await myAgentRow(me);
+      if (!agent || !agent.can_call_out) return res.status(403).json({ ok: false, error: 'You are not allowed to make calls.' });
+      if (!agent.mobile_e164 || agent.mobile_status !== 'verified') return res.status(409).json({ ok: false, error: 'Connect and verify your mobile number before calling.', needMobile: true });
+      const to = toE164(req.body && req.body.to);
+      if (!to) return res.status(400).json({ ok: false, error: 'That phone number is not valid.' });
+      if (to === agent.mobile_e164) return res.status(400).json({ ok: false, error: 'You cannot call your own mobile.' });
+      const { data: nums } = await db().from('tele_numbers').select('id, e164, is_default').eq('company_id', me.companyId).eq('active', true);
+      const num = (nums || []).find((n) => n.is_default) || (nums || [])[0];
+      if (!num) return res.status(409).json({ ok: false, error: 'No business number is connected to this company yet.' });
+      const contact = await findContact(me.companyId, to, req.body && req.body.contactId);
+      if (contact && contact.status === 'Do not call') return res.status(409).json({ ok: false, error: 'This contact is marked do not call.' });
+      const { data: busy } = await db().from('tele_calls').select('id').eq('company_id', me.companyId).eq('agent_user_id', me.id).in('status', ['initiated', 'ringing', 'in-progress']).gte('started_at', new Date(Date.now() - 2 * 3600000).toISOString()).limit(1);
+      if ((busy || []).length) return res.status(409).json({ ok: false, error: 'You already have a call in progress. End it first.' });
+      // the record first (so every webhook can find it), then the provider call
+      const { data: row, error } = await db().from('tele_calls').insert({
+        company_id: me.companyId, provider: p.id, provider_call_id: 'pending:' + crypto.randomUUID(), direction: 'outbound', status: 'initiated', call_mode: 'bridge',
+        from_number: num.e164, to_number: to, customer_number: to, number_id: num.id, contact_id: contact ? contact.id : null, agent_user_id: me.id,
+      }).select('id').single();
+      if (error) throw error;
+      callId = row.id;
+      const started = await p.createCall({ to: agent.mobile_e164, from: num.e164, url: url('bridge', { call: callId }), statusUrl: url('status', { call: callId }) });
+      await db().from('tele_calls').update({ provider_call_id: started.callId, updated_at: new Date().toISOString() }).eq('id', callId).like('provider_call_id', 'pending:%');
+      res.json({ ok: true, callId });
+    } catch (e) {
+      if (callId) await db().from('tele_calls').update({ status: 'failed', ended_at: new Date().toISOString(), error_text: String(e.message || e).slice(0, 300) }).eq('id', callId);
+      fail(res, e);
+    }
+  });
+
+  app.post('/api/telecrm/calls/:id/hangup', async (req, res) => {
+    const me = await who(req, res); if (!me) return;
+    const p = getProvider();
+    if (!p) return res.status(409).json({ ok: false, error: 'Calling is not switched on.' });
+    try {
+      const { data: call } = await db().from('tele_calls').select('*').eq('id', req.params.id).eq('company_id', me.companyId).maybeSingle();
+      if (!call) return res.status(404).json({ ok: false, error: 'Call not found.' });
+      if (!me.isManager && call.agent_user_id !== me.id) return res.status(403).json({ ok: false, error: 'This is not your call.' });
+      if (TERMINAL.has(call.status)) return res.json({ ok: true });
+      if (call.provider_call_id && !call.provider_call_id.startsWith('pending:')) {
+        try { await p.hangupLeg(call.provider_call_id); } catch (e) { if (e.status !== 404) throw e; }
+      }
+      await advance(call, { status: call.answered_at ? 'completed' : 'cancelled', ended_at: new Date().toISOString() });
       res.json({ ok: true });
     } catch (e) { fail(res, e); }
   });
@@ -458,9 +572,19 @@ module.exports = function mountTeleCrm(app, SB) {
     const { p, params } = h;
     const st = p.readStatus(params);
     try {
-      const { data: call } = await db().from('tele_calls').select('*').eq('provider', p.id).eq('provider_call_id', st.callId).maybeSingle();
+      let call = null;
+      if (req.query.call) {   // bridge calls name their record (the provider id may not be saved yet)
+        const { data } = await db().from('tele_calls').select('*').eq('id', String(req.query.call)).maybeSingle();
+        if (data && (data.provider_call_id === st.callId || data.provider_call_id.startsWith('pending:'))) call = data;
+      } else {
+        const { data } = await db().from('tele_calls').select('*').eq('provider', p.id).eq('provider_call_id', st.callId).maybeSingle();
+        call = data;
+      }
       if (!call) return res.status(200).end();
       if (!(await firstTime(p.id, call.company_id, `status:${st.callId}:${st.rawStatus}:${st.seq}`))) return res.status(200).end();
+      if (call.provider_call_id.startsWith('pending:')) { await db().from('tele_calls').update({ provider_call_id: st.callId }).eq('id', call.id); call.provider_call_id = st.callId; }
+      // bridge: the agent's mobile is ringing (Connected comes only when the customer answers, from the customer leg)
+      if (call.call_mode === 'bridge' && (st.status === 'ringing' || st.status === 'in-progress')) { await advance(call, { status: 'ringing' }); return res.status(200).end(); }
       if (TERMINAL.has(st.status) && !TERMINAL.has(call.status)) {
         const s = await settingsOf(call.company_id);
         const answered = !!call.answered_at;
@@ -489,6 +613,50 @@ module.exports = function mountTeleCrm(app, SB) {
       if (error) throw error;
       return res.status(200).end();
     } catch (e) { console.warn('telecrm recording hook:', e.message); return res.status(500).end(); }   // 500 = provider retries
+  });
+
+  // bridge: the agent answered their mobile -> ask for "1" so a voicemail box is never connected to the customer
+  app.post('/api/telecrm/hooks/bridge', async (req, res) => {
+    const h = hook(req, res); if (!h) return;
+    const { p } = h;
+    try {
+      const { data: call } = await db().from('tele_calls').select('id, status').eq('id', String(req.query.call || '')).maybeSingle();
+      if (!call || TERMINAL.has(call.status)) return xml(res, p, p.xmlSay('This call was cancelled.'));
+      return xml(res, p, p.xmlConfirm({ actionUrl: url('bridge-go', { call: call.id }) }));
+    } catch (e) { console.warn('telecrm bridge:', e.message); return xml(res, p, p.xmlSay('Sorry, the call could not be connected.')); }
+  });
+
+  // bridge: the agent pressed a key -> dial the customer (same call steps as a browser call: leg / dial / recording hooks)
+  app.post('/api/telecrm/hooks/bridge-go', async (req, res) => {
+    const h = hook(req, res); if (!h) return;
+    const { p, params } = h;
+    try {
+      const { data: call } = await db().from('tele_calls').select('*').eq('id', String(req.query.call || '')).maybeSingle();
+      if (!call || TERMINAL.has(call.status)) return xml(res, p, p.xmlSay('This call was cancelled.'));
+      if (p.readDigits(params) !== '1') return xml(res, p, p.xmlSay('Call not connected. Goodbye.'));
+      const s = await settingsOf(call.company_id);
+      return xml(res, p, p.xmlOutbound({
+        callerId: call.from_number, to: call.customer_number, record: s.record_calls,
+        announceUrl: s.record_calls && s.announce_recording ? url('announce', { company: call.company_id }) : undefined,
+        actionUrl: url('dial', { call: call.id, stage: 0 }), legStatusUrl: url('leg', { call: call.id }), recordingUrl: url('recording', { call: call.id }),
+      }));
+    } catch (e) { console.warn('telecrm bridge-go:', e.message); return xml(res, p, p.xmlSay('Sorry, the call could not be connected.')); }
+  });
+
+  // the provider finished verifying an agent's mobile
+  app.post('/api/telecrm/hooks/verify', async (req, res) => {
+    const h = hook(req, res); if (!h) return;
+    const { p, params } = h;
+    try {
+      const v = p.readVerification(params);
+      const { data: agent } = await db().from('tele_agents').select('id, company_id, user_id, mobile_e164').eq('id', String(req.query.agent || '')).maybeSingle();
+      if (!agent || !agent.mobile_e164) return res.status(200).end();
+      if (!(await firstTime(p.id, agent.company_id, 'verify:' + agent.id + ':' + agent.mobile_e164 + ':' + v.status))) return res.status(200).end();
+      const ok = v.status === 'success' || v.status === 'verified';
+      await db().from('tele_agents').update(ok ? { mobile_status: 'verified', mobile_verified_at: new Date().toISOString() } : { mobile_status: 'none' }).eq('id', agent.id);
+      await audit(agent.company_id, agent.user_id, ok ? 'mobile.verified' : 'mobile.verification_failed', agent.mobile_e164);
+      return res.status(200).end();
+    } catch (e) { console.warn('telecrm verify:', e.message); return res.status(500).end(); }
   });
 
   // played to the customer when they answer an outgoing call (recording announcement)

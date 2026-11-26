@@ -187,6 +187,40 @@ module.exports = {
   xmlSay: (text, hangup = true) => `<?xml version="1.0" encoding="UTF-8"?><Response>${text ? `<Say>${esc(text)}</Say>` : ''}${hangup ? '<Hangup/>' : ''}</Response>`,
   xmlAnnounce: (text) => `<?xml version="1.0" encoding="UTF-8"?><Response>${text ? `<Say>${esc(text)}</Say>` : ''}</Response>`,
   xmlEmpty: () => '<?xml version="1.0" encoding="UTF-8"?><Response/>',
+
+  /* ---- bridge calling: Twilio calls the agent's mobile first; when the agent presses 1 the customer is dialled ---- */
+  bridgeCalling: true,
+
+  /** Starts the agent leg (REST "create call"). Twilio fetches `url` when the agent answers. */
+  async createCall({ to, from, url, statusUrl, timeout = 30 }) {
+    const form = new URLSearchParams({ To: to, From: from, Url: url, Method: 'POST', StatusCallback: statusUrl, StatusCallbackMethod: 'POST', Timeout: String(timeout) });
+    for (const ev of ['initiated', 'ringing', 'answered', 'completed']) form.append('StatusCallbackEvent', ev);
+    const res = await rest('POST', '/Calls.json', form);
+    const j = await res.json();
+    return { callId: String(j.sid || '') };
+  },
+
+  /** Agent answered: confirm with a key press, so a voicemail box is never connected to the customer. */
+  xmlConfirm: ({ actionUrl }) => `<?xml version="1.0" encoding="UTF-8"?><Response><Gather${attrs({ numDigits: 1, timeout: 8, action: actionUrl, method: 'POST' })}><Say>Tele C R M call. Press 1 to connect to the customer.</Say></Gather><Say>No key was pressed. Goodbye.</Say><Hangup/></Response>`,
+  readDigits: (p) => String(p.Digits || ''),
+
+  /** Caller-ID verification: Twilio phones the number and the person types the returned code on the keypad. */
+  async startNumberVerification(e164, label, statusUrl) {
+    try {
+      const res = await rest('POST', '/OutgoingCallerIds.json', { PhoneNumber: e164, FriendlyName: String(label || e164).slice(0, 60), StatusCallback: statusUrl, StatusCallbackMethod: 'POST' });
+      const j = await res.json();
+      return { code: String(j.validation_code || ''), already: false };
+    } catch (e) {
+      if (await module.exports.isNumberVerified(e164)) return { code: '', already: true };   // e.g. already verified in the account
+      throw e;
+    }
+  },
+  async isNumberVerified(e164) {
+    const res = await rest('GET', `/OutgoingCallerIds.json?PhoneNumber=${encodeURIComponent(e164)}`);
+    const j = await res.json();
+    return (j.outgoing_caller_ids || []).some((x) => x.phone_number === e164);
+  },
+  readVerification: (p) => ({ status: String(p.VerificationStatus || '').toLowerCase(), phone: String(p.To || p.Called || p.PhoneNumber || '') }),
   contentType: 'text/xml',
 
   recordingAudio: (recordingId) => rest('GET', `/Recordings/${encodeURIComponent(recordingId)}.mp3`),

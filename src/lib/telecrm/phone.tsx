@@ -3,11 +3,11 @@
 // server, the company has a connected number and the person is an active telecaller.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowRightLeft, Mic, MicOff, Phone, PhoneIncoming, PhoneOff, PhoneOutgoing, UserPlus, X } from 'lucide-react';
+import { ArrowRightLeft, Loader2, Mic, MicOff, Phone, PhoneIncoming, PhoneOff, PhoneOutgoing, Smartphone, UserPlus, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { createPhoneDevice, type PhoneCallHandle, type PhoneDevice } from './adapters';
-import { fmtDuration, phoneKey, teleApi, toE164, type TeleStatus } from './api';
+import { TeleError, fmtDuration, phoneKey, teleApi, toE164, type TeleStatus } from './api';
 
 export interface CallContact { id: string; name: string; phone: string; contact_type: string; status: string; assigned_user_id: string | null; notes?: string }
 export interface LiveCall {
@@ -20,6 +20,11 @@ export interface LiveCall {
   muted: boolean;
   transferred: boolean;
   endedReason?: string;
+  /** browser = WebRTC in this tab; bridge = the provider rings the agent's mobile, then the customer */
+  mode: 'browser' | 'bridge';
+  /** bridge: the call record's status / whether the customer leg has started */
+  status?: string;
+  customerLeg?: boolean;
 }
 type PhoneState = 'off' | 'starting' | 'ready' | 'error';
 
@@ -29,6 +34,14 @@ interface PhoneApi {
   status: TeleStatus | null;
   call: LiveCall | null;
   canCallOut: boolean;
+  /** Can the Call buttons be used right now (for the agent's calling method)? */
+  canCall: boolean;
+  callVia: 'mobile' | 'browser';
+  setCallVia: (via: 'mobile' | 'browser') => Promise<void>;
+  /** The agent pressed Call without a verified mobile: the connect prompt is open. */
+  needMobile: boolean;
+  closeNeedMobile: () => void;
+  refreshStatus: () => Promise<void>;
   dial: (number: string, contact?: CallContact | null) => Promise<void>;
   accept: () => void;
   reject: () => void;
@@ -58,6 +71,7 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
   const [call, setCall] = useState<LiveCall | null>(null);
   const [canCallOut, setCanCallOut] = useState(false);
   const [epoch, setEpoch] = useState(0);
+  const [needMobile, setNeedMobile] = useState(false);
   const device = useRef<PhoneDevice | null>(null);
   const handle = useRef<PhoneCallHandle | null>(null);
   const callRef = useRef<LiveCall | null>(null);
@@ -103,7 +117,7 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
         dev.on('incoming', (h: PhoneCallHandle) => {
           if (callRef.current && callRef.current.phase !== 'ended') { h.reject(); return; }   // already on a call
           const number = h.params.callerNumber || h.params.From || '';
-          setCall({ direction: 'inbound', number, callRef: h.params.callRef || '', contact: null, phase: 'ringing', startedAt: null, muted: false, transferred: h.params.transfer === '1' });
+          setCall({ direction: 'inbound', number, callRef: h.params.callRef || '', contact: null, phase: 'ringing', startedAt: null, muted: false, transferred: h.params.transfer === '1', mode: 'browser' });
           bind(h);
           void contactByPhone(number).then((c) => patch({ contact: c }));
           try { if (Notification?.permission === 'granted') new Notification('Incoming call', { body: number }); } catch { /* not supported */ }
@@ -125,20 +139,69 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
     };
   }, [allowed, company?.id, epoch, bind]);
 
+  const agent = status?.me.agent ?? null;
+  const callVia: 'mobile' | 'browser' = status?.bridgeCalling && (agent?.call_via ?? 'mobile') === 'mobile' && agent?.mobile_status !== undefined ? 'mobile' : 'browser';
+  const canCall = callVia === 'mobile'
+    ? !!(status?.configured && status.numbers.length && agent?.can_call_out)
+    : state === 'ready' && canCallOut;
+
+  const refreshStatus = useCallback(async () => { try { setStatus(await teleApi.status()); } catch { /* keep the last one */ } }, []);
+
   const dial = useCallback(async (number: string, contact?: CallContact | null) => {
     const to = toE164(number);
     if (!to) throw new Error('Enter a valid phone number (with country code for numbers outside India).');
-    if (!device.current || state !== 'ready') throw new Error('The phone is not ready.');
     if (callRef.current && callRef.current.phase !== 'ended') throw new Error('Finish the current call first.');
+    if (callVia === 'mobile') {
+      if (agent?.mobile_status !== 'verified') { setNeedMobile(true); return; }
+      const c = contact ?? (await contactByPhone(to));
+      setCall({ direction: 'outbound', number: to, callRef: '', contact: c, phase: 'connecting', startedAt: null, muted: false, transferred: false, mode: 'bridge', status: 'initiated' });
+      try {
+        const r = await teleApi.bridge(to, c?.id);
+        patch({ callRef: r.callId });
+      } catch (e) {
+        if (e instanceof TeleError && e.needMobile) { setCall(null); setNeedMobile(true); void refreshStatus(); return; }
+        patch({ phase: 'ended', status: 'failed', endedReason: e instanceof Error ? e.message : 'Call failed' });
+      }
+      return;
+    }
+    if (!device.current || state !== 'ready') throw new Error('The phone is not ready.');
     const c = contact ?? (await contactByPhone(to));
-    setCall({ direction: 'outbound', number: to, callRef: '', contact: c, phase: 'connecting', startedAt: null, muted: false, transferred: false });
+    setCall({ direction: 'outbound', number: to, callRef: '', contact: c, phase: 'connecting', startedAt: null, muted: false, transferred: false, mode: 'browser' });
     try {
       const h = await device.current.connect({ To: to, ...(c?.id ? { contactId: c.id } : {}) });
       bind(h);
     } catch (e) {
       patch({ phase: 'ended', endedReason: e instanceof Error ? e.message : 'Call failed' });
     }
-  }, [state, bind]);
+  }, [state, bind, callVia, agent?.mobile_status, refreshStatus]);
+
+  // bridge call: follow the call record (written by the server from the provider's webhooks) until it ends
+  const bridgeId = call?.mode === 'bridge' && call.phase !== 'ended' ? call.callRef : '';
+  useEffect(() => {
+    if (!bridgeId) return;
+    let stop = false;
+    const DONE: Record<string, string> = { completed: '', missed: 'No answer', busy: 'Busy', failed: 'Call failed', cancelled: 'Call cancelled', rejected: 'Call rejected' };
+    const read = async () => {
+      const { data } = await supabase.from('tele_calls').select('status, provider_leg_id, answered_at, ended_at, error_text').eq('id', bridgeId).maybeSingle();
+      if (stop || !data) return;
+      const st = String(data.status);
+      if (st in DONE) {
+        setCall((c) => (c && c.callRef === bridgeId ? { ...c, phase: 'ended', status: st, endedReason: st === 'completed' && !data.answered_at ? 'Call ended' : (data.error_text || DONE[st]) } : c));
+        return;
+      }
+      setCall((c) => (c && c.callRef === bridgeId ? {
+        ...c, status: st, customerLeg: !!data.provider_leg_id,
+        phase: st === 'in-progress' ? 'live' : 'connecting',
+        startedAt: st === 'in-progress' ? (c.startedAt ?? (data.answered_at ? Date.parse(data.answered_at) : Date.now())) : null,
+      } : c));
+    };
+    void read();
+    const t = setInterval(() => { void read(); }, 2000);
+    const ch = supabase.channel(`tele-bridge-${bridgeId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tele_calls', filter: `id=eq.${bridgeId}` }, () => { void read(); })
+      .subscribe();
+    return () => { stop = true; clearInterval(t); void supabase.removeChannel(ch); };
+  }, [bridgeId]);
 
   /** Our call record for the live call (the server created it; outgoing calls don't carry its id). */
   const findCallId = useCallback(async (): Promise<string> => {
@@ -152,11 +215,22 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
   }, [profile?.id]);
 
   const api = useMemo<PhoneApi>(() => ({
-    state, error, status, call, canCallOut,
+    state, error, status, call, canCallOut, canCall, callVia, needMobile,
+    closeNeedMobile: () => setNeedMobile(false),
+    refreshStatus,
+    setCallVia: async (via) => {
+      const { error: e } = await supabase.rpc('tele_set_call_via', { p_via: via });
+      if (e) throw new Error(e.message);
+      await refreshStatus();
+    },
     dial,
     accept: () => { handle.current?.accept(); patch({ phase: 'connecting' }); },
     reject: () => { handle.current?.reject(); patch({ phase: 'ended', endedReason: 'Call rejected' }); },
-    hangup: () => { handle.current?.hangup(); },
+    hangup: () => {
+      const c = callRef.current;
+      if (c?.mode === 'bridge') { if (c.callRef) void teleApi.hangup(c.callRef).catch(() => {}); else patch({ phase: 'ended', endedReason: 'Call cancelled' }); return; }
+      handle.current?.hangup();
+    },
     toggleMute: () => { const h = handle.current; if (!h) return; const on = !h.isMuted(); h.mute(on); patch({ muted: on }); },
     transfer: async (toUserId: string) => {
       const id = await findCallId();
@@ -165,12 +239,13 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
     },
     dismiss: () => setCall(null),
     restart: () => setEpoch((n) => n + 1),
-  }), [state, error, status, call, canCallOut, dial, findCallId]);
+  }), [state, error, status, call, canCallOut, canCall, callVia, needMobile, refreshStatus, dial, findCallId]);
 
   return (
     <Ctx.Provider value={api}>
       {children}
       {call && <CallWindow api={api} findCallId={findCallId} />}
+      {needMobile && !call && <NeedMobilePrompt api={api} />}
     </Ctx.Provider>
   );
 }
@@ -245,7 +320,9 @@ function CallWindow({ api, findCallId }: { api: PhoneApi; findCallId: () => Prom
         <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider opacity-90">
           <span className="inline-flex items-center gap-1.5">
             {call.direction === 'inbound' ? <PhoneIncoming size={13} /> : <PhoneOutgoing size={13} />}
-            {call.phase === 'ringing' ? (call.transferred ? 'Transferred call' : 'Incoming call') : call.phase === 'connecting' ? (call.direction === 'outbound' ? 'Calling…' : 'Connecting…') : call.phase === 'live' ? 'On call' : 'Call ended'}
+            {call.mode === 'bridge'
+              ? (call.phase === 'live' ? 'Connected' : call.phase === 'ended' ? 'Call ended' : call.status === 'ringing' ? (call.customerLeg ? 'Ringing customer…' : 'Ringing your mobile…') : 'Initiating…')
+              : call.phase === 'ringing' ? (call.transferred ? 'Transferred call' : 'Incoming call') : call.phase === 'connecting' ? (call.direction === 'outbound' ? 'Calling…' : 'Connecting…') : call.phase === 'live' ? 'On call' : 'Call ended'}
           </span>
           {call.phase === 'live' && <span className="tabular-nums text-sm normal-case tracking-normal">{fmtDuration(secs)}</span>}
           {call.phase === 'ended' && <button onClick={api.dismiss} aria-label="Close" className="opacity-80 hover:opacity-100"><X size={15} /></button>}
@@ -256,6 +333,9 @@ function CallWindow({ api, findCallId }: { api: PhoneApi; findCallId: () => Prom
         </div>
       </div>
 
+      {call.mode === 'bridge' && call.phase === 'connecting' && !call.customerLeg && (
+        <div className="px-4 py-2 text-[11px] text-orange-800 bg-orange-50 border-b border-orange-100 inline-flex items-center gap-1.5 w-full"><Smartphone size={12} /> Answer the call on your mobile and press 1 to connect.</div>
+      )}
       {call.contact?.notes && call.phase !== 'ended' && (
         <div className="px-4 py-2 text-[11px] text-slate-600 border-b border-slate-100 line-clamp-2">{call.contact.notes}</div>
       )}
@@ -269,7 +349,7 @@ function CallWindow({ api, findCallId }: { api: PhoneApi; findCallId: () => Prom
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              <button onClick={api.toggleMute} disabled={call.phase !== 'live'} className={`h-11 rounded-xl border text-xs font-semibold inline-flex flex-col items-center justify-center disabled:opacity-40 ${call.muted ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+              <button onClick={api.toggleMute} disabled={call.phase !== 'live' || call.mode === 'bridge'} title={call.mode === 'bridge' ? 'Use mute on your mobile' : undefined} className={`h-11 rounded-xl border text-xs font-semibold inline-flex flex-col items-center justify-center disabled:opacity-40 ${call.muted ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
                 {call.muted ? <MicOff size={16} /> : <Mic size={16} />}{call.muted ? 'Unmute' : 'Mute'}
               </button>
               <button onClick={() => setShowTransfer((s) => !s)} disabled={call.phase !== 'live'} className="h-11 rounded-xl border bg-white border-slate-200 text-slate-700 text-xs font-semibold inline-flex flex-col items-center justify-center hover:bg-slate-50 disabled:opacity-40">
@@ -320,6 +400,96 @@ function CallWindow({ api, findCallId }: { api: PhoneApi; findCallId: () => Prom
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------- bridge calling: the agent's own mobile
+/** Connect + verify the agent's mobile through the provider's own verification call (the code is typed on the phone). */
+export function MobileConnect({ compact = false }: { compact?: boolean }) {
+  const phone = usePhone();
+  const agent = phone?.status?.me.agent ?? null;
+  const [num, setNum] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const pending = agent?.mobile_status === 'pending';
+  const verified = agent?.mobile_status === 'verified';
+
+  // while the provider's verification call is on, keep checking (it confirms on its own when the code is typed)
+  useEffect(() => {
+    if (!pending) return;
+    let n = 0;
+    const t = setInterval(() => {
+      n += 1;
+      if (n > 45) { clearInterval(t); return; }
+      void teleApi.checkMobile().then((r) => { if (r.verified) { setCode(''); setMsg({ ok: true, text: `${r.e164} is verified. Calls will ring this mobile.` }); void phone?.refreshStatus(); } }).catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [pending, phone]);
+
+  if (!phone?.status?.bridgeCalling || !agent) return null;
+  const start = async () => {
+    setBusy(true); setMsg(null); setCode('');
+    try {
+      const r = await teleApi.connectMobile(num);
+      if (r.verified) setMsg({ ok: true, text: `${r.e164} is verified. Calls will ring this mobile.` });
+      else { setCode(r.code); setMsg({ ok: true, text: `You will get a call on ${r.e164} now. Answer it and type the code below on the phone keypad.` }); }
+      setNum('');
+      await phone.refreshStatus();
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); } finally { setBusy(false); }
+  };
+  const check = async () => {
+    setBusy(true); setMsg(null);
+    try { const r = await teleApi.checkMobile(); setMsg(r.verified ? { ok: true, text: `${r.e164} is verified.` } : { ok: false, text: 'Not verified yet. Answer the verification call and type the code.' }); if (r.verified) setCode(''); await phone.refreshStatus(); }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (!confirm('Disconnect your mobile? You will not be able to call through it until you connect it again.')) return;
+    setBusy(true); setMsg(null);
+    try { await teleApi.disconnectMobile(); setCode(''); await phone.refreshStatus(); } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); } finally { setBusy(false); }
+  };
+  return (
+    <div className={compact ? 'space-y-2' : 'space-y-2 text-xs'}>
+      {agent.mobile_e164 && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm">
+          <span className="inline-flex items-center gap-1.5 font-semibold tabular-nums"><Smartphone size={14} className="text-slate-500" />{agent.mobile_e164}</span>
+          <span className="flex items-center gap-2 text-[11px]">
+            <span className={`px-1.5 py-0.5 rounded-full border font-semibold ${verified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{verified ? 'Verified' : pending ? 'Waiting for code' : 'Not verified'}</span>
+            <button onClick={() => void remove()} disabled={busy} className="text-red-600 hover:underline">Disconnect</button>
+          </span>
+        </div>
+      )}
+      {code && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-center">
+          <div className="text-[11px] text-orange-800">Type this code on your phone when the verification call asks for it</div>
+          <div className="text-2xl font-bold tracking-[0.3em] text-orange-700 tabular-nums">{code}</div>
+        </div>
+      )}
+      {pending && <button onClick={() => void check()} disabled={busy} className="h-8 px-3 rounded-lg border border-slate-300 text-xs font-semibold hover:bg-slate-50 inline-flex items-center gap-1">{busy && <Loader2 size={12} className="animate-spin" />}I have typed the code: check now</button>}
+      {!verified && (
+        <div className="flex gap-1.5">
+          <input value={num} onChange={(e) => setNum(e.target.value)} inputMode="tel" placeholder={agent.mobile_e164 ? 'Another mobile' : 'Your mobile, e.g. 98765 43210'} aria-label="Your mobile"
+            className="flex-1 min-w-0 h-9 rounded-lg border border-slate-300 px-2.5 text-sm tabular-nums focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+          <button onClick={() => void start()} disabled={busy || !num.trim()} className="h-9 px-3 rounded-lg bg-orange-600 text-white text-xs font-semibold disabled:opacity-40 inline-flex items-center gap-1">{busy && <Loader2 size={12} className="animate-spin" />}{pending ? 'Resend' : 'Verify'}</button>
+        </div>
+      )}
+      {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
+    </div>
+  );
+}
+
+function NeedMobilePrompt({ api }: { api: PhoneApi }) {
+  return (
+    <div className="fixed z-[70] right-3 bottom-3 sm:right-5 sm:bottom-5 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-white shadow-[0_18px_50px_rgba(15,23,42,0.35)] border border-slate-200 overflow-hidden" role="dialog" aria-label="Connect your mobile">
+      <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white px-4 py-3 flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90 inline-flex items-center gap-1.5"><Smartphone size={13} /> Connect your mobile first</div>
+          <div className="mt-1 text-sm leading-snug">Calls ring your own mobile first, then the customer is connected. Verify your mobile once to start calling.</div>
+        </div>
+        <button onClick={api.closeNeedMobile} aria-label="Close" className="opacity-80 hover:opacity-100"><X size={15} /></button>
+      </div>
+      <div className="p-3"><MobileConnect compact /></div>
     </div>
   );
 }
