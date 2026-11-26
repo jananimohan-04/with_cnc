@@ -1,12 +1,11 @@
 import type { Intent, Params } from './understand';
 import {
-  completeProviderChat,
   getActiveProvider,
   getAiConfig,
   parseAiJson,
   upsertOpenAiProviderFromKey,
-  type LinkedAiProvider,
 } from '@/lib/ai/providers';
+import { aiComplete } from '@/lib/ai/run';
 
 export interface PipelineCardSummary {
   refNo: string;
@@ -18,7 +17,7 @@ export interface PipelineCardSummary {
 
 export function getOpenAIApiKey(): string {
   const active = getActiveProvider();
-  if (active) return active.provider === 'openai' ? active.apiKey : active.apiKey;
+  if (active) return active.provider === 'openai' ? active.apiKey : '';
   const cfg = getAiConfig();
   const openAiEntry = cfg.providers.find((p) => p.provider === 'openai' && p.apiKey);
   if (openAiEntry && cfg.defaultId === openAiEntry.id) return openAiEntry.apiKey;
@@ -38,25 +37,12 @@ export function setOpenAIApiKey(key: string): void {
   upsertOpenAiProviderFromKey(clean);
 }
 
-function resolveCopilotProvider(): LinkedAiProvider | null {
-  const active = getActiveProvider();
-  if (active) return active;
-  const envKey = String(import.meta.env.VITE_OPENAI_API_KEY || '').trim();
-  if (envKey) {
-    return { id: 'env-openai', provider: 'openai', label: 'OpenAI', apiKey: envKey, model: 'gpt-4o-mini', createdAt: '' };
-  }
-  return null;
-}
-
 export async function analyzeWithChatGPT(
   message: string,
   lang: 'ta' | 'tanglish' | 'en',
   cards: PipelineCardSummary[],
   history: Array<{ role: 'user' | 'assistant'; text: string }> = []
 ): Promise<{ intent: Intent; params: Params; reply: string } | null> {
-  const provider = resolveCopilotProvider();
-  if (!provider) return null;
-
   const cardsSnippet = cards.length
     ? cards
         .slice(0, 30)
@@ -193,7 +179,7 @@ Matching Guidelines:
   ];
 
   try {
-    const rawContent = await completeProviderChat(provider, systemPrompt, chatMessages, {
+    const rawContent = await aiComplete(systemPrompt, chatMessages, {
       temperature: 0.1,
       maxTokens: 1200,
       jsonMode: true,
@@ -239,9 +225,6 @@ export async function extractStageFieldsWithChatGPT(
   userSpeech: string,
   fieldsInfo: Array<{ key: string; label: string }>
 ): Promise<Record<string, any> | null> {
-  const provider = resolveCopilotProvider();
-  if (!provider) return null;
-
   const fieldsDesc = fieldsInfo.map((f) => `"${f.key}": (${f.label})`).join(', ');
 
   const systemPrompt = `You are an AI data extractor for an Argus BI manufacturing company.
@@ -261,7 +244,7 @@ Guidelines:
 - Output JSON only, no markdown, no explanation.`;
 
   try {
-    const content = await completeProviderChat(provider, systemPrompt, [{ role: 'user', text: userSpeech }], {
+    const content = await aiComplete(systemPrompt, [{ role: 'user', text: userSpeech }], {
       temperature: 0.1,
       maxTokens: 900,
       jsonMode: true,

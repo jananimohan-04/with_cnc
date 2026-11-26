@@ -351,6 +351,11 @@ function formatHttpError(label: string, status: number, bodyText: string): strin
   return `${label} error (HTTP ${status}): ${msg || bodyText.slice(0, 140)}`;
 }
 
+/** Gemini 2.5 Flash models think before answering and that thinking uses the reply budget: switch it off (Pro cannot). */
+export function geminiThinking(model: string): { thinkingConfig?: { thinkingBudget: number } } {
+  return /2.5-flash/i.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
+}
+
 async function* parseSseLines(body: ReadableStream<Uint8Array>, extract: (raw: string, parsed: unknown) => string): AsyncGenerator<string> {
   const reader = body.getReader();
   const dec = new TextDecoder();
@@ -396,6 +401,7 @@ async function* streamDirectProvider(
       generationConfig: {
         temperature,
         maxOutputTokens: maxTokens,
+        ...geminiThinking(model),
         ...(opts.jsonMode ? { responseMimeType: 'application/json' } : {}),
       },
     };
@@ -448,11 +454,12 @@ async function* streamDirectProvider(
     headers['HTTP-Referer'] = window.location.origin;
     headers['X-Title'] = 'Argus BI';
   }
+  const modelName = provider.model || preset.defaultModel;
+  const reasoning = provider.provider === 'openai' && /^(od|gpt-5)/i.test(modelName);
   const makeBody = (useJsonFormat: boolean) => ({
-    model: provider.model || preset.defaultModel,
+    model: modelName,
     messages: [{ role: 'system', content: system }, ...messages.map((m) => ({ role: m.role, content: m.text }))],
-    temperature,
-    max_tokens: maxTokens,
+    ...(reasoning ? { max_completion_tokens: maxTokens } : { temperature, max_tokens: maxTokens }),
     stream: true,
     ...(useJsonFormat ? { response_format: { type: 'json_object' } } : {}),
   });
@@ -586,7 +593,7 @@ export async function testProviderConnection(input: {
       probe,
       'Reply with just OK.',
       [{ role: 'user', text: 'Reply with OK' }],
-      { maxTokens: 32, temperature: 0 },
+      { maxTokens: 256, temperature: 0 },
     );
     if (!reply) return { ok: false, error: 'Provider connected but returned an empty response.' };
     return { ok: true, reply };

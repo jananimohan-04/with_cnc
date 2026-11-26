@@ -25,6 +25,7 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [makeDefault, setMakeDefault] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
@@ -58,6 +59,27 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
     if (provider === 'custom' && !baseUrl.trim()) {
       setStatus({ kind: 'err', text: 'Enter the Custom API endpoint URL (e.g. https://.../v1/chat/completions).' });
+      return;
+    }
+    // the same key linked twice: just make the existing one Default instead of adding a copy
+    const dup = cfg.providers.find((p) => p.provider === provider && p.apiKey === trimmedKey && (provider !== 'custom' || (p.baseUrl || '') === baseUrl.trim()));
+    if (dup) {
+      if (makeDefault) setCfg(setDefaultProvider(dup.id));
+      setApiKey('');
+      setStatus({ kind: 'ok', text: `${preset.shortName} is already linked${makeDefault ? ' and is now the Default AI.' : '.'}` });
+      return;
+    }
+    // check the key works before saving it, so a wrong key never becomes the Default
+    setLinking(true);
+    const check = await testProviderConnection({
+      provider,
+      apiKey: trimmedKey,
+      model: preset.defaultModel,
+      ...(provider === 'custom' ? { baseUrl: baseUrl.trim() } : {}),
+    });
+    setLinking(false);
+    if (!check.ok) {
+      setStatus({ kind: 'err', text: `Not linked: ${check.error || 'the connection test failed.'}` });
       return;
     }
     const nextCfg = addLinkedProvider(
@@ -230,11 +252,12 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
               <button
                 type="button"
                 data-testid="link-api-submit"
+                disabled={linking || testing}
                 onClick={() => void handleLink()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-b from-orange-500 to-orange-600 px-3.5 text-xs font-bold text-white shadow-sm hover:to-orange-700"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-b from-orange-500 to-orange-600 px-3.5 text-xs font-bold text-white shadow-sm hover:to-orange-700 disabled:opacity-60"
               >
-                <Plus size={14} />
-                Link API
+                {linking ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                {linking ? 'Checking…' : 'Link API'}
               </button>
             </div>
           </div>
@@ -272,7 +295,7 @@ export function AiApiModal({ open, onClose }: { open: boolean; onClose: () => vo
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500">Uses server-configured key (fallback if no custom default is active)</p>
+                  <p className="text-[11px] text-slate-500">Always available. Also answers whenever a linked API fails.</p>
                 </div>
               </div>
               {cfg.defaultId !== SERVER_DEFAULT_ID && (

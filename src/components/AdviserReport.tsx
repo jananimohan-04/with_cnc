@@ -70,8 +70,13 @@ async function* reviewStream(facts: string, lang: Lang, daily?: { avoid: string[
   const active = getActiveProvider();
   const sys = daily ? DAILY_SYSTEM(lang, daily.avoid) : REVIEW_SYSTEM(lang);
   if (active) {
-    yield* streamProviderChat(active, sys, [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 });
-    return;
+    let got = false;
+    try {
+      for await (const piece of streamProviderChat(active, sys, [{ role: 'user', text: facts }], { maxTokens: 700, temperature: daily ? 0.7 : 0.3 })) { got = true; yield piece; }
+      if (got) return;
+    } catch (e) {
+      if (got) throw e;   // linked API failed before answering: the built-in AI answers below
+    }
   }
   // ChatGPT through our own server first (OPENAI_API_KEY in Vercel); the Supabase help function only if that is not set up.
   try {

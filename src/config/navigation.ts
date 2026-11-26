@@ -34,6 +34,7 @@ import {
   Network,
   Plus,
   Layers,
+  PhoneCall,
   type LucideIcon,
 } from 'lucide-react';
 import type { ErpRole } from '@/contexts/AuthContext';
@@ -75,6 +76,7 @@ export const navSections: NavSection[] = [
       { label: 'Quotations', icon: FileText, page: 'sales/quotations', iconClass: 'text-amber-300', module: 'menu-quotations' },
       { label: 'Sales Orders', icon: ClipboardList, page: 'sales/orders', iconClass: 'text-rose-300', module: 'menu-sales-orders' },
       { label: 'All Company Library', icon: Building2, page: 'sales/leads', iconClass: 'text-teal-300', module: 'companies' },
+      { label: 'Tele CRM', icon: PhoneCall, page: 'telecrm', iconClass: 'text-emerald-400', module: 'tele-crm' },
     ],
   },
   {
@@ -152,6 +154,7 @@ export const navSections: NavSection[] = [
 export const pageTitles: Record<string, string> = {
   'dashboard': 'Report',
   'bi-chat': 'BI Chat',
+  'telecrm': 'Tele CRM',
   'mind-map': 'Project Mind Map',
   'mind-map/workspace': 'Create Mind Map',
   'mind-map/create': 'Create Mind Map',

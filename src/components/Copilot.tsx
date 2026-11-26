@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { askAnything } from '@/lib/adviser/openAnswer';
+import { serverAiReady } from '@/lib/adviser/serverAi';
 import {
   Bot, CheckCircle2, Languages, Loader2, Mic, MicOff, Send, Volume2, VolumeX, X,
   Key, Sparkles, Search, ChevronDown, ChevronUp, Edit3, Trash2, PlusCircle, RefreshCw,
@@ -583,9 +584,12 @@ export function Copilot({
   useEffect(() => {
     const sync = () => {
       setApiKeyInput(getOpenAIApiKey());
-      setHasApiKey(Boolean(getActiveProvider() || getOpenAIApiKey()));
+      if (getActiveProvider() || getOpenAIApiKey()) setHasApiKey(true);
+      else void serverAiReady().then(setHasApiKey);
     };
     window.addEventListener(AI_PROVIDERS_EVENT, sync);
+    // Built-in AI as the Default: online understanding works too when the server's AI is switched on
+    if (!getActiveProvider() && !getOpenAIApiKey()) void serverAiReady().then((ok) => { if (ok) setHasApiKey(true); });
     return () => window.removeEventListener(AI_PROVIDERS_EVENT, sync);
   }, []);
 

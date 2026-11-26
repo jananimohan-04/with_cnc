@@ -26,9 +26,7 @@ export async function askAnything(question: string, lang: AnswerLang, history: C
     try {
       const answer = await completeProviderChat(custom, system, msgs, { maxTokens: 700, temperature: 0.5 });
       if (answer) return answer;
-    } catch (e) {
-      return e instanceof Error ? e.message : null;
-    }
+    } catch { /* linked API failed: the built-in AI answers below */ }
   }
   let text = '';
   try {

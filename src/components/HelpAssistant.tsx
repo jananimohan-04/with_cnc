@@ -1173,16 +1173,25 @@ export function HelpAssistant({ allowed = { teaching: true, guide: true, coworke
       const chatHist = [...history.current.slice(-16), { role: 'user' as const, text: q }];
       const chatOpts = { maxTokens: wantsChart ? 4096 : speakRef.current ? 1100 : 2800 };
 
+      let customFailed = false;
       if (customProvider) {
-        for await (const piece of streamProviderChat(customProvider, sysPrompt, chatHist, chatOpts)) {
-          if (!activeRef.current) break;
-          servedFirst = true; push(piece);
+        try {
+          for await (const piece of streamProviderChat(customProvider, sysPrompt, chatHist, chatOpts)) {
+            if (!activeRef.current) break;
+            servedFirst = true; push(piece);
+          }
+        } catch (eC) {
+          if (servedFirst) throw eC;
+          // the linked API did not answer (wrong key, limit reached, offline): the built-in AI answers with the same rules
+          customFailed = true;
+          setNote(`${customProvider.label || 'The linked AI'} did not answer (${(eC instanceof Error ? eC.message : String(eC)).slice(0, 140)}), so the built-in AI answered.`);
         }
+        if (!servedFirst && activeRef.current) customFailed = true;   // an empty answer counts as no answer
       }
 
       // 1) ChatGPT through our own server first (OPENAI_API_KEY in Vercel). Only if that route is missing / not set up
       //    do we try the Supabase help function (an old deployment of it refuses machining questions).
-      if (!servedFirst && !customProvider) try {
+      if (!servedFirst && (!customProvider || customFailed)) try {
         for await (const piece of serverChat(sysPrompt, chatHist, chatOpts)) {
           if (!activeRef.current) break;
           servedFirst = true; push(piece);

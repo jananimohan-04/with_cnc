@@ -53,6 +53,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'quotations', label: 'Quotation column', category: 'Sales Pipeline Columns', actions: [...VCEDX], pages: [] },
   { key: 'sales-orders', label: 'Sales Order column', category: 'Sales Pipeline Columns', actions: [...VCEDX], pages: [] },
   { key: 'companies', label: 'All Company Library', category: 'Sales', actions: [...VCEDX], pages: ['sales/leads', 'sales/customers'] },
+  { key: 'tele-crm', label: 'Tele CRM (calls, contacts, recordings, follow-ups)', category: 'Sales', actions: [...VCEDX], pages: ['telecrm'] },
   { key: 'enquiries', label: 'Enquiry column', category: 'Sales Pipeline Columns', actions: [...VCEDX], pages: [] },
 
   { key: 'production', label: 'Production', category: 'Production', actions: [...VCED], pages: ['production/planning', 'production/work-orders', 'production/job-cards'] },

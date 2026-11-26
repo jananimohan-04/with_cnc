@@ -137,7 +137,7 @@ module.exports = function mountAdviser(app, SB) {
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
             contents: msgs.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-            generationConfig: { temperature, maxOutputTokens: maxTokens, ...(b.jsonMode ? { responseMimeType: 'application/json' } : {}) },
+            generationConfig: { temperature, maxOutputTokens: maxTokens, ...(/2.5-flash/i.test(model || 'gemini-2.5-flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}), ...(b.jsonMode ? { responseMimeType: 'application/json' } : {}) },
           }),
           signal: ctl.signal,
         });

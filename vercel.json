@@ -41,5 +41,11 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/telecrm/cron/retention",
+      "schedule": "30 20 * * *"
+    }
   ]
 }

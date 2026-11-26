@@ -79,7 +79,7 @@ export async function explainOptions(page: string, pageTitle: string, lang: Tour
   const active = getActiveProvider();
   const k = `${active ? active.id : 'server'}:${page}:${lang}:${itemsKey(items)}`;
   const cached = readCache(k);
-  const raw = cached ?? (active ? await viaLinkedProvider(pageTitle, lang, slim) : ((await viaServer(page, pageTitle, lang, slim)) ?? (await viaBrowserKey(pageTitle, lang, slim))));
+  const raw = cached ?? ((active ? await viaLinkedProvider(pageTitle, lang, slim) : null) ?? (await viaServer(page, pageTitle, lang, slim)) ?? (await viaBrowserKey(pageTitle, lang, slim)));
   if (!raw) return {};
   if (!cached && Object.keys(raw).length) writeCache(k, raw);
   const out: Record<number, string> = {};
