@@ -7,6 +7,7 @@ import { type LedgerLine, type Settlement, dmy, drCr, nameKey, statementFor, str
 import { type PivotGroupBy } from './LedgerPivotView';
 import { formatINR } from '@/lib/format';
 import { exportCsv, escapeHtml, printHtml } from '@/lib/reportExport';
+import { SettlementCell } from './SettlementCell';
 import { addRoundedLogo } from '@/lib/brandedDocument';
 
 const monthLabel = (ym: string) => {
@@ -514,17 +515,7 @@ export function LedgerDetailView({
                       </td>
                     )}
                     <td className="px-2.5 py-2 text-center whitespace-nowrap">
-                      {status ? (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          status.toLowerCase().includes('completed')
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : status.toLowerCase().includes('part')
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-orange-50 text-orange-700 border-orange-200'
-                        }`}>
-                          {status}
-                        </span>
-                      ) : <span className="text-slate-300">—</span>}
+                      <SettlementCell s={settled.get(r.id)} label={status} center />
                     </td>
                   </tr>
                 );

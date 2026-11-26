@@ -1,3 +1,4 @@
+import { SettlementCell } from './SettlementCell';
 import { type Dispatch, type SetStateAction, useMemo, useState } from 'react';
 import {
   ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2,
@@ -596,11 +597,7 @@ export function LedgerPivotView({
                                       {l.credit ? `₹${money(l.credit)}` : '—'}
                                     </td>
                                     <td className="px-2 py-1 text-center whitespace-nowrap">
-                                      {statusText(l.id) ? (
-                                        <span className="text-[10px] text-slate-600 font-medium">
-                                          {statusText(l.id)}
-                                        </span>
-                                      ) : <span className="text-slate-300">—</span>}
+                                      <SettlementCell s={settled.get(l.id)} label={statusText(l.id)} center />
                                     </td>
                                   </tr>
                                 ))}
