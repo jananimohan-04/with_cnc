@@ -6,7 +6,8 @@
  * Adapter contract (all secrets come from environment variables and stay on the server):
  *   id, label
  *   missingConfig()                        -> string[]  names of required environment variables that are not set
- *   browserCalling                         -> true when calls can be made / answered in the browser
+ *   browserCalling                         -> true when calls can be made / answered in the browser (its extra settings are set)
+ *   missingBrowserConfig()                 -> string[]  extra settings needed only for browser calling
  *   clientToken(identity, ttlSeconds)      -> { token, expiresIn }  short-lived token for the browser phone
  *   verifyWebhook(fullUrl, params, headers)-> boolean   signature check of a provider webhook
  *   readVoice(params)                      -> { callId, from, to, fromAgent, customerNumber, custom }
@@ -54,7 +55,7 @@ function providerStatus() {
   const p = getProvider();
   if (!p) return { configured: false, provider: name, supported: Object.keys(ADAPTERS), missing: [`TELEPHONY_PROVIDER (unknown value "${name}")`] };
   const missing = p.missingConfig();
-  return { configured: missing.length === 0, provider: p.id, label: p.label, browserCalling: !!p.browserCalling, bridgeCalling: !!p.bridgeCalling, supported: Object.keys(ADAPTERS), missing };
+  return { configured: missing.length === 0, provider: p.id, label: p.label, browserCalling: !!p.browserCalling, bridgeCalling: !!p.bridgeCalling, supported: Object.keys(ADAPTERS), missing, missingBrowser: p.missingBrowserConfig ? p.missingBrowserConfig() : [] };
 }
 
 module.exports = { getProvider, providerStatus, ADAPTERS };

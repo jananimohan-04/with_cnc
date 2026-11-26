@@ -14,7 +14,7 @@ export interface TeleAgent {
 export interface TeleNumber { id: string; e164: string; label: string; is_default: boolean; active: boolean }
 export interface TeleStatus {
   ok: boolean; configured: boolean; browserCalling: boolean; bridgeCalling?: boolean; provider: string;
-  missing: string[]; supported: string[]; webhookBase: string;
+  missing: string[]; missingBrowser?: string[]; supported: string[]; webhookBase: string;
   numbers: TeleNumber[];
   me: { id: string; isManager: boolean; agent: TeleAgent | null };
   setupNeeded?: boolean; error?: string;

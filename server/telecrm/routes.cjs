@@ -100,6 +100,8 @@ module.exports = function mountTeleCrm(app, SB) {
         provider: st.configured ? st.label : '',
         // what an administrator must add on the server (names only, never values)
         missing: me.isManager ? st.missing : [],
+        // optional: only for calling from the computer
+        missingBrowser: me.isManager ? (st.missingBrowser || []) : [],
         supported: me.isManager ? st.supported : [],
         webhookBase: me.isManager ? `${PUBLIC_URL()}/api/telecrm/hooks` : '',
         numbers: nums || [],
@@ -112,6 +114,7 @@ module.exports = function mountTeleCrm(app, SB) {
     const me = await who(req, res); if (!me) return;
     const p = getProvider();
     if (!p || p.missingConfig().length) return res.status(409).json({ ok: false, error: 'Calling is not switched on yet: the cloud phone provider is not configured on the server.' });
+    if (!p.browserCalling) return res.status(409).json({ ok: false, error: 'Calling from the computer is not switched on (only calls through your mobile are).' });
     if (!me.agent || (!me.agent.can_call_out && !me.agent.can_receive)) return res.status(403).json({ ok: false, error: 'You are not set up as a telecaller in this company.' });
     try {
       const { count } = await db().from('tele_numbers').select('id', { count: 'exact', head: true }).eq('company_id', me.companyId).eq('active', true);

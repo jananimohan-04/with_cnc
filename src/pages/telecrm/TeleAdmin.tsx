@@ -201,7 +201,14 @@ function ConnectionCard({ status }: { status: TeleStatus | null }) {
             <ul className="space-y-1">{status.missing.map((m) => <li key={m}><code className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[11px] text-amber-900">{m}</code></li>)}</ul>
             <p className="text-slate-500">Supported providers: {status.supported.join(', ')} (set <code>TELEPHONY_PROVIDER</code> to one of these). After that, connect the company's number below.</p>
           </>
-        ) : <p>The provider is configured. In the provider account, point the calling app's voice address and status address here (numbers connected below are set up automatically):</p>}
+        ) : (
+          <>
+            <p>The provider is configured. Calls through the agents' mobiles (bridge calling) work with this; numbers connected below are set up automatically.</p>
+            {!!status.missingBrowser?.length && (
+              <p className="text-slate-500">Optional, only for calling from the computer: {status.missingBrowser.map((m) => <code key={m} className="mx-0.5 rounded bg-slate-50 border border-slate-200 px-1 py-0.5 text-[11px]">{m}</code>)}. The calling app's voice address for it is below.</p>
+            )}
+          </>
+        )}
         {status.webhookBase && (
           <div className="space-y-1.5 pt-1">
             <CopyLine label="Voice address" value={`${status.webhookBase}/voice`} />

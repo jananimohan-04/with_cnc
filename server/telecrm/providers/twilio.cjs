@@ -1,11 +1,13 @@
 /* Tele CRM adapter: Twilio Programmable Voice (browser calling with the Voice SDK, numbers, recordings, transfer).
  *
  * Environment variables (server only):
- *   TWILIO_ACCOUNT_SID      AC...  account
- *   TWILIO_AUTH_TOKEN       used for webhook signatures and the REST calls
+ *   TWILIO_ACCOUNT_SID      AC...  account                                             (required)
+ *   TWILIO_AUTH_TOKEN       webhook signatures and the REST calls                  (required)
+ *   -- only for calling from the computer (browser phone); bridge calling does not need them --
  *   TWILIO_API_KEY_SID      SK...  signing key for browser phone tokens
  *   TWILIO_API_KEY_SECRET
  *   TWILIO_TWIML_APP_SID    AP...  "TwiML App" whose Voice URL is  <TELECRM_PUBLIC_URL>/api/telecrm/hooks/voice
+ * Bridge calls pass our Voice URL to Twilio on every call (REST create call), so no TwiML App is involved.
  *   TWILIO_EDGE             optional, e.g. "singapore" (closest media edge for India)
  * No SDK dependency: tokens, signatures and REST calls are plain HTTPS + crypto.
  */
@@ -13,7 +15,8 @@
 const crypto = require('crypto');
 
 const env = (k) => String(process.env[k] || '').trim();
-const REQUIRED = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_TWIML_APP_SID'];
+const REQUIRED = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'];
+const BROWSER = ['TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_TWIML_APP_SID'];
 const API = () => `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(env('TWILIO_ACCOUNT_SID'))}`;
 const basic = () => 'Basic ' + Buffer.from(`${env('TWILIO_ACCOUNT_SID')}:${env('TWILIO_AUTH_TOKEN')}`).toString('base64');
 
@@ -55,7 +58,9 @@ const STATUS = {   // provider status -> ours
 module.exports = {
   id: 'twilio',
   label: 'Twilio Programmable Voice',
-  browserCalling: true,
+  /** Calling from the computer needs the extra signing key + TwiML App; bridge calling does not. */
+  get browserCalling() { return BROWSER.every((k) => env(k)); },
+  missingBrowserConfig: () => BROWSER.filter((k) => !env(k)),
   identityFor,
   userFromIdentity,
 

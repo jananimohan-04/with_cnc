@@ -140,7 +140,8 @@ export function TelePhoneProvider({ children }: { children: ReactNode }) {
   }, [allowed, company?.id, epoch, bind]);
 
   const agent = status?.me.agent ?? null;
-  const callVia: 'mobile' | 'browser' = status?.bridgeCalling && (agent?.call_via ?? 'mobile') === 'mobile' && agent?.mobile_status !== undefined ? 'mobile' : 'browser';
+  // mobile when bridge calling is available and the agent chose it, or when calling from the computer is not set up at all
+  const callVia: 'mobile' | 'browser' = status?.bridgeCalling && agent?.mobile_status !== undefined && ((agent?.call_via ?? 'mobile') === 'mobile' || !status.browserCalling) ? 'mobile' : 'browser';
   const canCall = callVia === 'mobile'
     ? !!(status?.configured && status.numbers.length && agent?.can_call_out)
     : state === 'ready' && canCallOut;

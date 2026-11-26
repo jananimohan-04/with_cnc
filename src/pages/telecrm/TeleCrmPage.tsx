@@ -295,7 +295,7 @@ function PhoneTab({ contacts, calls, me, nameOf }: { contacts: Contact[]; calls:
             <div className="flex items-center justify-between text-xs text-slate-600">
               <span className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Call through</span>
               <span className="inline-flex rounded-lg border border-slate-200 p-0.5">
-                {(['mobile', 'browser'] as const).map((v) => (
+                {((phone.status.browserCalling ? ['mobile', 'browser'] : ['mobile']) as ('mobile' | 'browser')[]).map((v) => (
                   <button key={v} onClick={() => void phone.setCallVia(v).catch((e) => setErr(e instanceof Error ? e.message : String(e)))}
                     className={`h-6 px-2 rounded-md text-[11px] font-semibold ${phone.callVia === v ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{v === 'mobile' ? 'My mobile' : 'This computer'}</button>
                 ))}
