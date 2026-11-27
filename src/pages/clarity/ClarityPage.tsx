@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Eye, Filter, Layers, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { markScheduled } from '@/lib/clarityScheduling';
 
 type Tab = 'today' | 'todo' | 'goals' | 'mission' | 'vision';
 interface Statement { id: string; owner_id: string; kind: 'vision' | 'mission'; body: string; target_year: number | null }
@@ -119,8 +120,11 @@ export function ClarityPage() {
   const editTask = async (id: string, patch: Partial<Task>) => {
     const full = { ...patch, ...(patch.done !== undefined ? { done_at: patch.done ? new Date().toISOString() : null } : {}) };
     setTasks((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    const before = tasks.find((x) => x.id === id);
     const r = await supabase.from('clarity_tasks').update(full).eq('id', id);
-    if (r.error) fail(r.error);
+    if (r.error) return fail(r.error);
+    // ticked: moves from the Planned to the Actual timeline in Production > Scheduling
+    if (before && patch.done !== undefined) void markScheduled({ ...before, ...patch }, myName).catch(() => { /* calendar not updated */ });
   };
   const deleteTask = async (id: string) => {
     setTasks((xs) => xs.filter((x) => x.id !== id));

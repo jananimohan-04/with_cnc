@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { Check, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { createScheduledTask } from '@/lib/scheduledTasks';
+import { linkNote, markScheduled } from '@/lib/clarityScheduling';
 
 type View = 'today' | 'todo';
 interface Task { id: string; owner_id: string; title: string; assignee: string; due_date: string | null; today: string | null; done: boolean; sort_order: number }
@@ -23,6 +25,7 @@ export function ClarityQuickLists({ onClose }: { onClose: () => void }) {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [problem, setProblem] = useState('');
   const [draft, setDraft] = useState('');
+  const [draftDate, setDraftDate] = useState(todayISO);
 
   const pick = (v: View) => { setView(v); try { localStorage.setItem('clarity.quick', v); } catch { /* not saved */ } };
 
@@ -45,19 +48,32 @@ export function ClarityQuickLists({ onClose }: { onClose: () => void }) {
   const done = list.filter((t) => t.done).length;
 
   const edit = async (id: string, patch: Partial<Task>) => {
+    const before = (tasks ?? []).find((x) => x.id === id);
     setTasks((xs) => (xs ?? []).map((x) => (x.id === id ? { ...x, ...patch } : x)));
     const full = { ...patch, ...(patch.done !== undefined ? { done_at: patch.done ? new Date().toISOString() : null } : {}) };
     const r = await supabase.from('clarity_tasks').update(full).eq('id', id);
-    if (r.error) { setProblem('Could not save. Please try again.'); void load(); }
+    if (r.error) { setProblem('Could not save. Please try again.'); void load(); return; }
+    // ticked: the task moves from the Planned to the Actual timeline in Production > Scheduling
+    if (before && patch.done !== undefined) {
+      try { await markScheduled({ ...before, ...patch }, myName); } catch { setProblem('Saved here, but the scheduling calendar could not be updated.'); }
+    }
   };
   const add = async () => {
     const title = draft.trim();
     if (!title || !me) return;
+    const date = draftDate || (view === 'today' ? day : '');
     setDraft('');
-    const row = { owner_id: me, assignee: myName, title, sort_order: tasks?.length ?? 0, ...(view === 'today' ? { today: day, due_date: day } : {}) };
+    const row = { owner_id: me, assignee: myName, title, sort_order: tasks?.length ?? 0, due_date: date || null, ...(view === 'today' ? { today: day } : {}) };
     const r = await supabase.from('clarity_tasks').insert(row).select('id, owner_id, title, assignee, due_date, today, done, sort_order').single();
     if (r.error) { setProblem('Could not add the task. Please try again.'); return; }
-    setTasks((xs) => [...(xs ?? []), r.data as Task]);
+    const t = r.data as Task;
+    setTasks((xs) => [...(xs ?? []), t]);
+    // with a date it also goes on the Planned timeline (Production > Scheduling) as a task
+    if (date) {
+      try {
+        await createScheduledTask({ task_name: title, member_name: myName, task_date: date, start_time: '09:00', end_time: '10:00', mode: 'planned', status: 'Planned', notes: linkNote(t.id) });
+      } catch { setProblem('Saved here, but it could not be put on the scheduling calendar.'); }
+    }
   };
   const openClarity = () => {
     try { localStorage.setItem('clarity.tab', view); } catch { /* not saved */ }
@@ -116,6 +132,8 @@ export function ClarityQuickLists({ onClose }: { onClose: () => void }) {
           <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }}
             placeholder={view === 'today' ? '+ Add a task for today' : '+ Add a task'}
             className="h-8 min-w-0 flex-1 rounded-lg border border-dashed border-slate-300 px-2 text-xs placeholder:text-slate-400 focus:border-violet-400 focus:outline-none" />
+          <input type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)} title="Date (shows on the Planned timeline in Scheduling)"
+            className="h-8 w-[112px] shrink-0 rounded-lg border border-slate-200 px-1.5 text-[11px] text-slate-600 focus:border-violet-400 focus:outline-none" />
           <button type="button" onClick={() => void add()} title="Add" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white hover:bg-orange-600"><Plus size={14} /></button>
         </div>
         {problem && <p className="mt-1.5 text-[11px] font-semibold text-red-600">{problem}</p>}
