@@ -17,6 +17,7 @@ import { useHeaderKpis } from '@/contexts/HeaderKpiContext';
 import { useDateRange } from '@/contexts/DateRangeContext';
 import { displayDay } from '@/lib/globalDate';
 import { GlobalDateFilterPopup } from './GlobalDateFilter';
+import { ClarityQuickLists } from './ClarityQuickLists';
 import { MenuPositionSelector } from './MenuPositionSelector';
 import { DisplaySizeControl } from './DisplaySizeControl';
 
@@ -263,8 +264,9 @@ export function Topbar({
           </div>
         )}
         {showDateFilter && (
-          <div ref={dateFilterRef} className="absolute right-0 top-full mt-2 z-50">
+          <div ref={dateFilterRef} className="absolute right-0 top-full mt-2 z-50 flex max-h-[calc(100vh-70px)] flex-col gap-2 overflow-y-auto">
             <GlobalDateFilterPopup onClose={() => setShowDateFilter(false)} />
+            {canView('clarity') && <ClarityQuickLists onClose={() => setShowDateFilter(false)} />}
           </div>
         )}
         </div>
