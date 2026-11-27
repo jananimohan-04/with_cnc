@@ -52,7 +52,7 @@ final class SimCallRecordings {
                 if (c.optLong("duration") <= 0 || !("incoming".equals(type) || "outgoing".equals(type))) continue;
                 JSONObject o = new JSONObject();
                 o.put("id", c.getLong("id")); o.put("date", c.getLong("date")); o.put("dur", c.getLong("duration"));
-                o.put("num", c.optString("number")); o.put("tries", 0);
+                o.put("num", c.optString("number")); o.put("name", c.optString("name")); o.put("tries", 0);
                 list.put(o);
             }
             // keep the newest 200
@@ -132,10 +132,12 @@ final class SimCallRecordings {
 
         long oldest = Long.MAX_VALUE;
         for (int i = 0; i < list.length(); i++) oldest = Math.min(oldest, list.optJSONObject(i).optLong("date"));
-        List<Audio> files = recentAudio(c, oldest - 60_000);
+        // the media list may register a recording long after the call, so look further back than the calls
+        List<Audio> files = recentAudio(c, oldest - 2 * 86400_000L);
         Set<Long> used = new HashSet<>();
         JSONArray keep = new JSONArray();
         long now = System.currentTimeMillis();
+        String nearestNote = "";
 
         for (int i = 0; i < list.length(); i++) {
             JSONObject call = list.optJSONObject(i);
@@ -143,22 +145,42 @@ final class SimCallRecordings {
             long start = call.optLong("date"), durMs = call.optLong("dur") * 1000, end = start + durMs;
             String digits = call.optString("num").replaceAll("\\D", "");
             String tail = digits.length() > 6 ? digits.substring(digits.length() - 6) : digits;
+            String contact = simplify(call.optString("name"));
             Audio best = null; int bestScore = -1;
+            Audio nearest = null; long nearestGap = Long.MAX_VALUE;
             for (Audio a : files) {
                 if (used.contains(a.id)) continue;
-                long t = Math.max(a.addedMs, a.modifiedMs);
-                if (t < start - 30_000 || t > end + 5 * 60_000) continue;            // saved during / right after this call
-                long diff = a.durMs > 0 ? Math.abs(a.durMs - durMs) : Long.MAX_VALUE;
                 boolean nameHasNumber = tail.length() >= 6 && a.name.replaceAll("\\D", "").contains(tail);
-                boolean looksLikeCall = a.callFolder || a.recording || nameHasNumber;
-                // a call-recording file: same length within 20% (or length unknown);
+                boolean nameHasContact = contact.length() >= 3 && simplify(a.name).contains(contact);
+                boolean looksLikeCall = a.callFolder || a.recording || nameHasNumber || nameHasContact;
+                // when it was recorded: the time in the file name (most reliable), else either media timestamp.
+                // Outgoing calls ring before they are answered, so the recording can start up to ~90 s after the
+                // call-history time and end up to a few minutes after.
+                long fileTime = timeInName(a.name);
+                boolean inTime = (fileTime > 0 && fileTime >= start - 60_000 && fileTime <= end + 3 * 60_000)
+                        || within(a.addedMs, start, end) || within(a.modifiedMs, start, end);
+                long gap = Math.abs((fileTime > 0 ? fileTime : a.modifiedMs) - start);
+                if (looksLikeCall && gap < nearestGap) { nearest = a; nearestGap = gap; }
+                if (!inTime) continue;
+                long diff = a.durMs > 0 ? Math.abs(a.durMs - durMs) : Long.MAX_VALUE;
+                // the file name says it started with this call (names may carry only minutes, and outgoing calls ring
+                // first) and it is a call recording: recorders often start late or stop early, so it may be shorter
+                boolean namedAtStart = fileTime > 0 && fileTime >= start - 90_000 && fileTime <= start + 150_000;
+                boolean sameLength;
+                if (looksLikeCall && namedAtStart) sameLength = a.durMs <= 0 || a.durMs <= durMs + 15_000;
+                // a call-recording file: about the same length (or length unknown);
                 // any other audio file: must be the same length within a few seconds
-                boolean sameLength = looksLikeCall
-                        ? (a.durMs <= 0 || diff <= Math.max(10_000, durMs / 5))
-                        : (a.durMs > 0 && diff <= Math.max(4_000, durMs / 20));
+                else if (looksLikeCall) sameLength = a.durMs <= 0 || diff <= Math.max(15_000, durMs / 4);
+                else sameLength = a.durMs > 0 && diff <= Math.max(4_000, durMs / 20);
                 if (!sameLength) continue;
-                int score = 1 + (nameHasNumber ? 3 : 0) + (a.callFolder ? 2 : 0) + (a.recording ? 2 : 0) + (a.durMs > 0 ? 1 : 0);
+                int score = 1 + (nameHasNumber ? 3 : 0) + (nameHasContact ? 3 : 0) + (a.callFolder ? 2 : 0) + (a.recording ? 2 : 0)
+                        + (namedAtStart ? 2 : fileTime > 0 ? 1 : 0) + (a.durMs > 0 && diff <= 5_000 ? 1 : 0);
                 if (score > bestScore) { best = a; bestScore = score; }
+            }
+            if (best == null && nearest != null && nearestNote.isEmpty()) {
+                long ft = timeInName(nearest.name);
+                nearestNote = " Closest file to the call at " + clock(start) + " (" + durMs / 1000 + " s): \"" + nearest.name + "\", "
+                        + (ft > 0 ? "named " + clock(ft) + ", " : "") + "saved " + clock(nearest.modifiedMs) + ", " + nearest.durMs / 1000 + " s.";
             }
             String result = best == null ? "none" : upload(c, p, api, token, call, best);
             if (best != null && !"retry".equals(result)) used.add(best.id);
@@ -167,7 +189,42 @@ final class SimCallRecordings {
             if (!finished && !tooOld) keep.put(call);
         }
         p.edit().putString(PENDING, keep.toString()).apply();
-        if (keep.length() > 0) diagnose(c, p); else p.edit().putString("recDiag", "").apply();
+        if (keep.length() > 0) { diagnose(c, p); p.edit().putString("recDiag", p.getString("recDiag", "") + nearestNote).apply(); }
+        else p.edit().putString("recDiag", "").apply();
+    }
+
+    /** A media timestamp inside the call (from a little before it starts to a few minutes after it ends). */
+    private static boolean within(long t, long start, long end) {
+        return t > 0 && t >= start - 60_000 && t <= end + 5 * 60_000;
+    }
+
+    private static String simplify(String s) {
+        return s == null ? "" : s.toLowerCase().replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    private static String clock(long ms) {
+        return new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date(ms));
+    }
+
+    // "..._20261127141530.m4a", "2026-11-27 14-15-30", "20261127_141530", "261127_141530", and without seconds
+    // "BVK-2611271329.mp3" (phone's local time)
+    private static final Pattern NAME_TIME = Pattern.compile("(?<!\\d)(20\\d{2}|\\d{2})[-_.]?(\\d{2})[-_.]?(\\d{2})[ _\\-T]?(\\d{2})[-_.:]?(\\d{2})(?:[-_.:]?(\\d{2}))?(?!\\d)");
+
+    /** The recording time written in the file name, or 0. */
+    static long timeInName(String name) {
+        java.util.regex.Matcher m = NAME_TIME.matcher(name == null ? "" : name);
+        while (m.find()) {
+            try {
+                int y = Integer.parseInt(m.group(1)); if (y < 100) y += 2000;
+                int mo = Integer.parseInt(m.group(2)), d = Integer.parseInt(m.group(3));
+                int h = Integer.parseInt(m.group(4)), mi = Integer.parseInt(m.group(5)), s = m.group(6) == null ? 0 : Integer.parseInt(m.group(6));
+                if (y < 2020 || y > 2039 || mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) continue;
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                cal.set(y, mo - 1, d, h, mi, s); cal.set(java.util.Calendar.MILLISECOND, 0);
+                return cal.getTimeInMillis();
+            } catch (Exception ignored) { }
+        }
+        return 0;
     }
 
     /** "done", "skip" (company off / not a usable file) or "retry". */
