@@ -100,9 +100,9 @@ export function LoginScreen() {
           className="hidden md:block absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#111316]/25 to-transparent pointer-events-none"
         />
 
-        {/* Bottom-centre: the company mark, small and quiet (the product logo above is the main brand; on phones the
+        {/* Middle of the picture: the company mark (the product logo above is the main brand; on phones the
             "Powered by" under the sign-in button shows it instead) */}
-        <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-10 items-center whitespace-nowrap gap-2 rounded-lg bg-white/90 backdrop-blur-sm px-2.5 py-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.35)] pointer-events-none">
+        <div className="hidden md:flex absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 items-center whitespace-nowrap gap-2 rounded-lg bg-white/90 backdrop-blur-sm px-2.5 py-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.35)] pointer-events-none">
           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B6760]">A product of</span>
           <img src="/argus-logo.png" alt="ARGUS CNC" className="h-[18px] lg:h-5 w-auto object-contain" />
         </div>
