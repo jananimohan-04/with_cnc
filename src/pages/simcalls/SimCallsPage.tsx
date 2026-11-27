@@ -97,25 +97,25 @@ export function SimCallsPage() {
   return (
     <div className="p-3 lg:p-6 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 mr-auto">
+        <div className="flex items-center gap-2 mr-auto min-w-0 flex-1">
           <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><Smartphone size={18} /></div>
           <div>
             <h1 className="text-lg font-bold text-slate-800 leading-tight">SIM Calls</h1>
             <p className="text-xs text-slate-500">Calls on company SIMs, saved from the mobile app{isManager ? ' (whole company)' : ' (your calls)'}</p>
           </div>
         </div>
-        <button onClick={() => { setLoading(true); void load(); }} className="h-9 px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5"><RefreshCw size={14} />Refresh</button>
+        <button onClick={() => { setLoading(true); void load(); }} className="h-9 px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5 shrink-0" aria-label="Refresh"><RefreshCw size={14} /><span className="hidden sm:inline">Refresh</span></button>
       </div>
 
       {simCallsAvailable() && <ThisPhone onChange={() => void load()} />}
 
       {err && <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2">{err}</div>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {[['Calls', totals.all, 'text-slate-800'], ['Incoming', totals.incoming, 'text-emerald-700'], ['Outgoing', totals.outgoing, 'text-sky-700'], ['Missed', totals.missed, 'text-rose-700'], ['Talk time', fmtDur(totals.talk), 'text-indigo-700']].map(([l, v, c]) => (
-          <div key={l as string} className="rounded-xl bg-white border border-slate-200 px-3 py-2.5 shadow-sm">
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">{l}</div>
-            <div className={`text-xl font-bold ${c}`}>{v}</div>
+      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+        {[['Calls', totals.all, 'text-slate-800'], ['In', totals.incoming, 'text-emerald-700'], ['Out', totals.outgoing, 'text-sky-700'], ['Missed', totals.missed, 'text-rose-700'], ['Talk', fmtDur(totals.talk), 'text-indigo-700']].map(([l, v, c]) => (
+          <div key={l as string} className="rounded-xl bg-white border border-slate-200 px-1 sm:px-3 py-2 sm:py-2.5 shadow-sm text-center sm:text-left min-w-0">
+            <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase truncate">{l}</div>
+            <div className={`text-base sm:text-xl font-bold truncate ${c}`}>{v}</div>
           </div>
         ))}
       </div>
@@ -131,16 +131,35 @@ export function SimCallsPage() {
       {tab === 'calls' || !isManager ? (
         <div className="rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 p-3 border-b border-slate-100">
-            <div className="relative flex-1 min-w-[160px]">
+            <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[160px]">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or number" className="w-full h-9 rounded-lg border border-slate-300 pl-8 pr-2 text-sm" />
             </div>
-            <select value={range} onChange={(e) => setRange(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Period">{RANGES.map((r) => <option key={r.k} value={r.k}>{r.label}</option>)}</select>
-            <select value={dir} onChange={(e) => setDir(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Type"><option value="">All types</option>{Object.entries(DIR).map(([k, d]) => <option key={k} value={k}>{d.label}</option>)}</select>
-            {isManager && <select value={person} onChange={(e) => setPerson(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Person"><option value="">Everyone</option>{callers.map((id) => <option key={id} value={id}>{nameOf(id)}</option>)}</select>}
+            <select value={range} onChange={(e) => setRange(e.target.value)} className="flex-1 sm:flex-none h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Period">{RANGES.map((r) => <option key={r.k} value={r.k}>{r.label}</option>)}</select>
+            <select value={dir} onChange={(e) => setDir(e.target.value)} className="flex-1 sm:flex-none h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Type"><option value="">All types</option>{Object.entries(DIR).map(([k, d]) => <option key={k} value={k}>{d.label}</option>)}</select>
+            {isManager && <select value={person} onChange={(e) => setPerson(e.target.value)} className="flex-1 sm:flex-none h-9 rounded-lg border border-slate-300 px-2 text-xs" aria-label="Person"><option value="">Everyone</option>{callers.map((id) => <option key={id} value={id}>{nameOf(id)}</option>)}</select>}
             {canExport && <button onClick={exportRows} className="h-9 px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">Export</button>}
           </div>
-          <div className="overflow-x-auto max-h-[calc(100dvh-330px)]">
+          {/* phones: one compact row per call */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {loading && <div className="py-10 text-center text-slate-400"><Loader2 size={18} className="inline animate-spin" /></div>}
+            {!loading && !rows.length && <div className="px-3 py-10 text-center text-xs text-slate-400">No calls in this period. A call shows here a few seconds after it ends.</div>}
+            {!loading && rows.map((c) => {
+              const d = DIR[c.direction] ?? DIR.unknown;
+              return (
+                <div key={c.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${d.cls}`}><d.Icon size={16} /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-800 truncate">{c.contact_name || c.number || 'Private number'}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{[c.contact_name ? c.number : '', d.label, fmtDur(c.duration_sec), isManager ? nameOf(c.user_id) : ''].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <div className="text-[11px] text-slate-400 text-right whitespace-nowrap">{fmtTime(c.started_at)}</div>
+                  {simCallsAvailable() && c.number && <button onClick={() => void simNative.dial(c.number).catch((e) => alert(e.message))} className="p-2 rounded-full bg-emerald-600 text-white shrink-0" aria-label="Call back"><Phone size={14} /></button>}
+                </div>
+              );
+            })}
+          </div>
+          <div className="hidden sm:block overflow-x-auto max-h-[calc(100dvh-330px)]">
             <table className="w-full text-xs no-stripe">
               <thead className="bg-slate-50 text-slate-500 sticky top-0">
                 <tr>
@@ -242,19 +261,21 @@ function ThisPhone({ onChange }: { onChange: () => void }) {
 
   return (
     <div className="rounded-xl bg-white border border-emerald-200 shadow-sm p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">SIM{st.sim?.slot}</div>
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 shrink-0 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">SIM{st.sim?.slot}</div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-slate-800 truncate">{st.sim ? simTitle(st.sim) : 'Company SIM'}</div>
-          <div className="text-xs text-slate-500">Saving calls on this SIM · last sent {ago(st.lastSync)}</div>
+          <div className="text-sm font-bold text-slate-800 truncate">{st.sim ? [st.sim.carrier || st.sim.label, st.sim.number].filter(Boolean).join(' · ') || `SIM ${st.sim.slot}` : 'Company SIM'}</div>
+          <div className="text-xs text-slate-500 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />Saving calls · sent {ago(st.lastSync)}</div>
         </div>
-        <button onClick={sendNow} disabled={busy} className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60">{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}Send now</button>
-        <button onClick={() => setSetup(true)} className="h-9 px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700">Change SIM</button>
-        <button onClick={stop} className="h-9 px-3 rounded-lg border border-rose-200 text-xs font-semibold text-rose-600">Stop</button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <button onClick={sendNow} disabled={busy} className="h-9 rounded-lg bg-emerald-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60 whitespace-nowrap">{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}Send now</button>
+        <button onClick={() => setSetup(true)} className="h-9 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 whitespace-nowrap">Change SIM</button>
+        <button onClick={stop} className="h-9 rounded-lg border border-rose-200 text-xs font-semibold text-rose-600 whitespace-nowrap">Stop</button>
       </div>
       <div className="flex gap-2">
-        <input value={num} onChange={(e) => setNum(e.target.value)} inputMode="tel" placeholder="Number to call from the company SIM" className="flex-1 h-10 rounded-lg border border-slate-300 px-3 text-sm" />
-        <button onClick={call} className="h-10 px-4 rounded-lg bg-sky-600 text-white text-sm font-semibold flex items-center gap-1.5"><Phone size={15} />Call</button>
+        <input value={num} onChange={(e) => setNum(e.target.value)} inputMode="tel" placeholder="Number to call" className="flex-1 min-w-0 h-10 rounded-lg border border-slate-300 px-3 text-sm" />
+        <button onClick={call} className="h-10 px-4 shrink-0 rounded-lg bg-sky-600 text-white text-sm font-semibold flex items-center gap-1.5"><Phone size={15} />Call</button>
       </div>
       {(msg || st.lastError) && <p className={`text-xs ${st.lastError && !msg ? 'text-amber-700' : 'text-slate-600'}`}>{msg || st.lastError}</p>}
     </div>
