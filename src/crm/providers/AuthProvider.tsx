@@ -25,6 +25,8 @@ interface AuthContextValue {
   needsCompany: boolean;
   /** signed in to BI, but no Leads CRM access in this company */
   noAccess: boolean;
+  /** the Leads CRM SQL has not been run in the database yet */
+  setupNeeded: boolean;
   refreshing: boolean;
 
   refreshCompanies: () => Promise<CompanyWithRole[]>;
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
+  const [setupNeeded, setSetupNeeded] = useState(false);
   const companyId = bi.company?.id ?? null;
 
   useEffect(() => {
@@ -61,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoleLoaded(false);
     const { data, error } = await supabase.rpc("crm_role", { p_company_id: companyId });
     const r = !error && data ? (data as Role) : null;
+    setSetupNeeded(!!error && /crm_role|PGRST202|42883|schema cache|does not exist/i.test(`${error.code ?? ""} ${error.message ?? ""}`));
     setRole(r);
     setCrmSession({ companyId, role: r });
     clearPeople(companyId);
@@ -107,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configProblem: null,
     needsCompany: status === "signedIn" && !companyId,
     noAccess: status === "signedIn" && !!companyId && roleLoaded && !role,
+    setupNeeded,
     refreshing: status === "signedIn" && !!companyId && !roleLoaded,
     refreshCompanies: async () => { await loadRole(); return currentCompany ? [currentCompany] : []; },
     selectCompany: () => { /* the company is chosen in BI's top bar */ },
@@ -115,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp: async () => { await managedInBi(); return { needsConfirmation: false }; },
     signOut: async () => { await bi.signOut(); },
     sendPasswordReset: managedInBi,
-  }), [status, session, profile, currentCompany, companyId, role, roleLoaded, loadRole, bi]);
+  }), [status, session, profile, currentCompany, companyId, role, roleLoaded, setupNeeded, loadRole, bi]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

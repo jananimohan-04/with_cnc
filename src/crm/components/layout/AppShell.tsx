@@ -24,7 +24,7 @@ function readCollapsed(): boolean {
  * page or a spinner that never resolves.
  */
 export function AppShell() {
-  const { status, needsCompany, noAccess, configProblem, refreshing } = useAuth();
+  const { status, needsCompany, noAccess, setupNeeded, configProblem, refreshing } = useAuth();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -78,15 +78,17 @@ export function AppShell() {
 
   if (needsCompany || noAccess) {
     return (
-      <div className="flex min-h-full items-center justify-center p-6">
+      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-6">
         <EmptyState
           icon={<Building2 className="size-6" />}
-          title={needsCompany ? "Choose a company first" : "No access to the Leads CRM"}
+          title={needsCompany ? "Choose a company first" : setupNeeded ? "Leads CRM is not set up yet" : "No access to the Leads CRM"}
           description={needsCompany
             ? "Pick a company in the BI top bar, then open the Leads CRM again."
-            : "Ask your Company Admin to give you Leads CRM in BI Access Management."}
+            : setupNeeded
+              ? "Please ask your administrator to run the SQL file 20261202000000_leads_crm.sql, then refresh this page."
+              : "Ask your Company Admin to give you Leads CRM in BI Access Management."}
         />
-        <a href="/dashboard" className="ml-4 text-sm font-semibold text-brand-600 hover:underline">Back to BI</a>
+        <a href="/dashboard" className="text-sm font-semibold text-brand-600 hover:underline">Back to BI</a>
       </div>
     );
   }
