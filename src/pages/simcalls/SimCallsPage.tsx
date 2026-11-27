@@ -353,9 +353,12 @@ function ThisPhone({ onChange }: { onChange: () => void }) {
             <button onClick={() => void simNative.requestRecordings().then((r) => { if (!r.granted) setMsg('Allow "Music and audio" for Argus in the phone Settings → Apps → Permissions.'); void refresh(); })} className="h-8 px-3 rounded-lg bg-indigo-600 text-white font-semibold shrink-0">Allow</button>
           </>
         ) : (
-          <span className="flex-1">Recordings on{st.lastRecordingAt ? ` · last saved ${ago(st.lastRecordingAt)}` : ''}{st.recordingsWaiting ? ` · ${st.recordingsWaiting} call${st.recordingsWaiting === 1 ? '' : 's'} waiting` : ''}. Turn on call recording in your phone's dialer.</span>
+          <span className="flex-1">Recordings on{st.lastRecordingAt ? ` · last saved ${ago(st.lastRecordingAt)}` : ''}{st.recordingsWaiting ? ` · ${st.recordingsWaiting} call${st.recordingsWaiting === 1 ? '' : 's'} waiting for a recording` : ''}.</span>
         )}
       </div>
+      {st.recordingsAllowed !== false && !!st.recordingsWaiting && st.recordingInfo && (
+        <p className="text-[11px] leading-snug rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1.5">{st.recordingInfo}</p>
+      )}
       {(msg || st.lastError || st.lastRecordingError) && <p className={`text-xs ${!msg ? 'text-amber-700' : 'text-slate-600'}`}>{msg || st.lastError || st.lastRecordingError}</p>}
     </div>
   );

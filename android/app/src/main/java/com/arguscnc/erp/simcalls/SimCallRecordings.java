@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  */
 final class SimCallRecordings {
     private static final String PENDING = "recPending";
-    private static final long KEEP_LOOKING_MS = 3 * 60 * 60 * 1000L;   // a recording appears right after the call
+    private static final long KEEP_LOOKING_MS = 24 * 60 * 60 * 1000L;  // a recording normally appears right after the call
     // folders phone dialers save call recordings in ("Recordings/Call", "MIUI/sound_recorder/call_rec",
     // "Music/Recordings/Call Recordings", "Record/Call", "PhoneRecord" ...)
     private static final Pattern CALL_FOLDER = Pattern.compile("(?i)(call|phonerecord|phone_record|通话|voicecall)");
@@ -67,29 +67,57 @@ final class SimCallRecordings {
     }
 
     private static final class Audio {
-        long id; String name; String mime; long addedMs; long modifiedMs; long durMs; long size;
+        long id; String name; String folder; String mime; long addedMs; long modifiedMs; long durMs; long size;
+        boolean callFolder;   // in / named like a call-recording folder
+        boolean recording;    // Android marks it as a recording (Android 12+)
     }
 
-    private static List<Audio> recentRecordings(Context c, long sinceMs) {
+    /** Every audio file on the phone saved since sinceMs (any folder: each phone brand uses its own). */
+    private static List<Audio> recentAudio(Context c, long sinceMs) {
         List<Audio> out = new ArrayList<>();
         String pathCol = Build.VERSION.SDK_INT >= 29 ? MediaStore.Audio.Media.RELATIVE_PATH : MediaStore.Audio.Media.DATA;
-        String[] cols = { MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME, MediaStore.Audio.Media.MIME_TYPE,
-                MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.DURATION,
-                MediaStore.Audio.Media.SIZE, pathCol };
+        List<String> colList = new ArrayList<>(java.util.Arrays.asList(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME,
+                MediaStore.Audio.Media.MIME_TYPE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATE_MODIFIED,
+                MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.SIZE, pathCol));
+        if (Build.VERSION.SDK_INT >= 31) colList.add(MediaStore.Audio.Media.IS_RECORDING);
+        String[] cols = colList.toArray(new String[0]);
+        long sinceSec = sinceMs / 1000;
         try (Cursor cur = c.getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cols,
-                MediaStore.Audio.Media.DATE_MODIFIED + " >= ?", new String[] { String.valueOf(sinceMs / 1000) }, null)) {
+                MediaStore.Audio.Media.DATE_MODIFIED + " >= ? OR " + MediaStore.Audio.Media.DATE_ADDED + " >= ?",
+                new String[] { String.valueOf(sinceSec), String.valueOf(sinceSec) }, null)) {
             if (cur == null) return out;
             while (cur.moveToNext()) {
                 String path = cur.getString(7) == null ? "" : cur.getString(7);
                 String name = cur.getString(1) == null ? "" : cur.getString(1);
-                if (!CALL_FOLDER.matcher(path).find() && !CALL_FOLDER.matcher(name).find()) continue;
                 Audio a = new Audio();
                 a.id = cur.getLong(0); a.name = name; a.mime = cur.getString(2) == null ? "audio/mpeg" : cur.getString(2);
                 a.addedMs = cur.getLong(3) * 1000; a.modifiedMs = cur.getLong(4) * 1000; a.durMs = cur.getLong(5); a.size = cur.getLong(6);
+                if (Build.VERSION.SDK_INT < 29 && path.contains("/")) path = path.substring(0, path.lastIndexOf('/') + 1).replaceFirst("^/storage/emulated/\\d+/", "");
+                a.folder = path;
+                a.callFolder = CALL_FOLDER.matcher(path).find() || CALL_FOLDER.matcher(name).find();
+                a.recording = Build.VERSION.SDK_INT >= 31 && cur.getInt(8) == 1;
                 out.add(a);
             }
         } catch (Exception ignored) { }
         return out;
+    }
+
+    /** What the phone has, shown in the app so anyone can see why recordings are (not) found. */
+    private static void diagnose(Context c, SharedPreferences p) {
+        List<Audio> recent = recentAudio(c, System.currentTimeMillis() - 3 * 86400_000L);
+        java.util.Map<String, Integer> folders = new java.util.LinkedHashMap<>();
+        for (Audio a : recent) { String f = a.folder.isEmpty() ? "(phone storage)" : a.folder.replaceAll("/+$", ""); folders.put(f, folders.getOrDefault(f, 0) + 1); }
+        String text;
+        if (recent.isEmpty()) {
+            text = "No audio saved on this phone in the last 3 days, so the phone's dialer is not recording calls here (or keeps its recordings private, like the Google Phone app). Turn on call recording in the phone's own Phone app.";
+        } else {
+            StringBuilder sb = new StringBuilder("Audio saved on this phone in the last 3 days: ");
+            int n = 0;
+            for (java.util.Map.Entry<String, Integer> e : folders.entrySet()) { if (n++ == 4) break; if (n > 1) sb.append(", "); sb.append(e.getKey()).append(" (").append(e.getValue()).append(")"); }
+            sb.append(". None of it matches a company-SIM call (saved at the end of the call, same length).");
+            text = sb.toString();
+        }
+        p.edit().putString("recDiag", text).apply();
     }
 
     /** Finds and uploads recordings for the waiting calls. Never throws; problems are kept in lastRecError. */
@@ -104,7 +132,7 @@ final class SimCallRecordings {
 
         long oldest = Long.MAX_VALUE;
         for (int i = 0; i < list.length(); i++) oldest = Math.min(oldest, list.optJSONObject(i).optLong("date"));
-        List<Audio> files = recentRecordings(c, oldest - 60_000);
+        List<Audio> files = recentAudio(c, oldest - 60_000);
         Set<Long> used = new HashSet<>();
         JSONArray keep = new JSONArray();
         long now = System.currentTimeMillis();
@@ -120,8 +148,16 @@ final class SimCallRecordings {
                 if (used.contains(a.id)) continue;
                 long t = Math.max(a.addedMs, a.modifiedMs);
                 if (t < start - 30_000 || t > end + 5 * 60_000) continue;            // saved during / right after this call
-                if (a.durMs > 0 && Math.abs(a.durMs - durMs) > Math.max(10_000, durMs / 5)) continue;   // same length
-                int score = 1 + (tail.length() >= 6 && a.name.replaceAll("\\D", "").contains(tail) ? 2 : 0) + (a.durMs > 0 ? 1 : 0);
+                long diff = a.durMs > 0 ? Math.abs(a.durMs - durMs) : Long.MAX_VALUE;
+                boolean nameHasNumber = tail.length() >= 6 && a.name.replaceAll("\\D", "").contains(tail);
+                boolean looksLikeCall = a.callFolder || a.recording || nameHasNumber;
+                // a call-recording file: same length within 20% (or length unknown);
+                // any other audio file: must be the same length within a few seconds
+                boolean sameLength = looksLikeCall
+                        ? (a.durMs <= 0 || diff <= Math.max(10_000, durMs / 5))
+                        : (a.durMs > 0 && diff <= Math.max(4_000, durMs / 20));
+                if (!sameLength) continue;
+                int score = 1 + (nameHasNumber ? 3 : 0) + (a.callFolder ? 2 : 0) + (a.recording ? 2 : 0) + (a.durMs > 0 ? 1 : 0);
                 if (score > bestScore) { best = a; bestScore = score; }
             }
             String result = best == null ? "none" : upload(c, p, api, token, call, best);
@@ -131,6 +167,7 @@ final class SimCallRecordings {
             if (!finished && !tooOld) keep.put(call);
         }
         p.edit().putString(PENDING, keep.toString()).apply();
+        if (keep.length() > 0) diagnose(c, p); else p.edit().putString("recDiag", "").apply();
     }
 
     /** "done", "skip" (company off / not a usable file) or "retry". */

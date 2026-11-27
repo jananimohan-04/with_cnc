@@ -71,6 +71,7 @@ public class SimCallsPlugin extends Plugin {
         r.put("recordingsWaiting", SimCallRecordings.pendingCount(p));
         r.put("lastRecordingAt", p.getLong("lastRecAt", 0));
         r.put("lastRecordingError", p.getString("lastRecError", ""));
+        r.put("recordingInfo", p.getString("recDiag", ""));
         call.resolve(r);
     }
 

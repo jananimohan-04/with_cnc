@@ -15,6 +15,8 @@ export interface SimStatus {
   supported: boolean; granted: boolean; deviceId: string; deviceModel: string; connected: boolean;
   sim?: PhoneSim & { lineId: string }; lastSync: number; lastError: string;
   recordingsAllowed: boolean; recordingsWaiting: number; lastRecordingAt: number; lastRecordingError: string;
+  /** why waiting calls have no recording yet (what audio the phone has) */
+  recordingInfo?: string;
 }
 
 interface SimCallsPlugin {
