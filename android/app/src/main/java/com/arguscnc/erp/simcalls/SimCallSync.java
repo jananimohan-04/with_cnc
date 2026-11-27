@@ -187,8 +187,38 @@ public final class SimCallSync {
             p.edit().putLong("since", maxDate).putLong("lastSync", System.currentTimeMillis()).putString("lastError", "").apply();
             if (scanned < BATCH || maxDate == since) break;
         }
+        // once after this update: look again for recordings of the last 2 days' calls (earlier versions gave up on
+        // them when the server refused the upload)
+        if (!p.getBoolean("recRequeue2", false)) {
+            SimCallRecordings.queue(p, readSimCalls(c, ids, singleSim, System.currentTimeMillis() - 2 * 86400_000L));
+            p.edit().putBoolean("recRequeue2", true).apply();
+        }
         SimCallRecordings.run(c);   // recordings of answered calls (when the phone's dialer records them)
         return saved;
+    }
+
+    /** This SIM's calls since a time (up to 500), in the shape sim_ingest takes. */
+    private static JSONArray readSimCalls(Context c, Set<String> ids, boolean singleSim, long since) {
+        JSONArray out = new JSONArray();
+        String[] cols = { CallLog.Calls._ID, CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE,
+                CallLog.Calls.DATE, CallLog.Calls.DURATION, CallLog.Calls.PHONE_ACCOUNT_ID };
+        try (Cursor cur = c.getContentResolver().query(CallLog.Calls.CONTENT_URI, cols,
+                CallLog.Calls.DATE + " >= ?", new String[] { String.valueOf(since) }, CallLog.Calls.DATE + " ASC")) {
+            while (cur != null && cur.moveToNext() && out.length() < 500) {
+                String acc = cur.getString(6);
+                boolean mine = (acc != null && ids.contains(acc)) || ((acc == null || acc.isEmpty()) && singleSim);
+                if (!mine) continue;
+                JSONObject o = new JSONObject();
+                o.put("id", cur.getLong(0));
+                o.put("number", cur.getString(1) == null ? "" : cur.getString(1));
+                o.put("name", cur.getString(2) == null ? "" : cur.getString(2));
+                o.put("type", typeName(cur.getInt(3)));
+                o.put("date", cur.getLong(4));
+                o.put("duration", cur.getLong(5));
+                out.put(o);
+            }
+        } catch (Exception ignored) { }
+        return out;
     }
 
     private static int send(SharedPreferences p, String base, String anon, String token, JSONArray calls) throws Exception {

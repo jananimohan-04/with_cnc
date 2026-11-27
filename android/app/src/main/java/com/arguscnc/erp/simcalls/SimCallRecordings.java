@@ -46,10 +46,13 @@ final class SimCallRecordings {
     static void queue(SharedPreferences p, JSONArray calls) {
         try {
             JSONArray list = new JSONArray(p.getString(PENDING, "[]"));
+            Set<Long> have = new HashSet<>();
+            for (int i = 0; i < list.length(); i++) have.add(list.getJSONObject(i).optLong("id"));
             for (int i = 0; i < calls.length(); i++) {
                 JSONObject c = calls.getJSONObject(i);
                 String type = c.optString("type");
                 if (c.optLong("duration") <= 0 || !("incoming".equals(type) || "outgoing".equals(type))) continue;
+                if (!have.add(c.getLong("id"))) continue;   // already waiting
                 JSONObject o = new JSONObject();
                 o.put("id", c.getLong("id")); o.put("date", c.getLong("date")); o.put("dur", c.getLong("duration"));
                 o.put("num", c.optString("number")); o.put("name", c.optString("name")); o.put("tries", 0);
@@ -286,7 +289,8 @@ final class SimCallRecordings {
         con.disconnect();
         JSONObject j;
         try { j = new JSONObject(sb.toString()); } catch (Exception e) { j = new JSONObject(); }
-        if (code == 403) return j.put("skip", true);          // phone disconnected in BI
+        // phone disconnected in BI: stop; any other refusal (server busy, being updated ...) is tried again later
+        if (code == 403 && j.optString("error").contains("no longer connected")) return j.put("skip", true);
         if (code >= 200 && code < 300) return j;
         return null;
     }

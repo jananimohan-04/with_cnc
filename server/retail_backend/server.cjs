@@ -719,6 +719,7 @@ const biOffFor = (companyId) => { const c = companyId ? (db.companies || []).fin
 app.use((req, res, next) => {
   if (req.ctx && req.ctx.role !== 'super_admin' && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)
       && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/') && !req.path.startsWith('/api/bi-chat/') && !req.path.startsWith('/api/adviser/') && !req.path.startsWith('/api/mail-integration/') && !req.path.startsWith('/api/attendance/v1/')
+      && !req.path.startsWith('/api/telecrm/') && !req.path.startsWith('/api/simcalls/')
       && retailOffFor(req.ctx.companyId)) {
     return res.status(403).json({ error: 'The Retail Store is turned off for your company.', code: 'RETAIL_OFF' });
   }
@@ -727,7 +728,9 @@ app.use((req, res, next) => {
 /* pending/disabled Google users may only reach health, config and /api/me */
 app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
-  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/') || req.path.startsWith('/api/bi-chat/') || req.path.startsWith('/api/mail-integration/') || req.path.startsWith('/api/attendance/v1/')) return next();   // the mail route checks the sign-in token itself
+  if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/') || req.path.startsWith('/api/bi-chat/') || req.path.startsWith('/api/mail-integration/') || req.path.startsWith('/api/attendance/v1/')
+      /* Tele CRM (provider webhooks + its own sign-in check) and SIM Calls (the phone's SIM key) check access themselves */
+      || req.path.startsWith('/api/telecrm/') || req.path.startsWith('/api/simcalls/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
