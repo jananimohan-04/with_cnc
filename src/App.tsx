@@ -128,6 +128,8 @@ import { UpdatesSettingsPage } from './components/desktop/UpdatesSettingsPage';
 import { DesktopToasts } from './lib/desktop/toast';
 // @ts-ignore
 import { RetailApp } from './retail/app';
+// Leads CRM (/crm): its own screens, loaded only when opened
+const CrmApp = React.lazy(() => import('./crm/CrmApp').then((m) => ({ default: m.CrmApp })));
 import { AttendanceApp } from './modules/ai-attendance';
 import { CallHost } from './pages/chat/components/CallHost';
 
@@ -524,6 +526,28 @@ function AttendanceGate() {
   return <AttendanceApp />;
 }
 
+// Leads CRM (/crm/*): own layout like the Retail Store; BI sign-in, companies and Access Management
+const isCrmRoute = (path: string) => path === '/crm' || path.startsWith('/crm/');
+
+function CrmGate() {
+  const { status, platformsReady } = useAuth();
+  const spinner = (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+  if (status === 'loading' || (status === 'authorized' && !platformsReady)) return spinner;
+  if (status === 'signed_out') return <LoginScreen />;
+  if (status !== 'authorized') return <AccessDenied />;
+  return (
+    <React.Suspense fallback={spinner}>
+      <Routes>
+        <Route path="/crm/*" element={<CrmApp />} />
+      </Routes>
+    </React.Suspense>
+  );
+}
+
 function AttendanceSubsystem() {
   useLayoutEffect(() => {
     document.documentElement.classList.add('ai-attendance-active');
@@ -548,6 +572,9 @@ function RootRoutes() {
   }
   if (isRetailRoute(location.pathname)) {
     return <RetailApp />;
+  }
+  if (isCrmRoute(location.pathname)) {
+    return <AuthProvider><CrmGate /></AuthProvider>;
   }
   return <ErpApp />;
 }

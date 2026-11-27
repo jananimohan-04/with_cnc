@@ -1,0 +1,251 @@
+/* Leads CRM styles, scoped to .crm-root so BI is not affected (the colour tokens are in tailwind.config.js). */
+
+/*
+ * Argus Leads Design System — Premium SaaS Theme Tokens & Micro-Interactions
+ *
+ * Tailwind v4 theme variables provide consistent colors, typography, depth
+ * layers, and fluid transitions across every module.
+ */
+.crm-root {
+  --font-sans: "Exo 2", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Exo 2", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+
+  /* Neutrals: Cool, crisp slate-tinted canvas for high contrast and readability */
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-surface-hover: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  --color-line-subtle: #f1f5f9;
+
+  /* Ink / Typography */
+  --color-ink: #0f172a;
+  --color-ink-2: #475569;
+  --color-ink-3: #94a3b8;
+  --color-ink-muted: #64748b;
+
+  /* Brand: BI orange (same as tailwind brand-*) */
+  --color-brand-50: #fff5ec;
+  --color-brand-100: #ffe8d3;
+  --color-brand-200: #ffd0a5;
+  --color-brand-300: #ffb26d;
+  --color-brand-400: #ff8a2c;
+  --color-brand-500: #ff6600;
+  --color-brand-600: #f05200;
+  --color-brand-700: #c73b02;
+  --color-brand-800: #9e2d0a;
+  --color-brand-900: #7f280b;
+
+  /* Status Colors */
+  --color-new: #64748b;
+  --color-contacted: #0284c7;
+  --color-follow_up: #d97706;
+  --color-qualified: #7c3aed;
+  --color-proposal: #db2777;
+  --color-converted: #059669;
+  --color-lost: #e11d48;
+
+  /* Priority Colors */
+  --color-priority-low: #64748b;
+  --color-priority-medium: #0284c7;
+  --color-priority-high: #d97706;
+  --color-priority-urgent: #e11d48;
+
+  /* Semantic Feedback */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #0ea5e9;
+
+  /* Refined Elevation Shadows */
+  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.05), 0 1px 2px -1px rgb(15 23 42 / 0.04);
+  --shadow-card-hover: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.04);
+  --shadow-dropdown: 0 10px 25px -5px rgb(15 23 42 / 0.12), 0 8px 10px -6px rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 20px 25px -5px rgb(15 23 42 / 0.15), 0 8px 10px -6px rgb(15 23 42 / 0.08);
+
+  --radius-card: 0.875rem;
+  --radius-input: 0.625rem;
+}
+
+.crm-root {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Accessible visible focus styles */
+.crm-root :focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Screen-reader utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Accessible skip to main content */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3.5rem;
+  z-index: 100;
+  border-radius: 0.5rem;
+  background: var(--color-brand-600);
+  color: #fff;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: var(--shadow-pop);
+  transition: top 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Animations & Keyframes */
+@keyframes argus-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes argus-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes argus-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes argus-pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-in {
+  animation: argus-fade-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: argus-scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: argus-pulse-subtle 2s infinite ease-in-out;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-line);
+  border-radius: 0.5rem;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.6), transparent);
+  animation: argus-shimmer 1.5s infinite;
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.glass-header {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* Subtle interactive card lift */
+.card-hover-lift {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+.card-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-line-strong);
+}
+
+/* Custom sleek scrollbars */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-3);
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Drag-and-drop affordance for Kanban */
+.card-dragging {
+  opacity: 0.45;
+  transform: rotate(2deg) scale(0.98);
+}
+.column-drop-target {
+  background-color: var(--color-brand-50);
+  border-color: var(--color-brand-300);
+  box-shadow: inset 0 0 0 2px var(--color-brand-200);
+}
+
+/* Accessibility: Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .crm-root *,
+  .crm-root ::before,
+  .crm-root ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
