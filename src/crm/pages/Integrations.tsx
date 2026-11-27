@@ -49,7 +49,7 @@ const PROVIDER_BLURB: Record<Provider, string> = {
   facebook: "Leads from Meta lead ads, fetched with your own Meta developer app.",
   instagram: "Same Meta app as Facebook — the connection and token are shared.",
   linkedin: "Lead-gen forms and CRM sync through a LinkedIn developer app (PKCE).",
-  website_form: "A signed HTTP endpoint you POST your own form submissions to.",
+  website_form: "A web address your own website's contact form sends its entries to.",
 };
 
 const STATUS_META: Record<IntegrationStatus, { label: string; tone: "neutral" | "success" | "warning" | "danger" | "info"; hint: string }> = {
@@ -135,10 +135,11 @@ export default function Integrations() {
     [role],
   );
 
+  const [logPage, setLogPage] = useState(1);
   const logs = useAsync<{ data: IntegrationLog[]; pagination: { page: number; pages: number; total: number; page_size: number } }>(
     (signal) =>
-      api.get("/integrations/logs", { page: 1, page_size: 25 }, { signal }),
-    [role],
+      api.get("/integrations/logs", { page: logPage, page_size: 25 }, { signal }),
+    [role, logPage],
   );
 
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
@@ -372,13 +373,13 @@ export default function Integrations() {
 
                   {isForm && entry.endpoint_url ? (
                     <div className="mt-3 space-y-3">
-                      <CopyField label="Endpoint URL" value={entry.endpoint_url} />
+                      <CopyField label="Web address for your form" value={entry.endpoint_url} />
                       {entry.signing_secret ? (
-                        <CopyField label="Signing secret (shown once)" value={entry.signing_secret} />
+                        <CopyField label="Secret key (shown once — save it now)" value={entry.signing_secret} />
                       ) : (
                         <p className="text-xs text-ink-3">
-                          A signing secret has already been issued for this company — it is stored
-                          encrypted and never returned again.
+                          A secret key has already been issued for this company — it is kept on the
+                          server and never shown again.
                         </p>
                       )}
                       <p className="text-xs text-ink-2">{entry.instructions}</p>
@@ -390,12 +391,12 @@ export default function Integrations() {
                   ) : null}
 
                   {!isForm && entry.callback_url ? (
-                    <p className="mt-3 text-xs text-ink-3">
-                      Redirect URI to configure at the provider:{" "}
-                      <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono">
-                        {entry.callback_url}
-                      </code>
-                    </p>
+                    <div className="mt-3 space-y-3">
+                      <CopyField label="Redirect address to register at the provider" value={entry.callback_url} />
+                      {entry.webhook_url ? (
+                        <CopyField label="Webhook address to register at the provider" value={entry.webhook_url} />
+                      ) : null}
+                    </div>
                   ) : null}
 
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
@@ -452,8 +453,7 @@ export default function Integrations() {
 
                   {!entry.configured ? (
                     <p className="mt-2 text-xs text-ink-3">
-                      Disabled until the server credentials exist — see the requirements above and{" "}
-                      <code className="font-mono">docs/integrations.md</code>.
+                      Disabled until the server settings listed above are added.
                     </p>
                   ) : null}
                 </Card>
@@ -482,7 +482,7 @@ export default function Integrations() {
           open
           onClose={() => setDetail(null)}
           title="Example request"
-          description="POST your form submission to this endpoint."
+          description="Send your form's entries to this web address."
           size="lg"
           footer={
             <Button variant="primary" onClick={() => setDetail(null)}>
@@ -507,8 +507,20 @@ export default function Integrations() {
             </pre>
             <p>
               Without the signature header the lead is still created, but flagged as unverified in
-              its notes. With a signing secret configured, an invalid signature is rejected outright.
+              its notes. A signature that does not match the secret key is refused outright.
             </p>
+            <p>A plain contact form on any web page works too (entries arrive unverified):</p>
+            <pre className="overflow-x-auto rounded-lg border border-line bg-surface-2 p-4 font-mono text-xs leading-relaxed scroll-thin">
+{`<form method="POST" action="${detail.endpoint_url}">
+  <input name="full_name" placeholder="Your name" required>
+  <input name="email" type="email" placeholder="E-mail">
+  <input name="phone" placeholder="Phone">
+  <textarea name="message"></textarea>
+  <input type="hidden" name="campaign" value="website">
+  <input type="hidden" name="_redirect" value="https://your-site.example/thank-you">
+  <button type="submit">Send</button>
+</form>`}
+            </pre>
           </div>
         </Modal>
       ) : null}
@@ -523,7 +535,7 @@ export default function Integrations() {
               to="/crm/settings"
               className="text-sm font-semibold text-brand-600 hover:text-brand-700"
             >
-              API settings
+              Settings
             </Link>
           }
         />
@@ -596,7 +608,7 @@ export default function Integrations() {
               total={logs.data!.pagination.total}
               pageSize={logs.data!.pagination.page_size}
               label="log entries"
-              onPage={() => void logs.refetch()}
+              onPage={(next: number) => setLogPage(next)}
             />
           </>
         )}
@@ -620,10 +632,9 @@ export default function Integrations() {
         </ul>
         <div className="border-t border-line px-5 py-4 text-sm text-ink-2">
           <Webhook className="mr-1.5 inline size-4 text-ink-3" aria-hidden />
-          Webhook payloads are validated, deduplicated by event id, and logged — see{" "}
-          <code className="font-mono text-xs">docs/integrations.md</code> for the exact Meta,
-          LinkedIn and self-hosted form setup, including what has not been verified against a live
-          provider account.
+          Incoming leads are checked (signature or verify token), counted once per provider event,
+          and logged above. Register the redirect and webhook addresses shown on each card in your
+          Meta or LinkedIn developer app exactly as shown.
         </div>
       </Card>
     </div>

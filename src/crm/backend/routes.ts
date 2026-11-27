@@ -5,6 +5,7 @@ import { leadRoutes } from './leads';
 import { followUpRoutes } from './followUps';
 import { notificationRoutes } from './notifications';
 import { analyticsRoutes } from './analytics';
+import { integrationRoutes } from './integrations';
 
 export const routes: Route[] = [
   ...accountRoutes,
@@ -12,4 +13,5 @@ export const routes: Route[] = [
   ...followUpRoutes,
   ...notificationRoutes,
   ...analyticsRoutes,
+  ...integrationRoutes,
 ];

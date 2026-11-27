@@ -208,7 +208,5 @@ export const accountRoutes: Route[] = [
   { method: 'DELETE', path: '/invitations/:invitation_id', handler: async () => notFound('Invitation') },
   { method: 'POST', path: '/transfer-ownership', handler: async () => fail(422, 'validation_error', 'Owners are the company\'s BI admins. Change admins in BI (Access Management).') },
 
-  // ------------------------------------------------------------------ lead capture (Facebook / Instagram / LinkedIn / website form): next update
-  { method: 'GET', path: '/integrations', handler: async () => ({ integrations: [] }) },
-  { method: 'GET', path: '/integrations/logs', handler: async () => ({ data: [], pagination: { page: 1, page_size: 25, total: 0, pages: 1, has_next: false, has_prev: false } }) },
+  // lead capture (Facebook / Instagram / LinkedIn / website form): ./integrations.ts
 ];

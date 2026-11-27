@@ -190,7 +190,7 @@ export function Sidebar({
   // A viewer has no integration permissions at all — hide the entry rather
   // than show a page the role cannot read. (The route still guards itself.)
   const visible = items.filter(
-    (item) => item.to !== "/crm/integrations",   // lead capture (Meta / LinkedIn / website form) comes in a later update
+    (item) => item.to !== "/crm/integrations" || can(role, PERMISSIONS.INTEGRATION_READ),
   );
 
   const name = profile?.full_name || user?.email || "Account";

@@ -319,6 +319,8 @@ export interface ProviderStatus {
   configured: boolean;
   requirements: MissingRequirement[];
   callback_url?: string;
+  /** where the provider sends new leads (Meta / LinkedIn) */
+  webhook_url?: string;
   endpoint_url?: string;
   signing_secret?: string | null;
   message: string | null;

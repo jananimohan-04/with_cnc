@@ -422,10 +422,12 @@ const ordersOf = cid => db.orders.filter(o => o.companyId === cid);
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+/* Leads CRM webhooks (server/crm/routes.cjs) check an HMAC over the exact bytes the sender signed: keep them */
+const keepRawBody = (req, _res, buf) => { if (String(req.url || '').startsWith('/api/crm/webhooks/')) req.rawBody = Buffer.from(buf); };
+app.use(express.json({ limit: '10mb', verify: keepRawBody }));
 // Express 5 leaves req.body undefined when a request has no body (every GET); handlers read req.body.companyId, so give them an object.
 app.use((req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.urlencoded({ limit: '10mb', extended: true, verify: keepRawBody }));
 
 /* The Windows installer: always the NEWEST "Argus Business Intelligence" setup (read from the same latest.json the
    installed apps update from). Old download links (/downloads/cncforge-erp-setup.exe, business-intelligence-setup.exe)
@@ -719,7 +721,7 @@ const biOffFor = (companyId) => { const c = companyId ? (db.companies || []).fin
 app.use((req, res, next) => {
   if (req.ctx && req.ctx.role !== 'super_admin' && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)
       && !req.path.startsWith('/api/integrations/erp/') && !req.path.startsWith('/api/retail-sync/') && !req.path.startsWith('/api/quote-confirm/') && !req.path.startsWith('/api/bi-chat/') && !req.path.startsWith('/api/adviser/') && !req.path.startsWith('/api/mail-integration/') && !req.path.startsWith('/api/attendance/v1/')
-      && !req.path.startsWith('/api/telecrm/') && !req.path.startsWith('/api/simcalls/')
+      && !req.path.startsWith('/api/telecrm/') && !req.path.startsWith('/api/simcalls/') && !req.path.startsWith('/api/crm/')
       && retailOffFor(req.ctx.companyId)) {
     return res.status(403).json({ error: 'The Retail Store is turned off for your company.', code: 'RETAIL_OFF' });
   }
@@ -730,7 +732,9 @@ app.use((req, res, next) => {
   /* the ERP server-to-server calls carry x-erp-api-key (checked by verifyErpServerAuth), not a user sign-in */
   if (req.path.startsWith('/api/integrations/erp/') || req.path === '/api/digital-order-mail' || req.path.startsWith('/api/digital-mail/') || req.path.startsWith('/api/digital-pay/') || req.path.startsWith('/api/adviser/') || req.path.startsWith('/api/quote-confirm/') || req.path.startsWith('/api/bi-chat/') || req.path.startsWith('/api/mail-integration/') || req.path.startsWith('/api/attendance/v1/')
       /* Tele CRM (provider webhooks + its own sign-in check) and SIM Calls (the phone's SIM key) check access themselves */
-      || req.path.startsWith('/api/telecrm/') || req.path.startsWith('/api/simcalls/')) return next();   // the mail route checks the sign-in token itself
+      || req.path.startsWith('/api/telecrm/') || req.path.startsWith('/api/simcalls/')
+      /* Leads CRM lead capture: signed-in routes check the Leads CRM role themselves; webhooks / OAuth callback verify signatures and state */
+      || req.path.startsWith('/api/crm/')) return next();   // the mail route checks the sign-in token itself
   if ((req.ctx.role === 'pending' || req.ctx.role === 'disabled') && req.path.startsWith('/api/') && !['/api/health', '/api/config', '/api/me'].includes(req.path)) {
     return res.status(403).json({ error: req.ctx.role === 'pending' ? 'Account pending approval by your administrator' : 'Account deactivated' });
   }
@@ -1800,7 +1804,8 @@ app.get('/api/quote-confirm/:id', async (req, res) => {
 
 require('../adviserRoutes.cjs')(app, SB);   // the Adviser's ChatGPT connection (key on the server)
 require('../telecrm/routes.cjs')(app, SB);
-require('../simcalls/routes.cjs')(app, SB);  // SIM Calls: call recordings uploaded by the Android app  // Tele CRM: cloud phone calling, webhooks, private recordings
+require('../simcalls/routes.cjs')(app, SB);
+require('../crm/routes.cjs')(app, SB);        // Leads CRM: Facebook / Instagram / LinkedIn / website-form lead capture  // SIM Calls: call recordings uploaded by the Android app  // Tele CRM: cloud phone calling, webhooks, private recordings
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString(), storage: { enabled: persist.enabled, saved: persist.ok, error: persist.error, at: persist.at } }));
 app.get('/api/config', (_req, res) => res.json({ data: SB.publicConfig() }));
