@@ -126,9 +126,9 @@ final class SimCallRecordings {
     /** Finds and uploads recordings for the waiting calls. Never throws; problems are kept in lastRecError. */
     static void run(Context c) {
         SharedPreferences p = SimCallSync.prefs(c);
-        String api = p.getString("api", "");
+        String api = p.getString("url", "").replaceAll("/+$", "");   // the database address (same as for call details)
         String token = p.getString("token", "");
-        if (api.isEmpty() || token.isEmpty() || !canRead(c)) return;
+        if (api.isEmpty() || p.getString("anon", "").isEmpty() || token.isEmpty() || !canRead(c)) return;
         JSONArray list;
         try { list = new JSONArray(p.getString(PENDING, "[]")); } catch (Exception e) { return; }
         if (list.length() == 0) return;
@@ -231,7 +231,8 @@ final class SimCallRecordings {
     }
 
     /** "done", "skip" (company off / not a usable file) or "retry". */
-    private static String upload(Context c, SharedPreferences p, String api, String token, JSONObject call, Audio a) {
+    private static String upload(Context c, SharedPreferences p, String db, String token, JSONObject call, Audio a) {
+        String anon = p.getString("anon", "");
         try {
             String ext = a.name.contains(".") ? a.name.substring(a.name.lastIndexOf('.') + 1).toLowerCase() : "m4a";
             // the real file size (the media list's size can be out of date)
@@ -251,23 +252,27 @@ final class SimCallRecordings {
             }
             if (size <= 0) return "skip";
 
+            // 1. a one-time upload address for this call (straight to the database's file storage, the same address
+            //    the call details go to: some mobile networks block the web server's address)
             JSONObject start = new JSONObject();
-            start.put("token", token); start.put("callId", call.getLong("id")); start.put("startedAt", call.getLong("date"));
-            start.put("ext", ext); start.put("size", size);
-            JSONObject r = postJson(api + "/api/simcalls/recording/start", start);
+            start.put("p_token", token); start.put("p_call_id", call.getLong("id")); start.put("p_ext", ext); start.put("p_size", size);
+            JSONObject r = postJson(db + "/rest/v1/rpc/sim_recording_ticket", start, anon);
             if (r == null) return "retry";
             if (r.optBoolean("missing")) return "skip";   // the call is not in BI (made before the SIM was connected)
             if (r.optBoolean("done") || r.optBoolean("skip")) return r.optBoolean("done") ? "done" : "skip";
-            String url = r.optString("url", "");
-            if (url.isEmpty()) return "retry";
+            String path = r.optString("path", "");
+            if (path.isEmpty()) return "retry";
 
-            HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
-            con.setRequestMethod("PUT");
+            // 2. the file
+            HttpURLConnection con = (HttpURLConnection) new URL(db + "/storage/v1/object/sim-recordings/" + path).openConnection();
+            con.setRequestMethod("POST");
             con.setDoOutput(true);
             con.setConnectTimeout(20000);
             con.setReadTimeout(120000);
             con.setRequestProperty("Content-Type", a.mime);
-            con.setRequestProperty("x-upsert", "true");
+            con.setRequestProperty("apikey", anon);
+            con.setRequestProperty("Authorization", "Bearer " + anon);
+            con.setRequestProperty("x-upsert", "false");
             con.setFixedLengthStreamingMode(size);
             try (OutputStream os = con.getOutputStream()) {
                 if (whole != null) os.write(whole);
@@ -279,13 +284,18 @@ final class SimCallRecordings {
                 }
             }
             int code = con.getResponseCode();
+            String reply = readAll(code >= 400 ? con.getErrorStream() : con.getInputStream());
             con.disconnect();
-            if (code < 200 || code >= 300) { p.edit().putString("lastRecError", "Recording upload failed (" + code + ").").apply(); return "retry"; }
+            if (code < 200 || code >= 300) {
+                p.edit().putString("lastRecError", "Recording upload failed (" + code + "): " + reply.substring(0, Math.min(160, reply.length()))).apply();
+                return "retry";
+            }
 
+            // 3. attach it to the call
             JSONObject fin = new JSONObject();
-            fin.put("token", token); fin.put("callId", call.getLong("id")); fin.put("startedAt", call.getLong("date"));
-            JSONObject f = postJson(api + "/api/simcalls/recording/finish", fin);
-            if (f == null || !f.optBoolean("ok")) return "retry";
+            fin.put("p_token", token); fin.put("p_call_id", call.getLong("id"));
+            JSONObject f = postJson(db + "/rest/v1/rpc/sim_recording_done", fin, anon);
+            if (f == null || !f.optBoolean("value")) return "retry";
             p.edit().putString("lastRecError", "").putLong("lastRecAt", System.currentTimeMillis()).apply();
             return "done";
         } catch (Exception e) {
@@ -294,26 +304,32 @@ final class SimCallRecordings {
         }
     }
 
-    /** POST JSON; returns the reply, or null when it should be tried again later. */
-    private static JSONObject postJson(String url, JSONObject body) throws Exception {
+    private static String readAll(InputStream in) {
+        if (in == null) return "";
+        StringBuilder sb = new StringBuilder();
+        try (InputStream s = in) { byte[] b = new byte[4096]; int n; while ((n = s.read(b)) > 0) sb.append(new String(b, 0, n, StandardCharsets.UTF_8)); }
+        catch (Exception ignored) { }
+        return sb.toString();
+    }
+
+    /** Calls a database function; returns its reply ({"value": x} for a plain value), or null to try again later. */
+    private static JSONObject postJson(String url, JSONObject body, String anon) throws Exception {
         HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         con.setRequestMethod("POST");
         con.setDoOutput(true);
         con.setConnectTimeout(20000);
         con.setReadTimeout(30000);
         con.setRequestProperty("Content-Type", "application/json");
+        con.setRequestProperty("apikey", anon);
+        con.setRequestProperty("Authorization", "Bearer " + anon);
         try (OutputStream os = con.getOutputStream()) { os.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
         int code = con.getResponseCode();
-        InputStream in = code >= 400 ? con.getErrorStream() : con.getInputStream();
-        StringBuilder sb = new StringBuilder();
-        if (in != null) try (InputStream s = in) { byte[] b = new byte[4096]; int n; while ((n = s.read(b)) > 0) sb.append(new String(b, 0, n, StandardCharsets.UTF_8)); }
+        String text = readAll(code >= 400 ? con.getErrorStream() : con.getInputStream()).trim();
         con.disconnect();
-        JSONObject j;
-        try { j = new JSONObject(sb.toString()); } catch (Exception e) { j = new JSONObject(); }
-        // phone disconnected in BI: stop; any other refusal (server busy, being updated ...) is tried again later
-        if (code == 403 && j.optString("error").contains("no longer connected")) return j.put("skip", true);
-        if (code >= 200 && code < 300) return j;
-        if (code == 404 && j.optString("error").contains("not saved")) return j.put("missing", true);
-        return null;
+        // phone disconnected in BI: stop; any other refusal is tried again later
+        if (code >= 400 && text.contains("no longer connected")) return new JSONObject().put("skip", true);
+        if (code < 200 || code >= 300) return null;
+        if (text.startsWith("{")) return new JSONObject(text);
+        return new JSONObject().put("value", "true".equals(text));
     }
 }
