@@ -128,6 +128,7 @@ import { UpdatesSettingsPage } from './components/desktop/UpdatesSettingsPage';
 import { DesktopToasts } from './lib/desktop/toast';
 // @ts-ignore
 import { RetailApp } from './retail/app';
+import { ClarityStrip } from './components/ClarityStrip';
 // Leads CRM (/crm): its own screens, loaded only when opened
 const CrmApp = React.lazy(() => import('./crm/CrmApp').then((m) => ({ default: m.CrmApp })));
 import { AttendanceApp } from './modules/ai-attendance';
@@ -235,6 +236,8 @@ function MainLayout() {
           onMenuClick={() => setMobileMenuOpen(true)}
           hideMobileMenu={position === 'top' || position === 'bottom'}
         />
+        {/* Mission, Vision and Goals (Clarity) always in view */}
+        <ClarityStrip />
         {/* Excel-style funnel + column menu on every table heading */}
         <TableAutoFilter />
         {/* Super Admin with one company picked: the menus are that company's (its switches and its menu access) */}
