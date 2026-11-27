@@ -112,6 +112,8 @@ import { MindMapPage } from './pages/MindMapPage';
 import { ClarityPage } from './pages/clarity/ClarityPage';
 import { TeleCrmPage } from './pages/telecrm/TeleCrmPage';
 import { TelePhoneProvider } from './lib/telecrm/phone';
+import { SimCallsPage } from './pages/simcalls/SimCallsPage';
+import { SimCallsGate } from './pages/simcalls/SimSetup';
 import { MindMapWorkspacePage } from './pages/mindmap/MindMapWorkspacePage';
 import { MindMapEditorPage } from './pages/mindmap/MindMapEditorPage';
 import { AssistantDock } from '@/components/AssistantDock';
@@ -201,6 +203,7 @@ function MainLayout() {
   return (
     <HeaderKpiProvider>
     <TelePhoneProvider>
+    <SimCallsGate />
     <div className="app-shell flex h-screen overflow-hidden bg-slate-50">
       {/* Left menu position: the classic sidebar (default). */}
       {position === 'left' && (
@@ -251,6 +254,7 @@ function MainLayout() {
             <Route path="/bi-chat" element={<BiChatPage />} />
             <Route path="/clarity" element={<ClarityPage />} />
             <Route path="/telecrm" element={<TeleCrmPage />} />
+            <Route path="/sim-calls" element={<SimCallsPage />} />
             <Route path="/mind-map" element={<MindMapPage />} />
             <Route path="/mind-map/workspace" element={<MindMapWorkspacePage />} />
             <Route path="/mind-map/create" element={<Navigate to="/mind-map/workspace" replace />} />
