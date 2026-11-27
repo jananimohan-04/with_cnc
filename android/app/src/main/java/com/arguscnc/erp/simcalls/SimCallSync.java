@@ -74,11 +74,16 @@ public final class SimCallSync {
         OneTimeWorkRequest once = new OneTimeWorkRequest.Builder(SimCallWorker.class)
                 .setConstraints(net).setInitialDelay(delaySeconds, TimeUnit.SECONDS).build();
         WorkManager.getInstance(c).enqueueUniqueWork(WORK_NOW, ExistingWorkPolicy.REPLACE, once);
+        // the dialer may save the call's recording a little later: look once more after a minute
+        OneTimeWorkRequest later = new OneTimeWorkRequest.Builder(SimCallWorker.class)
+                .setConstraints(net).setInitialDelay(delaySeconds + 60, TimeUnit.SECONDS).build();
+        WorkManager.getInstance(c).enqueueUniqueWork(WORK_NOW + "-later", ExistingWorkPolicy.REPLACE, later);
     }
 
     static void cancel(Context c) {
         WorkManager.getInstance(c).cancelUniqueWork(WORK_PERIODIC);
         WorkManager.getInstance(c).cancelUniqueWork(WORK_NOW);
+        WorkManager.getInstance(c).cancelUniqueWork(WORK_NOW + "-later");
     }
 
     // ------------------------------------------------------------------ which call-history rows belong to the SIM
@@ -177,11 +182,12 @@ public final class SimCallSync {
                     batch.put(o);
                 }
             }
-            if (batch.length() > 0) saved += send(p, base, anon, token, batch);
+            if (batch.length() > 0) { saved += send(p, base, anon, token, batch); SimCallRecordings.queue(p, batch); }
             // a row at exactly "since" is read again next time; the server ignores repeats
             p.edit().putLong("since", maxDate).putLong("lastSync", System.currentTimeMillis()).putString("lastError", "").apply();
             if (scanned < BATCH || maxDate == since) break;
         }
+        SimCallRecordings.run(c);   // recordings of answered calls (when the phone's dialer records them)
         return saved;
     }
 

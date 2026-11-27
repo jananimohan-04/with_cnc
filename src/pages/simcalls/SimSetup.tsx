@@ -46,6 +46,8 @@ export function SimSetup({ onDone, onLater, compact = false }: { onDone: () => v
     setBusy(true); setErr('');
     try {
       await simNative.connect(sim, n);
+      // call recordings saved by the phone's dialer (optional: calls are saved either way)
+      await simNative.requestRecordings().catch(() => undefined);
       window.dispatchEvent(new Event(SIM_SYNCED_EVENT));
       onDone();
     } catch (e) {
@@ -67,9 +69,9 @@ export function SimSetup({ onDone, onLater, compact = false }: { onDone: () => v
           </div>
           <ul className="text-xs text-slate-600 space-y-1.5 pl-1">
             <li className="flex gap-2"><ShieldCheck size={14} className="text-emerald-600 shrink-0 mt-0.5" />Only the SIM you choose is saved. Calls on your other SIM stay on your phone.</li>
-            <li className="flex gap-2"><ShieldCheck size={14} className="text-emerald-600 shrink-0 mt-0.5" />Call audio is not recorded, only the call details.</li>
+            <li className="flex gap-2"><ShieldCheck size={14} className="text-emerald-600 shrink-0 mt-0.5" />If your phone's dialer records calls, those recordings are saved with the calls too.</li>
           </ul>
-          <p className="text-[11px] text-slate-500">Next, your phone asks to allow <b>Phone</b> and <b>Call logs</b>. Both are needed to see the SIMs and their calls.</p>
+          <p className="text-[11px] text-slate-500">Next, your phone asks to allow <b>Phone</b> and <b>Call logs</b> (needed to see the SIMs and their calls), and then <b>Music and audio</b> (for the recordings).</p>
           <div className="flex gap-2 pt-1">
             <button onClick={allow} disabled={busy} className="flex-1 h-10 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
               {busy && <Loader2 size={16} className="animate-spin" />}Allow and choose SIM
@@ -144,8 +146,8 @@ export function SimCallsGate() {
     const sync = () => {
       void simNative.syncNow().then((r) => { if (r.sent > 0) window.dispatchEvent(new Event(SIM_SYNCED_EVENT)); }).catch(() => {});
     };
-    void simNative.status().then((s) => {
-      if (s.connected) sync();
+    void simNative.status().then(async (s) => {
+      if (s.connected) { await simNative.configure().catch(() => undefined); sync(); }
       else if (!later) setAsk(true);
     }).catch(() => {});
     let remove: (() => void) | undefined;

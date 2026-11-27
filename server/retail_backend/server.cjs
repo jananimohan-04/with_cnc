@@ -1796,7 +1796,8 @@ app.get('/api/quote-confirm/:id', async (req, res) => {
 });
 
 require('../adviserRoutes.cjs')(app, SB);   // the Adviser's ChatGPT connection (key on the server)
-require('../telecrm/routes.cjs')(app, SB);  // Tele CRM: cloud phone calling, webhooks, private recordings
+require('../telecrm/routes.cjs')(app, SB);
+require('../simcalls/routes.cjs')(app, SB);  // SIM Calls: call recordings uploaded by the Android app  // Tele CRM: cloud phone calling, webhooks, private recordings
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString(), storage: { enabled: persist.enabled, saved: persist.ok, error: persist.error, at: persist.at } }));
 app.get('/api/config', (_req, res) => res.json({ data: SB.publicConfig() }));

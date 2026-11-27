@@ -46,6 +46,10 @@
     {
       "path": "/api/telecrm/cron/retention",
       "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/simcalls/cron/retention",
+      "schedule": "45 20 * * *"
     }
   ]
 }

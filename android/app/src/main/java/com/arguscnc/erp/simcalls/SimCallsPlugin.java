@@ -33,7 +33,10 @@ import java.util.List;
     name = "SimCalls",
     permissions = {
         @Permission(alias = "phone", strings = { Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.CALL_PHONE }),
-        @Permission(alias = "numbers", strings = { Manifest.permission.READ_PHONE_NUMBERS })
+        @Permission(alias = "numbers", strings = { Manifest.permission.READ_PHONE_NUMBERS }),
+        // call recordings saved by the phone's own dialer (Android 13+ / older)
+        @Permission(alias = "audio", strings = { Manifest.permission.READ_MEDIA_AUDIO }),
+        @Permission(alias = "storage", strings = { Manifest.permission.READ_EXTERNAL_STORAGE })
     }
 )
 public class SimCallsPlugin extends Plugin {
@@ -64,7 +67,36 @@ public class SimCallsPlugin extends Plugin {
         }
         r.put("lastSync", p.getLong("lastSync", 0));
         r.put("lastError", p.getString("lastError", ""));
+        r.put("recordingsAllowed", SimCallRecordings.canRead(ctx()));
+        r.put("recordingsWaiting", SimCallRecordings.pendingCount(p));
+        r.put("lastRecordingAt", p.getLong("lastRecAt", 0));
+        r.put("lastRecordingError", p.getString("lastRecError", ""));
         call.resolve(r);
+    }
+
+    private String audioAlias() { return Build.VERSION.SDK_INT >= 33 ? "audio" : "storage"; }
+
+    /** Allow reading the call recordings the phone's dialer saves. */
+    @PluginMethod
+    public void requestRecordings(PluginCall call) {
+        if (SimCallRecordings.canRead(ctx())) { recordingsDone(call); return; }
+        requestPermissionForAlias(audioAlias(), call, "recordingsDone");
+    }
+
+    @PermissionCallback
+    private void recordingsDone(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("granted", SimCallRecordings.canRead(ctx()));
+        if (SimCallRecordings.canRead(ctx())) SimCallSync.soon(ctx(), 1);
+        call.resolve(r);
+    }
+
+    /** The BI server address (recordings are uploaded through it). Set on every app start. */
+    @PluginMethod
+    public void configure(PluginCall call) {
+        String api = call.getString("api", "");
+        if (!api.isEmpty()) SimCallSync.prefs(ctx()).edit().putString("api", api.replaceAll("/+$", "")).apply();
+        call.resolve();
     }
 
     @PluginMethod
@@ -156,6 +188,8 @@ public class SimCallsPlugin extends Plugin {
             .putString("token", token)
             .putString("url", url)
             .putString("anon", anon)
+            .putString("api", call.getString("api", "").replaceAll("/+$", ""))
+            .putString("recPending", "[]")
             // calls from this moment on (a few minutes back, so a call made while setting up is included)
             .putLong("since", System.currentTimeMillis() - 10 * 60 * 1000L)
             .putLong("lastSync", 0)

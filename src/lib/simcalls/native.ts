@@ -5,18 +5,25 @@
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { supabase } from '@/lib/supabase';
+import { API_BASE } from '@/retail/api';
+
+/** Where the phone uploads call recordings (the BI server). */
+export const SIM_API = (API_BASE || 'https://with-cnc.vercel.app').replace(/\/+$/, '');
 
 export interface PhoneSim { subscriptionId: number; slot: number; carrier: string; label: string; number: string; country?: string }
 export interface SimStatus {
   supported: boolean; granted: boolean; deviceId: string; deviceModel: string; connected: boolean;
   sim?: PhoneSim & { lineId: string }; lastSync: number; lastError: string;
+  recordingsAllowed: boolean; recordingsWaiting: number; lastRecordingAt: number; lastRecordingError: string;
 }
 
 interface SimCallsPlugin {
   status(): Promise<SimStatus>;
   requestAccess(): Promise<{ granted: boolean }>;
   listSims(): Promise<{ sims: PhoneSim[] }>;
-  connect(o: PhoneSim & { lineId: string; token: string; url: string; anon: string }): Promise<void>;
+  connect(o: PhoneSim & { lineId: string; token: string; url: string; anon: string; api: string }): Promise<void>;
+  requestRecordings(): Promise<{ granted: boolean }>;
+  configure(o: { api: string }): Promise<void>;
   disconnect(): Promise<void>;
   syncNow(): Promise<{ sent: number; error?: string }>;
   dial(o: { number: string }): Promise<void>;
@@ -34,6 +41,8 @@ export const simNative = {
   listSims: async () => (await SimCalls.listSims()).sims,
   syncNow: () => SimCalls.syncNow(),
   dial: (number: string) => SimCalls.dial({ number }),
+  requestRecordings: () => SimCalls.requestRecordings(),
+  configure: () => SimCalls.configure({ api: SIM_API }),
 
   /** Register the chosen SIM in BI (gets the phone's key) and start sending its calls. */
   async connect(sim: PhoneSim, number: string): Promise<void> {
@@ -46,7 +55,7 @@ export const simNative = {
     const r = data as { line_id: string; token: string };
     await SimCalls.connect({
       ...sim, number, lineId: r.line_id, token: r.token,
-      url: import.meta.env.VITE_SUPABASE_URL, anon: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      url: import.meta.env.VITE_SUPABASE_URL, anon: import.meta.env.VITE_SUPABASE_ANON_KEY, api: SIM_API,
     });
   },
 

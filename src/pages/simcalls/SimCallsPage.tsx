@@ -3,7 +3,7 @@
 // Everyone sees their own calls; people with Approve on SIM Calls (and admins) see the whole company.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, RefreshCw, Search, Smartphone } from 'lucide-react';
+import { Loader2, Mic, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Play, RefreshCw, Search, Smartphone, Square } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { exportCsv } from '@/lib/reportExport';
@@ -11,7 +11,27 @@ import { missingSimTable, simCallsAvailable, simNative, simTitle, type SimStatus
 import { SIM_SYNCED_EVENT, SimSetup } from './SimSetup';
 
 interface SimLine { id: string; user_id: string; device_id: string; device_model: string; sim_slot: number; carrier: string; sim_label: string; phone_number: string; active: boolean; last_sync_at: string | null; created_at: string }
-interface SimCall { id: string; line_id: string; user_id: string | null; number: string; contact_name: string; direction: string; started_at: string; duration_sec: number }
+interface SimCall { id: string; line_id: string; user_id: string | null; number: string; contact_name: string; direction: string; started_at: string; duration_sec: number; recording_path?: string }
+interface SimSettings { save_recordings: boolean; recording_days: number }
+const CALL_COLS = 'id, line_id, user_id, number, contact_name, direction, started_at, duration_sec';
+
+/** ▶ plays a call recording through a 5-minute private link (only people who can see the call get one). */
+function PlayRecording({ path, playing, onPlay }: { path: string; playing: boolean; onPlay: (url: string | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    if (playing) { onPlay(null); return; }
+    setBusy(true);
+    const { data, error } = await supabase.storage.from('sim-recordings').createSignedUrl(path, 300);
+    setBusy(false);
+    if (error || !data?.signedUrl) { alert('Could not open the recording: ' + (error?.message ?? 'not found')); return; }
+    onPlay(data.signedUrl);
+  };
+  return (
+    <button onClick={() => void open()} className={`p-2 rounded-full shrink-0 ${playing ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'}`} aria-label={playing ? 'Close recording' : 'Play recording'}>
+      {busy ? <Loader2 size={14} className="animate-spin" /> : playing ? <Square size={14} /> : <Play size={14} />}
+    </button>
+  );
+}
 
 const DIR: Record<string, { label: string; cls: string; Icon: typeof Phone }> = {
   incoming: { label: 'Incoming', cls: 'bg-emerald-50 text-emerald-700', Icon: PhoneIncoming },
@@ -42,18 +62,28 @@ export function SimCallsPage() {
   const [dir, setDir] = useState('');
   const [person, setPerson] = useState('');
   const [tab, setTab] = useState<'calls' | 'phones'>('calls');
+  const [play, setPlay] = useState<{ id: string; url: string } | null>(null);
+  const [settings, setSettings] = useState<SimSettings | null>(null);   // null = recordings not set up yet
+  const [savingSet, setSavingSet] = useState(false);
 
   const load = useCallback(async () => {
     setErr('');
     const [c, l, p, m] = await Promise.all([
-      supabase.from('sim_calls').select('id, line_id, user_id, number, contact_name, direction, started_at, duration_sec').gte('started_at', fromOf(range)).order('started_at', { ascending: false }).limit(3000),
+      (async () => {
+        const q = (cols: string) => supabase.from('sim_calls').select(cols).gte('started_at', fromOf(range)).order('started_at', { ascending: false }).limit(3000);
+        const withRec = await q(CALL_COLS + ', recording_path');
+        // before the recordings update (20261130000000) the column does not exist yet
+        return withRec.error && /recording_path/.test(withRec.error.message) ? q(CALL_COLS) : withRec;
+      })(),
       supabase.from('sim_lines').select('id, user_id, device_id, device_model, sim_slot, carrier, sim_label, phone_number, active, last_sync_at, created_at').order('created_at', { ascending: false }).limit(500),
       supabase.from('company_users').select('id, full_name, email').limit(2000),
       supabase.rpc('sim_is_manager'),
     ]);
     const e = c.error || l.error;
     if (e) setErr(missingSimTable(e.message) ? 'SIM Calls is not set up in the database yet. Ask your administrator to run the SIM Calls update.' : e.message);
-    setCalls((c.data ?? []) as SimCall[]);
+    setCalls((c.data ?? []) as unknown as SimCall[]);
+    const st = await supabase.from('sim_settings').select('save_recordings, recording_days').maybeSingle();
+    setSettings(st.error ? null : ((st.data as SimSettings | null) ?? { save_recordings: true, recording_days: 90 }));
     setLines((l.data ?? []) as SimLine[]);
     setPeople(new Map(((p.data ?? []) as { id: string; full_name: string | null; email: string }[]).map((u) => [u.id, u.full_name || u.email])));
     setIsManager(m.data === true);
@@ -87,6 +117,14 @@ export function SimCallsPage() {
     ['Date & time', 'Person', 'Company SIM', 'Type', 'Number', 'Name', 'Duration (s)'],
     ...rows.map((c) => { const l = lineOf.get(c.line_id); return [new Date(c.started_at).toLocaleString('en-IN'), nameOf(c.user_id), l ? (l.phone_number || simTitle({ slot: l.sim_slot, carrier: l.carrier, label: l.sim_label, number: '' })) : '', DIR[c.direction]?.label ?? c.direction, c.number, c.contact_name, c.duration_sec]; }),
   ]);
+
+  const saveSettings = async () => {
+    if (!settings) return;
+    setSavingSet(true);
+    const { error } = await supabase.from('sim_settings').upsert({ ...settings, updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
+    setSavingSet(false);
+    if (error) alert('Could not save: ' + error.message);
+  };
 
   const disconnectLine = async (l: SimLine) => {
     if (!confirm(`Stop saving calls from ${nameOf(l.user_id)}'s ${l.device_model || 'phone'}? Calls already saved stay.`)) return;
@@ -147,14 +185,18 @@ export function SimCallsPage() {
             {!loading && rows.map((c) => {
               const d = DIR[c.direction] ?? DIR.unknown;
               return (
-                <div key={c.id} className="flex items-center gap-3 px-3 py-2.5">
-                  <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${d.cls}`}><d.Icon size={16} /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-slate-800 truncate">{c.contact_name || c.number || 'Private number'}</div>
-                    <div className="text-[11px] text-slate-500 truncate">{[c.contact_name ? c.number : '', d.label, fmtDur(c.duration_sec), isManager ? nameOf(c.user_id) : ''].filter(Boolean).join(' · ')}</div>
+                <div key={c.id} className="px-3 py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${d.cls}`}><d.Icon size={16} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-slate-800 truncate">{c.contact_name || c.number || 'Private number'}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{[c.contact_name ? c.number : '', d.label, fmtDur(c.duration_sec), isManager ? nameOf(c.user_id) : ''].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <div className="text-[11px] text-slate-400 text-right whitespace-nowrap">{fmtTime(c.started_at)}</div>
+                    {c.recording_path && <PlayRecording path={c.recording_path} playing={play?.id === c.id} onPlay={(url) => setPlay(url ? { id: c.id, url } : null)} />}
+                    {simCallsAvailable() && c.number && <button onClick={() => void simNative.dial(c.number).catch((e) => alert(e.message))} className="p-2 rounded-full bg-emerald-600 text-white shrink-0" aria-label="Call back"><Phone size={14} /></button>}
                   </div>
-                  <div className="text-[11px] text-slate-400 text-right whitespace-nowrap">{fmtTime(c.started_at)}</div>
-                  {simCallsAvailable() && c.number && <button onClick={() => void simNative.dial(c.number).catch((e) => alert(e.message))} className="p-2 rounded-full bg-emerald-600 text-white shrink-0" aria-label="Call back"><Phone size={14} /></button>}
+                  {play?.id === c.id && <audio src={play.url} controls autoPlay className="mt-2 w-full h-10" />}
                 </div>
               );
             })}
@@ -170,12 +212,13 @@ export function SimCallsPage() {
                   <th className="text-right font-semibold px-3 py-2">Duration</th>
                   {isManager && <th className="text-left font-semibold px-3 py-2">Person</th>}
                   <th className="text-left font-semibold px-3 py-2">Company SIM</th>
+                  <th className="text-left font-semibold px-3 py-2">Recording</th>
                   {simCallsAvailable() && <th className="px-2 py-2" />}
                 </tr>
               </thead>
               <tbody>
-                {loading && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400"><Loader2 size={18} className="inline animate-spin" /></td></tr>}
-                {!loading && !rows.length && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">No calls in this period{simCallsAvailable() ? '' : '. Calls appear here once staff choose their company SIM in the mobile app.'}</td></tr>}
+                {loading && <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-400"><Loader2 size={18} className="inline animate-spin" /></td></tr>}
+                {!loading && !rows.length && <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-400">No calls in this period{simCallsAvailable() ? '' : '. Calls appear here once staff choose their company SIM in the mobile app.'}</td></tr>}
                 {!loading && rows.map((c) => {
                   const d = DIR[c.direction] ?? DIR.unknown; const l = lineOf.get(c.line_id);
                   return (
@@ -187,6 +230,14 @@ export function SimCallsPage() {
                       <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">{fmtDur(c.duration_sec)}</td>
                       {isManager && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{nameOf(c.user_id)}</td>}
                       <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{l ? (l.phone_number || `SIM ${l.sim_slot} ${l.carrier}`) : '—'}</td>
+                      <td className="px-3 py-2">
+                        {c.recording_path ? (
+                          <div className="flex items-center gap-2">
+                            <PlayRecording path={c.recording_path} playing={play?.id === c.id} onPlay={(url) => setPlay(url ? { id: c.id, url } : null)} />
+                            {play?.id === c.id && <audio src={play.url} controls autoPlay className="h-8 w-56" />}
+                          </div>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
                       {simCallsAvailable() && <td className="px-2 py-2">{c.number && <button onClick={() => void simNative.dial(c.number).catch((e) => alert(e.message))} className="p-1.5 rounded-lg bg-emerald-600 text-white" aria-label="Call back"><Phone size={13} /></button>}</td>}
                     </tr>
                   );
@@ -196,6 +247,22 @@ export function SimCallsPage() {
           </div>
         </div>
       ) : (
+        <div className="space-y-3">
+        {settings && (
+          <div className="rounded-xl bg-white border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
+            <Mic size={16} className="text-indigo-600" />
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              <input type="checkbox" checked={settings.save_recordings} onChange={(e) => setSettings({ ...settings, save_recordings: e.target.checked })} />
+              Save call recordings
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-600">Keep for
+              <input type="number" min={1} max={3650} value={settings.recording_days} onChange={(e) => setSettings({ ...settings, recording_days: Math.max(1, Math.min(3650, Number(e.target.value) || 1)) })} className="w-20 h-8 rounded-lg border border-slate-300 px-2 text-xs" />
+              days, then delete
+            </label>
+            <button disabled={savingSet} onClick={() => void saveSettings()} className="ml-auto h-8 px-3 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-60">{savingSet ? 'Saving…' : 'Save'}</button>
+            <p className="basis-full text-[11px] text-slate-500">Recordings come from each phone's own dialer: switch on <b>Record calls</b> in the phone's Phone app settings. Let staff and customers know calls are recorded.</p>
+          </div>
+        )}
         <div className="rounded-xl bg-white border border-slate-200 shadow-sm overflow-x-auto">
           <table className="w-full text-xs no-stripe">
             <thead className="bg-slate-50 text-slate-500">
@@ -215,6 +282,7 @@ export function SimCallsPage() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </div>
@@ -277,7 +345,18 @@ function ThisPhone({ onChange }: { onChange: () => void }) {
         <input value={num} onChange={(e) => setNum(e.target.value)} inputMode="tel" placeholder="Number to call" className="flex-1 min-w-0 h-10 rounded-lg border border-slate-300 px-3 text-sm" />
         <button onClick={call} className="h-10 px-4 shrink-0 rounded-lg bg-sky-600 text-white text-sm font-semibold flex items-center gap-1.5"><Phone size={15} />Call</button>
       </div>
-      {(msg || st.lastError) && <p className={`text-xs ${st.lastError && !msg ? 'text-amber-700' : 'text-slate-600'}`}>{msg || st.lastError}</p>}
+      <div className="flex items-center gap-2 text-xs text-slate-600">
+        <Mic size={14} className="text-indigo-600 shrink-0" />
+        {st.recordingsAllowed === false ? (
+          <>
+            <span className="flex-1">Recordings: allow access so your dialer's call recordings are saved.</span>
+            <button onClick={() => void simNative.requestRecordings().then((r) => { if (!r.granted) setMsg('Allow "Music and audio" for Argus in the phone Settings → Apps → Permissions.'); void refresh(); })} className="h-8 px-3 rounded-lg bg-indigo-600 text-white font-semibold shrink-0">Allow</button>
+          </>
+        ) : (
+          <span className="flex-1">Recordings on{st.lastRecordingAt ? ` · last saved ${ago(st.lastRecordingAt)}` : ''}{st.recordingsWaiting ? ` · ${st.recordingsWaiting} call${st.recordingsWaiting === 1 ? '' : 's'} waiting` : ''}. Turn on call recording in your phone's dialer.</span>
+        )}
+      </div>
+      {(msg || st.lastError || st.lastRecordingError) && <p className={`text-xs ${!msg ? 'text-amber-700' : 'text-slate-600'}`}>{msg || st.lastError || st.lastRecordingError}</p>}
     </div>
   );
 }
