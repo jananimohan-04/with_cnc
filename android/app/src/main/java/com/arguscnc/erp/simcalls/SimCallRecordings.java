@@ -234,16 +234,33 @@ final class SimCallRecordings {
     private static String upload(Context c, SharedPreferences p, String api, String token, JSONObject call, Audio a) {
         try {
             String ext = a.name.contains(".") ? a.name.substring(a.name.lastIndexOf('.') + 1).toLowerCase() : "m4a";
+            // the real file size (the media list's size can be out of date)
+            Uri uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, a.id);
+            long size = -1;
+            try (android.os.ParcelFileDescriptor fd = c.getContentResolver().openFileDescriptor(uri, "r")) { if (fd != null) size = fd.getStatSize(); }
+            catch (Exception ignored) { }
+            byte[] whole = null;
+            if (size <= 0) {   // size unknown: read it into memory (recordings are small)
+                try (InputStream in = c.getContentResolver().openInputStream(uri)) {
+                    if (in == null) return "skip";
+                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[64 * 1024]; int n;
+                    while ((n = in.read(buf)) > 0) { bo.write(buf, 0, n); if (bo.size() > 50L * 1024 * 1024) return "skip"; }
+                    whole = bo.toByteArray(); size = whole.length;
+                }
+            }
+            if (size <= 0) return "skip";
+
             JSONObject start = new JSONObject();
             start.put("token", token); start.put("callId", call.getLong("id")); start.put("startedAt", call.getLong("date"));
-            start.put("ext", ext); start.put("size", a.size);
+            start.put("ext", ext); start.put("size", size);
             JSONObject r = postJson(api + "/api/simcalls/recording/start", start);
             if (r == null) return "retry";
+            if (r.optBoolean("missing")) return "skip";   // the call is not in BI (made before the SIM was connected)
             if (r.optBoolean("done") || r.optBoolean("skip")) return r.optBoolean("done") ? "done" : "skip";
             String url = r.optString("url", "");
             if (url.isEmpty()) return "retry";
 
-            Uri uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, a.id);
             HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
             con.setRequestMethod("PUT");
             con.setDoOutput(true);
@@ -251,11 +268,15 @@ final class SimCallRecordings {
             con.setReadTimeout(120000);
             con.setRequestProperty("Content-Type", a.mime);
             con.setRequestProperty("x-upsert", "true");
-            if (a.size > 0) con.setFixedLengthStreamingMode(a.size);
-            try (InputStream in = c.getContentResolver().openInputStream(uri); OutputStream os = con.getOutputStream()) {
-                if (in == null) return "skip";
-                byte[] buf = new byte[64 * 1024]; int n;
-                while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            con.setFixedLengthStreamingMode(size);
+            try (OutputStream os = con.getOutputStream()) {
+                if (whole != null) os.write(whole);
+                else try (InputStream in = c.getContentResolver().openInputStream(uri)) {
+                    if (in == null) return "skip";
+                    byte[] buf = new byte[64 * 1024]; int n; long left = size;
+                    while (left > 0 && (n = in.read(buf, 0, (int) Math.min(buf.length, left))) > 0) { os.write(buf, 0, n); left -= n; }
+                    if (left > 0) return "retry";   // the file got shorter while reading: try again later
+                }
             }
             int code = con.getResponseCode();
             con.disconnect();
@@ -292,6 +313,7 @@ final class SimCallRecordings {
         // phone disconnected in BI: stop; any other refusal (server busy, being updated ...) is tried again later
         if (code == 403 && j.optString("error").contains("no longer connected")) return j.put("skip", true);
         if (code >= 200 && code < 300) return j;
+        if (code == 404 && j.optString("error").contains("not saved")) return j.put("missing", true);
         return null;
     }
 }
