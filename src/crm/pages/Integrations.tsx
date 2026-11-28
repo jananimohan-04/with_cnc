@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Clock,
   Copy,
-  ExternalLink,
   FileCode2,
   Inbox,
   Plug,
@@ -37,29 +36,30 @@ import {
 import { PageHeader, Pagination, TableWrap, Td, Th } from "../components/ui/pagebits";
 import { Modal } from "../components/ui/Modal";
 import { formatDateTime, formatRelative, truncate } from "../lib/format";
+import { IntegrationSetup } from "./IntegrationSetup";
 
 const PROVIDER_LABELS: Record<Provider, string> = {
-  facebook: "Facebook / Instagram (Meta)",
-  instagram: "Instagram (Meta)",
+  facebook: "Facebook lead ads",
+  instagram: "Instagram lead ads",
   linkedin: "LinkedIn",
-  website_form: "Website form webhook",
+  website_form: "Website form",
 };
 
 const PROVIDER_BLURB: Record<Provider, string> = {
-  facebook: "Leads from Meta lead ads, fetched with your own Meta developer app.",
-  instagram: "Same Meta app as Facebook — the connection and token are shared.",
-  linkedin: "Lead-gen forms and CRM sync through a LinkedIn developer app (PKCE).",
-  website_form: "A web address your own website's contact form sends its entries to.",
+  facebook: "People who fill in your Facebook lead ad forms become leads automatically.",
+  instagram: "People who fill in your Instagram lead ad forms become leads automatically.",
+  linkedin: "People who fill in your LinkedIn lead gen forms become leads automatically.",
+  website_form: "Every entry from the contact form on your own website becomes a lead. Works straight away.",
 };
 
 const STATUS_META: Record<IntegrationStatus, { label: string; tone: "neutral" | "success" | "warning" | "danger" | "info"; hint: string }> = {
   not_connected: { label: "Not connected", tone: "neutral", hint: "Nothing is linked for this company yet." },
-  setup_required: { label: "Setup required", tone: "warning", hint: "The server is missing credentials, so no handshake can start." },
-  awaiting_approval: { label: "Awaiting approval", tone: "info", hint: "The provider has not finished reviewing the app." },
-  connected: { label: "Connected", tone: "success", hint: "A live token is stored for this company." },
-  expired: { label: "Expired", tone: "warning", hint: "The stored token has expired — reconnect to refresh it." },
-  error: { label: "Error", tone: "danger", hint: "The last operation failed. See the logs below." },
-  disconnected: { label: "Not connected", tone: "neutral", hint: "Was connected before; the token was deleted." },
+  setup_required: { label: "Setup required", tone: "warning", hint: "Waiting for the setup steps above." },
+  awaiting_approval: { label: "Awaiting approval", tone: "info", hint: "Signed in, but Meta or LinkedIn has not approved the app yet." },
+  connected: { label: "Connected", tone: "success", hint: "Working: new leads arrive automatically." },
+  expired: { label: "Expired", tone: "warning", hint: "The sign-in has expired. Press Reconnect." },
+  error: { label: "Error", tone: "danger", hint: "Something went wrong. See the activity log below." },
+  disconnected: { label: "Not connected", tone: "neutral", hint: "Was connected before, then disconnected." },
 };
 
 function StatusPill({ status }: { status: IntegrationStatus }) {
@@ -255,13 +255,14 @@ export default function Integrations() {
     );
   }
 
-  const entries = list.data?.integrations ?? [];
+  const ORDER: Provider[] = ["website_form", "facebook", "instagram", "linkedin"];
+  const entries = [...(list.data?.integrations ?? [])].sort((a, b) => ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
         title="Integrations"
-        subtitle="Live status from the server — configuration gaps and connection state are reported as they really are."
+        subtitle="Bring leads in automatically from your website, Facebook, Instagram and LinkedIn."
         actions={
           <Button
             variant="secondary"
@@ -281,6 +282,8 @@ export default function Integrations() {
           <span>{resultMessage || "The provider refused the connection."}</span>
         </div>
       ) : null}
+
+      <IntegrationSetup onSaved={() => void list.refetch()} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         {list.loading && !list.data
@@ -360,16 +363,6 @@ export default function Integrations() {
                     </p>
                   ) : null}
 
-                  {entry.status === "setup_required" && entry.requirements.length > 0 ? (
-                    <ul className="mt-3 space-y-1.5 rounded-lg border border-warning/40 bg-follow_up/10 px-3.5 py-3 text-xs text-[#92400e]">
-                      {entry.requirements.map((req) => (
-                        <li key={req.key}>
-                          <strong>{req.label}</strong> — {req.description}{" "}
-                          <span className="font-mono">({req.where_to_set})</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
 
                   {isForm && entry.endpoint_url ? (
                     <div className="mt-3 space-y-3">
@@ -390,15 +383,6 @@ export default function Integrations() {
                     </div>
                   ) : null}
 
-                  {!isForm && entry.callback_url ? (
-                    <div className="mt-3 space-y-3">
-                      <CopyField label="Redirect address to register at the provider" value={entry.callback_url} />
-                      {entry.webhook_url ? (
-                        <CopyField label="Webhook address to register at the provider" value={entry.webhook_url} />
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
                     {!isForm ? (
                       canManage ? (
@@ -413,7 +397,7 @@ export default function Integrations() {
                         </Button>
                       ) : (
                         <Button variant="secondary" disabled icon={<Plug className="size-4" aria-hidden />}>
-                          Connect (manager+)
+                          Connect (owners, admins, managers)
                         </Button>
                       )
                     ) : null}
@@ -439,21 +423,11 @@ export default function Integrations() {
                       </>
                     ) : null}
 
-                    {entry.documentation ? (
-                      <a
-                        href={entry.documentation}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-brand-600 hover:text-brand-700"
-                      >
-                        Setup guide <ExternalLink className="size-3.5" aria-hidden />
-                      </a>
-                    ) : null}
                   </div>
 
                   {!entry.configured ? (
                     <p className="mt-2 text-xs text-ink-3">
-                      Disabled until the server settings listed above are added.
+                      Finish the setup steps above first.
                     </p>
                   ) : null}
                 </Card>
@@ -529,7 +503,7 @@ export default function Integrations() {
       <Card>
         <CardHeader
           title="Activity log"
-          subtitle="Every OAuth handshake, sync, webhook delivery and failure recorded by the server."
+          subtitle="Every connection, sync, incoming lead and failure."
           actions={
             <Link
               to="/crm/settings"
@@ -618,7 +592,7 @@ export default function Integrations() {
       <Card>
         <CardHeader
           title="What the states mean"
-          subtitle="The same vocabulary the backend uses — no state is ever faked for looks."
+          subtitle="What the label on each card means."
         />
         <ul className="divide-y divide-line">
           {INTEGRATION_STATUSES.filter((s) => s !== "disconnected").map((status) => (
@@ -632,9 +606,7 @@ export default function Integrations() {
         </ul>
         <div className="border-t border-line px-5 py-4 text-sm text-ink-2">
           <Webhook className="mr-1.5 inline size-4 text-ink-3" aria-hidden />
-          Incoming leads are checked (signature or verify token), counted once per provider event,
-          and logged above. Register the redirect and webhook addresses shown on each card in your
-          Meta or LinkedIn developer app exactly as shown.
+          Every incoming lead is checked before it is saved, and the same lead is never added twice.
         </div>
       </Card>
     </div>

@@ -14,13 +14,16 @@ const SERVER = String(API_BASE || '').replace(/\/+$/, '');
 
 const SETUP_SQL_MESSAGE = 'Lead capture is not set up in the database yet. Please ask your administrator to run the SQL file 20261203000000_crm_integrations.sql, then refresh this page.';
 
-async function server<T>(ctx: Ctx, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+const server = <T,>(ctx: Ctx, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> =>
+  serverAt<T>(`/api/crm/companies/${encodeURIComponent(ctx.companyId)}${path}`, method, body);
+
+async function serverAt<T>(url: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) fail(401, 'unauthenticated', 'Your BI session has ended. Sign in again.');
   let res: Response;
   try {
-    res = await fetch(`${SERVER}/api/crm/companies/${encodeURIComponent(ctx.companyId)}${path}`, {
+    res = await fetch(`${SERVER}${url}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -36,7 +39,7 @@ async function server<T>(ctx: Ctx, method: 'GET' | 'POST', path: string, body?: 
       // an HTML page or nothing at all: the server does not have lead capture yet
       fail(res.status === 404 ? 503 : res.status, 'unavailable', 'Lead capture is not available on the BI server yet. Please try again after the next update.');
     }
-    if (json.code === 'setup_needed') fail(503, 'setup_needed', SETUP_SQL_MESSAGE);
+    if (json.code === 'setup_needed') fail(503, 'setup_needed', /20261204/.test(String(json.message)) ? String(json.message) : SETUP_SQL_MESSAGE);
     fail(res.status, String(json.code || 'error'), json.message as string, (json.details as Record<string, unknown>) || undefined);
   }
   return json as T;
@@ -69,6 +72,15 @@ export const integrationRoutes: Route[] = [
       }
       return pageResult(data ?? [], count ?? 0, page, page_size);
     },
+  },
+  {
+    // Meta / LinkedIn app keys (the same for every company; only a BI Super Admin may change them)
+    method: 'GET', path: '/integrations/app-keys',
+    handler: async (ctx) => { read(ctx); return serverAt('/api/crm/app-keys', 'GET'); },
+  },
+  {
+    method: 'POST', path: '/integrations/app-keys',
+    handler: async (ctx, req) => { manage(ctx); return serverAt('/api/crm/app-keys', 'POST', req.body ?? {}); },
   },
   {
     method: 'GET', path: '/integrations/:provider',

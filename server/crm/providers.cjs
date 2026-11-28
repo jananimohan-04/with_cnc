@@ -14,7 +14,28 @@
 'use strict';
 const crypto = require('crypto');
 
-const env = (k) => String(process.env[k] || '').trim();
+const env0 = (k) => String(process.env[k] || '').trim();
+/** Keys a Super Admin saved on the Integrations page (table crm_app_settings, loaded by routes.cjs). */
+let stored = {};
+const setStored = (obj) => { stored = obj || {}; };
+const fromServer = (k) => !!env0(k);
+/**
+ * A key derived from the server's database secret, so nobody has to invent one:
+ *   'token'    — locks the stored Facebook / LinkedIn sign-in tokens (unless TOKEN_ENCRYPTION_KEY is set)
+ *   'settings' — locks the app keys saved from the Integrations page (always this one)
+ */
+function derivedKey(purpose) {
+  const secret = env0('SUPABASE_SECRET_KEY') || env0('SUPABASE_SERVICE_ROLE_KEY') || env0('SUPABASE_SERVICE_KEY');
+  if (!secret) return '';
+  return crypto.createHash('sha256').update(`argus-crm-${purpose}:${secret}`).digest('base64url') + '=';
+}
+/** Server environment first, then the keys saved from the Integrations page. */
+const env = (k) => {
+  const v = env0(k);
+  if (v) return v;
+  if (k === 'TOKEN_ENCRYPTION_KEY') return derivedKey('token');
+  return String(stored[k] || '').trim();
+};
 const PUBLIC_URL = () => (env('CRM_PUBLIC_URL') || env('PUBLIC_API_URL') || 'https://with-cnc.vercel.app').replace(/\/+$/, '');
 const FRONTEND_URL = () => (env('CRM_FRONTEND_URL') || env('FRONTEND_URL') || PUBLIC_URL()).replace(/\/+$/, '');
 const STATE_TTL = () => Math.min(3600, Math.max(60, parseInt(env('OAUTH_STATE_TTL_SECONDS') || '600', 10) || 600));
@@ -73,26 +94,23 @@ const httpPostForm = (url, form) => call(url, {
 const splitScopes = (v) => (Array.isArray(v) ? v.map(String) : String(v || '').replace(/,/g, ' ').split(/\s+/)).map((s) => s.trim()).filter(Boolean);
 
 // ------------------------------------------------------------------ setup requirements
-const req = (key, label, description) => ({ key, label, description, where_to_set: `Server settings → ${key}` });
+const req = (key, label, description) => ({ key, label, description, where_to_set: 'Integrations page → App keys' });
 const ENCRYPTION_REQ = req('TOKEN_ENCRYPTION_KEY', 'Token encryption key',
-  'A random key the server uses to lock the stored sign-in tokens (32 random bytes in base64, for example from: openssl rand -base64 32). Kept on the server only.');
+  'The server could not make its encryption key (its database connection is not set up).');
 
 function metaMissing() {
   const out = [];
-  if (!env('META_APP_ID')) out.push(req('META_APP_ID', 'Meta App ID', 'The numeric App ID from developers.facebook.com → Settings → Basic.'));
-  if (!env('META_APP_SECRET')) out.push(req('META_APP_SECRET', 'Meta App Secret', 'The App Secret from the same page. Kept on the server only — never sent to the browser.'));
-  if (!env('META_WEBHOOK_VERIFY_TOKEN')) {
-    out.push(req('META_WEBHOOK_VERIFY_TOKEN', 'Webhook verify token',
-      "An arbitrary shared string you invent. It must match the one entered in the Meta app's Webhooks → Edit subscription dialog."));
-  }
+  if (!env('META_APP_ID')) out.push(req('META_APP_ID', 'Meta App ID', 'From developers.facebook.com → your app → App settings → Basic.'));
+  if (!env('META_APP_SECRET')) out.push(req('META_APP_SECRET', 'Meta App Secret', 'From the same page (press Show).'));
+  if (!env('META_WEBHOOK_VERIFY_TOKEN')) out.push(req('META_WEBHOOK_VERIFY_TOKEN', 'Webhook verify token', 'Made automatically once the app keys table exists.'));
   if (!env('TOKEN_ENCRYPTION_KEY')) out.push(ENCRYPTION_REQ);
   return out;
 }
 
 function linkedinMissing() {
   const out = [];
-  if (!env('LINKEDIN_CLIENT_ID')) out.push(req('LINKEDIN_CLIENT_ID', 'LinkedIn Client ID', 'From developer.linkedin.com → Your app → Auth → Client ID.'));
-  if (!env('LINKEDIN_CLIENT_SECRET')) out.push(req('LINKEDIN_CLIENT_SECRET', 'LinkedIn Client Secret', 'From the same Auth tab. Kept on the server only.'));
+  if (!env('LINKEDIN_CLIENT_ID')) out.push(req('LINKEDIN_CLIENT_ID', 'LinkedIn Client ID', 'From developer.linkedin.com → your app → Auth.'));
+  if (!env('LINKEDIN_CLIENT_SECRET')) out.push(req('LINKEDIN_CLIENT_SECRET', 'LinkedIn Client Secret', 'From the same Auth tab.'));
   if (!env('TOKEN_ENCRYPTION_KEY')) out.push(ENCRYPTION_REQ);
   return out;
 }
@@ -439,7 +457,7 @@ function formToLead(payload) {
 }
 
 module.exports = {
-  CrmError, env, PUBLIC_URL, FRONTEND_URL, STATE_TTL, META_VERSION, GRAPH, PROVIDER_NAMES, OAUTH_PROVIDERS,
+  CrmError, env, setStored, fromServer, derivedKey, PUBLIC_URL, FRONTEND_URL, STATE_TTL, META_VERSION, GRAPH, PROVIDER_NAMES, OAUTH_PROVIDERS,
   httpGet, call, getProvider, missingScopes, isExpired, deriveStatus, redirectUri, webhookUrl, websiteFormUrl,
   pkcePair, newState, newSigningSecret, safeEqual, verifyMetaSignature, verifyFormSignature,
   leadRow, metaFields, metaToLead, metaCampaign, linkedinToLead, formToLead,

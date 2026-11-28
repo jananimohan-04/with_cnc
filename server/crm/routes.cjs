@@ -64,6 +64,107 @@ module.exports = function mountCrm(app, SB) {
     return { userId: user.id, role, companyId };
   }
 
+  // ------------------------------------------------------------------ app keys saved from the Integrations page
+  // Meta / LinkedIn app keys can be pasted on the Integrations page by a BI Super Admin instead of being added to the
+  // server environment (the environment still wins when set). Stored encrypted in crm_app_settings (server only,
+  // migration 20261204000000_crm_app_settings.sql). The Meta webhook verify token is made here automatically.
+  const APP_KEYS = ['META_APP_ID', 'META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN', 'LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET'];
+  const SECRET_APP_KEYS = new Set(['META_APP_SECRET', 'LINKEDIN_CLIENT_SECRET']);
+  const EDITABLE_APP_KEYS = ['META_APP_ID', 'META_APP_SECRET', 'LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET'];
+  let keysLoadedAt = 0;
+  let keysLoading = null;
+  let keysTableReady = true;
+
+  async function loadAppKeys(force) {
+    if (!db()) return;
+    if (!force && Date.now() - keysLoadedAt < 60000) return;
+    keysLoading = keysLoading || (async () => {
+      try {
+        const k = P.derivedKey('settings');
+        const read = async () => {
+          const { data, error } = await db().from('crm_app_settings').select('key, value');
+          if (error) throw error;
+          const out = {};
+          for (const r of data || []) { try { out[r.key] = fernet.decrypt(k, r.value); } catch { /* made with another key: ignore */ } }
+          return out;
+        };
+        let out;
+        try { out = await read(); } catch (e) {
+          keysTableReady = !/crm_app_settings|PGRST205|42P01|schema cache|does not exist/i.test(String(e && e.message));
+          if (!keysTableReady) { P.setStored({}); keysLoadedAt = Date.now(); return; }
+          throw e;
+        }
+        keysTableReady = true;
+        if (!P.fromServer('META_WEBHOOK_VERIFY_TOKEN') && !out.META_WEBHOOK_VERIFY_TOKEN) {
+          const token = 'argus-' + crypto.randomBytes(12).toString('hex');
+          const { error } = await db().from('crm_app_settings').insert({ key: 'META_WEBHOOK_VERIFY_TOKEN', value: fernet.encrypt(k, token) });
+          out = error ? await read() : { ...out, META_WEBHOOK_VERIFY_TOKEN: token };   // another server made it first
+        }
+        P.setStored(out);
+        keysLoadedAt = Date.now();
+      } finally { keysLoading = null; }
+    })();
+    return keysLoading;
+  }
+
+  app.use('/api/crm', async (req, res, next) => {
+    try { await loadAppKeys(false); } catch (e) { console.warn('crm app keys:', e && e.message); }
+    next();
+  });
+
+  /** Signed-in person and whether they are a BI Super Admin (the only ones who may change app-wide keys). */
+  async function signedIn(req) {
+    if (!db()) throw new CrmError(503, 'unavailable', 'The server is not connected to the database.');
+    const h = String(req.headers.authorization || '');
+    const user = h.startsWith('Bearer ') ? await SB.authUserFromToken(h.slice(7).trim()) : null;
+    if (!user) throw new CrmError(401, 'unauthenticated', 'Your BI session has ended. Sign in again.');
+    const { data } = await db().from('company_users').select('id').eq('auth_user_id', user.id).eq('role', 'SUPER_ADMIN').eq('status', 'Active').limit(1);
+    return { user, isSuper: !!(data && data.length) };
+  }
+
+  function appKeysView(isSuper) {
+    const keys = {};
+    for (const k of APP_KEYS) {
+      const value = P.env(k);
+      keys[k] = { set: !!value, from_server: P.fromServer(k), value: isSuper && value && !SECRET_APP_KEYS.has(k) ? value : null };
+    }
+    return {
+      can_edit: isSuper,
+      table_ready: keysTableReady,
+      keys,
+      meta: { redirect_urls: [P.redirectUri('facebook'), P.redirectUri('instagram')], webhook_url: P.webhookUrl('facebook') },
+      linkedin: { redirect_url: P.redirectUri('linkedin') },
+    };
+  }
+
+  app.get('/api/crm/app-keys', async (req, res) => {
+    try { const me = await signedIn(req); res.json(appKeysView(me.isSuper)); } catch (e) { send(res, e); }
+  });
+
+  app.post('/api/crm/app-keys', async (req, res) => {
+    try {
+      const me = await signedIn(req);
+      if (!me.isSuper) throw new CrmError(403, 'forbidden', 'Only a BI Super Admin can change the app keys.');
+      if (!keysTableReady) throw new CrmError(503, 'setup_needed', 'Run the SQL file 20261204000000_crm_app_settings.sql first, then save again.');
+      const body = req.body || {};
+      const k = P.derivedKey('settings');
+      const rows = [];
+      for (const key of EDITABLE_APP_KEYS) {
+        const v = typeof body[key] === 'string' ? body[key].trim() : '';
+        if (!v) continue;   // empty = keep what is saved
+        if ((key === 'META_APP_ID') && !/^\d{5,25}$/.test(v)) throw new CrmError(422, 'validation_error', 'The Meta App ID is a number (only digits).');
+        if (v.length > 300) throw new CrmError(422, 'validation_error', `${key} is too long.`);
+        rows.push({ key, value: fernet.encrypt(k, v), updated_by: me.user.id, updated_at: nowIso() });
+      }
+      if (rows.length) must(await db().from('crm_app_settings').upsert(rows, { onConflict: 'key' }));
+      await loadAppKeys(true);
+      res.json(appKeysView(true));
+    } catch (e) {
+      if (/crm_app_settings/.test(String(e && e.message))) return send(res, new CrmError(503, 'setup_needed', 'Run the SQL file 20261204000000_crm_app_settings.sql first, then save again.'));
+      send(res, e);
+    }
+  });
+
   function providerOr404(name) {
     const p = P.getProvider(name);
     if (!p) throw new CrmError(404, 'not_found', `Unknown integration '${name}'.`, { available: P.PROVIDER_NAMES });
