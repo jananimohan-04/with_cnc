@@ -97,13 +97,13 @@ header.sticky.app-topbar:not(.app-topbar-light) :is(span, p, label, h2, h3, a, d
   :not([class*="bg-"]) {
   color: #e2e8f0 !important;
 }
-aside:not(.attendance-sidebar):not(.att-sidebar) {
+aside:not(.attendance-sidebar):not(.att-sidebar):not(.crm-sidebar) {
   background: linear-gradient(180deg, rgba(30, 18, 54, .78), rgba(24, 12, 20, .74)) !important;
   -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
   border-color: rgba(255, 255, 255, .10) !important;
 }
-aside:not(.attendance-sidebar):not(.att-sidebar) :is(.bg-navy-950, .bg-navy-900, [class*="bg-navy-9"]) { background-color: transparent !important; }
-aside:not(.attendance-sidebar):not(.att-sidebar) nav button:hover { background: rgba(255, 255, 255, .10) !important; }
+aside:not(.attendance-sidebar):not(.att-sidebar):not(.crm-sidebar) :is(.bg-navy-950, .bg-navy-900, [class*="bg-navy-9"]) { background-color: transparent !important; }
+aside:not(.attendance-sidebar):not(.att-sidebar):not(.crm-sidebar) nav button:hover { background: rgba(255, 255, 255, .10) !important; }
 
 /* AI Attendance Suite — Clean Blueprint Theme Isolation */
 .attendance-suite,

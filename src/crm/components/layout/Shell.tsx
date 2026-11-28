@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
   BarChart3,
   Bell,
   CalendarClock,
@@ -208,7 +209,7 @@ export function Sidebar({
 
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-surface transition-[width,transform] duration-250 ease-in-out",
+          "crm-sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-surface transition-[width,transform] duration-250 ease-in-out",
           collapsed ? "lg:w-[76px]" : "lg:w-64",
           "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -285,6 +286,18 @@ export function Sidebar({
             })}
           </ul>
         </nav>
+
+        {/* Back to the rest of BI */}
+        <div className={`shrink-0 ${collapsed && !mobileOpen ? "lg:px-3" : "px-3"} pb-3`}>
+          <a
+            href="/dashboard"
+            title="Back to Business Intelligence"
+            className={`flex items-center gap-2.5 rounded-xl bg-brand-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-brand-700 ${collapsed && !mobileOpen ? "lg:justify-center lg:px-0" : ""}`}
+          >
+            <ArrowLeft className="size-4 shrink-0" aria-hidden />
+            {(!collapsed || mobileOpen) && <span className="truncate">Back to BI</span>}
+          </a>
+        </div>
 
         {/* User profile & sidebar toggle */}
         <div className={`shrink-0 border-t border-line/80 ${collapsed && !mobileOpen ? "lg:px-3" : "px-4"} py-3.5 bg-slate-50/40`}>
