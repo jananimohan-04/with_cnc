@@ -6,7 +6,7 @@ import { fetchDisabledModules, RETAIL_LINKED_MODULES } from '@/lib/moduleSwitche
 import { isTauri } from '@/lib/desktop/isTauri';
 import { desktopGoogleSignIn } from '@/lib/desktop/auth';
 
-export type ErpRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'USER';
+export type ErpRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'USER' | 'SUPPORT';
 
 export interface ErpProfile {
   id: string;
@@ -16,6 +16,8 @@ export interface ErpProfile {
   status: 'Active' | 'Inactive';
   company_id: string | null;
   active_company_id: string | null;
+  /** Support team member with View only switched on. */
+  support_read_only?: boolean;
 }
 
 export interface ErpCompany {
@@ -48,6 +50,10 @@ interface AuthContextValue {
   companies: ErpCompany[];
   isSuperAdmin: boolean;
   isCompanyAdmin: boolean;
+  /** Technical support team: switches between the companies open to support, never the administration pages. */
+  isSupport: boolean;
+  /** Super Admin or support team: may pick the company in the top bar. */
+  canSwitchCompany: boolean;
   errorMessage: string | null;
   /** Effective module/action matrix (single permission system). Empty until loaded. */
   permissions: PermMatrix | null;
@@ -133,13 +139,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissions(null);
         return;
       }
-      const payload = data as { role?: ErpRole | null; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
+      const payload = data as { role?: ErpRole | null; support_read_only?: boolean; permissions?: { module_key: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; can_approve: boolean; can_export: boolean }[] };
       // modules switched fully off for the company (Access Management > Full off) are removed for everyone
       const off = await fetchDisabledModules();
       // a company with the Retail Store switched off also loses the BI pages linked to it (Digital Store, Retail Orders, Partner & Online Sales)
       if (!platformsRef.current.retail) RETAIL_LINKED_MODULES.forEach((k) => { if (!off.includes(k)) off.push(k); });
       (window as unknown as { __fullOff?: string[] }).__fullOff = off;   // for support: type __fullOff in the browser console
-      setPermissions(applyDisabledModules(effectiveMatrix(payload.role ?? role ?? null, payload.permissions), off));
+      setPermissions(applyDisabledModules(effectiveMatrix(payload.role ?? role ?? null, payload.permissions, { readOnly: !!payload.support_read_only }), off));
     } catch (e) {
       console.error('erp_get_permissions failed:', e);
       setPermissions(null);
@@ -300,6 +306,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     companies,
     isSuperAdmin: status === 'authorized' && profile?.role === 'SUPER_ADMIN',
     isCompanyAdmin: status === 'authorized' && profile?.role === 'COMPANY_ADMIN',
+    isSupport: status === 'authorized' && profile?.role === 'SUPPORT',
+    canSwitchCompany: status === 'authorized' && (profile?.role === 'SUPER_ADMIN' || profile?.role === 'SUPPORT'),
     errorMessage,
     permissions,
     permsLoading,

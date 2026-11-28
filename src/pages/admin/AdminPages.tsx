@@ -4,6 +4,7 @@ import { Eye, Edit, Edit2, Trash2, Users as UsersIcon, Building2, ShieldCheck, S
 import { fetchJobDescriptions, createJobDescription, EMPTY_JD, type JobDescription } from '@/lib/jdBuild';
 import { fetchUserJdMap, saveUserJd, getUserJdId } from '@/lib/userJd';
 import { JobDescriptionModal, JobDescriptionViewModal, JobDescriptionFormFields, toDraft, fromDraft, type JdDraft } from '@/components/admin/JobDescriptionModal';
+import { SupportAccessLog } from './SupportAccessLog';
 import { NEVER_OFF, RETAIL_LINKED_MODULES, fetchDisabledModules, setModuleOff } from '@/lib/moduleSwitches';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -53,6 +54,7 @@ interface UserRow {
   company_name: string;
   mobile?: string | null;
   retail_role?: string | null;
+  support_read_only?: boolean;
 }
 
 /** A Retail Store role (sales partner tier, content writer, finance...), kept by the Retail Store backend. */
@@ -62,7 +64,11 @@ const ROLE_LABELS: Record<ErpRole, string> = {
   SUPER_ADMIN: 'Super Admin',
   COMPANY_ADMIN: 'Company Admin',
   USER: 'User',
+  SUPPORT: 'Support team',
 };
+
+/** Super Admin and support team accounts have no company of their own. */
+const spansCompanies = (role: ErpRole) => role === 'SUPER_ADMIN' || role === 'SUPPORT';
 
 const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
@@ -135,7 +141,7 @@ function PartnerTree({ mainId, links, companies, onOpen }: { mainId: string; lin
 // User Management
 // ======================================================================================
 
-const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '', mobile: '', retail_role: '', terms: false };
+const emptyUserForm = { id: null as string | null, full_name: '', email: '', role: 'USER' as ErpRole, status: 'Active' as 'Active' | 'Inactive', company_id: '', mobile: '', retail_role: '', terms: false, support_read_only: false };
 
 export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } = {}) {
   const navigate = useNavigate();
@@ -214,7 +220,10 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
     // mobile + Retail Store role live in extra columns; a failed read (migration not applied yet) just leaves them empty
     const extra = await supabase.from('company_users').select('id, mobile, retail_role');
     const extraById = new Map(((extra.error ? [] : extra.data) as any[]).map(x => [x.id, x]));
-    setUsers(((usersRes.data as any[]) || []).map(u => ({ ...u, mobile: extraById.get(u.id)?.mobile ?? null, retail_role: extraById.get(u.id)?.retail_role ?? null, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : '—') })));
+    // View only for support team members (column added by 20261205000000_support_team.sql)
+    const sup = await supabase.from('company_users').select('id, support_read_only').eq('role', 'SUPPORT');
+    const roById = new Map(((sup.error ? [] : sup.data) as any[]).map(x => [x.id, !!x.support_read_only]));
+    setUsers(((usersRes.data as any[]) || []).map(u => ({ ...u, mobile: extraById.get(u.id)?.mobile ?? null, retail_role: extraById.get(u.id)?.retail_role ?? null, support_read_only: roById.get(u.id) ?? false, company_name: u.companies?.company_name ?? (u.role === 'SUPER_ADMIN' ? 'All companies' : u.role === 'SUPPORT' ? 'Companies open to support' : '—') })));
     setAllJds(jdsRes);
     setUserJdMap(mapRes);
     setLoading(false);
@@ -224,14 +233,14 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
 
   const visibleUsers = useMemo(
     () => (embeddedCompanyId ? users.filter(u => u.company_id === embeddedCompanyId)
-      : isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter || u.role === 'SUPER_ADMIN') : users),
+      : isSuperAdmin && companyFilter ? users.filter(u => u.company_id === companyFilter || spansCompanies(u.role)) : users),
     [users, companyFilter, isSuperAdmin, embeddedCompanyId],
   );
 
   // A Super Admin may edit anyone except themselves (self-edit stays blocked
   // so nobody can accidentally remove their own Super Admin access).
   const canEdit = (u: UserRow) =>
-    u.id !== profile?.id && (isSuperAdmin || (isCompanyAdmin && u.role !== 'SUPER_ADMIN' && u.company_id === profile?.company_id));
+    u.id !== profile?.id && (isSuperAdmin || (isCompanyAdmin && !spansCompanies(u.role) && u.company_id === profile?.company_id));
 
   const openCreate = () => {
     setForm({ ...emptyUserForm, company_id: isSuperAdmin ? companyFilter || company?.id || '' : profile?.company_id ?? '' });
@@ -243,7 +252,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
   };
 
   const openEdit = (u: UserRow) => {
-    setForm({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, company_id: u.company_id ?? '', mobile: u.mobile ?? '', retail_role: u.retail_role ?? '', terms: false });
+    setForm({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, company_id: u.company_id ?? '', mobile: u.mobile ?? '', retail_role: u.retail_role ?? '', terms: false, support_read_only: !!u.support_read_only });
     const currentJdId = getUserJdId(userJdMap, u);
     setSelectedJdId(currentJdId);
     setShowJdFormInline(false);
@@ -302,12 +311,18 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
       p_status: next.status,
       // Company Admins never choose a company: the database uses their own.
       // Super Admin accounts span all companies: no company is sent.
-      p_company_id: isSuperAdmin && next.role !== 'SUPER_ADMIN' ? next.company_id || null : null,
+      p_company_id: isSuperAdmin && !spansCompanies(next.role) ? next.company_id || null : null,
     });
     if (error) {
       setSaving(false);
       setFormError(error.message);
       return { error: error.message, data: null };
+    }
+    // support team: View only (Super Admin only)
+    if (next.role === 'SUPPORT' && isSuperAdmin) {
+      const sid = next.id || (savedData as any)?.id;
+      const { error: roErr } = sid ? await supabase.rpc('erp_set_support_read_only', { p_user_id: sid, p_read_only: !!next.support_read_only }) : { error: null };
+      if (roErr) { setSaving(false); setFormError('The person was saved, but View only was not: ' + roErr.message); await loadUsers(); return { error: roErr.message, data: savedData }; }
     }
     // Retail Store details (mobile, Retail Store role): saved with the user; a failure here never undoes the user itself
     const savedId = next.id || (savedData as any)?.id;
@@ -322,7 +337,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
       if (dErr) console.warn('Could not save the mobile / Retail Store role (apply the company hub migration):', dErr.message);
     }
     // the person is also set up in the Retail Store right away (otherwise it happens on their first login)
-    const retailRole = next.role === 'SUPER_ADMIN' ? 'super_admin' : next.role === 'COMPANY_ADMIN' ? 'company_admin' : next.retail_role;
+    const retailRole = next.role === 'SUPPORT' ? '' : next.role === 'SUPER_ADMIN' ? 'super_admin' : next.role === 'COMPANY_ADMIN' ? 'company_admin' : next.retail_role;
     if (allowRetail && !next.id && retailRole) {
       const co = companies.find(c => c.id === (next.company_id || profile?.company_id));
       try {
@@ -340,7 +355,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
   const handleSubmit = async () => {
     if (!form.email.trim()) { setFormError('Google account email is required'); return; }
     if (showRetailInForm && form.role === 'USER' && form.retail_role && retailRoles.find(x => x.id === form.retail_role)?.requireTerms && !form.terms && !form.id) { setFormError('Accept the sales terms for this Retail Store role'); return; }
-    if (isSuperAdmin && form.role !== 'SUPER_ADMIN' && !form.company_id) { setFormError('Select a company'); return; }
+    if (isSuperAdmin && !spansCompanies(form.role) && !form.company_id) { setFormError('Select a company'); return; }
 
     setSaving(true);
     setFormError(null);
@@ -476,7 +491,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
     },
   ];
 
-  const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'COMPANY_ADMIN', 'USER'] : ['COMPANY_ADMIN', 'USER'];
+  const roleOptions: ErpRole[] = isSuperAdmin ? ['SUPER_ADMIN', 'SUPPORT', 'COMPANY_ADMIN', 'USER'] : ['COMPANY_ADMIN', 'USER'];
   const ownCompanyName = companies.find(c => c.id === profile?.company_id)?.company_name ?? company?.company_name ?? '';
 
   const [search, setSearch] = useState('');
@@ -593,6 +608,7 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
 
   return (
     <div className={embeddedCompanyId ? 'space-y-2' : 'p-3 sm:p-4 lg:px-4 lg:pt-1.5 lg:pb-4 bg-grid min-h-full space-y-2'}>
+      {isSuperAdmin && !embeddedCompanyId && users.some(u => u.role === 'SUPPORT') && <SupportAccessLog />}
       {embeddedCompanyId && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-500"><b className="text-slate-800">{visibleUsers.length}</b> users · <b className="text-emerald-700">{activeCount}</b> active</span>
@@ -652,9 +668,11 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
           <FormField label="Gmail / Google Account Email" required>
             <input className={inputClass} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@gmail.com" />
           </FormField>
-          <FormField label="Company" required={form.role !== 'SUPER_ADMIN'}>
+          <FormField label="Company" required={!spansCompanies(form.role)}>
             {isSuperAdmin && form.role === 'SUPER_ADMIN' ? (
               <input className={`${inputClass} !bg-slate-100 !text-slate-500 cursor-not-allowed`} value="All companies" disabled title="Super Admin accounts span all companies" />
+            ) : isSuperAdmin && form.role === 'SUPPORT' ? (
+              <input className={`${inputClass} !bg-slate-100 !text-slate-500 cursor-not-allowed`} value="Every company not marked Hidden from support" disabled title="Hide a company from support in Company Management" />
             ) : isSuperAdmin ? (
               <select className={inputClass} value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })}>
                 <option value="">Select company…</option>
@@ -669,6 +687,16 @@ export function UsersPage({ embeddedCompanyId }: { embeddedCompanyId?: string } 
               {roleOptions.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
           </FormField>
+          {isSuperAdmin && form.role === 'SUPPORT' && (
+            <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+              <p className="font-bold">Support team</p>
+              <p className="mt-0.5">Can switch between every company that is not marked <b>Hidden from support</b> in Company Management, to help with technical problems. Never sees the hidden companies, and never gets User Management, Access Management, Company Management, Settings, Audit Logs or Mail Integration. Every company they open is logged.</p>
+              <label className="mt-2 flex items-center gap-2 font-semibold cursor-pointer">
+                <input type="checkbox" checked={!!form.support_read_only} onChange={(e) => setForm({ ...form, support_read_only: e.target.checked })} />
+                View only (can look and guide, but cannot create, change or delete anything)
+              </label>
+            </div>
+          )}
           <FormField label="Mobile Number">
             <input className={inputClass} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="Optional" />
           </FormField>
@@ -1000,6 +1028,8 @@ export function CompaniesPage() {
   const [biOn, setBiOn] = useState(true);
   const [retailOn, setRetailOn] = useState(true);
   const [attendanceOn, setAttendanceOn] = useState(true);
+  // support team may open this company (companies.hidden_from_support = false)
+  const [supportOpen, setSupportOpen] = useState(true);
   const [accessSearch, setAccessSearch] = useState('');
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [globalDisabledBi, setGlobalDisabledBi] = useState<Set<string>>(new Set());
@@ -1175,7 +1205,7 @@ export function CompaniesPage() {
   }, [companies]);
 
   const openCreate = async () => {
-    setBiOn(true); setRetailOn(true); setAttendanceOn(true);
+    setBiOn(true); setRetailOn(true); setAttendanceOn(true); setSupportOpen(true);
     setPartnerForm(emptyPartner);
     setForm(emptyCompanyForm);
     setFormError(null);
@@ -1225,7 +1255,10 @@ export function CompaniesPage() {
   };
 
   const openEdit = async (r: CompanyRow) => {
-    setBiOn(true); setRetailOn(true); setAttendanceOn(true);
+    setBiOn(true); setRetailOn(true); setAttendanceOn(true); setSupportOpen(true);
+    supabase.from('companies').select('hidden_from_support').eq('id', r.id).maybeSingle().then(({ data, error }) => {
+      if (!error && data) setSupportOpen(!(data as any).hidden_from_support);
+    });
     supabase.from('companies').select('bi_enabled, retail_enabled, attendance_enabled').eq('id', r.id).maybeSingle().then(({ data }) => {
       if (data) { setBiOn((data as any).bi_enabled !== false); setRetailOn((data as any).retail_enabled !== false); setAttendanceOn((data as any).attendance_enabled !== false); }
     });
@@ -1416,6 +1449,12 @@ export function CompaniesPage() {
       if (pErr) await supabase.from('companies').update({ bi_enabled: biOn, retail_enabled: retailOn, attendance_enabled: attendanceOn }).eq('id', targetCompanyId);
       if (pErr && (!biOn || !retailOn || !/erp_set_company_platforms|schema cache/i.test(pErr.message))) window.alert('The company was saved, but the Argus BI / Retail platform switches were not: ' + pErr.message + ' (If it mentions a missing function, apply database update 20261110060000_company_platforms.sql.)');
     } catch { /* the company is saved; the switches can be set again */ }
+
+    // 4b. Support team access (Super Admin only; needs 20261205000000_support_team.sql)
+    try {
+      const { error: sErr } = await supabase.rpc('erp_set_company_hidden_from_support', { p_company_id: targetCompanyId, p_hidden: !supportOpen });
+      if (sErr && !supportOpen) window.alert('The company was saved, but "Hidden from support" was not: ' + sErr.message + ' (If it mentions a missing function, apply database update 20261205000000_support_team.sql.)');
+    } catch { /* the company is saved; the switch can be set again */ }
 
     // 5. Retail sales partner: which main company it sells for, its type and the partner it comes under
     const prevLink = links.get(targetCompanyId);
@@ -1821,6 +1860,8 @@ export function CompaniesPage() {
                   hint: retailOn ? 'On: users of this company can open the Retail Store.' : 'Off: the Retail Store is hidden, and so are the pages linked to it (Digital Store, Retail Orders, Partner & Online Sales).' },
                 { key: 'attendance', title: 'AI Face Attendance', on: attendanceOn, set: setAttendanceOn, other: true, icon: Camera, tone: 'orange',
                   hint: attendanceOn ? 'On: AI biometric facial recognition attendance kiosk and roster are active for this company.' : 'Off: the AI Attendance module and tablet kiosk are disabled for this company.' },
+                { key: 'support', title: 'Support team access', on: supportOpen, set: setSupportOpen, other: true, icon: ShieldCheck, tone: 'brand',
+                  hint: supportOpen ? 'On: the support team can open this company to help with technical problems.' : 'Off: Hidden from support. The support team can never see this company or its data.' },
                 // module switches shown as cards too (saved with the menu list below)
                 ...([
                   { key: 'sim-calls', title: 'SIM Calls', icon: Smartphone, tone: 'brand' as const,

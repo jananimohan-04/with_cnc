@@ -188,7 +188,7 @@ function MainLayout() {
     navigate(page.startsWith('/') ? page : `/${page}`);
   };
 
-  const { signOut, company, refreshPermissions, isSuperAdmin, setActiveCompany, biEnabled, retailEnabled, attendanceEnabled } = useAuth();
+  const { signOut, company, refreshPermissions, isSuperAdmin, isSupport, profile, setActiveCompany, biEnabled, retailEnabled, attendanceEnabled } = useAuth();
   const offPlatforms = [!biEnabled && 'Argus BI', !retailEnabled && 'Retail Store', !attendanceEnabled && 'AI Attendance'].filter(Boolean) as string[];
   const ai = useAiAccess();
   // every page fills the screen at every display size (re-attached when <main> is rebuilt for another company)
@@ -241,6 +241,13 @@ function MainLayout() {
         {/* Excel-style funnel + column menu on every table heading */}
         <TableAutoFilter />
         {/* Super Admin with one company picked: the menus are that company's (its switches and its menu access) */}
+        {/* Support team: always show whose data is open, and View only */}
+        {isSupport && (
+          <div className="flex-shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 text-[11px] bg-amber-50 border-b border-amber-200 text-amber-900 print:hidden">
+            <span>Support access: <b>{company ? company.company_name : 'all companies open to support'}</b>{profile?.support_read_only ? ' · View only (you cannot change anything)' : ''}. Pick the company in your profile menu at the top right.</span>
+            {company && <button type="button" onClick={() => void setActiveCompany(null)} className="ml-auto font-bold text-amber-800 hover:underline">Back to all companies</button>}
+          </div>
+        )}
         {isSuperAdmin && company && (
           <div className="flex-shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 text-[11px] bg-indigo-50 border-b border-indigo-200 text-indigo-900 print:hidden">
             <span>Viewing as <b>{company.company_name}</b>: you see only the menus this company has.{offPlatforms.length ? ` Switched off for it: ${offPlatforms.join(', ')}.` : ''}</span>

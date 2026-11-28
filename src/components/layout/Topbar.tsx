@@ -25,6 +25,7 @@ const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
   COMPANY_ADMIN: 'Company Admin',
   USER: 'User',
+  SUPPORT: 'Support team',
 };
 
 export function Topbar({
@@ -46,7 +47,7 @@ export function Topbar({
   const [showMenuPosition, setShowMenuPosition] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const dateFilterRef = useRef<HTMLDivElement>(null);
-  const { profile, company, companies, isSuperAdmin, setActiveCompany, canView } = useAuth();
+  const { profile, company, companies, isSupport, canSwitchCompany, setActiveCompany, canView } = useAuth();
   const { from: globalFrom, to: globalTo, isAllTime: globalAllTime } = useDateRange();
 
   const displayName = profile?.full_name || profile?.email || '';
@@ -163,7 +164,7 @@ export function Topbar({
         )}
 
         {/* Company: shown read-only for normal users */}
-        {company && !isSuperAdmin && (
+        {company && !canSwitchCompany && (
           <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs font-bold text-slate-700">
             <Building2 size={14} className="text-slate-400" />
             {company.company_name}
@@ -230,10 +231,10 @@ export function Topbar({
                 {ROLE_LABELS[profile?.role ?? '']}
               </p>
             </div>
-            {/* Company: switchable by the Super Admin, read-only for everyone else */}
+            {/* Company: switchable by the Super Admin and the support team (only the companies open to support), read-only for everyone else */}
             <div className="px-5 py-3 border-b border-slate-100">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Company</p>
-              {isSuperAdmin ? (
+              {canSwitchCompany ? (
                 <div className="flex items-center gap-1.5">
                   <Building2 size={14} className="text-slate-400 shrink-0" />
                   <select
@@ -242,7 +243,7 @@ export function Topbar({
                     className="min-w-0 flex-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:border-brand-500"
                     aria-label="Company whose data is shown"
                   >
-                    <option value="">All companies</option>
+                    <option value="">{isSupport ? 'All companies open to support' : 'All companies'}</option>
                     {companies.map(c => (
                       <option key={c.id} value={c.id}>{c.company_name}{c.status === 'Inactive' ? ' (inactive)' : ''}</option>
                     ))}
@@ -255,7 +256,7 @@ export function Topbar({
             <div className="p-2">
               {canView('bi-chat') && <button onClick={() => { setShowProfile(false); onNavigate('/bi-chat'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><MessageSquare size={15} className="text-amber-500" /> BI Chat</button>}
               <button onClick={() => { setShowProfile(false); onNavigate('/updates'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Sparkles size={15} className="text-orange-500" /> App Updates & Versions</button>
-              <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>
+              {!isSupport && <button onClick={() => { setShowProfile(false); onNavigate('/admin/settings'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><Settings size={15} className="text-slate-400" /> Settings</button>}
               <button onClick={() => { setShowProfile(false); setShowDateFilter(false); setShowMenuPosition(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><PanelsTopLeft size={15} className="text-slate-400" /> Menu Position</button>
               <button onClick={() => { setShowProfile(false); onNavigate('/help'); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-left cursor-pointer"><HelpCircle size={15} className="text-slate-400" /> Help & Support</button>
               <div className="my-1 border-t border-slate-100" />

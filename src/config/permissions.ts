@@ -137,6 +137,9 @@ export const STAGE_MODULE: Record<string, string> = {
 /** Modules a Company Admin may never grant (reserved for Super Admin). Mirrors erp_save_permissions. */
 export const ADMIN_RESERVED_MODULES = ['admin-companies', 'admin-access', 'settings', 'audit-logs'];
 
+/** Modules the support team never gets (mirrors erp_support_blocked_modules in 20261205000000_support_team.sql). */
+export const SUPPORT_BLOCKED_MODULES = ['admin-users', 'admin-access', 'admin-companies', 'settings', 'audit-logs', 'email-integration'];
+
 export type ActionFlags = Record<PermAction, boolean>;
 export type PermMatrix = Record<string, ActionFlags>;
 
@@ -168,8 +171,15 @@ export function rowsToMatrix(rows: { module_key: string; can_view: boolean; can_
 }
 
 /** Effective matrix: admins get everything (authority comes from the role, as before). */
-export function effectiveMatrix(role: ErpRole | null | undefined, rows: Parameters<typeof rowsToMatrix>[0]): PermMatrix {
+export function effectiveMatrix(role: ErpRole | null | undefined, rows: Parameters<typeof rowsToMatrix>[0], opts?: { readOnly?: boolean }): PermMatrix {
   if (role === 'SUPER_ADMIN' || role === 'COMPANY_ADMIN') return fullMatrix();
+  if (role === 'SUPPORT') {
+    // support: everything except the administration pages; View only = look and export, nothing else
+    const m = fullMatrix();
+    for (const k of SUPPORT_BLOCKED_MODULES) if (m[k]) m[k] = emptyFlags();
+    if (opts?.readOnly) for (const k of Object.keys(m)) m[k] = { ...emptyFlags(), view: m[k].view, export: m[k].export };
+    return m;
+  }
   return rowsToMatrix(rows);
 }
 
