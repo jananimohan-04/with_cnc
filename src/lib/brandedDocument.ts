@@ -1270,7 +1270,7 @@ export async function buildSalesInvoiceDocument(input: SalesInvoiceInput) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
   doc.setTextColor(...GREY);
-  const note = '*** This invoice is valid only with a Digital Signature. Physically signed invoices will not be accepted. ***';
+  const note = '*** This invoice is digitally created and signed. If it carries a handwritten signature, it is not valid. ***';
   const noteW = Math.min(contentW, doc.getTextWidth(note) + 8);
   doc.setDrawColor(...GRID);
   doc.setLineWidth(0.25);
