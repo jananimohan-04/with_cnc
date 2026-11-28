@@ -1334,155 +1334,196 @@ export function CompaniesPage() {
   };
 
   const handleSubmit = async () => {
-    if (!form.company_name.trim()) { setFormError('Company name is required'); return; }
+    const cleanName = form.company_name.trim();
+    const normalizedCode = (form.code || '').trim().toUpperCase();
+    const existingCompany = form.id ? companies.find((c) => c.id === form.id) : undefined;
+    const prevCode = (existingCompany?.code || '').trim().toUpperCase();
+    const prevLink = form.id ? links.get(form.id) : undefined;
+    const wantOf = partnerForm.on ? partnerForm.of : null;
+    const linkChanged = linksReady && (
+      (prevLink?.partner_of || null) !== wantOf
+      || (wantOf && ((prevLink?.partner_type || null) !== partnerForm.type || (prevLink?.partner_parent_id || null) !== (partnerForm.parent || null))));
+    const codeChanged = normalizedCode !== prevCode;
+    const gstValid = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(normalizedCode);
+
+    if (!cleanName) { setFormError('Company name is required'); return; }
+    if (loadingAccess) { setFormError('Module permissions are still loading. Please try again in a moment.'); return; }
     if (partnerForm.on && !linksReady) { setFormError('Retail partners need database update 20261121000000_retail_partner_companies.sql. Run it in the SQL Editor first.'); return; }
     if (partnerForm.on && !partnerForm.of) { setFormError('Choose the main company this partner sells for.'); return; }
-    if (partnerForm.on && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(form.code)) {
-      setFormError(form.code ? 'The GST No. is not valid. It has 15 characters, like 33ABCDE1234F1Z5.' : 'Enter the partner\'s GST No. Every partner needs one, so the same partner cannot be added twice.');
+    // Require valid 15-char GST when linking/creating a partner or changing a partner's GST,
+    // without blocking unrelated module/platform edits on an existing company whose GST was untouched.
+    if (partnerForm.on && (!form.id || linkChanged || codeChanged) && !gstValid) {
+      setFormError(normalizedCode ? 'The GST No. is not valid. It has 15 characters, like 33ABCDE1234F1Z5.' : 'Enter the partner\'s GST No. Every partner needs one, so the same partner cannot be added twice.');
       return;
     }
+
+    const isMissingRpc = (msg?: string) => /schema cache|does not exist|could not find the function/i.test(msg || '');
+    const failPartial = async (msg: string, companyId: string) => {
+      setForm((f) => ({ ...f, id: companyId, company_name: cleanName, code: normalizedCode }));
+      setFormError(msg);
+      await Promise.allSettled([reload(), reloadLinks()]);
+    };
+
     setSaving(true);
     setFormError(null);
+    try {
+      // 1. Save company in Supabase
+      const { data: savedCompany, error } = await supabase.rpc('erp_save_company', {
+        p_id: form.id, p_company_name: cleanName, p_code: normalizedCode, p_status: form.status,
+      });
+      if (error) {
+        setFormError(error.message);
+        return;
+      }
 
-    // 1. Save company in Supabase
-    const { data: savedCompany, error } = await supabase.rpc('erp_save_company', {
-      p_id: form.id, p_company_name: form.company_name, p_code: form.code, p_status: form.status,
-    });
-    if (error) {
-      setSaving(false);
-      setFormError(error.message);
-      return;
-    }
+      const targetCompanyId = (savedCompany as { id?: string } | null)?.id || form.id;
+      if (!targetCompanyId) {
+        setFormError('Could not determine saved company ID. Please try again.');
+        return;
+      }
 
-    const targetCompanyId = (savedCompany as any)?.id || form.id;
-
-    // 1b. Company details (industry, contact, address, PAN, CIN, plan...)
-    {
+      // 1b. Company details (industry, contact, address, PAN, CIN, plan...)
       const { error: dErr } = await supabase.rpc('erp_save_company_details', {
         p_id: targetCompanyId,
         p_data: Object.fromEntries(COMPANY_DETAIL_KEYS.map(k => [k, form[k]])),
       });
-      if (dErr) console.warn('Could not save the company details (apply the company hub migration):', dErr.message);
-    }
+      if (dErr) {
+        if (isMissingRpc(dErr.message)) console.warn('Could not save the company details (apply the company hub migration):', dErr.message);
+        else { await failPartial('The company was saved, but its details failed to save: ' + dErr.message, targetCompanyId); return; }
+      }
 
-    // 2. Save BI module access for this company
-    const biAvail = VISIBLE_MODULES.filter((m) => !globalDisabledBi.has(m.key));
-    const unselectedBi = biAvail
-      .filter((m) => !selectedBi.has(m.key))
-      .map((m) => m.key);
+      // 2. Save BI module access for this company
+      const biAvail = VISIBLE_MODULES.filter((m) => !globalDisabledBi.has(m.key));
+      const unselectedBi = biAvail
+        .filter((m) => !selectedBi.has(m.key))
+        .map((m) => m.key);
 
-    try {
       const { error: rpcErr } = await supabase.rpc('erp_set_company_disabled_modules', {
         p_company_id: targetCompanyId,
         p_disabled_modules: unselectedBi,
       });
       if (rpcErr) {
-        // Fallback: direct table update
-        await supabase.from('cnc_disabled_modules').delete().eq('company_id', targetCompanyId).eq('is_global', false);
-        if (unselectedBi.length > 0) {
+        const { error: delErr } = await supabase.from('cnc_disabled_modules').delete().eq('company_id', targetCompanyId).eq('is_global', false);
+        let insErr: { message: string } | null = null;
+        if (!delErr && unselectedBi.length > 0) {
           const rows = unselectedBi.map((k) => ({
             company_id: targetCompanyId,
             module_key: k,
             disabled_by: profile?.full_name || 'Admin',
             is_global: false,
           }));
-          await supabase.from('cnc_disabled_modules').insert(rows);
+          ({ error: insErr } = await supabase.from('cnc_disabled_modules').insert(rows));
+        }
+        if (delErr || insErr) {
+          await failPartial('The company was saved, but Argus BI module access failed to save: ' + (delErr?.message || insErr?.message || rpcErr.message), targetCompanyId);
+          return;
         }
       }
-    } catch (err) {
-      console.warn('Failed saving BI company module access:', err);
-    }
 
-    // 3. Save Retail menu access for this company
-    const retailAvailItems: string[] = [];
-    (MENU_CATALOG as any[]).forEach((cat) => {
-      if (RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id)) {
-        (cat.items || []).forEach((item: any) => {
-          if (!item.id.startsWith('super_') && !globalDisabledRetail.has(item.id)) {
-            retailAvailItems.push(item.id);
-          }
-        });
-      }
-    });
-    const selectedRetailList = Array.from(selectedRetail);
-    const unselectedRetailList = retailAvailItems.filter((id) => !selectedRetail.has(id));
-
-    try {
-      const coCode = form.code || targetCompanyId;
-      const retailPayload = {
-        name: form.company_name,
-        code: form.code,
-        city: form.city || 'Default',
-        industry: form.industry || undefined, email: form.email || undefined, phone: form.phone || undefined,
-        address: form.address || undefined, state: form.state || undefined, pin: form.pin || undefined,
-        description: form.description || undefined, plan: form.plan || undefined,
-        gstin: form.code || undefined, pan: form.pan || undefined, cin: form.cin || undefined,
-        status: form.status.toLowerCase(),
-        menuPermissions: selectedRetailList,
-        disabledMenus: unselectedRetailList,
-        retailEnabled: retailOn,
-        biEnabled: biOn,
-      };
-      try {
-        const patchRes = await retailApi.patch('/api/companies/' + encodeURIComponent(coCode), retailPayload);
-        if (!patchRes) {
-          await retailApi.post('/api/companies', retailPayload);
+      // 3. Save Retail menu access for this company
+      const retailAvailItems: string[] = [];
+      (MENU_CATALOG as { id: string; items?: { id: string }[] }[]).forEach((cat) => {
+        if (RETAIL_COMPANY_CATEGORY_IDS.includes(cat.id)) {
+          (cat.items || []).forEach((item) => {
+            if (!item.id.startsWith('super_') && !globalDisabledRetail.has(item.id)) {
+              retailAvailItems.push(item.id);
+            }
+          });
         }
-      } catch {
-        await retailApi.post('/api/companies', retailPayload).catch(() => {});
-      }
-
-      // (an rpc call is awaited, not chained with .catch: the builder has no catch)
-      try {
-        await supabase.rpc('erp_set_company_retail_menus', {
-          p_company_id: targetCompanyId,
-          p_retail_menus: selectedRetailList,
-        });
-      } catch { /* the company is saved; the retail menu list can be set again */ }
-    } catch (err) {
-      console.warn('Failed syncing to retail backend:', err);
-    }
-
-    // 4. Platform switches (BI / Retail Store)
-    try {
-      const { error: pErr } = await supabase.rpc('erp_set_company_platforms', { p_company_id: targetCompanyId, p_bi: biOn, p_retail: retailOn, p_attendance: attendanceOn });
-      if (pErr) await supabase.from('companies').update({ bi_enabled: biOn, retail_enabled: retailOn, attendance_enabled: attendanceOn }).eq('id', targetCompanyId);
-      if (pErr && (!biOn || !retailOn || !/erp_set_company_platforms|schema cache/i.test(pErr.message))) window.alert('The company was saved, but the Argus BI / Retail platform switches were not: ' + pErr.message + ' (If it mentions a missing function, apply database update 20261110060000_company_platforms.sql.)');
-    } catch { /* the company is saved; the switches can be set again */ }
-
-    // 4b. Support team access (Super Admin only; needs 20261205000000_support_team.sql)
-    try {
-      const { error: sErr } = await supabase.rpc('erp_set_company_hidden_from_support', { p_company_id: targetCompanyId, p_hidden: !supportOpen });
-      if (sErr && !supportOpen) window.alert('The company was saved, but "Hidden from support" was not: ' + sErr.message + ' (If it mentions a missing function, apply database update 20261205000000_support_team.sql.)');
-    } catch { /* the company is saved; the switch can be set again */ }
-
-    // 5. Retail sales partner: which main company it sells for, its type and the partner it comes under
-    const prevLink = links.get(targetCompanyId);
-    const wantOf = partnerForm.on ? partnerForm.of : null;
-    const linkChanged = linksReady && (
-      (prevLink?.partner_of || null) !== wantOf
-      || (wantOf && ((prevLink?.partner_type || null) !== partnerForm.type || (prevLink?.partner_parent_id || null) !== (partnerForm.parent || null))));
-    if (linkChanged) {
-      const { error: ptErr } = await supabase.rpc('erp_set_company_partner', {
-        p_company_id: targetCompanyId, p_partner_of: wantOf,
-        p_partner_type: wantOf ? partnerForm.type : null, p_parent_id: wantOf && partnerForm.parent ? partnerForm.parent : null,
       });
-      if (ptErr) {
-        // the company itself is saved: keep the form open on it so only the partner setting has to be fixed
-        setForm((f) => ({ ...f, id: targetCompanyId }));
-        setSaving(false);
-        setFormError('The company was saved, but not its retail partner setting: ' + ptErr.message);
-        await reload();
-        await reloadLinks();
+      const selectedRetailList = Array.from(selectedRetail);
+      const unselectedRetailList = retailAvailItems.filter((id) => !selectedRetail.has(id));
+
+      // Mirror to retail backend without letting a slow/unreachable HTTP mirror stall modal saving
+      const syncRetailBackend = async () => {
+        const coCode = normalizedCode || targetCompanyId;
+        const retailPayload = {
+          name: cleanName,
+          code: normalizedCode,
+          city: form.city || 'Default',
+          industry: form.industry || undefined, email: form.email || undefined, phone: form.phone || undefined,
+          address: form.address || undefined, state: form.state || undefined, pin: form.pin || undefined,
+          description: form.description || undefined, plan: form.plan || undefined,
+          gstin: normalizedCode || undefined, pan: form.pan || undefined, cin: form.cin || undefined,
+          status: form.status.toLowerCase(),
+          menuPermissions: selectedRetailList,
+          disabledMenus: unselectedRetailList,
+          retailEnabled: retailOn,
+          biEnabled: biOn,
+        };
+        try {
+          const patchRes = await retailApi.patch('/api/companies/' + encodeURIComponent(coCode), retailPayload);
+          if (!patchRes) await retailApi.post('/api/companies', retailPayload);
+        } catch {
+          await retailApi.post('/api/companies', retailPayload).catch(() => {});
+        }
+      };
+      await Promise.race([
+        syncRetailBackend().catch((err) => console.warn('Failed syncing to retail backend:', err)),
+        new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+      ]);
+
+      const { error: rmErr } = await supabase.rpc('erp_set_company_retail_menus', {
+        p_company_id: targetCompanyId,
+        p_retail_menus: selectedRetailList,
+      });
+      if (rmErr && !isMissingRpc(rmErr.message)) {
+        await failPartial('The company was saved, but Retail menu access failed to save: ' + rmErr.message, targetCompanyId);
         return;
       }
-    }
 
-    setSaving(false);
-    setShowForm(false);
-    await reload();
-    await reloadLinks();
-    await refresh();
+      // 4. Platform switches (BI / Retail Store / AI Attendance)
+      const { error: pErr } = await supabase.rpc('erp_set_company_platforms', {
+        p_company_id: targetCompanyId, p_bi: biOn, p_retail: retailOn, p_attendance: attendanceOn,
+      });
+      if (pErr) {
+        let savedPlatforms = false;
+        let platErrMsg = pErr.message;
+        if (isMissingRpc(pErr.message)) {
+          // Fall back to 3-arg RPC (BI + Retail) if 4-arg attendance signature is not deployed yet
+          const { error: p3Err } = await supabase.rpc('erp_set_company_platforms', {
+            p_company_id: targetCompanyId, p_bi: biOn, p_retail: retailOn,
+          } as never);
+          const { error: upErr } = await supabase.from('companies')
+            .update({ bi_enabled: biOn, retail_enabled: retailOn, attendance_enabled: attendanceOn })
+            .eq('id', targetCompanyId);
+          savedPlatforms = !upErr || (!p3Err && attendanceOn);
+          if (upErr) platErrMsg = upErr.message;
+        }
+        if (!savedPlatforms && (!biOn || !retailOn || !attendanceOn || !isMissingRpc(pErr.message))) {
+          await failPartial('The company was saved, but platform switches were not: ' + platErrMsg, targetCompanyId);
+          return;
+        }
+      }
+
+      // 4b. Support team access (Super Admin only; needs 20261205000000_support_team.sql)
+      const { error: sErr } = await supabase.rpc('erp_set_company_hidden_from_support', {
+        p_company_id: targetCompanyId, p_hidden: !supportOpen,
+      });
+      if (sErr && (!supportOpen || !isMissingRpc(sErr.message))) {
+        await failPartial('The company was saved, but Support team access was not: ' + sErr.message, targetCompanyId);
+        return;
+      }
+
+      // 5. Retail sales partner: which main company it sells for, its type and the partner it comes under
+      if (linkChanged) {
+        const { error: ptErr } = await supabase.rpc('erp_set_company_partner', {
+          p_company_id: targetCompanyId, p_partner_of: wantOf,
+          p_partner_type: wantOf ? partnerForm.type : null, p_parent_id: wantOf && partnerForm.parent ? partnerForm.parent : null,
+        });
+        if (ptErr) {
+          await failPartial('The company was saved, but not its retail partner setting: ' + ptErr.message, targetCompanyId);
+          return;
+        }
+      }
+
+      await Promise.all([reload(), reloadLinks(), refresh()]);
+      setShowForm(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Permanent: erp_delete_company removes the company, ALL its data and its users, atomically.
@@ -1660,15 +1701,22 @@ export function CompaniesPage() {
         size="xl"
         tall
         footer={
-          <div className="flex items-center justify-between w-full">
-            <div className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">{selectedBi.size}</span> Argus BI modules · <span className="font-semibold text-slate-700">{selectedRetail.size}</span> Retail menus granted
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
-              <Button onClick={handleSubmit} disabled={saving}>
-                {saving ? 'Saving…' : form.id ? 'Save Changes' : 'Create Company'}
-              </Button>
+          <div className="w-full space-y-2">
+            {formError && (
+              <p role="alert" className="text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium">
+                {formError}
+              </p>
+            )}
+            <div className="flex items-center justify-between w-full">
+              <div className="text-xs text-slate-500">
+                <span className="font-semibold text-slate-700">{selectedBi.size}</span> Argus BI modules · <span className="font-semibold text-slate-700">{selectedRetail.size}</span> Retail menus granted
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
+                <Button onClick={handleSubmit} disabled={saving}>
+                  {saving ? 'Saving…' : form.id ? 'Save Changes' : 'Create Company'}
+                </Button>
+              </div>
             </div>
           </div>
         }
@@ -2066,7 +2114,6 @@ export function CompaniesPage() {
             </div>
           </div>
         </div>
-        {formError && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{formError}</p>}
       </Modal>
       <Modal open={!!toDelete} onClose={() => !deleting && setToDelete(null)} title="Delete company permanently?" size="sm"
         footer={<><Button variant="secondary" onClick={() => setToDelete(null)} disabled={deleting}>Cancel</Button><button onClick={confirmDeleteCompany} disabled={deleting || confirmText.trim() !== toDelete?.company_name} className="h-9 px-4 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40">{deleting ? 'Deleting…' : 'Delete everything'}</button></>}>

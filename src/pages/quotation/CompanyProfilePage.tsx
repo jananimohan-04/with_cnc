@@ -3,6 +3,7 @@ import { Building2, ImageIcon, PenLine, Upload, Phone, Mail, Globe, Landmark, Pl
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/ui/Modal';
 import { CameraCaptureButton } from '@/components/ui/CameraModal';
+import { SignatureCaptureModal } from '@/components/ui/SignatureCaptureModal';
 import {
   cleanProfile, hasErrors, loadProfileStore, prepareImage, saveProfileRemote, saveProfileStore, setProfileOwner, syncProfileStore, validateProfile, validateSub,
   type OrgProfile, type ProfileKind, type ProfileStore, type SubCompany,
@@ -45,6 +46,7 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
   const [subDraft, setSubDraft] = useState(emptySub);
   const [subTouched, setSubTouched] = useState(false);
   const [subDelete, setSubDelete] = useState<SubCompany | null>(null);
+  const [signModalOpen, setSignModalOpen] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
   const sigRef = useRef<HTMLInputElement>(null);
   const qrRef = useRef<HTMLInputElement>(null);
@@ -95,6 +97,24 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
     if (!file) return;
     try { set(kind, await prepareImage(file, kind === 'logo' ? 600 : 500)); setNotice({ kind: 'ok', text: `${kind === 'logo' ? 'Logo' : kind === 'signature' ? 'Signature' : 'Payment QR Code'} loaded. Click Save Organisation Settings to keep it.` }); }
     catch (e) { setNotice({ kind: 'err', text: (e as Error).message }); }
+  };
+
+  const applyDrawnSignature = (dataUrl: string) => {
+    const next = { ...p, signature: dataUrl };
+    setP(next);
+    setSignModalOpen(false);
+    // Persist straight away when no other form fields have unsaved edits so the e-signature is immediately ready for PDFs.
+    if (!dirty && !hasErrors(validateProfile(next))) {
+      const clean = cleanProfile(next);
+      if (persist({ ...store, profile: clean }, 'E-signature saved')) setP(clean);
+      return;
+    }
+    if (dirty) {
+      setNotice({ kind: 'ok', text: 'E-signature applied. Click Save Organisation Settings to save all changes.' });
+    } else {
+      setTouched(true);
+      setNotice({ kind: 'err', text: 'E-signature applied, but fix highlighted fields and click Save Organisation Settings.' });
+    }
   };
 
   const subErrors = subModal ? validateSub(subDraft, store.subs, subModal.editingId) : {};
@@ -155,13 +175,14 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
 
         <section className={card}>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase text-slate-800"><PenLine size={16} className="text-orange-500" /> Authorized Signature / Digital Stamp</h2>
-          <p className="text-xs text-slate-500 mb-4">Upload authorized signature or stamp to automatically embed in {doc.name} PDFs.</p>
+          <p className="text-xs text-slate-500 mb-4">Sign digitally, capture, or upload an authorized signature or stamp to automatically embed in {doc.name} PDFs.</p>
           <div className="flex flex-wrap items-center gap-5 border-t border-slate-100 pt-4">
             {imageBox(p.signature, 'NO SIGNATURE', PenLine, 'w-40')}
             <div>
               <input ref={sigRef} type="file" accept="image/png,image/jpeg" aria-label="Signature file" className="hidden" onChange={e => { pickImage(e.target.files?.[0], 'signature'); e.target.value = ''; }} />
               <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => sigRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl"><Upload size={15} /> {p.signature ? 'Change Signature' : 'Choose Signature'}</button>
+                <button type="button" onClick={() => setSignModalOpen(true)} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-xl shadow-xs transition-colors"><PenLine size={15} /> {p.signature ? 'Sign Again' : 'Sign & Save'}</button>
+                <button type="button" onClick={() => sigRef.current?.click()} className="flex items-center gap-2 h-10 px-4 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition-colors"><Upload size={15} /> {p.signature ? 'Change Signature' : 'Choose Signature'}</button>
                 <CameraCaptureButton
                   size="md"
                   iconSize={15}
@@ -169,9 +190,9 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
                   onCapture={(files) => { if (files[0]) pickImage(files[0], 'signature'); }}
                   title="Capture signature / stamp with camera"
                 />
-                {p.signature && <button type="button" onClick={() => set('signature', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl">Remove</button>}
+                {p.signature && <button type="button" onClick={() => set('signature', '')} className="h-10 px-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">Remove</button>}
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">Recommended: Clean transparent PNG with black or blue signature (Max 2MB).</p>
+              <p className="text-[11px] text-slate-400 mt-2">Sign directly on screen or upload a clean transparent PNG with black or blue signature (Max 2MB).</p>
             </div>
           </div>
         </section>
@@ -304,6 +325,14 @@ export function DocumentProfilePage({ kind = 'quotation', embedded = false }: { 
           <button onClick={() => { if (subDelete) persist({ profile: store.profile, subs: store.subs.filter(s => s.id !== subDelete.id) }, 'Sub-company deleted'); setSubDelete(null); }} className="h-10 px-5 text-sm font-semibold text-white bg-red-600 rounded-lg">Delete</button>
         </div>
       </Modal>
+
+      <SignatureCaptureModal
+        open={signModalOpen}
+        onClose={() => setSignModalOpen(false)}
+        onSave={applyDrawnSignature}
+        defaultName={me?.full_name ?? ''}
+        saveLabel={dirty ? 'Use Signature' : 'Save & Use Signature'}
+      />
     </div>
   );
 }
